@@ -7,10 +7,30 @@ This document breaks [PLAN.md](./PLAN.md) into stages a coding agent can execute
 - Work one stage at a time, in order. Each stage ends with a usable app.
 - One pull request per stage (split into several PRs if a stage is large, but do not mix stages).
 - Before starting a stage, read its gotchas. Most of them cost hours when discovered the hard way.
-- When a task is done, tick its checkbox in this file in the same PR. Update the **Progress** table at the top.
 - Before pushing: `pnpm typecheck && pnpm lint && pnpm test`. Keep the `fixtures/` apps green.
 - Record new gotchas you discover in the stage's "Gotchas" list so the next agent benefits.
 - Pin dependency versions when first adding them. Check the current latest at that time; versions named here are a starting point, not a contract.
+- At the end of every piece of work, update the **Progress** table and the stage checklist in this file, and the **Current phase** section in [PLAN.md](./PLAN.md), in the same PR. See [AGENTS.md](../AGENTS.md#end-of-work-update-progress) and `.cursor/rules/update-stage-progress.mdc`. Do not leave this for a follow-up.
+
+## Progress
+
+**Now:** Stages 0 and 1 are merged. The Omarchy/Hyprland check on 29 Oct 2026 is `arch-partial` (native Wayland, renderer `dpr` 2 on the scale-2 laptop, 14/14 e2e on a full-size tile; the default scrolling column collapses the sidebar). **Next:** Stage 2 (Terminal panel). Neither stage is `Done`. Windows e2e on `main` is red after the Stage 1 merge (two Stage 0 smokes).
+
+| Stage | Name | Status | Notes |
+| --- | --- | --- | --- |
+| 0 | Foundation | In progress (PR #2, merged) | Merged 29 Oct 2026. Typecheck, lint, unit, e2e and Linux `pnpm package` (AppImage, deb, tar.gz) verified on CI. Local Omarchy (Hyprland 0.56.2, Electron 45.1.0): typecheck, lint, 90 unit tests, and 14/14 e2e on a full-size dwindle tile. Native Wayland (`xwayland: false`); eDP-1 scale 2 reports renderer `dpr` 2. `arch-partial`: the default scrolling column (~687px) collapses the sidebar, and the Wayland class stays `electron`. Dialogs, title-bar drag, `Super+/`, and the packaged tarball were not run on this machine. |
+| 1 | Browser panel | In progress (PR #4, merged) | Merged 29 Oct 2026. Typecheck, lint and 90 unit tests green on Linux, macOS and Windows. Linux and macOS e2e green (14 tests, including React DevTools Components). Windows e2e on `main` is red: two Stage 0 smokes (`recent-projects` and keybinding settings edit) — see [CI run 40907779167](https://github.com/maplepreneur/arbora/actions/runs/40907779167). Local Omarchy/Hyprland: browser e2e passed, including rect sync, chords with the page focused, and screenshot `dpr`. `arch-partial`: `Super+/` was not toggled; the same narrow scrolling column collapses the sidebar. |
+| 2 | Terminal panel | Not started | Next stage. `BrowserService.suggestUrl` is ready for dev-server URL detection. |
+| 3 | Agent panel (ACP) | Not started | |
+| 4 | Agent mode (`Mod+K`) | Not started | |
+| 5 | Browser control MCP server | Not started | |
+| 6 | Design mode (`Mod+D`) | Not started | |
+| 7 | Files and editor | Not started | |
+| 8 | Git and GitHub | Not started | |
+| 9 | Distribution and polish | Not started | |
+| 10 | Stretch | Not started | |
+
+Status values: `Not started`, `In progress (PR #N)` / `In progress (PR #N, merged)`, `Blocked (reason)`, `Done (PR #N)`. Never mark `Done` from CI alone; `arch-ok` on Omarchy/Hyprland is required.
 
 ## Code conventions for the builder agent
 
@@ -22,24 +42,6 @@ This document breaks [PLAN.md](./PLAN.md) into stages a coding agent can execute
 - Child processes (agents, terminals, git, tooling) always receive the cached login-shell PATH and the project cwd.
 - Every new tool, command or setting gets a unit test or an e2e step in the stage it lands in.
 - Commit per logical change; one PR per stage (or per clearly labelled sub-part of a stage).
-
-## Progress
-
-| Stage | Name | Status | Notes |
-| --- | --- | --- | --- |
-| 0 | Foundation | In progress (PR #2, merged) | Code, CI matrix and Linux tarball merged; only the Omarchy/Hyprland check remains (awaiting `arch-ok`) |
-| 1 | Browser panel | In progress (PR #4) | Checklist done except the Arch check; CI green on Linux, macOS and Windows (typecheck, lint, 90 unit tests, 14 e2e incl. React DevTools Components panel); awaiting `arch-ok` on Omarchy/Hyprland (rect sync under tiling, `Super+/` screenshot `dpr`, chords with the page focused), then merge |
-| 2 | Terminal panel | Not started | |
-| 3 | Agent panel (ACP) | Not started | |
-| 4 | Agent mode (`Mod+K`) | Not started | |
-| 5 | Browser control MCP server | Not started | |
-| 6 | Design mode (`Mod+D`) | Not started | |
-| 7 | Files and editor | Not started | |
-| 8 | Git and GitHub | Not started | |
-| 9 | Distribution and polish | Not started | |
-| 10 | Stretch | Not started | |
-
-Status values: `Not started`, `In progress`, `Blocked (reason)`, `Done (PR #)`.
 
 ## Cross-cutting gotchas (read before any stage)
 
@@ -76,19 +78,20 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 ### Per-stage verification (run before ticking a stage done)
 
 1. `pnpm dev` starts under Hyprland and `hyprctl clients -j | jq '.[] | select(.class|test("arbora|electron";"i")) | {class, xwayland, size}'` shows `"xwayland": false`.
-2. Tiling: move the window between tiled/floating (`Super+V`), resize with `Super+-`/`Super+=`, send it across workspaces, and confirm the `WebContentsView` tracks the panel rect with no stale offsets or black bands.
+2. Tiling: move the window between tiled/floating (`Super+T` on current Omarchy), resize with `Super+-`/`Super+=`, send it across workspaces, and confirm the `WebContentsView` tracks the panel rect with no stale offsets or black bands.
 3. Fractional scaling: change scaling with `Super+/` (Omarchy monitor scaling up/down) while running; confirm overlays, popovers and screenshot `dpr` stay correct.
 4. Keyboard: `Ctrl+K`, `Ctrl+D`, `Ctrl+Shift+P`, `Ctrl+P`, `Esc` work with focus in the app chrome, in the embedded page, and (where appropriate) are passed through in the terminal.
 5. Native dialogs (open project, save) appear via the xdg portal and return paths; `shell.openExternal` opens Omarchy's default browser; clipboard copy/paste works in the terminal and editor.
 6. Packaged build: `pnpm package` then run the Linux tarball or AppImage from `dist/`; the same checks pass without `--no-sandbox`. If the AppImage needs `--no-sandbox`, record it in Stage 9 and fix the chrome-sandbox permissions or prefer the tarball/AUR path.
-7. Record the result in the Progress table notes as `arch-ok` or `arch-fail (note)`.
+7. Record the result in the Progress table notes as `arch-ok`, `arch-partial (note)` or `arch-fail (note)`.
 
 ### Hyprland and Wayland gotchas
 
 - **XWayland fallback is silent.** If `ELECTRON_OZONE_PLATFORM_HINT` is unset, Electron picks X11 and everything still works but blurry on fractional scaling, and Wayland-only behaviours differ. Also call `app.commandLine.appendSwitch('ozone-platform-hint', 'auto')` in main so packaged builds do not depend on the env var, and enable `WaylandWindowDecorations` in `enable-features`.
 - **No server-side decorations.** Hyprland does not draw titlebars, so Arbora uses a frameless window with its own title bar on Linux (as on Windows). Window dragging works via `-webkit-app-region: drag`; test that the drag region does not cover the URL bar or tabs.
 - **Tiling WMs ignore saved window bounds.** `BrowserWindow.setBounds` on restore is pointless under Hyprland and can fight the compositor; only restore bounds when the window is floating (or skip on Linux). Expect many rapid `resize` events; the view-rect sync must be rAF-throttled and never loop.
-- **`app_id` in dev is `electron`.** Hyprland window rules and `hyprctl clients` key off `class`/`app_id`. Set `app.setName('arbora')` early in main (and `--class=arbora` in the dev script) so the dev build is identifiable and so Omarchy's `omarchy-launch-or-focus` style scripts can target it later.
+- **Omarchy's default scrolling column is narrower than the layout minimums.** `column_width` 0.49 on the 2880×1920 laptop at scale 2 is about 687px. The main row needs the 44px activity rail plus sidebar 160, center 320 and agent 240 (764px), so the collapsible sidebar drops to width 0 and the Stage 0 "all panels visible" smoke fails. Floating the window (`Super+T`) or a wider column shows every panel. An e2e assertion that compares absolute panel pixels across launches can miss a ±3px tolerance when Hyprland changes the tile size between processes.
+- **`app_id` in dev stays `electron`.** On Hyprland 0.56.2 with Electron 45, `app.setName('arbora')` and `--class=arbora` still leave `hyprctl clients` `class` as `electron` for the unpackaged binary. Match `electron` as well as `arbora` when probing a dev window. `omarchy-launch-or-focus arbora` waits on the packaged `.desktop` (`desktopName: arbora.desktop`).
 - **`globalShortcut` is a no-op on Wayland.** Do not use it for anything, including probes.
 - **Portals.** File dialogs go through `xdg-desktop-portal` (`-hyprland` for screen things, `-gtk` for file chooser). If dialogs never appear, check `systemctl --user status xdg-desktop-portal*`.
 - **NVIDIA.** Electron on Hyprland with proprietary NVIDIA drivers may need `--disable-gpu-sandbox` or fall back to software rendering; expose `ARBORA_FLAGS` (space-separated Chromium switches appended at startup) and document it.
@@ -145,6 +148,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - electron-builder derives installer names from the scoped workspace package (`dist/@arbora/desktop-...`, invalid deb name); `extraMetadata.name: arbora` plus `artifactName` fix it, and `desktopName: arbora.desktop` with `linux.syncDesktopName` keeps the Wayland app_id / WM_CLASS in sync with the `.desktop` file.
 - GitHub's Ubuntu runners block unprivileged user namespaces, so Electron needs `--no-sandbox` there; the e2e launcher adds it only when `CI` is set on Linux. The packaged tarball runs sandboxed on a normal desktop.
 - Stage 4 acceptance expects `fixtures/vite-react` to be a React 18 dev build (for `_debugSource`), but Stage 0 specifies React 19. The fixture is React 19; Stage 4 should add a React 18 fixture (or variant) rather than downgrading this one.
+- On Omarchy's scrolling layout the default column hides the sidebar (see the Hyprland gotcha). Run the layout smoke on a full-size tile, or float the window, before treating a hidden sidebar as an app bug. The same launch's panel-width persistence check is sensitive to a few pixels of compositor resize.
 
 ### Acceptance
 
@@ -692,7 +696,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - The stage's features are exercised by hand on the Arch Linux / Omarchy / Hyprland machine using the per-stage verification list, with the result recorded in the Progress table.
 - New IPC channels have zod schemas in `packages/shared` and are documented in the channel registry.
 - New settings have defaults, schema entries and UI (from Stage 9 onward).
-- Stage checklist and Progress table updated in this file; new gotchas recorded.
+- Stage checklist and Progress table updated in this file; **Current phase** in [PLAN.md](./PLAN.md) matches the table; new gotchas recorded.
 - No secrets, tokens or absolute user paths in logs or committed fixtures.
 
 ## Appendix B: Manual test matrix (record results in Progress notes)

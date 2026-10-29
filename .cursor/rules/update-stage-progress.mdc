@@ -1,0 +1,35 @@
+---
+description: Update stage progress in markdown files at the end of every piece of work
+alwaysApply: true
+---
+
+# Update stage progress at the end of work
+
+A task is not finished until the phase docs match what you just did. Do this in the **same PR** as the work. Do not leave it for a follow-up PR. This applies to features, fixes, docs, CI, and verification — not only new stages.
+
+The human-readable copy of this rule lives in [AGENTS.md](../../AGENTS.md#end-of-work-update-progress).
+
+## Files that must stay in sync
+
+1. [docs/BUILD_STAGES.md](../../docs/BUILD_STAGES.md)
+   - The **Progress** snapshot sentence and table (Status + Notes for every stage you touched).
+   - That stage's **Checklist**: tick finished items; leave unverified items unchecked.
+   - **Gotchas**: append anything you discovered the hard way.
+   - **Appendix B** when you ran a manual agent matrix.
+2. [docs/PLAN.md](../../docs/PLAN.md)
+   - **Current phase**: **Now / Next / Blockers** in a short paragraph. Must match the Progress table.
+
+## Status values
+
+- `Not started`
+- `In progress (PR #N)` or `In progress (PR #N, merged)`
+- `Blocked (reason)`
+- `Done (PR #N)` — only after the stage checklist and Omarchy/Hyprland `arch-ok`. Never from CI alone.
+
+## Notes column
+
+Write what is true now: merged or not, CI result (name red jobs and link the run), what is left, what the next stage is. Do not leave "then merge" after a PR is merged. When you finish a stage's code, mark the next unstarted stage's Notes as "Next stage" and name any hand-off that is already in place.
+
+## Before you push or open the PR
+
+If `docs/BUILD_STAGES.md` and `docs/PLAN.md` are unchanged, the progress update is missing. Go back and write it.
