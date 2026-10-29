@@ -55,6 +55,8 @@ export interface CreateTerminalOptions extends Partial<TerminalSize> {
   /** Extra environment variables merged over the login-shell environment. */
   readonly env?: Readonly<Record<string, string>>;
   readonly readOnly?: boolean;
+  /** Receives raw process output from the first byte (registered before the process starts). */
+  readonly onData?: (data: string) => void;
 }
 
 export interface TerminalExit {
@@ -126,7 +128,7 @@ export class TerminalService {
       args: request.args,
       cwd,
       env: request.env,
-      listeners: new Set(),
+      listeners: new Set(request.onData ? [request.onData] : []),
       lastExit: null,
       pty: null,
       size: { cols: request.cols ?? DEFAULT_SIZE.cols, rows: request.rows ?? DEFAULT_SIZE.rows },
@@ -311,10 +313,12 @@ export class TerminalService {
       pty.onExit(({ exitCode, signal }) => {
         if (record.pty === pty) record.pty = null;
         this.flush(record);
-        record.lastExit = { exitCode, signal: signal ?? null };
+        // node-pty reports "no signal" as 0 on POSIX and undefined on Windows.
+        record.lastExit = { exitCode, signal: signal ? signal : null };
         if (generation === record.generation && this.terminals.has(record.info.id)) {
           record.info = { ...record.info, pid: null, exitCode };
-          this.output(record, `\r\n\u001b[2m[process exited with code ${exitCode}]\u001b[0m\r\n`);
+          // Shown in the tab only: subscribers (ACP `terminal/output`) get the process output alone.
+          this.output(record, `\r\n\u001b[2m[process exited with code ${exitCode}]\u001b[0m\r\n`, { notify: false });
           this.emitChanged();
         }
         resolveExit();
@@ -334,8 +338,8 @@ export class TerminalService {
     }
   }
 
-  private output(record: TerminalRecord, data: string): void {
-    for (const listener of record.listeners) listener(data);
+  private output(record: TerminalRecord, data: string, { notify = true } = {}): void {
+    if (notify) for (const listener of record.listeners) listener(data);
     record.scrollback.push(data);
     for (const line of record.lines.push(data)) this.detectUrls(record, line);
     clearTimeout(record.urlTimer);

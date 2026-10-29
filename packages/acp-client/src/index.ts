@@ -1,3 +1,4 @@
+export * from './config-options.js';
 export * from './registry.js';
 export * from './normalizer.js';
 export * from './path-scope.js';

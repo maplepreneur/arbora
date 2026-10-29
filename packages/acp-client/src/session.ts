@@ -34,6 +34,7 @@ import type { ContentBlock as SharedContentBlock } from '@arbora/shared';
 export const ACP_CLIENT_NAME = 'arbora';
 export const AUTH_REQUIRED_CODE = -32000;
 const INTERNAL_ERROR_CODE = -32603;
+const LEGACY_SET_MODEL_METHOD = 'session/set_model';
 
 /**
  * The SDK answers a thrown non-`RequestError` with a bare "Internal error", which hides why a
@@ -284,6 +285,17 @@ export class AcpSession {
         ? { sessionId, configId, type: 'boolean', value }
         : { sessionId, configId, value },
     );
+  }
+
+  /**
+   * Pre-`configOptions` model switch (`session/set_model`), still what Claude Code's adapter and
+   * Grok implement. Not part of the stable v1 method table, so it goes out as a raw request.
+   */
+  async setModel(sessionId: string, modelId: string): Promise<void> {
+    await this.connection.agent.request<unknown, { sessionId: string; modelId: string }>(LEGACY_SET_MODEL_METHOD, {
+      sessionId,
+      modelId,
+    });
   }
 
   close(): Promise<void> {

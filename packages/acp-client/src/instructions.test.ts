@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { firstPromptPreface } from './instructions.js';
+import { firstPromptPreface, isPrefaceTitle } from './instructions.js';
+
+describe('isPrefaceTitle', () => {
+  it('recognises the preface read back as a thread title', () => {
+    expect(isPrefaceTitle(firstPromptPreface({ projectPath: '/p', devUrl: null }).split('\n')[0] ?? '')).toBe(true);
+    expect(isPrefaceTitle('  You are working inside Arbora, a desktop app…')).toBe(true);
+    expect(isPrefaceTitle('Add comment to App.tsx')).toBe(false);
+  });
+});
 
 describe('firstPromptPreface', () => {
   it('describes Arbora, the project folder and the dev URL', () => {

@@ -161,16 +161,30 @@ describe('TerminalService', { timeout: 20_000 }, () => {
       command: process.execPath,
       args: ['-e', "console.log('from ' + process.env.ARBORA_AGENT_TEST); process.exit(5)"],
       env: { ARBORA_AGENT_TEST: 'agent' },
+      onData: (data) => (raw += data),
     });
     expect(info.readOnly).toBe(true);
     expect(info.command).toContain(process.execPath);
-    const unsubscribe = service.subscribe(info.id, (data) => (raw += data));
     const exit = await service.waitForExit(info.id);
-    expect(exit.exitCode).toBe(5);
-    expect(raw + service.scrollback(info.id)).toContain('from agent');
-    unsubscribe();
+    expect(exit).toEqual({ exitCode: 5, signal: null });
+    expect(raw).toContain('from agent');
+    // The "[process exited]" footer is for the tab, not for the agent reading the output.
+    expect(raw).not.toContain('process exited');
+    expect(service.scrollback(info.id)).toContain('process exited with code 5');
     expect(await service.waitForExit(info.id)).toEqual(exit);
     expect(terminals().find((t) => t.id === info.id)?.exitCode).toBe(5);
+  });
+
+  it('runs a whole command line through the shell when an agent gives no args', async () => {
+    const { service } = setup();
+    let raw = '';
+    const info = await service.create({
+      kind: 'agent',
+      command: `"${process.execPath}" -e "console.log('shell ' + (40 + 2))"`,
+      onData: (data) => (raw += data),
+    });
+    expect((await service.waitForExit(info.id)).exitCode).toBe(0);
+    expect(raw).toContain('shell 42');
   });
 
   it('runs interactive shells that accept input', async () => {

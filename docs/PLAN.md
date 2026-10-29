@@ -8,11 +8,11 @@ The companion document [BUILD_STAGES.md](./BUILD_STAGES.md) breaks the build int
 
 Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents must update this section and that table at the end of every piece of work.
 
-**Now:** Stages 0–2 (Foundation, Browser panel, Terminal panel) are `Done`: [PR #2](https://github.com/maplepreneur/arbora/pull/2), [PR #4](https://github.com/maplepreneur/arbora/pull/4) and [PR #7](https://github.com/maplepreneur/arbora/pull/7) are merged. `main` CI is green on Ubuntu, macOS and Windows ([run 40931674159](https://github.com/maplepreneur/arbora/actions/runs/40931674159)), and all three stages are `arch-ok` on Omarchy/Hyprland (29 Oct 2026). Arbora is installed on the Omarchy machine as an app-launcher entry that runs the checkout (`scripts/install-local.sh`).
+**Now:** Stages 0–2 are `Done` ([PR #2](https://github.com/maplepreneur/arbora/pull/2), [PR #4](https://github.com/maplepreneur/arbora/pull/4), [PR #7](https://github.com/maplepreneur/arbora/pull/7)). Stage 3, Agent panel (ACP), is `In progress` in [PR #10](https://github.com/maplepreneur/arbora/pull/10) (not merged; CI pending): `packages/acp-client`, `AgentService` with thread persistence and `session/load`, permission cards, client fs/terminal handlers, the agent panel UI and the ACP log viewer. 214 unit tests and 19 e2e pass locally on Omarchy/Hyprland. Manual matrix (29 Oct 2026): Kimi Code and Grok Build `ok` end to end; Claude Code and Codex `blocked` because neither CLI is logged in on this machine (their auth cards were verified instead).
 
-**Next:** Stage 3, Agent panel (ACP). Start with `packages/acp-client` and the fake-agent integration test, then wire the client terminal handlers to `TerminalService`. The [Stage 3 Notes in the Progress table](./BUILD_STAGES.md#progress) list the hand-off and the manual-test setup.
+**Next:** Watch CI on PR #10 and merge. Log in to Claude Code (`claude /login`) and Codex (`codex login`) on the Omarchy machine and fill their Appendix B cells, run the Omarchy per-stage checks with the agent panel open, then mark Stage 3 `Done` and start Stage 4 (Agent mode, `Mod+K`); the [Stage 4 Notes](./BUILD_STAGES.md#progress) list the hand-off.
 
-**Blockers / open:** No blockers. One open item: a flaky macOS e2e clipboard step in the terminal tests (it passed on rerun; see the Stage 2 gotchas).
+**Blockers / open:** Claude Code and Codex logins are missing on the test machine (user action). Open item carried over: the flaky macOS e2e clipboard step in the terminal tests (see the Stage 2 gotchas).
 ---
 
 ## 1. Product summary

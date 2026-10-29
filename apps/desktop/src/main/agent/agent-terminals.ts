@@ -9,12 +9,17 @@ import type {
   WaitForTerminalExitResponse,
 } from '@agentclientprotocol/sdk';
 import { PathScopeError, resolveInsideRoot, TerminalOutputBuffer, type AcpSessionHandlers } from '@arbora/acp-client';
-import type { TerminalService } from '../terminal/terminal-service.js';
+import type { TerminalExit, TerminalService } from '../terminal/terminal-service.js';
+
+interface ExitStatus {
+  readonly exitCode: number | null;
+  readonly signal: string | null;
+}
 
 interface AgentTerminal {
   readonly buffer: TerminalOutputBuffer;
   readonly unsubscribe: () => void;
-  exit: { exitCode: number | null; signal: string | null } | null;
+  exit: ExitStatus | null;
 }
 
 const SIGNAL_NAMES: Readonly<Record<number, string>> = {
@@ -27,6 +32,12 @@ const SIGNAL_NAMES: Readonly<Record<number, string>> = {
   14: 'SIGALRM',
   15: 'SIGTERM',
 };
+
+/** ACP wants a signal name or null; Grok treats any non-null signal as a failed command. */
+export function toExitStatus(exit: TerminalExit): ExitStatus {
+  if (exit.signal === null || exit.signal === 0) return { exitCode: exit.exitCode, signal: null };
+  return { exitCode: exit.exitCode, signal: SIGNAL_NAMES[exit.signal] ?? String(exit.signal) };
+}
 
 /**
  * ACP `terminal/*` methods for one thread, backed by the project's `TerminalService`. Each agent
@@ -76,25 +87,31 @@ export class AgentTerminals implements Pick<AcpSessionHandlers, 'terminal'> {
     const env: Record<string, string> = {};
     for (const variable of request.env ?? []) env[variable.name] = variable.value;
     const buffer = new TerminalOutputBuffer(request.outputByteLimit ?? null);
+    let released = false;
     const info = await this.terminals.create({
       kind: 'agent',
       title: `${this.threadTitle()}: ${[request.command, ...(request.args ?? [])].join(' ').slice(0, 60)}`,
       command: request.command,
-      args: request.args ?? [],
+      // Grok sends a whole command line (`/usr/bin/bash -lc '...'`) as `command` with no args; an
+      // undefined `args` runs it through the shell instead of exec'ing it as one file name.
+      ...(request.args && request.args.length > 0 ? { args: request.args } : {}),
       ...(cwd !== undefined ? { cwd } : {}),
       env,
       readOnly: true,
+      onData: (data) => {
+        if (!released) buffer.push(data);
+      },
     });
     const record: AgentTerminal = {
       buffer,
-      unsubscribe: this.terminals.subscribe(info.id, (data) => buffer.push(data)),
+      unsubscribe: () => {
+        released = true;
+      },
       exit: null,
     };
-    // Output that arrived before `subscribe` is in the scrollback.
-    buffer.push(this.terminals.scrollback(info.id));
     this.active.set(info.id, record);
     void this.terminals.waitForExit(info.id).then((exit) => {
-      record.exit = { exitCode: exit.exitCode, signal: exit.signal === null ? null : (SIGNAL_NAMES[exit.signal] ?? String(exit.signal)) };
+      record.exit = toExitStatus(exit);
     });
     return { terminalId: info.id };
   }
@@ -112,9 +129,7 @@ export class AgentTerminals implements Pick<AcpSessionHandlers, 'terminal'> {
   private async waitForExit(request: WaitForTerminalExitRequest): Promise<WaitForTerminalExitResponse> {
     const record = this.require(request.terminalId);
     if (record.exit) return record.exit;
-    const exit = await this.terminals.waitForExit(request.terminalId);
-    const signal = exit.signal === null ? null : (SIGNAL_NAMES[exit.signal] ?? String(exit.signal));
-    record.exit = { exitCode: exit.exitCode, signal };
+    record.exit = toExitStatus(await this.terminals.waitForExit(request.terminalId));
     return record.exit;
   }
 

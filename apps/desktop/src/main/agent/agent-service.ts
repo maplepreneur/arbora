@@ -13,11 +13,15 @@ import {
   AcpSession,
   AgentProcess,
   firstPromptPreface,
+  isPrefaceTitle,
+  LEGACY_MODEL_OPTION_ID,
   PathScopeError,
   redact,
   resolveInsideRoot,
   restartDelay,
+  sessionConfigOptions,
   UpdateNormalizer,
+  withLegacyModel,
   type AcpLogMessage,
   type AgentRegistry,
   type CommandLookup,
@@ -28,7 +32,6 @@ import {
   EDIT_TOOL_KINDS,
   idleThreadState,
   permissionMemoryKey,
-  sessionConfigOptionSchema,
   stopReasonSchema,
   type AcpLogEntry,
   type AgentAvailability,
@@ -38,7 +41,6 @@ import {
   type ContentBlock,
   type Platform,
   type RememberedPermissions,
-  type SessionConfigOption,
   type Thread,
   type ThreadChange,
   type ThreadState,
@@ -249,8 +251,16 @@ export class AgentService {
   async setConfigOption(threadId: string, configId: string, value: string | boolean): Promise<void> {
     const record = this.require(threadId);
     const runtime = this.requireRuntime(record);
+    if (configId === LEGACY_MODEL_OPTION_ID) {
+      if (typeof value !== 'string') throw new AgentServiceError('A model id is required');
+      await runtime.session.setModel(runtime.sessionId ?? '', value);
+      this.applyState(record, [
+        { type: 'configOptions', options: withLegacyModel(record.thread.state.configOptions, value) },
+      ]);
+      return;
+    }
     const response = await runtime.session.setConfigOption(runtime.sessionId ?? '', configId, value);
-    this.applyState(record, [{ type: 'configOptions', options: parseConfigOptions(response.configOptions) }]);
+    this.applyState(record, [{ type: 'configOptions', options: sessionConfigOptions(response) }]);
   }
 
   async authenticate(threadId: string, methodId: string): Promise<void> {
@@ -381,6 +391,8 @@ export class AgentService {
           this.setState(record, { configOptions: update.options });
           break;
         case 'title':
+          // Kimi titles the thread after the first prompt, which is our preface; keep ours then.
+          if (isPrefaceTitle(update.title)) break;
           record.thread = { ...record.thread, title: update.title.slice(0, 200) };
           this.scheduleSave(record);
           this.emitThreads();
@@ -538,7 +550,7 @@ export class AgentService {
         status: 'ready',
         error: null,
         modes: response.modes ?? null,
-        configOptions: parseConfigOptions(response.configOptions ?? []),
+        configOptions: sessionConfigOptions(response),
         contextLost,
       });
       if (contextLost) {
@@ -570,7 +582,7 @@ export class AgentService {
         status: 'ready',
         error: null,
         modes: response.modes ?? record.thread.state.modes,
-        configOptions: parseConfigOptions(response.configOptions ?? []),
+        configOptions: sessionConfigOptions(response),
         contextLost: false,
       });
       this.info(record, `session/${how} ${sessionId} ok`);
@@ -623,12 +635,25 @@ export class AgentService {
       return { stopReason: response.stopReason };
     } catch (error) {
       const message = messageOf(error);
+      if (AcpSession.isAuthRequired(error) && record.runtime === runtime) {
+        // Claude Code's adapter accepts `session/new` and only refuses the first prompt; keep the
+        // prompt so it goes out once the user has logged in.
+        record.pendingPrompt = { blocks, attachments };
+        this.setState(record, { status: 'auth_required', error: this.authHint(record, message) });
+        return { stopReason: null, error: 'auth_required' };
+      }
       this.emitChanges(record, record.normalizer.error(message));
       if (record.runtime === runtime) this.setState(record, { status: 'ready', error: message });
       return { stopReason: null, error: message };
     } finally {
       this.cancelPendingPermissions(record);
     }
+  }
+
+  private authHint(record: ThreadRecord, message: string): string {
+    const agent = this.options.registry.get(record.thread.agentId);
+    const hint = agent?.installHint ? ` ${agent.installHint}` : '';
+    return `${agent?.name ?? record.thread.agentId}: ${message}.${hint}`;
   }
 
   private onUpdate(record: ThreadRecord, runtime: Runtime, notification: SessionNotification): void {
@@ -784,13 +809,6 @@ export class AgentService {
 }
 
 /** Config options in Arbora's schema; variants from newer protocol versions are skipped. */
-function parseConfigOptions(options: readonly unknown[]): SessionConfigOption[] {
-  return options.flatMap((option) => {
-    const parsed = sessionConfigOptionSchema.safeParse(option);
-    return parsed.success ? [parsed.data] : [];
-  });
-}
-
 function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === 'object' && error !== null && 'message' in error) {
