@@ -8,11 +8,11 @@ The companion document [BUILD_STAGES.md](./BUILD_STAGES.md) breaks the build int
 
 Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents must update this section and that table at the end of every piece of work.
 
-**Now:** Stage 2 (Terminal panel) is code-complete in [PR #7](https://github.com/maplepreneur/arbora/pull/7) (not merged; CI green on macOS and Ubuntu and for Windows e2e; the Windows unit-test fix is pushed). Stages 0 and 1 are merged ([PR #2](https://github.com/maplepreneur/arbora/pull/2), [PR #4](https://github.com/maplepreneur/arbora/pull/4)). On 29 Oct 2026 a full Omarchy/Hyprland pass covered `pnpm dev` and the packaged tarball, with 17/17 e2e. Its fixes are in the same PR: narrow-column layout, terminal focus, page-load focus, and second-instance argv. The pass is `arch-ok` for Stages 0, 1 and 2 (title-bar drag tested by hand). No stage is `Done` yet.
+**Now:** Stage 2 (Terminal panel) is code-complete in [PR #7](https://github.com/maplepreneur/arbora/pull/7) (not merged; CI green on macOS, Ubuntu and Windows in [run 40927191722](https://github.com/maplepreneur/arbora/actions/runs/40927191722)). Stages 0 and 1 are merged ([PR #2](https://github.com/maplepreneur/arbora/pull/2), [PR #4](https://github.com/maplepreneur/arbora/pull/4)). On 29 Oct 2026 a full Omarchy/Hyprland pass covered `pnpm dev` and the packaged tarball, with 17/17 e2e. Its fixes are in the same PR: narrow-column layout, terminal focus, page-load focus, and second-instance argv. The pass is `arch-ok` for Stages 0, 1 and 2 (title-bar drag tested by hand). No stage is `Done` yet.
 
-**Next:** Get CI green on [PR #7](https://github.com/maplepreneur/arbora/pull/7) and merge it, then start Stage 3 (Agent panel). `TerminalService` is ready for ACP client terminals.
+**Next:** Review and merge [PR #7](https://github.com/maplepreneur/arbora/pull/7), which makes Stages 0–2 `Done`, then start Stage 3 (Agent panel). `TerminalService` is ready for ACP client terminals.
 
-**Blockers / open:** Windows e2e on `main` is red (two Stage 0 smokes; [CI run 40907779167](https://github.com/maplepreneur/arbora/actions/runs/40907779167)). Those smokes pass on [PR #7](https://github.com/maplepreneur/arbora/pull/7). The PR's first run ([40924587823](https://github.com/maplepreneur/arbora/actions/runs/40924587823)) failed two Stage 2 tests on Windows. Windows e2e is green since [run 40926154054](https://github.com/maplepreneur/arbora/actions/runs/40926154054). Windows `Check` still needs the PowerShell exit-code fix, which is pushed and waiting for CI.
+**Blockers / open:** Windows e2e on `main` is red (two Stage 0 smokes; [CI run 40907779167](https://github.com/maplepreneur/arbora/actions/runs/40907779167)). Those smokes pass on [PR #7](https://github.com/maplepreneur/arbora/pull/7), so merging it clears this. No other blockers.
 ---
 
 ## 1. Product summary
