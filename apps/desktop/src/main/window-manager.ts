@@ -24,9 +24,12 @@ import { BrowserService } from './browser/browser-service.js';
 import { browserPartition, type BrowserSessions } from './browser/browser-sessions.js';
 import { sendEvent } from './ipc.js';
 import { attachKeybindingInterceptor, type InterceptorSource } from './keybinding-interceptor.js';
-import { readProjectSettings } from './project-settings.js';
+import { readProjectSettings, updateProjectSettingsFile } from './project-settings.js';
 import type { SettingsStore } from './settings-store.js';
 import { shouldRestoreBounds } from './startup.js';
+import { DevServer } from './terminal/dev-server.js';
+import type { ShellEnvironment } from './terminal/shell-env.js';
+import { TerminalService } from './terminal/terminal-service.js';
 import type { ThemeService } from './theme-service.js';
 
 export interface WindowManagerOptions {
@@ -37,6 +40,7 @@ export interface WindowManagerOptions {
   readonly preloadPath: string;
   readonly browserPreloadPath: string;
   readonly browserSessions: BrowserSessions;
+  readonly shellEnvironment: ShellEnvironment;
   readonly userDataPath: string;
   /** Dev server URL in development, otherwise the built `index.html` path. */
   readonly renderer: { readonly url: string } | { readonly file: string };
@@ -83,6 +87,8 @@ export class ProjectWindow {
   /** Bumped whenever the browser is (re)started or stopped, to drop stale async starts. */
   private browserGeneration = 0;
   private browserBounds: { rect: Rect | null; emulation: ViewportEmulation | null } = { rect: null, emulation: null };
+  terminals: TerminalService | null = null;
+  devServer: DevServer | null = null;
 
   constructor(
     private readonly manager: WindowManager,
@@ -176,6 +182,7 @@ export class ProjectWindow {
     this.rebuildKeybindings();
     this.restoreBounds();
     void this.startBrowser(path);
+    this.startTerminals(path);
     this.options.settings.update((s) => ({
       ...s,
       recentProjects: addRecentProject(s.recentProjects, { path, name: basename(path), openedAt: Date.now() }),
@@ -186,6 +193,7 @@ export class ProjectWindow {
   closeProject(): void {
     this.saveBounds();
     this.stopBrowser();
+    this.stopTerminals();
     this.project = null;
     this.context = { modeActive: false, terminalFocused: false };
     this.window.setTitle('Arbora');
@@ -271,6 +279,55 @@ export class ProjectWindow {
     this.browserHistory = null;
   }
 
+  private startTerminals(projectPath: string): void {
+    this.stopTerminals();
+    const app = this.contents;
+    const { platform, settings, shellEnvironment } = this.options;
+    const terminals = new TerminalService({
+      platform,
+      cwd: projectPath,
+      environment: async () => {
+        await shellEnvironment.ready;
+        return shellEnvironment.env();
+      },
+      shell: () => settings.get().terminal.shell,
+      events: {
+        data: (id, data) => sendEvent(app, 'terminal.data', { id, data }),
+        changed: (list) => sendEvent(app, 'terminal.changed', { terminals: list }),
+        url: (id, url) => this.onTerminalUrl(id, url),
+      },
+    });
+    this.terminals = terminals;
+    this.devServer = new DevServer({
+      terminals,
+      projectPath,
+      settings: () => this.project?.settings ?? { version: 1 },
+      saveDevCommand: (command) => {
+        try {
+          updateProjectSettingsFile(projectPath, { devCommand: command });
+        } catch (error) {
+          console.warn(`[dev-server] could not save devCommand: ${(error as Error).message}`);
+        }
+        this.reloadProjectSettings();
+      },
+    });
+  }
+
+  private stopTerminals(): void {
+    this.terminals?.dispose();
+    this.terminals = null;
+    this.devServer = null;
+  }
+
+  private onTerminalUrl(id: string, url: string): void {
+    const project = this.project;
+    if (!project) return;
+    this.devServer?.noteUrl(id, url);
+    const autoOpen = project.settings.autoOpenDevUrl !== false;
+    const opened = autoOpen ? (this.browser?.suggestUrl(url) ?? false) : false;
+    sendEvent(this.contents, 'terminal.urlDetected', { id, url, opened });
+  }
+
   private saveBrowserState(projectPath: string, browser: ProjectBrowserState): void {
     this.options.settings.update((s) => ({
       ...s,
@@ -297,7 +354,8 @@ export class ProjectWindow {
     const isMac = this.options.platform === 'darwin';
     return {
       ...DEFAULT_SIZE,
-      minWidth: 720,
+      // Below Omarchy's default scrolling column on a scale-2 laptop (~687px).
+      minWidth: 640,
       minHeight: 480,
       show: false,
       title: 'Arbora',
@@ -348,6 +406,7 @@ export class ProjectWindow {
     this.manager.forget(this);
     clearTimeout(this.boundsTimer);
     this.stopBrowser();
+    this.stopTerminals();
     for (const dispose of this.disposers.splice(0)) dispose();
   }
 }

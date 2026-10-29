@@ -145,6 +145,8 @@ export function chordFromInput(input: KeyInput): Chord {
     const digit = CODE_DIGIT.exec(input.code);
     if (letter?.[1]) key = letter[1].toLowerCase();
     else if (digit?.[1]) key = digit[1];
+    // Shift turns ` into ~, which would make `ctrl+shift+`` (new terminal) unmatchable.
+    else if (input.code === 'Backquote') key = '`';
   }
   key ??= normaliseKeyName(input.key);
   return { key, ctrl: input.ctrl, meta: input.meta, alt: input.alt, shift: input.shift };

@@ -3,6 +3,11 @@ packages:
   - packages/*
   - fixtures/*
 
+# node-pty builds from source on Linux (no prebuild); `electron-builder install-app-deps` then
+# rebuilds it against Electron's ABI.
+onlyBuiltDependencies:
+  - node-pty
+
 ignoredBuiltDependencies:
   - electron-winstaller
   - unrs-resolver

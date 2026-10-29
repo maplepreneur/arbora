@@ -63,6 +63,11 @@ describe('chordFromInput', () => {
     ).toBe('escape');
     expect(chordFromInput({ key: ',', ctrl: true, meta: false, alt: false, shift: false }).key).toBe(',');
   });
+
+  it('keeps the backquote key under Shift (new terminal chord)', () => {
+    const chord = chordFromInput({ key: '~', code: 'Backquote', ctrl: true, meta: false, alt: false, shift: true });
+    expect(chordId(chord)).toBe(chordId(parseChord('ctrl+shift+`', 'linux')));
+  });
 });
 
 describe('formatChord', () => {

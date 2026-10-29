@@ -19,11 +19,12 @@
     "preview": "electron-vite preview",
     "e2e": "node scripts/fetch-devtools-extensions.mjs --optional && pnpm build:test && playwright test",
     "package": "node scripts/fetch-devtools-extensions.mjs && electron-vite build && electron-builder --publish never",
-    "postinstall": "install-electron && electron-builder install-app-deps",
+    "postinstall": "install-electron && electron-builder install-app-deps && node scripts/fix-node-pty.mjs",
     "extensions": "node scripts/fetch-devtools-extensions.mjs",
     "extensions:update": "node scripts/fetch-devtools-extensions.mjs --update"
   },
   "dependencies": {
+    "node-pty": "1.1.0",
     "zod": "4.6.7"
   },
   "devDependencies": {
@@ -33,6 +34,11 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.2",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/addon-search": "0.16.0",
+    "@xterm/addon-web-links": "0.12.0",
+    "@xterm/addon-webgl": "0.19.0",
+    "@xterm/xterm": "6.0.0",
     "clsx": "2.1.1",
     "cmdk": "1.1.1",
     "electron": "45.1.0",

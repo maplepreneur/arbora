@@ -23,9 +23,11 @@ extraResources:
     filter:
       - '*/**'
 
-# Native modules (node-pty from Stage 2) must live outside the asar so they can be loaded and signed.
+# Native modules (node-pty) must live outside the asar so they can be loaded and signed; node-pty
+# also execs its `spawn-helper` binary on macOS.
 asarUnpack:
   - '**/*.node'
+  - '**/node-pty/**/spawn-helper'
 
 publish: null
 

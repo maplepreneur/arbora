@@ -11,8 +11,88 @@ import {
   type ViewportPresetId,
 } from '@arbora/shared';
 import { resetLayout, setMode, showToast, useApp } from './store';
+import {
+  activePane,
+  createTerminal,
+  focusActiveTerminal,
+  placeTerminal,
+  useTerminals,
+  type SplitDirection,
+} from './terminal-store';
 
 export const commands = new CommandRegistry();
+
+/** xterm-level actions, provided by the mounted Terminal panel. */
+export interface TerminalPanelController {
+  clear(): void;
+  find(): void;
+}
+
+let terminalPanel: TerminalPanelController | null = null;
+let pendingTerminalAction: ((controller: TerminalPanelController) => void) | null = null;
+
+export function setTerminalPanelController(controller: TerminalPanelController | null): void {
+  terminalPanel = controller;
+  if (controller && pendingTerminalAction) {
+    const action = pendingTerminalAction;
+    pendingTerminalAction = null;
+    action(controller);
+  }
+}
+
+/** Runs `action` on the Terminal panel, showing the panel first (it is lazy) if needed. */
+function withTerminalPanel(action: (controller: TerminalPanelController) => void): void {
+  if (!hasProject()) return;
+  workspace?.showBottomTab('terminal');
+  if (terminalPanel) action(terminalPanel);
+  else pendingTerminalAction = action;
+}
+
+export interface FileLocation {
+  readonly path: string;
+  readonly line: number;
+  readonly column?: number;
+}
+
+/** Terminal `path:line:col` links land here; the editor that opens them arrives in Stage 7. */
+export function openFileAtLocation(location?: FileLocation): void {
+  const where = location ? `${location.path}:${location.line}${location.column ? `:${location.column}` : ''}` : 'files';
+  showToast(`Opening ${where} arrives with the editor (Stage 7)`);
+}
+
+async function newTerminal(split?: SplitDirection): Promise<void> {
+  if (!hasProject()) return;
+  workspace?.showBottomTab('terminal');
+  try {
+    await createTerminal(split);
+    focusActiveTerminal();
+  } catch (error) {
+    showToast(`Could not start a terminal: ${(error as Error).message}`);
+  }
+}
+
+export async function runDevServer(): Promise<void> {
+  if (!hasProject()) return;
+  useTerminals.setState({ devStarting: true });
+  workspace?.showBottomTab('terminal');
+  try {
+    const result = await window.arbora.invoke('devServer.run', useTerminals.getState().lastSize);
+    if (result.error) showToast(result.error);
+    const terminal = result.terminal;
+    if (terminal) {
+      useTerminals.setState((s) => ({
+        terminals: s.terminals.some((t) => t.id === terminal.id) ? s.terminals : [...s.terminals, terminal],
+        ...(s.tabs.some((t) => t.panes.includes(terminal.id))
+          ? { activeTabId: s.tabs.find((t) => t.panes.includes(terminal.id))?.id ?? null, activePaneId: terminal.id }
+          : placeTerminal(s, terminal.id, null)),
+      }));
+    }
+  } catch (error) {
+    showToast(`Could not run the dev server: ${(error as Error).message}`);
+  } finally {
+    useTerminals.setState({ devStarting: false });
+  }
+}
 
 /** Imperative panel controls, provided by the mounted workspace layout. */
 export interface WorkspaceController {
@@ -142,7 +222,10 @@ async function runCommand(id: CommandId): Promise<void> {
       withProject((w) => w.showSidebarView('search'));
       return;
     case CommandId.showTerminal:
-      withProject((w) => w.showBottomTab('terminal'));
+      withProject((w) => {
+        w.showBottomTab('terminal');
+        focusActiveTerminal();
+      });
       return;
     case CommandId.showGitPanel:
       withProject((w) => w.showBottomTab('git'));
@@ -215,6 +298,47 @@ async function runCommand(id: CommandId): Promise<void> {
       return;
     case CommandId.browserClearProblems:
       if (hasProject()) await arbora.invoke('browser.clearProblems');
+      return;
+    case CommandId.terminalNew:
+      await newTerminal();
+      return;
+    case CommandId.terminalSplitRight:
+      await newTerminal('horizontal');
+      return;
+    case CommandId.terminalSplitDown:
+      await newTerminal('vertical');
+      return;
+    case CommandId.terminalKill: {
+      const pane = activePane();
+      if (pane) await arbora.invoke('terminal.kill', { id: pane.id });
+      else if (hasProject()) showToast('No terminal is open');
+      return;
+    }
+    case CommandId.terminalClear:
+      withTerminalPanel((c) => c.clear());
+      return;
+    case CommandId.terminalFind:
+      withTerminalPanel((c) => c.find());
+      return;
+    case CommandId.terminalRename: {
+      const pane = activePane();
+      if (!pane) {
+        if (hasProject()) showToast('No terminal is open');
+        return;
+      }
+      workspace?.showBottomTab('terminal');
+      useTerminals.setState({ renamingId: pane.id });
+      return;
+    }
+    case CommandId.devServerRun:
+    case CommandId.devServerRestart:
+      await runDevServer();
+      return;
+    case CommandId.devServerStop:
+      if (hasProject()) await arbora.invoke('devServer.stop');
+      return;
+    case CommandId.openFileAtLocation:
+      openFileAtLocation();
       return;
     default: {
       const unreachable: never = id;

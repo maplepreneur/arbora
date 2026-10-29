@@ -40,22 +40,10 @@ export function useChordLabel(commandId: string): string | undefined {
 export function useKeybindingDispatch(): void {
   const table = useKeybindingTable();
   useEffect(() => {
+    activeTable = table;
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.defaultPrevented || event.isComposing || isModifierKey(event.key)) return;
-      const chord = chordFromInput({
-        key: event.key,
-        code: event.code,
-        ctrl: event.ctrlKey,
-        meta: event.metaKey,
-        alt: event.altKey,
-        shift: event.shiftKey,
-      });
-      const { mode, terminalFocused, settings } = useApp.getState();
-      const binding = table.match(chord, {
-        modeActive: mode !== 'idle',
-        terminalFocused,
-        terminalPassthrough: settings.terminalPassthrough,
-      });
+      if (event.defaultPrevented) return;
+      const binding = bindingForEvent(event);
       if (!binding) return;
       event.preventDefault();
       if (!event.repeat) executeCommand(binding.commandId);
@@ -63,6 +51,30 @@ export function useKeybindingDispatch(): void {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [table]);
+}
+
+let activeTable: KeybindingTable | null = null;
+
+/**
+ * The Arbora binding a keydown triggers in the current context, if any. The terminal asks this
+ * before handling a key so a chord that runs a command does not also reach the shell.
+ */
+export function bindingForEvent(event: KeyboardEvent): ReturnType<KeybindingTable['match']> {
+  if (!activeTable || event.isComposing || isModifierKey(event.key)) return undefined;
+  const chord = chordFromInput({
+    key: event.key,
+    code: event.code,
+    ctrl: event.ctrlKey,
+    meta: event.metaKey,
+    alt: event.altKey,
+    shift: event.shiftKey,
+  });
+  const { mode, terminalFocused, settings } = useApp.getState();
+  return activeTable.match(chord, {
+    modeActive: mode !== 'idle',
+    terminalFocused,
+    terminalPassthrough: settings.terminalPassthrough,
+  });
 }
 
 /** Keeps main's interception context in sync with the renderer's mode and focus state. */

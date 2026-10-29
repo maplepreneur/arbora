@@ -60,8 +60,9 @@ test.describe('Stage 0 smoke', () => {
       await page.keyboard.press('ControlOrMeta+D');
       await expect(page.getByTestId('mode-banner')).toBeHidden();
 
-      // Plain Ctrl chords reach the (placeholder) terminal instead of toggling modes.
-      await page.getByTestId('terminal-placeholder').focus();
+      // Plain Ctrl chords reach the terminal instead of toggling modes.
+      await page.locator('[data-testid="terminal-pane"] .xterm').first().click();
+      await expect(page.locator('[data-testid="terminal-pane"] textarea').first()).toBeFocused();
       await page.keyboard.press('Control+K');
       await page.waitForTimeout(300);
       await expect(page.getByTestId('mode-banner')).toBeHidden();
@@ -114,6 +115,11 @@ test.describe('Stage 0 smoke', () => {
     {
       const { app, page } = await launch(userData, [VITE_REACT]);
       try {
+        // Collapsing the sidebar first leaves the center room to shrink in a narrow tile.
+        await page.getByTestId('panel-browser').click();
+        await page.keyboard.press('ControlOrMeta+B');
+        await expect.poll(() => width(page, 'panel-sidebar').catch(() => 0)).toBeLessThan(2);
+
         const separator = page.locator('#sep-agent');
         const box = await separator.boundingBox();
         if (!box) throw new Error('separator not visible');
@@ -125,9 +131,6 @@ test.describe('Stage 0 smoke', () => {
         agentWidth = await width(page, 'panel-agent');
         expect(agentWidth).toBeGreaterThan(startWidth + 80);
 
-        await page.getByTestId('panel-browser').click();
-        await page.keyboard.press('ControlOrMeta+B');
-        await expect.poll(() => width(page, 'panel-sidebar').catch(() => 0)).toBeLessThan(2);
         await page.getByTestId('bottom-tab-problems').click();
         await page.waitForTimeout(600);
       } finally {

@@ -20,6 +20,21 @@ import {
   recentProjectSchema,
   themeModeSchema,
 } from './settings.js';
+import { devServerStatusSchema, terminalInfoSchema, terminalKindSchema, terminalSizeSchema } from './terminal.js';
+
+const terminalId = z.object({ id: z.string() });
+
+export const contextMenuItemSchema = z.union([
+  z.object({
+    id: z.string(),
+    label: z.string(),
+    enabled: z.boolean().optional(),
+    /** Display-only accelerator hint such as `Ctrl+Shift+C`. */
+    accelerator: z.string().optional(),
+  }),
+  z.object({ type: z.literal('separator') }),
+]);
+export type ContextMenuItem = z.infer<typeof contextMenuItemSchema>;
 
 const none = z.undefined();
 
@@ -101,6 +116,20 @@ export const channels = {
   'project.saveLayout': defineChannel('project.saveLayout', z.object({ layout: layoutStateSchema }), none),
   'project.openSettingsFile': defineChannel('project.openSettingsFile', none, none),
 
+  /**
+   * Native popup menu at the cursor; resolves with the chosen item id, or null when dismissed.
+   * Native because DOM menus cannot draw over the browser panel's `WebContentsView`.
+   */
+  'contextMenu.show': defineChannel(
+    'contextMenu.show',
+    z.object({ items: z.array(contextMenuItemSchema).min(1).max(50) }),
+    z.object({ id: z.string().nullable() }),
+  ),
+
+  /** The system clipboard (text only), for terminal copy/paste without renderer permissions. */
+  'clipboard.readText': defineChannel('clipboard.readText', none, z.string()),
+  'clipboard.writeText': defineChannel('clipboard.writeText', z.object({ text: z.string().max(10_000_000) }), none),
+
   'browser.getState': defineChannel('browser.getState', none, navigationStateSchema.nullable()),
   /**
    * Where the browser view goes (window CSS px) and the device emulation for the current preset.
@@ -131,6 +160,45 @@ export const channels = {
     z.object({ url: z.string() }),
     z.object({ navigated: z.boolean() }),
   ),
+
+  /** Starts a shell (or `command` through the shell) in the project folder. */
+  'terminal.create': defineChannel(
+    'terminal.create',
+    terminalSizeSchema.extend({
+      kind: terminalKindSchema.exclude(['agent']).optional(),
+      title: z.string().min(1).max(100).optional(),
+      command: z.string().min(1).optional(),
+    }),
+    terminalInfoSchema,
+  ),
+  'terminal.list': defineChannel('terminal.list', none, z.array(terminalInfoSchema)),
+  /** Raw output kept in main (up to ~256 KB) so a reloaded renderer can redraw a terminal. */
+  'terminal.scrollback': defineChannel('terminal.scrollback', terminalId, z.object({ data: z.string() })),
+  'terminal.write': defineChannel('terminal.write', terminalId.extend({ data: z.string().max(1_000_000) }), none),
+  'terminal.resize': defineChannel('terminal.resize', terminalId.extend(terminalSizeSchema.shape), none),
+  'terminal.rename': defineChannel('terminal.rename', terminalId.extend({ title: z.string().min(1).max(100) }), none),
+  /** Kills the process tree; the tab stays until `terminal.close`. */
+  'terminal.kill': defineChannel('terminal.kill', terminalId, none),
+  /** Kills the process tree and removes the terminal. */
+  'terminal.close': defineChannel('terminal.close', terminalId, none),
+  /** ANSI-stripped output lines (the buffer `devserver_logs` reads in Stage 5). */
+  'terminal.lines': defineChannel(
+    'terminal.lines',
+    terminalId.extend({ count: z.number().int().min(1).max(10_000).optional() }),
+    z.array(z.string()),
+  ),
+
+  /**
+   * Runs the project's dev command in the dedicated `dev` terminal, inferring it from `package.json`
+   * (and writing `.arbora/project.json`) the first time. Restarts it if it is already running.
+   */
+  'devServer.run': defineChannel(
+    'devServer.run',
+    terminalSizeSchema.partial(),
+    z.object({ terminal: terminalInfoSchema.nullable(), error: z.string().optional() }),
+  ),
+  'devServer.stop': defineChannel('devServer.stop', none, none),
+  'devServer.status': defineChannel('devServer.status', none, devServerStatusSchema),
 } as const;
 
 /** Main -> renderer events. */
@@ -146,6 +214,18 @@ export const events = {
   'browser.problemsAdded': defineEvent('browser.problemsAdded', z.object({ entries: z.array(problemEntrySchema) })),
   'browser.problemsCleared': defineEvent('browser.problemsCleared', z.object({})),
   'browser.urlSuggested': defineEvent('browser.urlSuggested', z.object({ url: z.string() })),
+  /** Output from one terminal, batched per animation frame or so. */
+  'terminal.data': defineEvent('terminal.data', z.object({ id: z.string(), data: z.string() })),
+  /** The set of terminals or one terminal's title, pid or exit code changed. */
+  'terminal.changed': defineEvent('terminal.changed', z.object({ terminals: z.array(terminalInfoSchema) })),
+  /**
+   * A terminal printed a local dev-server URL it had not printed before. `opened` is true when the
+   * empty browser panel loaded it (`autoOpenDevUrl`).
+   */
+  'terminal.urlDetected': defineEvent(
+    'terminal.urlDetected',
+    z.object({ id: z.string(), url: z.string(), opened: z.boolean() }),
+  ),
 } as const;
 
 export type Channels = typeof channels;
