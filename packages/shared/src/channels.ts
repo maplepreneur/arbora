@@ -21,6 +21,7 @@ import {
   viewportEmulationSchema,
   viewportPresetIdSchema,
 } from './browser.js';
+import { agentModeIncludeSchema, agentModeSelectionSchema, agentModeTargetSchema } from './inspector.js';
 import { defineChannel, defineEvent, type IpcClient } from './ipc.js';
 import { platformSchema } from './platform.js';
 import {
@@ -278,6 +279,27 @@ export const channels = {
     z.object({ agentId: z.string().optional() }),
     none,
   ),
+
+  /**
+   * Agent mode (`Mod+K`): `true` (re)starts the page inspector's hover highlight, `false` removes
+   * it and drops any pending selection.
+   */
+  'agentMode.setInspecting': defineChannel('agentMode.setInspecting', z.object({ active: z.boolean() }), none),
+  /**
+   * Builds the prompt for a selection (outlined screenshot, source links, context) and sends it to
+   * an existing thread or a new one. Resolves once the turn has started, with the thread id.
+   */
+  'agentMode.submit': defineChannel(
+    'agentMode.submit',
+    z.object({
+      selectionId: z.string(),
+      targetIndex: z.number().int().min(0),
+      text: z.string().min(1).max(20_000),
+      include: agentModeIncludeSchema,
+      target: agentModeTargetSchema,
+    }),
+    z.object({ threadId: z.string() }),
+  ),
 } as const;
 
 /** Main -> renderer events. */
@@ -316,6 +338,11 @@ export const events = {
   'agent.log': defineEvent('agent.log', z.object({ threadId: z.string(), entry: acpLogEntrySchema })),
   /** An agent wrote a file through `fs/write_text_file` (Stage 8's "Agent changes" group). */
   'agent.fileChanged': defineEvent('agent.fileChanged', z.object({ threadId: z.string(), path: z.string() })),
+  /** Agent mode: the user clicked an element; main is taking the screenshot and resolving sources. */
+  'agentMode.picked': defineEvent('agentMode.picked', z.object({})),
+  'agentMode.selected': defineEvent('agentMode.selected', agentModeSelectionSchema),
+  /** Agent mode ended from the page (`Esc` there, a navigation) or the selection could not be resolved. */
+  'agentMode.ended': defineEvent('agentMode.ended', z.object({ error: z.string().optional() })),
 } as const;
 
 export type Channels = typeof channels;

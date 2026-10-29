@@ -8,6 +8,7 @@ import {
   resolveKeybindingSpecs,
 } from '@arbora/shared';
 import { executeCommand } from './commands';
+import { modeActive } from './mode';
 import { useApp } from './store';
 
 export function useKeybindingTable(): KeybindingTable {
@@ -71,7 +72,7 @@ export function bindingForEvent(event: KeyboardEvent): ReturnType<KeybindingTabl
   });
   const { mode, terminalFocused, settings } = useApp.getState();
   return activeTable.match(chord, {
-    modeActive: mode !== 'idle',
+    modeActive: modeActive(mode),
     terminalFocused,
     terminalPassthrough: settings.terminalPassthrough,
   });
@@ -79,9 +80,9 @@ export function bindingForEvent(event: KeyboardEvent): ReturnType<KeybindingTabl
 
 /** Keeps main's interception context in sync with the renderer's mode and focus state. */
 export function useKeybindingContextSync(): void {
-  const mode = useApp((s) => s.mode);
+  const active = useApp((s) => modeActive(s.mode));
   const terminalFocused = useApp((s) => s.terminalFocused);
   useEffect(() => {
-    void window.arbora.invoke('keybindings.setContext', { modeActive: mode !== 'idle', terminalFocused });
-  }, [mode, terminalFocused]);
+    void window.arbora.invoke('keybindings.setContext', { modeActive: active, terminalFocused });
+  }, [active, terminalFocused]);
 }

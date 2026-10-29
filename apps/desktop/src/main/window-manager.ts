@@ -21,6 +21,8 @@ import {
 } from '@arbora/shared';
 import type { AgentRegistry } from '@arbora/acp-client';
 import { AgentService } from './agent/agent-service.js';
+import { AgentModeService } from './agent-mode/agent-mode-service.js';
+import { findCandidates } from './agent-mode/source-search.js';
 import { BrowserHistory } from './browser/browser-history.js';
 import { BrowserService } from './browser/browser-service.js';
 import { browserPartition, type BrowserSessions } from './browser/browser-sessions.js';
@@ -93,6 +95,7 @@ export class ProjectWindow {
   terminals: TerminalService | null = null;
   devServer: DevServer | null = null;
   agents: AgentService | null = null;
+  agentMode: AgentModeService | null = null;
 
   constructor(
     private readonly manager: WindowManager,
@@ -187,6 +190,7 @@ export class ProjectWindow {
     this.restoreBounds();
     void this.startBrowser(path);
     this.startTerminals(path);
+    this.startAgentMode(path);
     this.options.settings.update((s) => ({
       ...s,
       recentProjects: addRecentProject(s.recentProjects, { path, name: basename(path), openedAt: Date.now() }),
@@ -196,6 +200,7 @@ export class ProjectWindow {
 
   closeProject(): void {
     this.saveBounds();
+    this.agentMode = null;
     this.stopBrowser();
     this.stopTerminals();
     this.project = null;
@@ -261,6 +266,8 @@ export class ProjectWindow {
         problemsAdded: (entries) => sendEvent(app, 'browser.problemsAdded', { entries }),
         problemsCleared: () => sendEvent(app, 'browser.problemsCleared', {}),
         urlSuggested: (url) => sendEvent(app, 'browser.urlSuggested', { url }),
+        inspectorSelected: (selection) => void this.agentMode?.select(selection),
+        inspectorCancelled: () => this.agentMode?.cancelledInPage(),
       },
       attachInterceptor: (page) =>
         attachKeybindingInterceptor(
@@ -348,6 +355,26 @@ export class ProjectWindow {
         threadState: (threadId, state) => sendEvent(app, 'agent.threadState', { threadId, state }),
         log: (threadId, entry) => sendEvent(app, 'agent.log', { threadId, entry }),
         fileChanged: (threadId, path) => sendEvent(app, 'agent.fileChanged', { threadId, path }),
+      },
+    });
+  }
+
+  private startAgentMode(projectPath: string): void {
+    const app = this.contents;
+    const { platform, shellEnvironment } = this.options;
+    this.agentMode = new AgentModeService({
+      projectPath,
+      browser: () => this.browser,
+      agents: () => this.agents,
+      findCandidates: async (terms) => {
+        await shellEnvironment.ready;
+        const rg = findExecutable('rg', shellEnvironment.env(), platform) ?? null;
+        return findCandidates(projectPath, terms, { rg });
+      },
+      events: {
+        picked: () => sendEvent(app, 'agentMode.picked', {}),
+        selected: (selection) => sendEvent(app, 'agentMode.selected', selection),
+        ended: (error) => sendEvent(app, 'agentMode.ended', error === undefined ? {} : { error }),
       },
     });
   }

@@ -61,7 +61,7 @@ export function TitleBar() {
   const platform = useApp((s) => s.info.platform);
   const fullScreen = useApp((s) => s.windowState.fullScreen);
   const project = useApp((s) => s.project);
-  const mode = useApp((s) => s.mode);
+  const mode = useApp((s) => s.mode.kind);
   const paletteLabel = useChordLabel(CommandId.commandPalette);
   const isMac = platform === 'darwin';
 

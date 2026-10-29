@@ -76,6 +76,16 @@ function relativePath(path: string, projectPath: string): string {
   return normalized.startsWith(`${root}/`) ? normalized.slice(root.length + 1) : path;
 }
 
+/** Filesystem path of a `file://` URI (`pathToFileURL` percent-encodes spaces and `~`). */
+function fileUriPath(uri: string): string {
+  const path = uri.replace(/^file:\/\//, '').replace(/^\/([A-Za-z]:\/)/, '$1');
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+}
+
 function Blocks({ blocks, projectPath }: { blocks: readonly ContentBlock[]; projectPath: string }) {
   return (
     <>
@@ -104,9 +114,7 @@ function Blocks({ blocks, projectPath }: { blocks: readonly ContentBlock[]; proj
                 title={block.uri}
               >
                 {block.mimeType?.startsWith('image/') ? <ImageIcon size={11} /> : <Paperclip size={11} />}
-                <span className="truncate">
-                  {relativePath(block.uri.replace(/^file:\/\//, ''), projectPath) || block.name}
-                </span>
+                <span className="truncate">{relativePath(fileUriPath(block.uri), projectPath) || block.name}</span>
               </span>
             );
           case 'resource':

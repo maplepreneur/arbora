@@ -513,6 +513,16 @@ function main(): void {
       return undefined;
     });
 
+    defineHandler('agentMode.setInspecting', isTrusted, ({ active }, event) => {
+      windowFor(event.sender).agentMode?.setInspecting(active);
+      return undefined;
+    });
+    defineHandler('agentMode.submit', isTrusted, (request, event) => {
+      const agentMode = windowFor(event.sender).agentMode;
+      if (!agentMode) throw new Error('Open a project first');
+      return agentMode.submit(request);
+    });
+
     const queued = pendingPaths.splice(0);
     const first = initialProject ?? queued.shift() ?? null;
     try {

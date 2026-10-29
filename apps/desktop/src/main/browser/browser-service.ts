@@ -16,6 +16,7 @@ import {
   RingBuffer,
   stepZoom,
   type BrowserAction,
+  type InspectorSelection,
   type LoadError,
   type NavigationState,
   pageIpcName,
@@ -43,6 +44,8 @@ const FOCUS_GUARD_AFTER_LOAD_MS = 1000;
 const PROBLEM_FLUSH_MS = 100;
 const STATE_SAVE_DELAY_MS = 500;
 const PING_TIMEOUT_MS = 2000;
+/** The overlay toggle is answered two frames later; past this, capture anyway. */
+const OVERLAY_ACK_TIMEOUT_MS = 500;
 /** Chromium aborts the previous load when a new one starts; that is not a load error. */
 const ERR_ABORTED = -3;
 /** Isolated world for Arbora's own probes, so the page cannot tamper with the results. */
@@ -56,6 +59,10 @@ export interface BrowserServiceEvents {
   problemsAdded(entries: ProblemEntry[]): void;
   problemsCleared(): void;
   urlSuggested(url: string): void;
+  /** Agent mode: the page's inspector reported a click. */
+  inspectorSelected(selection: InspectorSelection): void;
+  /** Agent mode: `Esc` reached the page's inspector. */
+  inspectorCancelled(): void;
 }
 
 export interface BrowserServiceOptions {
@@ -96,6 +103,10 @@ export class BrowserService {
   private appliedEmulation = 'null';
   private visible = false;
   private readonly pings = new Map<string, () => void>();
+  private readonly overlayAcks = new Map<string, () => void>();
+  private inspecting = false;
+  /** When the main frame last committed a new document (console errors after this are "current"). */
+  private navigatedAt = 0;
   private readonly disposers: (() => void)[] = [];
   private disposed = false;
   private releaseFocusGuard: (() => void) | undefined;
@@ -297,7 +308,7 @@ export class BrowserService {
     const result =
       request.mode === 'fullPage' ? await this.captureFullPage(request) : await this.captureViewport(request);
     if (!request.save) return result;
-    return { ...result, path: this.saveScreenshot(Buffer.from(result.pngBase64, 'base64'), request.mode) };
+    return { ...result, path: this.writeScreenshotFile(Buffer.from(result.pngBase64, 'base64'), request.mode, 'png') };
   }
 
   /** Round trip over the private page channel; resolves false if the preload does not answer. */
@@ -316,14 +327,65 @@ export class BrowserService {
     });
   }
 
+  /** Agent mode: (re)starts or stops the page inspector. A new document is started again on `ready`. */
+  setInspecting(active: boolean): void {
+    this.inspecting = active;
+    if (!this.contents.isDestroyed())
+      this.contents.send(pageIpcName(active ? 'inspector.start' : 'inspector.stop'), {});
+  }
+
+  /** Shows or hides the inspector overlay; resolves once the page has painted without it. */
+  setOverlayVisible(visible: boolean): Promise<void> {
+    const nonce = randomUUID();
+    return new Promise((resolve) => {
+      const done = (): void => {
+        clearTimeout(timer);
+        this.overlayAcks.delete(nonce);
+        resolve();
+      };
+      const timer = setTimeout(done, OVERLAY_ACK_TIMEOUT_MS);
+      this.overlayAcks.set(nonce, done);
+      this.contents.send(pageIpcName('inspector.setOverlay'), { visible, nonce });
+    });
+  }
+
+  /** Console errors and exceptions since the current document loaded, oldest first. */
+  consoleErrorsSinceNavigation(): string[] {
+    return this.consoleEntries
+      .toArray()
+      .filter((e) => e.level === 'error' && e.timestamp >= this.navigatedAt)
+      .map((e) => (e.url ? `${e.message} (${e.url}${e.line !== undefined ? `:${e.line}` : ''})` : e.message));
+  }
+
+  /** Writes an image to `<project>/.arbora/screenshots/` (git-ignored) and returns its path. */
+  writeScreenshotFile(data: Buffer, label: string, extension: 'png' | 'jpg'): string {
+    const dir = join(this.options.projectPath, '.arbora', 'screenshots');
+    mkdirSync(dir, { recursive: true });
+    const ignore = join(dir, '.gitignore');
+    if (!existsSync(ignore)) writeFileSync(ignore, '# Arbora screenshots are local artefacts\n*\n');
+    const file = join(dir, `${new Date().toISOString().replace(/[:.]/g, '-')}-${label}.${extension}`);
+    writeFileSync(file, data);
+    return file;
+  }
+
   handlePageMessage(message: PageMessageEnvelope): void {
     switch (message.name) {
       case 'ready':
         this.update({ pageReady: true });
+        if (this.inspecting) this.contents.send(pageIpcName('inspector.start'), {});
         break;
       case 'pong':
         this.pings.get(message.payload.nonce)?.();
         this.pings.delete(message.payload.nonce);
+        break;
+      case 'inspector.selected':
+        if (this.inspecting) this.options.events.inspectorSelected(message.payload);
+        break;
+      case 'inspector.cancelled':
+        if (this.inspecting) this.options.events.inspectorCancelled();
+        break;
+      case 'inspector.overlayApplied':
+        this.overlayAcks.get(message.payload.nonce)?.();
         break;
       default: {
         const unreachable: never = message;
@@ -381,6 +443,7 @@ export class BrowserService {
       this.update({ error: null, pageReady: false, favicon: null });
     });
     contents.on('did-navigate', (_event, url) => {
+      this.navigatedAt = Date.now();
       this.options.history.record(url, contents.getTitle());
       this.update({ url, title: contents.getTitle() });
       this.scheduleSave();
@@ -604,16 +667,6 @@ export class BrowserService {
       );
     }
     return encode(pixels, dpr);
-  }
-
-  private saveScreenshot(png: Buffer, mode: ScreenshotRequest['mode']): string {
-    const dir = join(this.options.projectPath, '.arbora', 'screenshots');
-    mkdirSync(dir, { recursive: true });
-    const ignore = join(dir, '.gitignore');
-    if (!existsSync(ignore)) writeFileSync(ignore, '# Arbora screenshots are local artefacts\n*\n');
-    const file = join(dir, `${new Date().toISOString().replace(/[:.]/g, '-')}-${mode}.png`);
-    writeFileSync(file, png);
-    return file;
   }
 }
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { inspectorSelectionSchema } from './inspector.js';
 
 /**
  * Private IPC between the browser-panel preload (running inside the user's page) and main. Kept
@@ -11,11 +12,17 @@ export function pageIpcName(name: string): string {
   return `${PAGE_IPC_PREFIX}${name}`;
 }
 
-/** Page -> main one-way messages. Stages 4 and 6 add inspector and design messages here. */
+/** Page -> main one-way messages. Stage 6 adds design messages here. */
 export const pageMessages = {
   ready: z.object({ url: z.string(), title: z.string() }),
   /** Reply to the `ping` event; proves the main -> page -> main round trip. */
   pong: z.object({ nonce: z.string() }),
+  /** Agent mode: the user clicked an element (or a breadcrumb entry). */
+  'inspector.selected': inspectorSelectionSchema,
+  /** Agent mode: `Esc` reached the page (main normally intercepts it first). */
+  'inspector.cancelled': z.object({}),
+  /** The overlay finished showing or hiding (two animation frames later), for clean screenshots. */
+  'inspector.overlayApplied': z.object({ nonce: z.string() }),
 } as const;
 
 export type PageMessageName = keyof typeof pageMessages;
@@ -26,6 +33,11 @@ export type PageMessageEnvelope = { [K in PageMessageName]: { name: K; payload: 
 /** Main -> page events. */
 export const pageEvents = {
   ping: z.object({ nonce: z.string() }),
+  /** Agent mode: show the hover highlight and wait for a click. Restarts after a selection. */
+  'inspector.start': z.object({}),
+  /** Agent mode: remove the overlay and release every listener. */
+  'inspector.stop': z.object({}),
+  'inspector.setOverlay': z.object({ visible: z.boolean(), nonce: z.string() }),
 } as const;
 
 export type PageEventName = keyof typeof pageEvents;

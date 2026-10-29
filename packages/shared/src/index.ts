@@ -2,6 +2,7 @@ export * from './agent.js';
 export * from './browser.js';
 export * from './channels.js';
 export * from './commands.js';
+export * from './inspector.js';
 export * from './ipc.js';
 export * from './keybindings.js';
 export * from './page-ipc.js';

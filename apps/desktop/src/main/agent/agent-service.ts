@@ -105,7 +105,7 @@ interface ThreadRecord {
   /** `session/load` replays history Arbora already has; transcript updates are dropped meanwhile. */
   replaying: boolean;
   pendingPermissions: Map<string, PendingPermission>;
-  pendingPrompt: { blocks: ContentBlock[]; attachments: Attachment[] } | null;
+  pendingPrompt: { blocks: ContentBlock[]; attachments: Attachment[]; title: string | undefined } | null;
   crashes: number;
   saveTimer: NodeJS.Timeout | undefined;
 }
@@ -201,10 +201,15 @@ export class AgentService {
 
   // --- Turns ---------------------------------------------------------------------------------
 
+  /**
+   * `title` names a new thread when the first text block is not a good title (agent mode's prompt
+   * starts with a Markdown template).
+   */
   async prompt(
     threadId: string,
     blocks: ContentBlock[],
     attachments: Attachment[] = [],
+    options: { readonly title?: string } = {},
   ): Promise<{ stopReason: string | null; error?: string }> {
     const record = this.require(threadId);
     if (blocks.length === 0 && attachments.length === 0) throw new AgentServiceError('Nothing to send');
@@ -215,13 +220,28 @@ export class AgentService {
       runtime = await this.ensureRuntime(record);
     } catch (error) {
       if (record.thread.state.status === 'auth_required') {
-        record.pendingPrompt = { blocks, attachments };
+        record.pendingPrompt = { blocks, attachments, title: options.title };
         return { stopReason: null, error: 'auth_required' };
       }
       return { stopReason: null, error: messageOf(error) };
     }
     if (!runtime.sessionId) return { stopReason: null, error: 'No session' };
-    return this.runTurn(record, runtime, blocks, attachments);
+    return this.runTurn(record, runtime, blocks, attachments, options.title);
+  }
+
+  /**
+   * Starts the thread's agent (if needed) and returns its prompt capabilities, so a caller can
+   * decide between `image` blocks and file links before composing. Null when the agent could not
+   * start or waits for a login; `prompt` then keeps the prompt as usual.
+   */
+  async promptCapabilities(threadId: string): Promise<ThreadState['capabilities']> {
+    const record = this.require(threadId);
+    try {
+      await this.ensureRuntime(record);
+    } catch {
+      return null;
+    }
+    return record.thread.state.capabilities;
   }
 
   async cancel(threadId: string): Promise<void> {
@@ -280,7 +300,9 @@ export class AgentService {
     }
     const pending = record.pendingPrompt;
     record.pendingPrompt = null;
-    if (pending && runtime.sessionId) void this.runTurn(record, runtime, pending.blocks, pending.attachments);
+    if (pending && runtime.sessionId) {
+      void this.runTurn(record, runtime, pending.blocks, pending.attachments, pending.title);
+    }
   }
 
   /** Stops the agent process; the next prompt starts it again from scratch. */
@@ -615,6 +637,7 @@ export class AgentService {
     runtime: Runtime,
     blocks: ContentBlock[],
     attachments: Attachment[],
+    title?: string,
   ): Promise<{ stopReason: string | null; error?: string }> {
     const sessionId = runtime.sessionId;
     if (!sessionId) return { stopReason: null, error: 'No session' };
@@ -633,7 +656,8 @@ export class AgentService {
       : shown;
 
     if (record.thread.title === DEFAULT_TITLE) {
-      const text = blocks.find((b): b is ContentBlock & { type: 'text' } => b.type === 'text')?.text.trim();
+      const text =
+        title?.trim() || blocks.find((b): b is ContentBlock & { type: 'text' } => b.type === 'text')?.text.trim();
       if (text) {
         record.thread = { ...record.thread, title: text.split('\n')[0]?.slice(0, TITLE_LENGTH) ?? DEFAULT_TITLE };
         this.emitThreads();
@@ -652,7 +676,7 @@ export class AgentService {
       if (AcpSession.isAuthRequired(error) && record.runtime === runtime) {
         // Claude Code's adapter accepts `session/new` and only refuses the first prompt; keep the
         // prompt so it goes out once the user has logged in.
-        record.pendingPrompt = { blocks, attachments };
+        record.pendingPrompt = { blocks, attachments, title };
         this.setState(record, { status: 'auth_required', error: this.authHint(record, message) });
         return { stopReason: null, error: 'auth_required' };
       }

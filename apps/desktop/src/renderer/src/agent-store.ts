@@ -30,6 +30,8 @@ export interface AgentPanelState {
   composerFocusRequest: number;
   /** Files written by agents this session (Stage 8 turns these into the "Agent changes" group). */
   changedFiles: { threadId: string; path: string; at: number }[];
+  /** The thread agent mode (`Mod+K`) sent to last; its popover offers it first next time. */
+  lastAgentModeThreadId: string | null;
   loaded: boolean;
 }
 
@@ -46,6 +48,7 @@ const INITIAL: AgentPanelState = {
   attachments: {},
   composerFocusRequest: 0,
   changedFiles: [],
+  lastAgentModeThreadId: null,
   loaded: false,
 };
 

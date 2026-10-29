@@ -49,6 +49,17 @@ export function scaleRect(rect: Rect, factor: number): Rect {
   return { x: rect.x * factor, y: rect.y * factor, width: rect.width * factor, height: rect.height * factor };
 }
 
+/**
+ * Size that fits inside `max` on the long edge, keeping the aspect ratio; never upscales. Agents
+ * reject or silently downscale larger images (Claude's limit is 1568 px on the long edge).
+ */
+export function fitWithin(width: number, height: number, max: number): { width: number; height: number } {
+  const long = Math.max(width, height);
+  if (long <= max || long <= 0) return { width, height };
+  const scale = max / long;
+  return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
+}
+
 /** Width and height from a PNG's IHDR chunk. */
 export function pngSize(png: Uint8Array): { width: number; height: number } {
   const view = new DataView(png.buffer, png.byteOffset, png.byteLength);
