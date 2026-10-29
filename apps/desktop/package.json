@@ -29,6 +29,7 @@
   },
   "devDependencies": {
     "@arbora/acp-client": "workspace:*",
+    "@arbora/browser-bridge": "workspace:*",
     "@arbora/shared": "workspace:*",
     "@playwright/test": "1.64.1",
     "@tailwindcss/vite": "4.3.3",
