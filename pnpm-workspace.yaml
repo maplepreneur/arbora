@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+  - fixtures/*
+
+# Electron downloads its binary lazily on first launch, and nothing else here needs an install
+# script (prebuilt binaries cover unrs-resolver; electron-winstaller is unused by the NSIS target).
+ignoredBuiltDependencies:
+  - electron-winstaller
+  - unrs-resolver

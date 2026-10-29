@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "../../.tsbuild/browser-bridge",
+    "rootDir": "src",
+    "tsBuildInfoFile": "../../.tsbuild/browser-bridge.tsbuildinfo"
+  },
+  "include": ["src"]
+}

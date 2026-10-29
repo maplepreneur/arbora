@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "../../.tsbuild/acp-client",
+    "rootDir": "src",
+    "tsBuildInfoFile": "../../.tsbuild/acp-client.tsbuildinfo"
+  },
+  "include": ["src"]
+}

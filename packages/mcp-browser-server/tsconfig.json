@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "../../.tsbuild/mcp-browser-server",
+    "rootDir": "src",
+    "tsBuildInfoFile": "../../.tsbuild/mcp-browser-server.tsbuildinfo"
+  },
+  "include": ["src"]
+}

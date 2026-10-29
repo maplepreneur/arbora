@@ -1,0 +1,7 @@
+pnpm-lock.yaml
+out/
+dist/
+.tsbuild/
+test-results/
+playwright-report/
+docs/
