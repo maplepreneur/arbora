@@ -10,6 +10,7 @@
  * - "crash": the process exits with code 3 mid-turn
  * - an `image` block in the prompt is acknowledged with its MIME type and size
  * - FAKE_AGENT_AUTH=1 advertises an auth method and rejects session/new until `authenticate`
+ * - FAKE_AGENT_NO_IMAGE=1 advertises `promptCapabilities.image: false` (clients must send file links)
  */
 import { Readable, Writable } from 'node:stream';
 import { basename, isAbsolute, join } from 'node:path';
@@ -264,7 +265,7 @@ const app = agent({ name: 'arbora-fake-agent' })
     agentInfo: { name: 'arbora-fake-agent', version: '0.0.1' },
     agentCapabilities: {
       loadSession: true,
-      promptCapabilities: { image: true, embeddedContext: true },
+      promptCapabilities: { image: process.env['FAKE_AGENT_NO_IMAGE'] !== '1', embeddedContext: true },
       mcpCapabilities: { http: true },
     },
     authMethods: authenticated ? [] : [{ id: 'fake-login', name: 'Fake login', description: 'Pretend to log in' }],
