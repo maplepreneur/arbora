@@ -8,12 +8,11 @@ The companion document [BUILD_STAGES.md](./BUILD_STAGES.md) breaks the build int
 
 Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents must update this section and that table at the end of every piece of work.
 
-**Now:** Stage 2 (Terminal panel) is code-complete in PR #TBD (not merged, CI not run yet). Stages 0 and 1 are merged ([PR #2](https://github.com/maplepreneur/arbora/pull/2), [PR #4](https://github.com/maplepreneur/arbora/pull/4)). On 29 Oct 2026 a full Omarchy/Hyprland pass covered `pnpm dev` and the packaged tarball, with 17/17 e2e. Its fixes are in the same PR: narrow-column layout, terminal focus, page-load focus, and second-instance argv. The pass is `arch-ok` for Stages 1 and 2 and `arch-partial` for Stage 0 (title-bar drag untested). No stage is `Done` yet.
+**Now:** Stage 2 (Terminal panel) is code-complete in [PR #7](https://github.com/maplepreneur/arbora/pull/7) (not merged, CI not run yet). Stages 0 and 1 are merged ([PR #2](https://github.com/maplepreneur/arbora/pull/2), [PR #4](https://github.com/maplepreneur/arbora/pull/4)). On 29 Oct 2026 a full Omarchy/Hyprland pass covered `pnpm dev` and the packaged tarball, with 17/17 e2e. Its fixes are in the same PR: narrow-column layout, terminal focus, page-load focus, and second-instance argv. The pass is `arch-ok` for Stages 0, 1 and 2 (title-bar drag tested by hand). No stage is `Done` yet.
 
-**Next:** Get CI green on PR #TBD and merge it, then start Stage 3 (Agent panel). `TerminalService` is ready for ACP client terminals.
+**Next:** Get CI green on [PR #7](https://github.com/maplepreneur/arbora/pull/7) and merge it, then start Stage 3 (Agent panel). `TerminalService` is ready for ACP client terminals.
 
-**Blockers / open:** Windows e2e on `main` is red (two Stage 0 smokes; [CI run 40907779167](https://github.com/maplepreneur/arbora/actions/runs/40907779167)), and the fix in PR #TBD is unverified until CI runs. Process-tree kill on macOS and Windows is untested outside CI. Title-bar drag on Hyprland needs a manual pointer test.
-
+**Blockers / open:** Windows e2e on `main` is red (two Stage 0 smokes; [CI run 40907779167](https://github.com/maplepreneur/arbora/actions/runs/40907779167)), and the fix in [PR #7](https://github.com/maplepreneur/arbora/pull/7) is unverified until CI runs. Process-tree kill on macOS and Windows is untested outside CI.
 ---
 
 ## 1. Product summary
