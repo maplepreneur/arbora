@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { customAgentSchema, rememberedPermissionsSchema } from './agent.js';
 import { viewportPresetIdSchema } from './browser.js';
 
 export const themeModeSchema = z.enum(['system', 'light', 'dark']);
@@ -57,7 +58,7 @@ export type ProjectState = z.infer<typeof projectStateSchema>;
 
 export const MAX_RECENT_PROJECTS = 10;
 
-export const SETTINGS_VERSION = 2;
+export const SETTINGS_VERSION = 3;
 
 export const browserSettingsSchema = z.object({
   /** Load the bundled React and Vue DevTools into the browser panel's session. */
@@ -74,6 +75,14 @@ export const terminalSettingsSchema = z.object({
 });
 export type TerminalSettings = z.infer<typeof terminalSettingsSchema>;
 
+export const agentSettingsSchema = z.object({
+  /** User-defined ACP agents, in addition to the built-ins. */
+  custom: z.array(customAgentSchema).default([]),
+  /** "Always allow/reject" answers to permission requests, keyed by `agentId:toolKind`. */
+  permissions: rememberedPermissionsSchema.default({}),
+});
+export type AgentSettings = z.infer<typeof agentSettingsSchema>;
+
 /**
  * User settings stored in `<userData>/settings.json`. Every field has a default so a partially
  * written or hand-edited file still loads.
@@ -87,6 +96,7 @@ export const appSettingsSchema = z.object({
   terminalPassthrough: z.boolean().default(true),
   browser: browserSettingsSchema.default(browserSettingsSchema.parse({})),
   terminal: terminalSettingsSchema.default(terminalSettingsSchema.parse({})),
+  agents: agentSettingsSchema.default(agentSettingsSchema.parse({})),
   recentProjects: z.array(recentProjectSchema).max(MAX_RECENT_PROJECTS).default([]),
   projects: z.record(z.string(), projectStateSchema).default({}),
 });
@@ -100,6 +110,7 @@ export const appSettingsPatchSchema = z
     terminalPassthrough: z.boolean(),
     browser: browserSettingsSchema.partial(),
     terminal: terminalSettingsSchema.partial(),
+    agents: agentSettingsSchema.partial(),
   })
   .partial();
 export type AppSettingsPatch = z.infer<typeof appSettingsPatchSchema>;
@@ -118,6 +129,8 @@ export const SETTINGS_MIGRATIONS: Readonly<Record<number, Migration>> = {
   0: (input) => ({ ...input, version: 1 }),
   // v2 added `browser` settings and per-project browser state; both are defaulted by the schema.
   1: (input) => ({ ...input, version: 2 }),
+  // v3 added `agents` (custom agents and remembered permissions), defaulted by the schema.
+  2: (input) => ({ ...input, version: 3 }),
 };
 
 export class SettingsMigrationError extends Error {

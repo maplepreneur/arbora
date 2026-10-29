@@ -1,6 +1,40 @@
 import { spawn } from 'node:child_process';
-import { delimiter } from 'node:path';
+import { existsSync, statSync } from 'node:fs';
+import { delimiter, isAbsolute, join } from 'node:path';
 import type { Platform } from '@arbora/shared';
+
+/**
+ * Finds `command` on `env.PATH` (honouring `PATHEXT` on Windows), like `which`/`where`. Paths with
+ * a directory component are returned as-is when they exist. Returns undefined when not found.
+ */
+export function findExecutable(
+  command: string,
+  env: Readonly<Record<string, string | undefined>>,
+  platform: Platform,
+  exists: (path: string) => boolean = isFile,
+): string | undefined {
+  if (!command) return undefined;
+  const hasDir = command.includes('/') || (platform === 'win32' && command.includes('\\'));
+  if (hasDir) return isAbsolute(command) && exists(command) ? command : exists(command) ? command : undefined;
+  const separator = platform === 'win32' ? ';' : ':';
+  const path = env['PATH'] ?? env['Path'] ?? '';
+  const extensions = platform === 'win32' ? ['', ...(env['PATHEXT'] ?? '.COM;.EXE;.BAT;.CMD').split(';')] : [''];
+  for (const dir of path.split(separator).filter(Boolean)) {
+    for (const extension of extensions) {
+      const candidate = join(dir, command + extension);
+      if (exists(candidate)) return candidate;
+    }
+  }
+  return undefined;
+}
+
+function isFile(path: string): boolean {
+  try {
+    return existsSync(path) && statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
 
 const MARKER = '__ARBORA_SHELL_ENV__';
 const RESOLVE_TIMEOUT_MS = 5000;

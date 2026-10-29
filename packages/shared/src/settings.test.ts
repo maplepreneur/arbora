@@ -74,10 +74,25 @@ describe('loadSettings', () => {
   it('upgrades a v1 file with browser defaults and keeps existing values', () => {
     const { settings, warnings } = loadSettings({ version: 1, theme: 'dark', projects: { '/p': {} } });
     expect(warnings).toEqual([]);
-    expect(settings.version).toBe(2);
+    expect(settings.version).toBe(SETTINGS_VERSION);
     expect(settings.theme).toBe('dark');
     expect(settings.browser).toEqual({ devToolsExtensions: true, trustLocalhostCertificates: true });
     expect(settings.projects['/p']?.browser).toBeUndefined();
+  });
+
+  it('upgrades a v2 file with empty agent settings', () => {
+    const { settings, warnings } = loadSettings({ version: 2, theme: 'light' });
+    expect(warnings).toEqual([]);
+    expect(settings.version).toBe(3);
+    expect(settings.agents).toEqual({ custom: [], permissions: {} });
+  });
+
+  it('keeps custom agents and remembered permissions', () => {
+    const agents = {
+      custom: [{ id: 'my-agent', name: 'Mine', command: 'my-agent', args: ['acp'], env: { FOO: 'bar' } }],
+      permissions: { 'claude-code:execute': 'allow' },
+    };
+    expect(loadSettings({ version: 3, agents }).settings.agents).toEqual(agents);
   });
 
   it('defaults per-project browser state fields', () => {

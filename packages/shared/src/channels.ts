@@ -1,5 +1,16 @@
 import { z } from 'zod';
 import {
+  acpLogEntrySchema,
+  agentAvailabilitySchema,
+  agentDefinitionSchema,
+  attachmentSchema,
+  contentBlockSchema,
+  threadChangeSchema,
+  threadSchema,
+  threadStateSchema,
+  threadSummarySchema,
+} from './agent.js';
+import {
   browserActionSchema,
   browserHistoryEntrySchema,
   navigationStateSchema,
@@ -23,6 +34,7 @@ import {
 import { devServerStatusSchema, terminalInfoSchema, terminalKindSchema, terminalSizeSchema } from './terminal.js';
 
 const terminalId = z.object({ id: z.string() });
+const threadId = z.object({ threadId: z.string() });
 
 export const contextMenuItemSchema = z.union([
   z.object({
@@ -199,6 +211,73 @@ export const channels = {
   ),
   'devServer.stop': defineChannel('devServer.stop', none, none),
   'devServer.status': defineChannel('devServer.status', none, devServerStatusSchema),
+
+  /** Built-in and custom agents with whether their executable resolves on the login-shell PATH. */
+  'agent.listAgents': defineChannel(
+    'agent.listAgents',
+    none,
+    z.object({ agents: z.array(agentDefinitionSchema), availability: z.array(agentAvailabilitySchema) }),
+  ),
+  'agent.listThreads': defineChannel('agent.listThreads', none, z.array(threadSummarySchema)),
+  'agent.createThread': defineChannel('agent.createThread', z.object({ agentId: z.string() }), threadSummarySchema),
+  'agent.getThread': defineChannel('agent.getThread', threadId, threadSchema.nullable()),
+  'agent.deleteThread': defineChannel('agent.deleteThread', threadId, none),
+  'agent.renameThread': defineChannel(
+    'agent.renameThread',
+    threadId.extend({ title: z.string().min(1).max(200) }),
+    none,
+  ),
+  /**
+   * Sends a prompt. Starts the agent (spawn, `initialize`, `session/new` or load) on the first
+   * call. Resolves when the turn ends; progress arrives through `agent.threadEvents`.
+   */
+  'agent.prompt': defineChannel(
+    'agent.prompt',
+    threadId.extend({
+      blocks: z.array(contentBlockSchema),
+      /** Converted in main: images to `image` blocks when supported, other files to `resource_link`s. */
+      attachments: z.array(attachmentSchema).default([]),
+    }),
+    z.object({ stopReason: z.string().nullable(), error: z.string().optional() }),
+  ),
+  'agent.cancel': defineChannel('agent.cancel', threadId, none),
+  /** Answers a pending permission card with one of the agent's own option ids. */
+  'agent.respondPermission': defineChannel(
+    'agent.respondPermission',
+    threadId.extend({ requestId: z.string(), optionId: z.string() }),
+    none,
+  ),
+  'agent.setMode': defineChannel('agent.setMode', threadId.extend({ modeId: z.string() }), none),
+  'agent.setConfigOption': defineChannel(
+    'agent.setConfigOption',
+    threadId.extend({ configId: z.string(), value: z.union([z.string(), z.boolean()]) }),
+    none,
+  ),
+  'agent.setAutoApproveEdits': defineChannel(
+    'agent.setAutoApproveEdits',
+    threadId.extend({ enabled: z.boolean() }),
+    none,
+  ),
+  'agent.authenticate': defineChannel('agent.authenticate', threadId.extend({ methodId: z.string() }), none),
+  /** Stops the agent process (if any) and starts it again on the next prompt. */
+  'agent.restart': defineChannel('agent.restart', threadId, none),
+  'agent.getLog': defineChannel('agent.getLog', threadId, z.array(acpLogEntrySchema)),
+  /** Writes the redacted log as JSON; `path` is null when the save dialog was cancelled. */
+  'agent.exportLog': defineChannel('agent.exportLog', threadId, z.object({ path: z.string().nullable() })),
+  /** Native file picker for composer attachments. */
+  'agent.pickAttachments': defineChannel('agent.pickAttachments', none, z.array(attachmentSchema)),
+  /** Attachment metadata for dropped files (size, MIME type, image or file). */
+  'agent.describeAttachments': defineChannel(
+    'agent.describeAttachments',
+    z.object({ paths: z.array(z.string()).max(50) }),
+    z.array(attachmentSchema),
+  ),
+  /** Removes `agentId:toolKind` entries from remembered permissions (all when omitted). */
+  'agent.forgetPermissions': defineChannel(
+    'agent.forgetPermissions',
+    z.object({ agentId: z.string().optional() }),
+    none,
+  ),
 } as const;
 
 /** Main -> renderer events. */
@@ -226,6 +305,17 @@ export const events = {
     'terminal.urlDetected',
     z.object({ id: z.string(), url: z.string(), opened: z.boolean() }),
   ),
+  /** The thread list or a thread's metadata/state changed. */
+  'agent.threadsChanged': defineEvent('agent.threadsChanged', z.object({ threads: z.array(threadSummarySchema) })),
+  /** Transcript updates for one thread, in order. */
+  'agent.threadEvents': defineEvent(
+    'agent.threadEvents',
+    z.object({ threadId: z.string(), changes: z.array(threadChangeSchema).min(1) }),
+  ),
+  'agent.threadState': defineEvent('agent.threadState', z.object({ threadId: z.string(), state: threadStateSchema })),
+  'agent.log': defineEvent('agent.log', z.object({ threadId: z.string(), entry: acpLogEntrySchema })),
+  /** An agent wrote a file through `fs/write_text_file` (Stage 8's "Agent changes" group). */
+  'agent.fileChanged': defineEvent('agent.fileChanged', z.object({ threadId: z.string(), path: z.string() })),
 } as const;
 
 export type Channels = typeof channels;

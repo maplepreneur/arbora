@@ -4,6 +4,15 @@ import { TitleBar } from './components/TitleBar';
 import { Toasts } from './components/Toasts';
 import { Welcome } from './components/Welcome';
 import { Workspace } from './components/Workspace';
+import {
+  appendLog,
+  applyThreadChanges,
+  applyThreadList,
+  applyThreadState,
+  loadAgentSnapshot,
+  noteFileChanged,
+  resetAgents,
+} from './agent-store';
 import { executeCommand, navigateBrowser, registerBuiltinCommands } from './commands';
 import { useKeybindingContextSync, useKeybindingDispatch } from './keybindings';
 import { addProblems, setProblems, setProject, showToast, useApp } from './store';
@@ -27,6 +36,11 @@ function useMainEvents(): void {
         if (opened) showToast(`Opened ${url} in the browser`);
         else showToast(`Dev server at ${url}`, { label: 'Open in browser', run: () => void navigateBrowser(url) });
       }),
+      arbora.on('agent.threadsChanged', ({ threads }) => applyThreadList(threads)),
+      arbora.on('agent.threadEvents', ({ threadId, changes }) => applyThreadChanges(threadId, changes)),
+      arbora.on('agent.threadState', ({ threadId, state }) => applyThreadState(threadId, state)),
+      arbora.on('agent.log', ({ threadId, entry }) => appendLog(threadId, entry)),
+      arbora.on('agent.fileChanged', ({ threadId, path }) => noteFileChanged(threadId, path)),
     ];
     return () => {
       for (const off of offs) off();
@@ -73,6 +87,16 @@ function useTerminalSnapshot(): void {
   }, [projectPath]);
 }
 
+/** Agents and threads belong to the project; reload them when it changes (and after a renderer reload). */
+function useAgentSnapshot(): void {
+  const projectPath = useApp((s) => s.project?.path);
+  useEffect(() => {
+    resetAgents();
+    if (!projectPath) return;
+    void loadAgentSnapshot().catch((error: unknown) => showToast(`Could not load agents: ${(error as Error).message}`));
+  }, [projectPath]);
+}
+
 function useThemeClass(): void {
   const resolved = useApp((s) => s.theme.resolved);
   useEffect(() => {
@@ -100,6 +124,7 @@ export function App() {
   useMainEvents();
   useBrowserSnapshot();
   useTerminalSnapshot();
+  useAgentSnapshot();
   useThemeClass();
   usePreventFileNavigation();
   useKeybindingDispatch();

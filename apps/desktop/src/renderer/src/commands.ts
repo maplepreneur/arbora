@@ -10,6 +10,7 @@ import {
   type ThemeMode,
   type ViewportPresetId,
 } from '@arbora/shared';
+import { activeThread, cancelTurn, focusComposer, showPicker, showThreads, toggleLog, useAgents } from './agent-store';
 import { resetLayout, setMode, showToast, useApp } from './store';
 import {
   activePane,
@@ -98,6 +99,7 @@ export async function runDevServer(): Promise<void> {
 export interface WorkspaceController {
   toggleSidebar(): void;
   toggleAgentPanel(): void;
+  showAgentPanel(): void;
   toggleBottomPanel(): void;
   showSidebarView(view: SidebarView): void;
   showBottomTab(tab: BottomTab): void;
@@ -107,6 +109,13 @@ let workspace: WorkspaceController | null = null;
 
 export function setWorkspaceController(controller: WorkspaceController | null): void {
   workspace = controller;
+}
+
+/** Runs `action` with the agent panel visible. */
+function withAgentPanel(action: () => void): void {
+  if (!hasProject()) return;
+  workspace?.showAgentPanel();
+  action();
 }
 
 const THEME_CYCLE: Readonly<Record<ThemeMode, ThemeMode>> = { system: 'light', light: 'dark', dark: 'system' };
@@ -339,6 +348,34 @@ async function runCommand(id: CommandId): Promise<void> {
       return;
     case CommandId.openFileAtLocation:
       openFileAtLocation();
+      return;
+    case CommandId.agentNewThread:
+      withAgentPanel(() => showPicker());
+      return;
+    case CommandId.agentFocusComposer:
+      withAgentPanel(() => {
+        const thread = activeThread();
+        if (thread) {
+          useAgents.setState({ view: 'thread' });
+          focusComposer();
+        } else if (useAgents.getState().threads.length > 0) {
+          showThreads();
+        } else {
+          showPicker();
+        }
+      });
+      return;
+    case CommandId.agentCancel: {
+      const thread = activeThread();
+      if (thread?.state.status === 'prompting') await cancelTurn(thread.id);
+      else if (hasProject()) showToast('The agent is not working on anything');
+      return;
+    }
+    case CommandId.agentToggleLog:
+      withAgentPanel(() => toggleLog());
+      return;
+    case CommandId.agentShowThreads:
+      withAgentPanel(() => showThreads());
       return;
     default: {
       const unreachable: never = id;

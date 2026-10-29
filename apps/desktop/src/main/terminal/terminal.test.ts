@@ -153,6 +153,41 @@ describe('TerminalService', { timeout: 20_000 }, () => {
     expect(service.scrollback(info.id)).toContain('restarting');
   });
 
+  it('runs an agent terminal directly (no shell), streams raw output to subscribers and reports the exit', async () => {
+    const { service, terminals } = setup();
+    let raw = '';
+    const info = await service.create({
+      kind: 'agent',
+      command: process.execPath,
+      args: ['-e', "console.log('from ' + process.env.ARBORA_AGENT_TEST); process.exit(5)"],
+      env: { ARBORA_AGENT_TEST: 'agent' },
+      onData: (data) => (raw += data),
+    });
+    expect(info.readOnly).toBe(true);
+    expect(info.command).toContain(process.execPath);
+    const exit = await service.waitForExit(info.id);
+    expect(exit).toEqual({ exitCode: 5, signal: null });
+    expect(raw).toContain('from agent');
+    // The "[process exited]" footer is for the tab, not for the agent reading the output.
+    expect(raw).not.toContain('process exited');
+    expect(service.scrollback(info.id)).toContain('process exited with code 5');
+    expect(await service.waitForExit(info.id)).toEqual(exit);
+    expect(terminals().find((t) => t.id === info.id)?.exitCode).toBe(5);
+  });
+
+  it('runs a whole command line through the shell when an agent gives no args', async () => {
+    const { service } = setup();
+    let raw = '';
+    const info = await service.create({
+      kind: 'agent',
+      // Unquoted `node`, like the other shell tests: PowerShell reads a leading quoted path as a string literal.
+      command: nodeScript("console.log('shell ' + (40 + 2))"),
+      onData: (data) => (raw += data),
+    });
+    expect((await service.waitForExit(info.id)).exitCode).toBe(0);
+    expect(raw).toContain('shell 42');
+  });
+
   it('runs interactive shells that accept input', async () => {
     const { service, data } = setup();
     const info = await service.create({ cols: 120, rows: 30 });
