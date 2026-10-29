@@ -76,8 +76,16 @@ describe('fromConsoleApiCalled', () => {
     expect(level('assert')).toBe('error');
   });
 
-  it('ignores malformed params', () => {
+  it('ignores malformed params and Electron security warnings', () => {
     expect(fromConsoleApiCalled({ type: 'log' })).toBeUndefined();
+    const warning = '%cElectron Security Warning (Insecure Content-Security-Policy)';
+    expect(
+      fromConsoleApiCalled({
+        type: 'warning',
+        args: [str(warning), str('font-weight: bold;'), str('...')],
+        timestamp: 0,
+      }),
+    ).toBeUndefined();
   });
 });
 

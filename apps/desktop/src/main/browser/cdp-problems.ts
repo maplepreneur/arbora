@@ -146,6 +146,8 @@ function logLevel(level: string): ProblemLevel {
   }
 }
 
+const ELECTRON_SECURITY_WARNING = 'Electron Security Warning';
+
 const TOOLING_FRAME = /^chrome-extension:\/\/|\/@vite\/|\/@react-refresh|\/node_modules\//;
 
 function isToolingFrame(url: string): boolean {
@@ -164,10 +166,13 @@ export function fromConsoleApiCalled(params: unknown): ProblemDraft | undefined 
   const parsed = consoleApiCalledSchema.safeParse(params);
   if (!parsed.success) return undefined;
   const { type, args, timestamp, stackTrace } = parsed.data;
+  const formatted = formatConsoleArgs(args);
+  // Electron logs these into every page of an unpackaged app; they are about Arbora, not the page.
+  if (formatted.startsWith(ELECTRON_SECURITY_WARNING)) return undefined;
   return {
     source: 'console',
     level: consoleLevel(type),
-    message: truncate(type === 'assert' ? `Assertion failed: ${formatConsoleArgs(args)}` : formatConsoleArgs(args)),
+    message: truncate(type === 'assert' ? `Assertion failed: ${formatted}` : formatted),
     timestamp,
     ...location(stackTrace),
   };
