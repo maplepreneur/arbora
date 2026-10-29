@@ -67,6 +67,13 @@ export const browserSettingsSchema = z.object({
 });
 export type BrowserSettings = z.infer<typeof browserSettingsSchema>;
 
+export const terminalSettingsSchema = z.object({
+  /** Shell executable; defaults to `$SHELL` (macOS/Linux) or pwsh/PowerShell/cmd (Windows). */
+  shell: z.string().min(1).optional(),
+  fontSize: z.number().int().min(8).max(32).default(13),
+});
+export type TerminalSettings = z.infer<typeof terminalSettingsSchema>;
+
 /**
  * User settings stored in `<userData>/settings.json`. Every field has a default so a partially
  * written or hand-edited file still loads.
@@ -79,6 +86,7 @@ export const appSettingsSchema = z.object({
   /** When a terminal is focused, plain `Ctrl+<key>` chords go to the shell. */
   terminalPassthrough: z.boolean().default(true),
   browser: browserSettingsSchema.default(browserSettingsSchema.parse({})),
+  terminal: terminalSettingsSchema.default(terminalSettingsSchema.parse({})),
   recentProjects: z.array(recentProjectSchema).max(MAX_RECENT_PROJECTS).default([]),
   projects: z.record(z.string(), projectStateSchema).default({}),
 });
@@ -91,6 +99,7 @@ export const appSettingsPatchSchema = z
     keybindings: keybindingOverridesSchema,
     terminalPassthrough: z.boolean(),
     browser: browserSettingsSchema.partial(),
+    terminal: terminalSettingsSchema.partial(),
   })
   .partial();
 export type AppSettingsPatch = z.infer<typeof appSettingsPatchSchema>;
@@ -183,8 +192,11 @@ export const PROJECT_SETTINGS_VERSION = 1;
 /** Committed per-project settings in `<project>/.arbora/project.json`. */
 export const projectSettingsSchema = z.object({
   version: z.literal(PROJECT_SETTINGS_VERSION).default(PROJECT_SETTINGS_VERSION),
+  /** Shell command for "Run Dev Server"; inferred from `package.json` scripts on first run. */
   devCommand: z.string().optional(),
   devUrl: z.string().optional(),
+  /** Load a dev-server URL printed in a terminal when the browser panel is empty (default on). */
+  autoOpenDevUrl: z.boolean().optional(),
   defaultAgent: z.string().optional(),
   keybindings: keybindingOverridesSchema.optional(),
 });

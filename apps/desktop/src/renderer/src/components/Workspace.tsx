@@ -230,7 +230,7 @@ export function Workspace() {
           </aside>
         </Panel>
         <ResizeHandle id="sep-sidebar" orientation="horizontal" />
-        <Panel id="center" minSize="320px" defaultSize={DEFAULT_MAIN['center']}>
+        <Panel id="center" minSize="240px" defaultSize={DEFAULT_MAIN['center']}>
           <Group
             key={`center-${epoch}`}
             id={CENTER_GROUP}
@@ -293,7 +293,7 @@ export function Workspace() {
           panelRef={agentRef}
           collapsible
           collapsedSize={0}
-          minSize="240px"
+          minSize="200px"
           defaultSize={DEFAULT_MAIN['agent']}
         >
           <aside data-testid="panel-agent" className="h-full overflow-hidden bg-bg-subtle">

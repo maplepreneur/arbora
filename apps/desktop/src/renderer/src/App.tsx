@@ -4,9 +4,10 @@ import { TitleBar } from './components/TitleBar';
 import { Toasts } from './components/Toasts';
 import { Welcome } from './components/Welcome';
 import { Workspace } from './components/Workspace';
-import { executeCommand, registerBuiltinCommands } from './commands';
+import { executeCommand, navigateBrowser, registerBuiltinCommands } from './commands';
 import { useKeybindingContextSync, useKeybindingDispatch } from './keybindings';
-import { addProblems, setProblems, setProject, useApp } from './store';
+import { addProblems, setProblems, setProject, showToast, useApp } from './store';
+import { applyTerminalList, resetTerminals } from './terminal-store';
 
 function useMainEvents(): void {
   useEffect(() => {
@@ -21,6 +22,11 @@ function useMainEvents(): void {
       arbora.on('browser.problemsAdded', ({ entries }) => addProblems(entries)),
       arbora.on('browser.problemsCleared', () => useApp.setState({ problems: [] })),
       arbora.on('browser.urlSuggested', ({ url }) => useApp.setState({ suggestedUrl: url })),
+      arbora.on('terminal.changed', ({ terminals }) => applyTerminalList(terminals)),
+      arbora.on('terminal.urlDetected', ({ url, opened }) => {
+        if (opened) showToast(`Opened ${url} in the browser`);
+        else showToast(`Dev server at ${url}`, { label: 'Open in browser', run: () => void navigateBrowser(url) });
+      }),
     ];
     return () => {
       for (const off of offs) off();
@@ -44,6 +50,22 @@ function useBrowserSnapshot(): void {
       // Events may have arrived first; never replace a live state with an older null.
       if (browser) useApp.setState({ browser });
       setProblems(consoleEntries, network);
+    });
+    return () => {
+      active = false;
+    };
+  }, [projectPath]);
+}
+
+/** Terminals belong to the project; reload the list (after a renderer reload too) when it changes. */
+function useTerminalSnapshot(): void {
+  const projectPath = useApp((s) => s.project?.path);
+  useEffect(() => {
+    resetTerminals();
+    if (!projectPath) return;
+    let active = true;
+    void window.arbora.invoke('terminal.list').then((terminals) => {
+      if (active) applyTerminalList(terminals);
     });
     return () => {
       active = false;
@@ -77,6 +99,7 @@ export function App() {
   useEffect(() => registerBuiltinCommands(), []);
   useMainEvents();
   useBrowserSnapshot();
+  useTerminalSnapshot();
   useThemeClass();
   usePreventFileNavigation();
   useKeybindingDispatch();

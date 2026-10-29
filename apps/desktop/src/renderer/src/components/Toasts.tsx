@@ -1,4 +1,4 @@
-import { useApp } from '../store';
+import { dismissToast, useApp } from '../store';
 
 export function Toasts() {
   const toasts = useApp((s) => s.toasts);
@@ -17,9 +17,22 @@ export function Toasts() {
         <div
           key={toast.id}
           data-testid="toast"
-          className="max-w-sm rounded-md border border-border bg-bg-elevated px-3 py-2 text-xs shadow-lg"
+          className="pointer-events-auto flex max-w-sm items-center gap-3 rounded-md border border-border bg-bg-elevated px-3 py-2 text-xs shadow-lg"
         >
-          {toast.message}
+          <span className="min-w-0 break-words">{toast.message}</span>
+          {toast.action && (
+            <button
+              type="button"
+              data-testid="toast-action"
+              onClick={() => {
+                toast.action?.run();
+                dismissToast(toast.id);
+              }}
+              className="shrink-0 rounded bg-accent px-2 py-0.5 font-medium text-accent-fg hover:opacity-90"
+            >
+              {toast.action.label}
+            </button>
+          )}
         </div>
       ))}
     </div>

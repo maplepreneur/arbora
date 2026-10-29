@@ -9,8 +9,28 @@ export function writeJsonAtomic(filePath: string, value: unknown): string {
   mkdirSync(dirname(filePath), { recursive: true });
   const tmp = `${filePath}.${process.pid}.tmp`;
   writeFileSync(tmp, text, 'utf8');
-  renameSync(tmp, filePath);
+  renameWithRetry(tmp, filePath);
   return text;
+}
+
+const RENAME_RETRY_CODES: ReadonlySet<string> = new Set(['EPERM', 'EBUSY', 'EACCES']);
+const RENAME_ATTEMPTS = 10;
+
+/**
+ * Windows refuses to replace a file another process has open without delete sharing (antivirus,
+ * the search indexer, an editor), which surfaces as a transient EPERM/EBUSY/EACCES.
+ */
+function renameWithRetry(from: string, to: string): void {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      renameSync(from, to);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? '';
+      if (attempt >= RENAME_ATTEMPTS || !RENAME_RETRY_CODES.has(code)) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10 * attempt);
+    }
+  }
 }
 
 /**
@@ -34,6 +54,8 @@ export class SettingsStore {
   }
 
   update(mutate: (current: AppSettings) => AppSettings): AppSettings {
+    // A hand edit the debounced watcher has not applied yet would otherwise be overwritten.
+    this.reloadFromDisk();
     this.settings = mutate(this.settings);
     this.lastWritten = writeJsonAtomic(this.filePath, this.settings);
     this.emit();
@@ -98,6 +120,7 @@ export class SettingsStore {
     try {
       const { settings, warnings } = loadSettings(JSON.parse(text));
       this.warnings = warnings;
+      this.lastWritten = text;
       return settings;
     } catch (error) {
       const reason =

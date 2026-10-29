@@ -16,9 +16,15 @@ import {
 /** Placeholder mode machine; Stage 4 expands agent mode to idle -> inspecting -> selected -> prompting. */
 export type Mode = 'idle' | 'agent' | 'design';
 
+export interface ToastAction {
+  readonly label: string;
+  run(): void;
+}
+
 export interface Toast {
   readonly id: number;
   readonly message: string;
+  readonly action?: ToastAction;
 }
 
 export interface AppState {
@@ -129,10 +135,15 @@ export function setMode(mode: Mode): void {
   useApp.setState({ mode });
 }
 
-export function showToast(message: string): void {
-  const toast = { id: nextToastId++, message };
+export function dismissToast(id: number): void {
+  useApp.setState((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
+}
+
+/** Toasts with an action stay longer so there is time to click it. */
+export function showToast(message: string, action?: ToastAction): void {
+  const toast: Toast = { id: nextToastId++, message, ...(action ? { action } : {}) };
   useApp.setState((s) => ({ toasts: [...s.toasts, toast] }));
-  setTimeout(() => useApp.setState((s) => ({ toasts: s.toasts.filter((t) => t.id !== toast.id) })), 3500);
+  setTimeout(() => dismissToast(toast.id), action ? 10_000 : 3500);
 }
 
 export function addProblems(entries: readonly ProblemEntry[]): void {

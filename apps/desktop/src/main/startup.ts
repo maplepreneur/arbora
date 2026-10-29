@@ -69,12 +69,17 @@ export function shouldRestoreBounds(platform: Platform, tilingCompositor: string
 
 /**
  * Finds the project folder passed on the command line (`arbora <path>`).
- * `defaultApp` is true when launched as `electron <entry> ...`, in which case argv[1] is the entry.
+ * `defaultApp` is true when launched as `electron <entry> ...`; the entry is the first non-switch
+ * argument, and Chromium may put switches before it (as in `second-instance` argv).
  */
 export function parseProjectArg(argv: readonly string[], cwd: string, defaultApp: boolean): string | null {
-  const args = argv.slice(defaultApp ? 2 : 1);
-  for (const arg of args) {
+  let skipEntry = defaultApp;
+  for (const arg of argv.slice(1)) {
     if (arg.startsWith('-')) continue;
+    if (skipEntry) {
+      skipEntry = false;
+      continue;
+    }
     const candidate = resolve(cwd, arg);
     try {
       if (existsSync(candidate) && statSync(candidate).isDirectory()) return candidate;

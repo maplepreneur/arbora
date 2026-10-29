@@ -66,6 +66,18 @@ describe('SettingsStore', () => {
     expect(store.get().keybindings).toEqual({ 'arbora.agentMode': 'mod+i' });
     expect(store.warnings[0]).toMatch(/could not be read/);
   });
+
+  it('keeps a hand edit that lands before the watcher reloads it', () => {
+    const file = join(tempDir(), 'settings.json');
+    const store = new SettingsStore(file);
+    store.update((s) => ({ ...s, theme: 'dark' }));
+    const onDisk = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+    const edited = { ...onDisk, keybindings: { 'arbora.agentMode': 'mod+i' } };
+    writeFileSync(file, JSON.stringify(edited));
+    store.update((s) => ({ ...s, terminalPassthrough: false }));
+    expect(store.get()).toMatchObject({ keybindings: { 'arbora.agentMode': 'mod+i' }, terminalPassthrough: false });
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toMatchObject({ keybindings: { 'arbora.agentMode': 'mod+i' } });
+  });
 });
 
 describe('project settings', () => {

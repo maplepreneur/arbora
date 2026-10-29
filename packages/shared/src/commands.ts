@@ -60,6 +60,17 @@ export const CommandId = {
   browserScreenshot: 'arbora.browser.screenshot',
   browserFullPageScreenshot: 'arbora.browser.fullPageScreenshot',
   browserClearProblems: 'arbora.browser.clearProblems',
+  terminalNew: 'arbora.terminal.new',
+  terminalSplitRight: 'arbora.terminal.splitRight',
+  terminalSplitDown: 'arbora.terminal.splitDown',
+  terminalKill: 'arbora.terminal.kill',
+  terminalClear: 'arbora.terminal.clear',
+  terminalFind: 'arbora.terminal.find',
+  terminalRename: 'arbora.terminal.rename',
+  devServerRun: 'arbora.devServer.run',
+  devServerRestart: 'arbora.devServer.restart',
+  devServerStop: 'arbora.devServer.stop',
+  openFileAtLocation: 'arbora.editor.openFileAtLocation',
 } as const;
 
 export type CommandId = (typeof CommandId)[keyof typeof CommandId];
@@ -135,6 +146,18 @@ export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
   { id: CommandId.browserScreenshot, title: 'Take Screenshot', category: 'Browser' },
   { id: CommandId.browserFullPageScreenshot, title: 'Take Full-Page Screenshot', category: 'Browser' },
   { id: CommandId.browserClearProblems, title: 'Clear Problems', category: 'Browser' },
+  { id: CommandId.terminalNew, title: 'New Terminal', category: 'Terminal', keybinding: 'ctrl+shift+`' },
+  { id: CommandId.terminalSplitRight, title: 'Split Terminal Right', category: 'Terminal', keybinding: 'ctrl+shift+5' },
+  { id: CommandId.terminalSplitDown, title: 'Split Terminal Down', category: 'Terminal' },
+  { id: CommandId.terminalKill, title: 'Kill Terminal Process', category: 'Terminal' },
+  { id: CommandId.terminalClear, title: 'Clear Terminal', category: 'Terminal' },
+  { id: CommandId.terminalFind, title: 'Find in Terminal', category: 'Terminal' },
+  { id: CommandId.terminalRename, title: 'Rename Terminal…', category: 'Terminal' },
+  { id: CommandId.devServerRun, title: 'Run Dev Server', category: 'Dev Server' },
+  { id: CommandId.devServerRestart, title: 'Restart Dev Server', category: 'Dev Server' },
+  { id: CommandId.devServerStop, title: 'Stop Dev Server', category: 'Dev Server' },
+  // Terminal `path:line:col` links call this; the editor arrives in Stage 7.
+  { id: CommandId.openFileAtLocation, title: 'Open File at Location', category: 'Files', hidden: true },
 ];
 
 /** Overrides map a command id to a chord string, or `null` to unbind it. */

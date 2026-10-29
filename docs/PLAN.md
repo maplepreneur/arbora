@@ -8,12 +8,11 @@ The companion document [BUILD_STAGES.md](./BUILD_STAGES.md) breaks the build int
 
 Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents must update this section and that table at the end of every piece of work.
 
-**Now:** Stage 1 (Browser panel) is merged ([PR #4](https://github.com/maplepreneur/arbora/pull/4), 29 Oct 2026). Stage 0 (Foundation) is merged ([PR #2](https://github.com/maplepreneur/arbora/pull/2)). The Omarchy/Hyprland check the same day is `arch-partial`: native Wayland with renderer `dpr` 2 on the scale-2 laptop, and 14/14 e2e on a full-size tile. Neither stage is `Done` until that check is `arch-ok`.
+**Now:** Stage 2 (Terminal panel) is code-complete in [PR #7](https://github.com/maplepreneur/arbora/pull/7) (not merged; CI green on macOS, Ubuntu and Windows in [run 40927191722](https://github.com/maplepreneur/arbora/actions/runs/40927191722)). Stages 0 and 1 are merged ([PR #2](https://github.com/maplepreneur/arbora/pull/2), [PR #4](https://github.com/maplepreneur/arbora/pull/4)). On 29 Oct 2026 a full Omarchy/Hyprland pass covered `pnpm dev` and the packaged tarball, with 17/17 e2e. Its fixes are in the same PR: narrow-column layout, terminal focus, page-load focus, and second-instance argv. The pass is `arch-ok` for Stages 0, 1 and 2 (title-bar drag tested by hand). The PR also adds `scripts/install-local.sh`, which installs Arbora in the Linux app launcher and runs this checkout, rebuilding at launch. No stage is `Done` yet.
 
-**Next:** Stage 2 (Terminal panel). `BrowserService.suggestUrl` is already in place for dev-server URL detection.
+**Next:** Review and merge [PR #7](https://github.com/maplepreneur/arbora/pull/7), which makes Stages 0–2 `Done`, then start Stage 3 (Agent panel). `TerminalService` is ready for ACP client terminals.
 
-**Blockers / open:** On the laptop's default scrolling column (~687px) the sidebar collapses, and the unpackaged Wayland class stays `electron`. `Super+/`, native dialogs, title-bar drag, and the packaged tarball were not run. Windows e2e on `main` is red after the Stage 1 merge — two Stage 0 smokes (`recent-projects` and keybinding settings edit). See [CI run 40907779167](https://github.com/maplepreneur/arbora/actions/runs/40907779167). Typecheck, lint, unit tests, and Linux/macOS e2e are green.
-
+**Blockers / open:** Windows e2e on `main` is red (two Stage 0 smokes; [CI run 40907779167](https://github.com/maplepreneur/arbora/actions/runs/40907779167)). Those smokes pass on [PR #7](https://github.com/maplepreneur/arbora/pull/7), so merging it clears this. No other blockers.
 ---
 
 ## 1. Product summary

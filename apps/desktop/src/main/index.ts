@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { app, BrowserWindow, dialog, Menu, shell, type WebContents } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, Menu, shell, type WebContents } from 'electron';
 import { toPlatform, type AppSettingsPatch } from '@arbora/shared';
 import { BrowserSessions } from './browser/browser-sessions.js';
 import type { BrowserService } from './browser/browser-service.js';
@@ -9,6 +9,9 @@ import { buildMacMenu } from './menu.js';
 import { ensureProjectSettingsFile } from './project-settings.js';
 import { SettingsStore } from './settings-store.js';
 import { detectTilingCompositor, parseProjectArg, startupSwitches } from './startup.js';
+import type { DevServer } from './terminal/dev-server.js';
+import { ShellEnvironment } from './terminal/shell-env.js';
+import type { TerminalService } from './terminal/terminal-service.js';
 import { ThemeService } from './theme-service.js';
 import { ProjectWindowError, WindowManager, type ProjectWindow } from './window-manager.js';
 
@@ -71,6 +74,7 @@ function main(): void {
   });
 
   void app.whenReady().then(() => {
+    const shellEnvironment = new ShellEnvironment(platform);
     const settings = new SettingsStore(join(app.getPath('userData'), 'settings.json'));
     for (const warning of settings.warnings) console.warn(`[settings] ${warning}`);
     settings.watch();
@@ -91,6 +95,7 @@ function main(): void {
       preloadPath: join(import.meta.dirname, '../preload/index.cjs'),
       browserPreloadPath: join(import.meta.dirname, '../preload/browser.cjs'),
       browserSessions,
+      shellEnvironment,
       userDataPath: app.getPath('userData'),
       renderer:
         !app.isPackaged && rendererUrl
@@ -180,6 +185,15 @@ function main(): void {
                 devToolsExtensions: patch.browser.devToolsExtensions ?? s.browser.devToolsExtensions,
                 trustLocalhostCertificates:
                   patch.browser.trustLocalhostCertificates ?? s.browser.trustLocalhostCertificates,
+              },
+            }
+          : {}),
+        ...(patch.terminal !== undefined
+          ? {
+              terminal: {
+                ...s.terminal,
+                ...(patch.terminal.shell !== undefined ? { shell: patch.terminal.shell } : {}),
+                fontSize: patch.terminal.fontSize ?? s.terminal.fontSize,
               },
             }
           : {}),
@@ -291,6 +305,97 @@ function main(): void {
     defineHandler('browser.suggestUrl', isTrusted, ({ url }, event) => ({
       navigated: windowFor(event.sender).browser?.suggestUrl(url) ?? false,
     }));
+
+    defineHandler(
+      'contextMenu.show',
+      isTrusted,
+      ({ items }, event) =>
+        new Promise((resolveMenu) => {
+          let chosen: string | null = null;
+          const menu = Menu.buildFromTemplate(
+            items.map((item) =>
+              'type' in item
+                ? { type: 'separator' as const }
+                : {
+                    label: item.label,
+                    enabled: item.enabled ?? true,
+                    ...(item.accelerator ? { accelerator: item.accelerator, registerAccelerator: false } : {}),
+                    click: () => {
+                      chosen = item.id;
+                    },
+                  },
+            ),
+          );
+          menu.popup({
+            window: windowFor(event.sender).window,
+            // `callback` can run before `click`; let the click land first.
+            callback: () => setTimeout(() => resolveMenu({ id: chosen }), 0),
+          });
+        }),
+    );
+    defineHandler('clipboard.readText', isTrusted, () => clipboard.readText());
+    defineHandler('clipboard.writeText', isTrusted, async ({ text }) => {
+      await clipboard.writeText(text);
+      return undefined;
+    });
+
+    const requireTerminals = (sender: WebContents): TerminalService => {
+      const terminals = windowFor(sender).terminals;
+      if (!terminals) throw new Error('Open a project first');
+      return terminals;
+    };
+    const requireDevServer = (sender: WebContents): DevServer => {
+      const devServer = windowFor(sender).devServer;
+      if (!devServer) throw new Error('Open a project first');
+      return devServer;
+    };
+    defineHandler('terminal.create', isTrusted, ({ kind, title, command, cols, rows }, event) =>
+      requireTerminals(event.sender).create({
+        cols,
+        rows,
+        ...(kind !== undefined ? { kind } : {}),
+        ...(title !== undefined ? { title } : {}),
+        ...(command !== undefined ? { command } : {}),
+      }),
+    );
+    defineHandler('terminal.list', isTrusted, (_req, event) => windowFor(event.sender).terminals?.list() ?? []);
+    defineHandler('terminal.scrollback', isTrusted, ({ id }, event) => ({
+      data: windowFor(event.sender).terminals?.scrollback(id) ?? '',
+    }));
+    defineHandler('terminal.write', isTrusted, ({ id, data }, event) => {
+      windowFor(event.sender).terminals?.write(id, data);
+      return undefined;
+    });
+    defineHandler('terminal.resize', isTrusted, ({ id, cols, rows }, event) => {
+      windowFor(event.sender).terminals?.resize(id, { cols, rows });
+      return undefined;
+    });
+    defineHandler('terminal.rename', isTrusted, ({ id, title }, event) => {
+      windowFor(event.sender).terminals?.rename(id, title);
+      return undefined;
+    });
+    defineHandler('terminal.kill', isTrusted, async ({ id }, event) => {
+      await windowFor(event.sender).terminals?.kill(id);
+      return undefined;
+    });
+    defineHandler('terminal.close', isTrusted, async ({ id }, event) => {
+      await windowFor(event.sender).terminals?.close(id);
+      return undefined;
+    });
+    defineHandler('terminal.lines', isTrusted, ({ id, count }, event) =>
+      requireTerminals(event.sender).lines(id, count),
+    );
+    defineHandler('devServer.run', isTrusted, ({ cols, rows }, event) =>
+      requireDevServer(event.sender).run({
+        ...(cols !== undefined ? { cols } : {}),
+        ...(rows !== undefined ? { rows } : {}),
+      }),
+    );
+    defineHandler('devServer.stop', isTrusted, async (_req, event) => {
+      await windowFor(event.sender).devServer?.stop();
+      return undefined;
+    });
+    defineHandler('devServer.status', isTrusted, (_req, event) => requireDevServer(event.sender).status());
 
     const queued = pendingPaths.splice(0);
     const first = initialProject ?? queued.shift() ?? null;

@@ -71,6 +71,13 @@ describe('parseProjectArg', () => {
     expect(parseProjectArg(['/electron', dir], '/', true)).toBeNull();
   });
 
+  it('skips the entry even when switches come before it (second-instance argv in dev)', () => {
+    expect(parseProjectArg(['/electron', '--class=arbora', '--enable-features=X', '.', '--', dir], '/', true)).toBe(
+      dir,
+    );
+    expect(parseProjectArg(['/electron', '--class=arbora', '.'], dir, true)).toBeNull();
+  });
+
   it('uses the first directory argument in packaged builds', () => {
     expect(parseProjectArg(['/opt/arbora/arbora', '--no-sandbox', dir], '/', false)).toBe(dir);
   });

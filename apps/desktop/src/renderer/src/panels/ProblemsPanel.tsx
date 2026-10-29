@@ -57,7 +57,7 @@ function formatSource(entry: ProblemEntry, pageUrl: string): string {
   try {
     const url = new URL(entry.url);
     const page = new URL(pageUrl);
-    if (url.origin === page.origin) label = `${url.pathname.replace(/^\//, '')}${url.search}`;
+    if (url.origin === page.origin) label = `${url.pathname.replace(/^\//, '')}${url.search}` || '/';
   } catch {
     // Not a URL (e.g. "<anonymous>"); show as is.
   }
@@ -111,12 +111,15 @@ export default function ProblemsPanel() {
             aria-pressed={filter === id}
             data-testid={`problems-filter-${id}`}
             onClick={() => setFilter(id)}
-            className={clsx('h-6 rounded px-2', filter === id ? 'bg-bg-muted text-fg' : 'text-fg-subtle hover:text-fg')}
+            className={clsx(
+              'h-6 shrink-0 rounded px-2 whitespace-nowrap',
+              filter === id ? 'bg-bg-muted text-fg' : 'text-fg-subtle hover:text-fg',
+            )}
           >
             {label}
           </button>
         ))}
-        <span className="ml-2 text-fg-subtle" data-testid="problems-counts">
+        <span className="ml-2 truncate whitespace-nowrap text-fg-subtle" data-testid="problems-counts">
           {errors} errors · {warnings} warnings
         </span>
         <button

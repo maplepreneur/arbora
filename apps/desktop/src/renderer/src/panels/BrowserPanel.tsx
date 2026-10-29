@@ -84,6 +84,7 @@ function ToolButton({
   disabled,
   active,
   testId,
+  collapseBelow,
 }: {
   icon: LucideIcon;
   label: string;
@@ -91,6 +92,8 @@ function ToolButton({
   disabled?: boolean;
   active?: boolean;
   testId?: string;
+  /** Hide the button when the toolbar is narrower than this container size (the palette still has it). */
+  collapseBelow?: 'xs' | 'sm' | 'md';
 }) {
   return (
     <button
@@ -102,7 +105,11 @@ function ToolButton({
       disabled={disabled}
       onClick={onClick}
       className={clsx(
-        'flex h-7 w-7 shrink-0 items-center justify-center rounded text-fg-muted hover:bg-bg-muted hover:text-fg disabled:opacity-35 disabled:hover:bg-transparent',
+        'h-7 w-7 shrink-0 items-center justify-center rounded text-fg-muted hover:bg-bg-muted hover:text-fg disabled:opacity-35 disabled:hover:bg-transparent',
+        collapseBelow === undefined && 'flex',
+        collapseBelow === 'xs' && 'hidden @xs:flex',
+        collapseBelow === 'sm' && 'hidden @sm:flex',
+        collapseBelow === 'md' && 'hidden @md:flex',
         active && 'bg-bg-muted text-fg',
       )}
     >
@@ -172,7 +179,7 @@ function UrlBar({ state }: { state: NavigationState | null }) {
   return (
     <form
       onSubmit={submit}
-      className="flex h-7 min-w-0 flex-1 items-center gap-2 rounded border border-border bg-bg-subtle px-2 focus-within:border-accent"
+      className="flex h-7 min-w-24 flex-1 items-center gap-2 rounded border border-border bg-bg-subtle px-2 focus-within:border-accent"
     >
       <SecurityBadge url={currentUrl} />
       {state?.favicon && state.favicon !== brokenFavicon && (
@@ -232,7 +239,10 @@ function Toolbar({ state }: { state: NavigationState | null }) {
   const loading = state?.loading ?? false;
   const hasPage = Boolean(state?.url);
   return (
-    <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-2" data-testid="browser-toolbar">
+    <div
+      className="@container flex h-9 shrink-0 items-center gap-1 overflow-hidden border-b border-border px-2"
+      data-testid="browser-toolbar"
+    >
       <ToolButton
         icon={ArrowLeft}
         label="Back"
@@ -272,7 +282,7 @@ function Toolbar({ state }: { state: NavigationState | null }) {
           const preset = viewportPresetIdSchema.parse(event.target.value);
           void window.arbora.invoke('browser.setPreset', { preset });
         }}
-        className="h-7 shrink-0 rounded border border-border bg-bg-subtle px-1 text-[11px] text-fg-muted outline-none focus:border-accent"
+        className="h-7 w-28 min-w-16 shrink rounded border border-border bg-bg-subtle px-1 text-[11px] text-fg-muted outline-none focus:border-accent"
       >
         {VIEWPORT_PRESETS.map((preset) => (
           <option key={preset.id} value={preset.id}>
@@ -284,6 +294,7 @@ function Toolbar({ state }: { state: NavigationState | null }) {
         icon={Camera}
         label="Take screenshot"
         testId="browser-screenshot"
+        collapseBelow="sm"
         disabled={!hasPage}
         onClick={() => executeCommand(CommandId.browserScreenshot)}
       />
@@ -291,6 +302,7 @@ function Toolbar({ state }: { state: NavigationState | null }) {
         icon={Bug}
         label={devToolsLabel ? `Page DevTools (${devToolsLabel})` : 'Page DevTools'}
         testId="browser-devtools"
+        collapseBelow="xs"
         active={state?.devToolsOpen ?? false}
         disabled={!hasPage}
         onClick={() => executeCommand(CommandId.browserToggleDevTools)}
@@ -298,6 +310,7 @@ function Toolbar({ state }: { state: NavigationState | null }) {
       <ToolButton
         icon={ExternalLink}
         label="Open in external browser"
+        collapseBelow="md"
         disabled={!hasPage}
         onClick={() => executeCommand(CommandId.browserOpenExternal)}
       />

@@ -6,3 +6,4 @@ export * from './keybindings.js';
 export * from './page-ipc.js';
 export * from './platform.js';
 export * from './settings.js';
+export * from './terminal.js';

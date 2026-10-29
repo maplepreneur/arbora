@@ -28,6 +28,23 @@ export function readProjectSettings(projectPath: string): ReadProjectSettingsRes
   }
 }
 
+/**
+ * Sets fields in `.arbora/project.json`, keeping everything else in the file (including keys this
+ * version does not know). An unreadable file is left alone and reported.
+ */
+export function updateProjectSettingsFile(projectPath: string, patch: Partial<ProjectSettings>): void {
+  const file = projectSettingsPath(projectPath);
+  let current: Record<string, unknown> = { version: PROJECT_SETTINGS_VERSION };
+  if (existsSync(file)) {
+    const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('.arbora/project.json is not a JSON object');
+    }
+    current = parsed as Record<string, unknown>;
+  }
+  writeJsonAtomic(file, { ...current, ...patch });
+}
+
 /** Creates `.arbora/project.json` with defaults if it does not exist yet. Returns its path. */
 export function ensureProjectSettingsFile(projectPath: string): string {
   const file = projectSettingsPath(projectPath);

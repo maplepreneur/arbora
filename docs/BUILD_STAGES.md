@@ -14,14 +14,14 @@ This document breaks [PLAN.md](./PLAN.md) into stages a coding agent can execute
 
 ## Progress
 
-**Now:** Stages 0 and 1 are merged. The Omarchy/Hyprland check on 29 Oct 2026 is `arch-partial` (native Wayland, renderer `dpr` 2 on the scale-2 laptop, 14/14 e2e on a full-size tile; the default scrolling column collapses the sidebar). **Next:** Stage 2 (Terminal panel). Neither stage is `Done`. Windows e2e on `main` is red after the Stage 1 merge (two Stage 0 smokes).
+**Now:** Stages 0 and 1 are merged. Stage 2 (Terminal panel) is code-complete in [PR #7](https://github.com/maplepreneur/arbora/pull/7), which is not merged. CI is green on macOS, Ubuntu and Windows ([run 40927191722](https://github.com/maplepreneur/arbora/actions/runs/40927191722)). The same PR has the fixes from a full Omarchy/Hyprland pass on 29 Oct 2026. That pass covered `pnpm dev` and the packaged tarball, with 17/17 e2e on Hyprland, and it is `arch-ok` for Stages 0, 1 and 2 (title-bar drag was tested by hand). **Next:** review and merge [PR #7](https://github.com/maplepreneur/arbora/pull/7), which makes Stages 0–2 `Done` and turns the red Windows smokes on `main` green. After that comes Stage 3 (Agent panel). No stage is `Done`.
 
 | Stage | Name | Status | Notes |
 | --- | --- | --- | --- |
-| 0 | Foundation | In progress (PR #2, merged) | Merged 29 Oct 2026. Typecheck, lint, unit, e2e and Linux `pnpm package` (AppImage, deb, tar.gz) verified on CI. Local Omarchy (Hyprland 0.56.2, Electron 45.1.0): typecheck, lint, 90 unit tests, and 14/14 e2e on a full-size dwindle tile. Native Wayland (`xwayland: false`); eDP-1 scale 2 reports renderer `dpr` 2. `arch-partial`: the default scrolling column (~687px) collapses the sidebar, and the Wayland class stays `electron`. Dialogs, title-bar drag, `Super+/`, and the packaged tarball were not run on this machine. |
-| 1 | Browser panel | In progress (PR #4, merged) | Merged 29 Oct 2026. Typecheck, lint and 90 unit tests green on Linux, macOS and Windows. Linux and macOS e2e green (14 tests, including React DevTools Components). Windows e2e on `main` is red: two Stage 0 smokes (`recent-projects` and keybinding settings edit) — see [CI run 40907779167](https://github.com/maplepreneur/arbora/actions/runs/40907779167). Local Omarchy/Hyprland: browser e2e passed, including rect sync, chords with the page focused, and screenshot `dpr`. `arch-partial`: `Super+/` was not toggled; the same narrow scrolling column collapses the sidebar. |
-| 2 | Terminal panel | Not started | Next stage. `BrowserService.suggestUrl` is ready for dev-server URL detection. |
-| 3 | Agent panel (ACP) | Not started | |
+| 0 | Foundation | In progress (PR #2, merged) | Merged 29 Oct 2026. Re-checked on Omarchy on 29 Oct 2026 (Hyprland 0.56.2, Electron 45.1.0) with the fixes in [PR #7](https://github.com/maplepreneur/arbora/pull/7) (not merged). Native Wayland, with class `arbora` in both dev and packaged builds. Tiling, floating and workspace moves work. Open Project uses the `xdg-desktop-portal-gtk` dialog. The packaged tarball runs sandboxed (no `--no-sandbox`). The narrow Omarchy column (687–701px, laptop at scale 2) now shows all panels after the minimum widths were lowered. 17/17 e2e on Hyprland, in both a wide DP-5 tile and a half-width laptop tile. Also fixed: an Electron `second-instance` argv bug that opened `apps/desktop` as a project, and the Hyprland re-tile e2e flake. `arch-ok`: title-bar drag of a floating window (Super+T) was tested by hand and moves the window, and the title-bar buttons still click. Windows e2e on `main` is red (`recent-projects`, keybinding settings edit; [CI run 40907779167](https://github.com/maplepreneur/arbora/actions/runs/40907779167)); the fix in [PR #7](https://github.com/maplepreneur/arbora/pull/7) (settings write race, Windows rename retry) turns both green on Windows in [CI run 40924587823](https://github.com/maplepreneur/arbora/actions/runs/40924587823). PR #7 also adds `scripts/install-local.sh`, which installs an app-launcher entry that runs this checkout and rebuilds at launch when the source changed. It was tested on Omarchy via `gtk-launch`: native Wayland, it skips the build when nothing changed, rebuilds after an edit, and the terminal works. It becomes `Done` when PR #7 merges. |
+| 1 | Browser panel | In progress (PR #4, merged) | Merged 29 Oct 2026. `arch-ok` on 29 Oct 2026 with the fixes in [PR #7](https://github.com/maplepreneur/arbora/pull/7) (not merged). Rect sync holds through tiling, floating and workspace moves. With DP-5 at fractional scale 1.25, a 282 CSS px viewport saves as a 352px PNG. Chords work with the page focused. `shell.openExternal` opens Omarchy's default browser. Fixes: a background page load no longer takes keyboard focus; the toolbar collapses buttons in narrow columns; Problems shows `/` for same-origin root requests. PR #7 CI is green on all three OSes. It becomes `Done` once [PR #7](https://github.com/maplepreneur/arbora/pull/7) merges. |
+| 2 | Terminal panel | In progress (PR #7) | Code complete on `stage-2-terminal`, not merged. First CI run ([40924587823](https://github.com/maplepreneur/arbora/actions/runs/40924587823)) was green on macOS and Ubuntu. Windows `Check` and `E2E smoke` were red: the terminal e2e found the page focused after a background load, and a `TerminalService` unit test failed. The second run ([40926154054](https://github.com/maplepreneur/arbora/actions/runs/40926154054)) turned Windows e2e green with a focus guard that outlives the load. It also showed the unit test's real cause: PowerShell `-Command` reported exit 1 instead of the command's own code. With that fixed, all six jobs are green on macOS, Ubuntu and Windows ([CI run 40927191722](https://github.com/maplepreneur/arbora/actions/runs/40927191722)). Covers F-TERM-01..04 and F-BROWSER-03. The read-only `agent` tab with its badge (F-TERM-05) is ready for Stage 3 to use. Local: typecheck, lint, 127 unit tests and 17/17 e2e on Hyprland. `arch-ok` on 29 Oct 2026 in `pnpm dev` and the packaged tarball: `node-pty` loads from `app.asar.unpacked`, the dev URL opens, `Ctrl+C`/`Ctrl+A` reach the shell, and quitting frees the dev server port. Process-tree kill and interactive shells pass on Windows and macOS CI. Left: review and merge PR #7, which makes Stage 2 `Done`. |
+| 3 | Agent panel (ACP) | Not started | Next stage. Hand-off: `TerminalService` is transport-neutral (`create` with `kind: 'agent'`, `command` and `readOnly`, plus `write`, `lines`, `kill`, `restart` and `close`) for ACP client terminal handlers. `DevServer.restart` and `TerminalService.lines` are ready for Stage 5's dev-server tools. |
 | 4 | Agent mode (`Mod+K`) | Not started | |
 | 5 | Browser control MCP server | Not started | |
 | 6 | Design mode (`Mod+D`) | Not started | |
@@ -90,8 +90,12 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - **XWayland fallback is silent.** If `ELECTRON_OZONE_PLATFORM_HINT` is unset, Electron picks X11 and everything still works but blurry on fractional scaling, and Wayland-only behaviours differ. Also call `app.commandLine.appendSwitch('ozone-platform-hint', 'auto')` in main so packaged builds do not depend on the env var, and enable `WaylandWindowDecorations` in `enable-features`.
 - **No server-side decorations.** Hyprland does not draw titlebars, so Arbora uses a frameless window with its own title bar on Linux (as on Windows). Window dragging works via `-webkit-app-region: drag`; test that the drag region does not cover the URL bar or tabs.
 - **Tiling WMs ignore saved window bounds.** `BrowserWindow.setBounds` on restore is pointless under Hyprland and can fight the compositor; only restore bounds when the window is floating (or skip on Linux). Expect many rapid `resize` events; the view-rect sync must be rAF-throttled and never loop.
-- **Omarchy's default scrolling column is narrower than the layout minimums.** `column_width` 0.49 on the 2880×1920 laptop at scale 2 is about 687px. The main row needs the 44px activity rail plus sidebar 160, center 320 and agent 240 (764px), so the collapsible sidebar drops to width 0 and the Stage 0 "all panels visible" smoke fails. Floating the window (`Super+T`) or a wider column shows every panel. An e2e assertion that compares absolute panel pixels across launches can miss a ±3px tolerance when Hyprland changes the tile size between processes.
-- **`app_id` in dev stays `electron`.** On Hyprland 0.56.2 with Electron 45, `app.setName('arbora')` and `--class=arbora` still leave `hyprctl clients` `class` as `electron` for the unpackaged binary. Match `electron` as well as `arbora` when probing a dev window. `omarchy-launch-or-focus arbora` waits on the packaged `.desktop` (`desktopName: arbora.desktop`).
+- **Omarchy's default scrolling column is narrow.** `column_width` 0.49 on the 2880×1920 laptop at scale 2 is about 687px; a half-width dwindle tile there is about 701px. The main row's minimums must fit inside that width: the 44px activity rail plus sidebar 160, center 240 and agent 200 make 644px. The window's `minWidth` is 640, because a larger minimum makes Hyprland overflow the column. With the old minimums (center 320, agent 240, 764px in total) the collapsible sidebar dropped to width 0. Panel chrome has to survive a ~280px center column, so the browser toolbar uses container queries to drop the screenshot, external, DevTools and viewport controls (all still in the palette).
+- **Hyprland re-tiles a new window when the previous e2e window closes.** The first frames of a launch can have the old size. `e2e/app.ts` waits until `innerWidth`×`innerHeight` holds steady for 400ms before a test starts, because assertions that compare panel pixels across launches flaked without it.
+- **Window class.** With `--class=arbora`, both dev and packaged builds report `class: arbora`, `xwayland: false` in `hyprctl clients` (Hyprland 0.56.2, Electron 45.1.0). Older notes saw `electron` in dev; probes still match both. `omarchy-launch-or-focus arbora` waits on the packaged `.desktop` (`desktopName: arbora.desktop`).
+- **Hyprland 0.56 uses a Lua config.** `hyprctl dispatch` takes Lua, for example `hyprctl dispatch 'hl.dsp.window.float({ action = "toggle", window = "class:arbora" })'` or `hl.dsp.send_shortcut({ mods = "CTRL", key = "grave", window = "class:arbora" })`. The stubs in `/usr/share/hypr/stubs/hl.meta.lua` list every dispatcher. `send_shortcut` goes through the real keymap, so Chromium sees the correct `KeyboardEvent.code`; `wtype` builds its own keymap, so chords it sends can have the wrong `code`. On this machine `send_shortcut` answers "key not found" for some letters (`k`, `a`).
+- **`Super+/` rewrites `~/.config/hypr/monitors.lua`.** `omarchy-hyprland-monitor-scaling` edits the catch-all `omarchy_monitor_scale`, so it changes nothing live on monitors with their own `hl.monitor` rule, and it persists across sessions. To test fractional scaling, use a live-only rule, for example `hyprctl eval 'hl.monitor({ output = "DP-5", mode = "2560x1440@144", position = "1440x1120", scale = 1.25 })'`, then `hyprctl reload`. Never run the script from an agent.
+- **Omarchy's universal clipboard sends `Ctrl+C`/`Ctrl+V` to Arbora.** `Super+C`/`Super+V` send `Ctrl+Insert`/`Shift+Insert` only to windows tagged `terminal`. Arbora isn't tagged, so its xterm copies on `Ctrl+C` while text is selected and pastes on `Ctrl+V`, as VS Code and Windows Terminal do.
 - **`globalShortcut` is a no-op on Wayland.** Do not use it for anything, including probes.
 - **Portals.** File dialogs go through `xdg-desktop-portal` (`-hyprland` for screen things, `-gtk` for file chooser). If dialogs never appear, check `systemctl --user status xdg-desktop-portal*`.
 - **NVIDIA.** Electron on Hyprland with proprietary NVIDIA drivers may need `--disable-gpu-sandbox` or fall back to software rendering; expose `ARBORA_FLAGS` (space-separated Chromium switches appended at startup) and document it.
@@ -148,7 +152,10 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - electron-builder derives installer names from the scoped workspace package (`dist/@arbora/desktop-...`, invalid deb name); `extraMetadata.name: arbora` plus `artifactName` fix it, and `desktopName: arbora.desktop` with `linux.syncDesktopName` keeps the Wayland app_id / WM_CLASS in sync with the `.desktop` file.
 - GitHub's Ubuntu runners block unprivileged user namespaces, so Electron needs `--no-sandbox` there; the e2e launcher adds it only when `CI` is set on Linux. The packaged tarball runs sandboxed on a normal desktop.
 - Stage 4 acceptance expects `fixtures/vite-react` to be a React 18 dev build (for `_debugSource`), but Stage 0 specifies React 19. The fixture is React 19; Stage 4 should add a React 18 fixture (or variant) rather than downgrading this one.
-- On Omarchy's scrolling layout the default column hides the sidebar (see the Hyprland gotcha). Run the layout smoke on a full-size tile, or float the window, before treating a hidden sidebar as an app bug. The same launch's panel-width persistence check is sensitive to a few pixels of compositor resize.
+- On Omarchy's scrolling layout the default column is about 687px wide (see the Hyprland gotcha). The layout minimums now fit inside it, and launches wait for Hyprland to stop resizing the window before tests run.
+- Chromium's `second-instance` argv can put switches before the app entry: `electron --class=arbora --enable-features=… . -- /path`. Skipping a fixed `argv[1]` in default-app mode read `.` as the project and opened `apps/desktop` in a second window. `parseProjectArg` skips the first positional argument instead.
+- `SettingsStore.update()` must re-read the file first. A hand edit that lands just before an in-app change, and before the watcher reloads it, was otherwise overwritten. On Windows, `rename` over a file that another handle (the watcher, antivirus) has open fails with `EPERM`/`EBUSY` for a moment, so the atomic write retries a few times. This fixed the red Windows e2e jobs (green on PR #7).
+- `pnpm build` and `pnpm build:test` (run by `pnpm e2e`) write to the same `out/`, so code that runs `out/` directly must not trust it blindly. `scripts/arbora-local` stores the mtime of `out/main/index.js` after its own build and rebuilds whenever that changes or the source is newer. Desktop launchers start with the session's PATH, not the login shell's, so the script runs `pnpm` through `bash -lc`.
 
 ### Acceptance
 
@@ -169,7 +176,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - [x] Panel layout with persistence and lazy panels
 - [x] Command palette and command registry
 - [x] Keybinding service with `before-input-event` interception and terminal passthrough
-- [ ] Verified locally on Omarchy/Hyprland (see checklist above)
+- [x] Verified locally on Omarchy/Hyprland (see checklist above)
 - [x] Theme
 - [x] CI matrix and package workflow
 - [x] electron-builder config
@@ -226,6 +233,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - The renderer's CSP must allow `img-src http: https:` for page favicons in the URL bar.
 - Unpackaged Electron (dev, e2e) logs "Electron Security Warning (Insecure Content-Security-Policy)" into the user's page when it has no CSP. This was seen on macOS and Windows CI but not on Linux. It arrives through CDP `Log.entryAdded` as well as the console, so Problems drops it in both mappers. Reproduce locally with `ELECTRON_ENABLE_SECURITY_WARNINGS=true pnpm e2e`.
 - CI windows are smaller than a desktop session, so e2e layout assertions pick a viewport preset first instead of relying on the window size.
+- In a half-width Hyprland tile (~700px), the toolbar hides the screenshot, external and DevTools buttons. Tests that click them collapse the sidebar first (`roomForToolbar`), before any measurement that depends on viewport width.
 - Instruction deviations: highlights are drawn into the BGRA bitmap in main (no `sharp`, no canvas round-trip), element screenshots crop the viewport capture (one `dpr` source for both), and the "Open fixture" command is **Open Dev Server URL** (uses the project's `devUrl`, default `http://localhost:5173`).
 
 ### Acceptance
@@ -247,7 +255,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - [x] `browser-preload` bootstrap and private channel
 - [x] Localhost certificate handling (setting)
 - [x] e2e tests
-- [ ] Verified locally on Omarchy/Hyprland (rect sync while tiling, `Super+/` scaling and screenshot `dpr`, chords with the page focused)
+- [x] Verified locally on Omarchy/Hyprland (rect sync while tiling, `Super+/` scaling and screenshot `dpr`, chords with the page focused)
 
 ---
 
@@ -276,6 +284,16 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - xterm's WebGL addon throws on some Linux GPU/driver combinations (and in headless CI). Wrap `loadAddon` in try/catch and fall back.
 - Resizing panels fires many `resize` events; debounce `pty.resize` or shells redraw badly.
 - Terminals from ACP agents (Stage 3) will reuse `TerminalService`; keep the API transport-neutral (no renderer assumptions).
+- `node-pty` 1.1.0 ships prebuilt binaries for macOS and Windows only, so Linux compiles it during `electron-builder install-app-deps`. A space in the checkout path ("Voxel North") only causes a warning. pnpm 10 skips dependency build scripts unless the package is in `onlyBuiltDependencies`. On macOS the prebuilt `spawn-helper` can lose its exec bit, so `scripts/fix-node-pty.mjs` restores it, and `asarUnpack` keeps it outside the asar.
+- `Ctrl+Shift+\`` arrives as `key: '~'`, so chords match the backquote by `code === 'Backquote'`.
+- Electron 45's `clipboard.readText`/`writeText` return Promises; await them in IPC handlers, or the lint rule for floating promises fails.
+- The `WebContentsView` draws over the DOM, so terminal and tab context menus are native (`Menu.popup` behind the `contextMenu.show` channel); a DOM menu would be hidden under the page.
+- xterm instances live in a module-level session map keyed by terminal id, not in React state. Tab switches and splits re-parent the same instance, so scrollback and WebGL context survive. `detach` takes the container, so an unmounting old pane can't detach a terminal that a new pane already holds.
+- Chromium focuses a `WebContentsView` when it loads its first page. A dev URL auto-opened from the terminal therefore took the keyboard from the shell, and the next `Ctrl+C` never reached the dev server. `BrowserService.suggestUrl` hands focus back to the app UI during the load and for 1s after it stops, because on Windows the focus can land after `did-stop-loading`. A mouse click in the page or the Focus Page action ends the guard early. Playwright's `page.keyboard` sends input over CDP and ignores OS focus, so e2e tests have to assert `webContents.isFocused()` from main.
+- On Windows, starting the first `node` under ConPTY can take longer than vitest's default 5s test timeout, so the real-shell `TerminalService` tests use 20s. node-pty prints `Error: AttachConsole failed` from `conpty_console_list_agent.js` when a terminal is killed. That message is noise, not a failure.
+- PowerShell's `-Command` exits 1 whenever a native command fails, which hides the dev server's real exit code. `shellCommandArgs` appends `if ($LASTEXITCODE) { exit $LASTEXITCODE }`.
+- **Show Terminal** (`Ctrl+\``) must focus the xterm, not just switch tabs; otherwise a fresh window drops typing on the floor. The pane may still be lazy-loading, so focus is a `focusRequest` counter that the active pane consumes when it mounts.
+- fontconfig can override the terminal's font list. On this machine `~/.config/fontconfig/fonts.conf` strongly prepends Operator Mono to every `monospace` request, so even an explicit `'JetBrainsMono Nerd Font'` renders Nerd Font icons (starship's U+EA71) as tofu. Powerline glyphs still render, because xterm's WebGL renderer draws them itself. Check with `fc-match "<family>"` before blaming xterm.
 
 ### Acceptance
 
@@ -285,13 +303,14 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 
 ### Checklist
 
-- [ ] `TerminalService` with ring buffer
-- [ ] Shell detection and login-shell PATH
-- [ ] xterm UI with tabs, splits, addons
-- [ ] URL detection and open-in-browser
-- [ ] Dev command inference, `project.json`, run/restart
-- [ ] Process-tree kill on all OSes
-- [ ] Tests
+- [x] `TerminalService` with ring buffer
+- [x] Shell detection and login-shell PATH
+- [x] xterm UI with tabs, splits, addons
+- [x] URL detection and open-in-browser
+- [x] Dev command inference, `project.json`, run/restart
+- [x] Process-tree kill on all OSes (Linux locally; macOS and Windows unit tests green in [CI run 40924587823](https://github.com/maplepreneur/arbora/actions/runs/40924587823))
+- [x] Tests
+- [x] Verified locally on Omarchy/Hyprland (`pnpm dev` and packaged tarball)
 
 ---
 
