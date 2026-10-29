@@ -152,7 +152,11 @@ describe('shellCommandArgs', () => {
   it('builds one-shot command arguments per shell', () => {
     expect(shellCommandArgs('linux', '/bin/bash', 'pnpm dev')).toEqual(['-c', 'pnpm dev']);
     expect(shellCommandArgs('darwin', '/bin/zsh', 'pnpm dev')).toEqual(['-lc', 'pnpm dev']);
-    expect(shellCommandArgs('win32', 'C:\\x\\pwsh.exe', 'pnpm dev')).toEqual(['-NoLogo', '-Command', 'pnpm dev']);
+    expect(shellCommandArgs('win32', 'C:\\x\\pwsh.exe', 'pnpm dev')).toEqual([
+      '-NoLogo',
+      '-Command',
+      '$global:LASTEXITCODE = 0; pnpm dev; if ($LASTEXITCODE) { exit $LASTEXITCODE }',
+    ]);
     expect(shellCommandArgs('win32', 'C:\\Windows\\system32\\cmd.exe', 'pnpm dev')).toEqual([
       '/d',
       '/s',

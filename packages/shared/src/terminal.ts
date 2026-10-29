@@ -218,7 +218,8 @@ export function shellCommandArgs(platform: Platform, shell: string, command: str
   if (platform === 'win32') {
     const name = shell.toLowerCase().split('\\').pop() ?? '';
     if (name === 'cmd.exe' || name === 'cmd') return ['/d', '/s', '/c', command];
-    return ['-NoLogo', '-Command', command];
+    // `-Command` exits 1 for any failed native command; pass the real exit code through.
+    return ['-NoLogo', '-Command', `$global:LASTEXITCODE = 0; ${command}; if ($LASTEXITCODE) { exit $LASTEXITCODE }`];
   }
   return [platform === 'darwin' ? '-lc' : '-c', command];
 }
