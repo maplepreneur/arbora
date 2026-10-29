@@ -1,0 +1,52 @@
+appId: dev.arbora.app
+productName: Arbora
+executableName: arbora
+copyright: Copyright © Arbora contributors
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - out/**
+  - package.json
+
+# Native modules (node-pty from Stage 2) must live outside the asar archive.
+asarUnpack:
+  - '**/*.node'
+
+artifactName: arbora-${version}-${os}-${arch}.${ext}
+
+linux:
+  target:
+    - AppImage
+    - deb
+    - tar.gz
+  category: Development
+  maintainer: Arbora contributors
+  synopsis: Build web apps by pointing at the running app
+  # Electron uses desktopName as the Wayland app_id / X11 WM_CLASS; keep it in sync with the
+  # installed .desktop file so compositors (Hyprland rules, docks) associate the window.
+  syncDesktopName: true
+  desktop:
+    entry:
+      StartupWMClass: arbora
+
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.developer-tools
+  # Unsigned until Stage 9 adds signing and notarization.
+  identity: null
+
+win:
+  target:
+    - nsis
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+
+publish: null

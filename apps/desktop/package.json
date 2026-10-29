@@ -4,8 +4,10 @@
   "version": "0.0.0",
   "private": true,
   "description": "Build web apps by pointing at the running app.",
-  "author": "Arbora",
+  "author": "Arbora contributors",
+  "homepage": "https://github.com/maplepreneur/arbora",
   "license": "UNLICENSED",
+  "desktopName": "arbora.desktop",
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
