@@ -433,6 +433,10 @@ export class AgentService {
   private ensureRuntime(record: ThreadRecord): Promise<Runtime> {
     if (record.runtime?.sessionId) return Promise.resolve(record.runtime);
     if (record.starting) return record.starting;
+    if (record.runtime && record.thread.state.status === 'auth_required') {
+      // The process is up and waiting for `authenticate`; spawning another would leak this one.
+      return Promise.reject(new AgentServiceError(record.thread.state.error ?? 'The agent needs you to log in'));
+    }
     const starting = this.start(record).finally(() => {
       record.starting = null;
     });
@@ -457,6 +461,8 @@ export class AgentService {
       await new Promise((resolveDelay) => setTimeout(resolveDelay, delay));
     }
     this.setState(record, { status: 'starting', error: null, authMethods: [] });
+    // Never replace a live runtime without stopping it, or its process outlives the thread.
+    if (record.runtime) await this.stopRuntime(record);
 
     const env = await this.options.environment();
     Object.assign(env, agent.env);

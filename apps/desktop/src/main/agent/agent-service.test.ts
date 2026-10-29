@@ -324,6 +324,10 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
     ]);
     const result = await h.service.prompt(thread.id, [{ type: 'text', text: 'hello' }]);
     expect(result).toEqual({ stopReason: null, error: 'auth_required' });
+    // Prompting while the agent waits for login must reuse the running process, not spawn another.
+    const spawns = (): number =>
+      h.logs.filter((e) => e.direction === 'info' && /spawning/.test(String(e.message))).length;
+    expect(spawns()).toBe(1);
     await h.service.authenticate(thread.id, 'fake-login');
     // The pending prompt is sent once the session exists.
     await expect
