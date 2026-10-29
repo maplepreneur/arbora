@@ -8,11 +8,11 @@ The companion document [BUILD_STAGES.md](./BUILD_STAGES.md) breaks the build int
 
 Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents must update this section and that table at the end of every piece of work.
 
-**Now:** Stage 1 (Browser panel) is merged ([PR #4](https://github.com/maplepreneur/arbora/pull/4), 29 Oct 2026) and awaiting Omarchy/Hyprland `arch-ok`. Stage 0 (Foundation) is also merged ([PR #2](https://github.com/maplepreneur/arbora/pull/2)) and awaiting the same local check. Neither stage is `Done` until `arch-ok` is recorded.
+**Now:** Stage 1 (Browser panel) is merged ([PR #4](https://github.com/maplepreneur/arbora/pull/4), 29 Oct 2026). Stage 0 (Foundation) is merged ([PR #2](https://github.com/maplepreneur/arbora/pull/2)). The Omarchy/Hyprland check the same day is `arch-partial`: native Wayland with renderer `dpr` 2 on the scale-2 laptop, and 14/14 e2e on a full-size tile. Neither stage is `Done` until that check is `arch-ok`.
 
 **Next:** Stage 2 (Terminal panel). `BrowserService.suggestUrl` is already in place for dev-server URL detection.
 
-**Blockers / open:** Windows e2e on `main` is red after the Stage 1 merge — two Stage 0 smokes (`recent-projects` and keybinding settings edit). See [CI run 40907779167](https://github.com/maplepreneur/arbora/actions/runs/40907779167). Typecheck, lint, unit tests, and Linux/macOS e2e are green.
+**Blockers / open:** On the laptop's default scrolling column (~687px) the sidebar collapses, and the unpackaged Wayland class stays `electron`. `Super+/`, native dialogs, title-bar drag, and the packaged tarball were not run. Windows e2e on `main` is red after the Stage 1 merge — two Stage 0 smokes (`recent-projects` and keybinding settings edit). See [CI run 40907779167](https://github.com/maplepreneur/arbora/actions/runs/40907779167). Typecheck, lint, unit tests, and Linux/macOS e2e are green.
 
 ---
 
