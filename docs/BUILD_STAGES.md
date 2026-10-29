@@ -7,10 +7,30 @@ This document breaks [PLAN.md](./PLAN.md) into stages a coding agent can execute
 - Work one stage at a time, in order. Each stage ends with a usable app.
 - One pull request per stage (split into several PRs if a stage is large, but do not mix stages).
 - Before starting a stage, read its gotchas. Most of them cost hours when discovered the hard way.
-- When a task is done, tick its checkbox in this file in the same PR. Update the **Progress** table at the top.
 - Before pushing: `pnpm typecheck && pnpm lint && pnpm test`. Keep the `fixtures/` apps green.
 - Record new gotchas you discover in the stage's "Gotchas" list so the next agent benefits.
 - Pin dependency versions when first adding them. Check the current latest at that time; versions named here are a starting point, not a contract.
+- At the end of every piece of work, update the **Progress** table and the stage checklist in this file, and the **Current phase** section in [PLAN.md](./PLAN.md), in the same PR. See [AGENTS.md](../AGENTS.md#end-of-work-update-progress) and `.cursor/rules/update-stage-progress.mdc`. Do not leave this for a follow-up.
+
+## Progress
+
+**Now:** Stage 1 (Browser panel) is merged and awaiting Omarchy/Hyprland `arch-ok`. **Next:** Stage 2 (Terminal panel). Stages 0 and 1 stay `In progress` until that local check is recorded. Windows e2e on `main` is red after the Stage 1 merge (two Stage 0 smokes).
+
+| Stage | Name | Status | Notes |
+| --- | --- | --- | --- |
+| 0 | Foundation | In progress (PR #2, merged) | Merged 29 Oct 2026. Typecheck, lint, unit, e2e and Linux `pnpm package` (AppImage, deb, tar.gz) verified. Only the Omarchy/Hyprland check remains (awaiting `arch-ok`). |
+| 1 | Browser panel | In progress (PR #4, merged) | Merged 29 Oct 2026. Typecheck, lint and 90 unit tests green on Linux, macOS and Windows. Linux and macOS e2e green (14 tests, including React DevTools Components). Windows e2e on `main` is red: two Stage 0 smokes (`recent-projects` and keybinding settings edit) — see [CI run 40907779167](https://github.com/maplepreneur/arbora/actions/runs/40907779167). Awaiting `arch-ok` (rect sync under tiling, `Super+/` screenshot `dpr`, chords with the page focused). |
+| 2 | Terminal panel | Not started | Next stage. `BrowserService.suggestUrl` is ready for dev-server URL detection. |
+| 3 | Agent panel (ACP) | Not started | |
+| 4 | Agent mode (`Mod+K`) | Not started | |
+| 5 | Browser control MCP server | Not started | |
+| 6 | Design mode (`Mod+D`) | Not started | |
+| 7 | Files and editor | Not started | |
+| 8 | Git and GitHub | Not started | |
+| 9 | Distribution and polish | Not started | |
+| 10 | Stretch | Not started | |
+
+Status values: `Not started`, `In progress (PR #N)` / `In progress (PR #N, merged)`, `Blocked (reason)`, `Done (PR #N)`. Never mark `Done` from CI alone; `arch-ok` on Omarchy/Hyprland is required.
 
 ## Code conventions for the builder agent
 
@@ -22,24 +42,6 @@ This document breaks [PLAN.md](./PLAN.md) into stages a coding agent can execute
 - Child processes (agents, terminals, git, tooling) always receive the cached login-shell PATH and the project cwd.
 - Every new tool, command or setting gets a unit test or an e2e step in the stage it lands in.
 - Commit per logical change; one PR per stage (or per clearly labelled sub-part of a stage).
-
-## Progress
-
-| Stage | Name | Status | Notes |
-| --- | --- | --- | --- |
-| 0 | Foundation | In progress (PR #2, merged) | Code, CI matrix and Linux tarball merged; only the Omarchy/Hyprland check remains (awaiting `arch-ok`) |
-| 1 | Browser panel | In progress (PR #4) | Checklist done except the Arch check; CI green on Linux, macOS and Windows (typecheck, lint, 90 unit tests, 14 e2e incl. React DevTools Components panel); awaiting `arch-ok` on Omarchy/Hyprland (rect sync under tiling, `Super+/` screenshot `dpr`, chords with the page focused), then merge |
-| 2 | Terminal panel | Not started | |
-| 3 | Agent panel (ACP) | Not started | |
-| 4 | Agent mode (`Mod+K`) | Not started | |
-| 5 | Browser control MCP server | Not started | |
-| 6 | Design mode (`Mod+D`) | Not started | |
-| 7 | Files and editor | Not started | |
-| 8 | Git and GitHub | Not started | |
-| 9 | Distribution and polish | Not started | |
-| 10 | Stretch | Not started | |
-
-Status values: `Not started`, `In progress`, `Blocked (reason)`, `Done (PR #)`.
 
 ## Cross-cutting gotchas (read before any stage)
 
@@ -692,7 +694,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - The stage's features are exercised by hand on the Arch Linux / Omarchy / Hyprland machine using the per-stage verification list, with the result recorded in the Progress table.
 - New IPC channels have zod schemas in `packages/shared` and are documented in the channel registry.
 - New settings have defaults, schema entries and UI (from Stage 9 onward).
-- Stage checklist and Progress table updated in this file; new gotchas recorded.
+- Stage checklist and Progress table updated in this file; **Current phase** in [PLAN.md](./PLAN.md) matches the table; new gotchas recorded.
 - No secrets, tokens or absolute user paths in logs or committed fixtures.
 
 ## Appendix B: Manual test matrix (record results in Progress notes)

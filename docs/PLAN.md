@@ -4,6 +4,16 @@ Arbora is a cross-platform desktop app (Linux Arch/Debian, macOS, Windows) for b
 
 The companion document [BUILD_STAGES.md](./BUILD_STAGES.md) breaks the build into stages with instructions, gotchas and a progress tracker. This file is the "what and why"; that file is the "how and when".
 
+## Current phase
+
+Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents must update this section and that table at the end of every piece of work.
+
+**Now:** Stage 1 (Browser panel) is merged ([PR #4](https://github.com/maplepreneur/arbora/pull/4), 29 Oct 2026) and awaiting Omarchy/Hyprland `arch-ok`. Stage 0 (Foundation) is also merged ([PR #2](https://github.com/maplepreneur/arbora/pull/2)) and awaiting the same local check. Neither stage is `Done` until `arch-ok` is recorded.
+
+**Next:** Stage 2 (Terminal panel). `BrowserService.suggestUrl` is already in place for dev-server URL detection.
+
+**Blockers / open:** Windows e2e on `main` is red after the Stage 1 merge — two Stage 0 smokes (`recent-projects` and keybinding settings edit). See [CI run 40907779167](https://github.com/maplepreneur/arbora/actions/runs/40907779167). Typecheck, lint, unit tests, and Linux/macOS e2e are green.
+
 ---
 
 ## 1. Product summary

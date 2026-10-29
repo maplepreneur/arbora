@@ -2,6 +2,24 @@
 
 Conventions for agents building Arbora. The full rules live in [docs/BUILD_STAGES.md](docs/BUILD_STAGES.md) ("Code conventions for the builder agent" and the per-stage gotchas); read them before starting a stage.
 
+Cursor always-on copy of the progress rule: [`.cursor/rules/update-stage-progress.mdc`](.cursor/rules/update-stage-progress.mdc).
+
+## End of work: update progress
+
+A task is not finished until the phase docs match what you just did. Update them in the **same PR** as the work. Do not open a follow-up "update the tracker" PR, and do not skip this because the change was "docs only", a fix, CI, or verification.
+
+1. Read [docs/BUILD_STAGES.md](docs/BUILD_STAGES.md) **Progress** and the current stage checklist, and [docs/PLAN.md](docs/PLAN.md) **Current phase**.
+2. Tick finished checklist items. Leave unverified items unchecked (especially Omarchy/Hyprland `arch-ok`).
+3. Set the Progress table **Status** and **Notes** for every stage you touched. Notes must be true *now*: merged or not, CI result (name red jobs), what is left, what comes next. Do not leave "then merge" after a PR is merged.
+4. Rewrite **Current phase** in `docs/PLAN.md` so **Now / Next / Blockers** match that table.
+5. Append new gotchas to the stage that discovered them. Fill Appendix B cells when you ran a manual agent matrix.
+
+Status values: `Not started`, `In progress (PR #N)` or `In progress (PR #N, merged)`, `Blocked (reason)`, `Done (PR #N)`.
+
+Never mark a stage `Done` from CI alone. The definition of done requires `arch-ok` on Omarchy/Hyprland (see BUILD_STAGES "Local testing"). Until then the status stays `In progress` or `Blocked`.
+
+When you finish a stage's code, point the next unstarted stage's Notes at "Next stage" and say what hand-off is ready (hooks, fixtures, settings).
+
 ## Commands
 
 - `pnpm install` (postinstall runs `install-electron`; Electron 45 no longer downloads its binary on install)
