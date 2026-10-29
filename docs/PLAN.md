@@ -8,11 +8,11 @@ The companion document [BUILD_STAGES.md](./BUILD_STAGES.md) breaks the build int
 
 Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents must update this section and that table at the end of every piece of work.
 
-**Now:** Stage 2 (Terminal panel) is code-complete in [PR #7](https://github.com/maplepreneur/arbora/pull/7) (not merged; CI green on macOS, Ubuntu and Windows in [run 40927191722](https://github.com/maplepreneur/arbora/actions/runs/40927191722)). Stages 0 and 1 are merged ([PR #2](https://github.com/maplepreneur/arbora/pull/2), [PR #4](https://github.com/maplepreneur/arbora/pull/4)). On 29 Oct 2026 a full Omarchy/Hyprland pass covered `pnpm dev` and the packaged tarball, with 17/17 e2e. Its fixes are in the same PR: narrow-column layout, terminal focus, page-load focus, and second-instance argv. The pass is `arch-ok` for Stages 0, 1 and 2 (title-bar drag tested by hand). The PR also adds `scripts/install-local.sh`, which installs Arbora in the Linux app launcher and runs this checkout, rebuilding at launch. No stage is `Done` yet.
+**Now:** Stages 0–2 (Foundation, Browser panel, Terminal panel) are `Done`: [PR #2](https://github.com/maplepreneur/arbora/pull/2), [PR #4](https://github.com/maplepreneur/arbora/pull/4) and [PR #7](https://github.com/maplepreneur/arbora/pull/7) are merged. `main` CI is green on Ubuntu, macOS and Windows ([run 40931674159](https://github.com/maplepreneur/arbora/actions/runs/40931674159)), and all three stages are `arch-ok` on Omarchy/Hyprland (29 Oct 2026). Arbora is installed on the Omarchy machine as an app-launcher entry that runs the checkout (`scripts/install-local.sh`).
 
-**Next:** Review and merge [PR #7](https://github.com/maplepreneur/arbora/pull/7), which makes Stages 0–2 `Done`, then start Stage 3 (Agent panel). `TerminalService` is ready for ACP client terminals.
+**Next:** Stage 3, Agent panel (ACP). Start with `packages/acp-client` and the fake-agent integration test, then wire the client terminal handlers to `TerminalService`. The [Stage 3 Notes in the Progress table](./BUILD_STAGES.md#progress) list the hand-off and the manual-test setup.
 
-**Blockers / open:** Windows e2e on `main` is red (two Stage 0 smokes; [CI run 40907779167](https://github.com/maplepreneur/arbora/actions/runs/40907779167)). Those smokes pass on [PR #7](https://github.com/maplepreneur/arbora/pull/7), so merging it clears this. No other blockers.
+**Blockers / open:** No blockers. One open item: a flaky macOS e2e clipboard step in the terminal tests (it passed on rerun; see the Stage 2 gotchas).
 ---
 
 ## 1. Product summary
