@@ -28,7 +28,7 @@ This document breaks [PLAN.md](./PLAN.md) into stages a coding agent can execute
 | Stage | Name | Status | Notes |
 | --- | --- | --- | --- |
 | 0 | Foundation | In progress (PR #2) | Code, CI matrix and Linux tarball done; awaiting `arch-ok` on Omarchy/Hyprland |
-| 1 | Browser panel | Not started | |
+| 1 | Browser panel | In progress (PR #4) | Code and e2e done (CI matrix); React DevTools Components panel verified in e2e; awaiting `arch-ok` on Omarchy/Hyprland (rect sync under tiling, fractional-scale screenshots) |
 | 2 | Terminal panel | Not started | |
 | 3 | Agent panel (ACP) | Not started | |
 | 4 | Agent mode (`Mod+K`) | Not started | |
@@ -207,6 +207,20 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - `Network.enable` with large pages can flood the main process. Set `maxTotalBufferSize` and drop bodies; only metadata goes in the ring buffer.
 - If the dev server redirects to `0.0.0.0` or an IPv6 host, Chromium may refuse. Normalise `0.0.0.0` to `localhost` in the URL bar.
 - Self-signed HTTPS dev servers (Vite with `https: true`) trigger certificate errors. Add `session.setCertificateVerifyProc` that trusts localhost origins only, behind a setting.
+- Do not use `setCertificateVerifyProc` for the localhost rule after all: Chromium caches verifier results per certificate for the session, so toggling the setting does not apply to certificates already seen (in either direction), and `closeAllConnections()` does not clear it. `app.on('certificate-error')` fires on every failed verification, cached or not, so the rule lives there and reads the setting live.
+- Electron does not exit while a `WebContentsView`'s webContents is still open. Close it first in `dispose()`, before anything that can throw (such as saving state). The bug showed up as `app.close()` hanging: a save on window close emitted a settings change, the listener read `webContents` on the destroyed window, and the throw skipped the close. `ProjectWindow` now leaves the manager before disposing.
+- `BrowserWindow.capturePage()` does not include child `WebContentsView`s. Capture the view's own webContents for page screenshots; for whole-window artifacts, use an OS-level capture.
+- The DevTools webContents shares the page's session. Code that finds "the page" by session or partition (tests, diagnostics) must skip `devtools://` URLs.
+- Opening DevTools emits `Network.loadingFailed` (`net::ERR_CACHE_MISS`) for requests the page never sent. Only report failures for request IDs seen in `requestWillBeSent`.
+- React DevTools and Vite's client both wrap `console`, so the top stack frame of a page `console.error` is `installHook.js` or `@vite/client`. Problems uses the first frame that is not tooling (`chrome-extension://`, `/@vite/`, `/@react-refresh`, `/node_modules/`).
+- Chrome Web Store CRX files contain a `_metadata/` folder (verified contents) that Electron refuses to load ("Cannot load extension with file or directory name _metadata"). Skip it when unpacking. The store serves only the latest version, so the SHA-256 pins drift when React/Vue DevTools publish; `pnpm --filter @arbora/desktop extensions:update` re-pins them, and `pnpm dev`/`e2e` treat a failed fetch as a warning (`--optional`) while `pnpm package` fails.
+- React DevTools (MV3) works in Electron 45: its hook is injected before React boots, and the Components/Profiler panels appear in the page's DevTools, which opens detached because the view has no room to dock it.
+- Vite's SPA fallback answers missing paths (including `/favicon.ico`) with `index.html` and status 200 unless the request sends `Accept: application/json`. The fixture's 404 card sends that header, and the URL bar hides favicons that fail to decode.
+- Chromium zoom is per origin, so after a cross-origin navigation the panel re-applies its own zoom factor on `did-finish-load`.
+- Display scaling leaks into screenshots even at "100%": the Linux test VM reports `devicePixelRatio` 0.984375, so PNG sizes are `round(css * dpr)`. Never assume integer `dpr` in tests or rect math.
+- DOM over the view (command palette, error and empty states) only shows if the view is hidden, so the renderer sends a `null` rect for those states, and main moves focus back to the app window when it hides a focused view. Toasts are fixed bottom-right, normally over the agent or bottom panel; with both collapsed they fall behind the view (move them into the panel chrome when that matters).
+- The renderer's CSP must allow `img-src http: https:` for page favicons in the URL bar.
+- Instruction deviations: highlights are drawn into the BGRA bitmap in main (no `sharp`, no canvas round-trip), element screenshots crop the viewport capture (one `dpr` source for both), and the "Open fixture" command is **Open Dev Server URL** (uses the project's `devUrl`, default `http://localhost:5173`).
 
 ### Acceptance
 
@@ -217,16 +231,17 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 
 ### Checklist
 
-- [ ] `BrowserService` with `WebContentsView` and rect sync
-- [ ] Navigation API and events
-- [ ] URL bar and chrome
-- [ ] Viewport presets with CDP emulation
-- [ ] CDP attach, ring buffers, Problems tab
-- [ ] Screenshot API (viewport, element, full page, highlight)
-- [ ] Bundled React/Vue DevTools extensions
-- [ ] `browser-preload` bootstrap and private channel
-- [ ] Localhost certificate handling (setting)
-- [ ] e2e tests
+- [x] `BrowserService` with `WebContentsView` and rect sync
+- [x] Navigation API and events
+- [x] URL bar and chrome
+- [x] Viewport presets with CDP emulation
+- [x] CDP attach, ring buffers, Problems tab
+- [x] Screenshot API (viewport, element, full page, highlight)
+- [x] Bundled React/Vue DevTools extensions
+- [x] `browser-preload` bootstrap and private channel
+- [x] Localhost certificate handling (setting)
+- [x] e2e tests
+- [ ] Verified locally on Omarchy/Hyprland (rect sync while tiling, `Super+/` scaling and screenshot `dpr`, chords with the page focused)
 
 ---
 
