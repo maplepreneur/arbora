@@ -17,14 +17,47 @@ export interface LaunchedApp {
 }
 
 /** Launches the built app (`pnpm build:test`) with an isolated userData directory. */
-export async function launch(userData: string, args: string[] = []): Promise<LaunchedApp> {
+export async function launch(
+  userData: string,
+  args: string[] = [],
+  extraEnv: Record<string, string> = {},
+): Promise<LaunchedApp> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
+  Object.assign(env, extraEnv);
   env['ARBORA_USER_DATA_DIR'] = userData;
   delete env['ELECTRON_RENDERER_URL'];
   const extra = process.env['CI'] && process.platform === 'linux' ? ['--no-sandbox'] : [];
   const app = await electron.launch({ args: [MAIN_ENTRY, ...extra, ...args], env, cwd: DESKTOP_ROOT });
   const page = await app.firstWindow();
   await page.waitForSelector('[data-testid="app"]');
+  await waitForStableSize(page);
   return { app, page };
+}
+
+/**
+ * Tiling compositors (Hyprland) re-tile when the previous test's window closes, so a new window can
+ * still be resizing when the test starts measuring or dragging panels.
+ */
+async function waitForStableSize(page: Page, quietMs = 400, timeoutMs = 5000): Promise<void> {
+  await page.evaluate(
+    ({ quietMs, timeoutMs }) =>
+      new Promise<void>((resolve) => {
+        const deadline = performance.now() + timeoutMs;
+        let last = `${window.innerWidth}x${window.innerHeight}`;
+        let since = performance.now();
+        const tick = (): void => {
+          const now = performance.now();
+          const size = `${window.innerWidth}x${window.innerHeight}`;
+          if (size !== last) {
+            last = size;
+            since = now;
+          }
+          if (now - since >= quietMs || now >= deadline) resolve();
+          else requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }),
+    { quietMs, timeoutMs },
+  );
 }

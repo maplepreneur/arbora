@@ -76,6 +76,20 @@ async function launchWithFixture(userData = tempUserData()): Promise<{ app: Elec
   return launched;
 }
 
+/** Narrow tiles (Hyprland half-width, CI) hide toolbar buttons; collapsing the sidebar shows them all. */
+async function roomForToolbar(page: Page): Promise<void> {
+  await page.getByTestId('panel-browser').click();
+  await page.keyboard.press('ControlOrMeta+B');
+  await expect
+    .poll(() =>
+      page
+        .getByTestId('panel-sidebar')
+        .evaluate((el) => el.clientWidth, undefined, { timeout: 1000 })
+        .catch(() => 0),
+    )
+    .toBeLessThan(2);
+}
+
 const FIXTURE_TITLE = 'Arbora fixture: Vite + React';
 
 test.describe('Stage 1 browser panel', () => {
@@ -279,6 +293,7 @@ test.describe('Stage 1 browser panel', () => {
     rmSync(SCREENSHOTS, { recursive: true, force: true });
     const { app, page } = await launchWithFixture();
     try {
+      await roomForToolbar(page);
       await openUrl(page, vite.url, FIXTURE_TITLE);
       const shoot = (
         request: Parameters<typeof window.arbora.invoke<'browser.screenshot'>>[1],
@@ -402,6 +417,7 @@ test.describe('Stage 1 browser panel', () => {
 
       // The extension adds its Components panel to the page's DevTools. Reads the DevTools
       // frontend's own module, so an Electron upgrade may need this lookup adjusted.
+      await roomForToolbar(page);
       await page.getByTestId('browser-devtools').click();
       await expect.poll(async () => (await browserState(page))?.devToolsOpen).toBe(true);
       await expect

@@ -170,11 +170,26 @@ export class BrowserService {
     const url = normalizeUrl(input);
     if (!url) return false;
     if (!this.state.url || this.state.error) {
+      this.keepAppFocusDuringLoad();
       this.navigate(url);
       return true;
     }
     if (url !== this.state.url) this.options.events.urlSuggested(url);
     return false;
+  }
+
+  /** Chromium focuses a view when it first loads a page; a background load must not take the keyboard. */
+  private keepAppFocusDuringLoad(): void {
+    const ui = this.options.window.webContents;
+    if (!ui.isFocused()) return;
+    const restore = (): void => {
+      if (this.contents.isFocused()) ui.focus();
+    };
+    this.contents.on('focus', restore);
+    this.contents.once('did-stop-loading', () => {
+      this.contents.off('focus', restore);
+      restore();
+    });
   }
 
   action(action: BrowserAction): void {
