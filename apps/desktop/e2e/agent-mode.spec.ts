@@ -182,9 +182,19 @@ test.describe('Stage 4 agent mode on Vite + React 18', () => {
       await expect.poll(() => viewVisible(app)).toBe(false);
       await expect(page.getByTestId('agent-mode-frame')).toBeVisible();
       const outline = await page.getByTestId('agent-mode-outline').boundingBox();
-      const anchor = await popover.boundingBox();
+      const box = await popover.boundingBox();
       expect(outline && outline.width > 20 && outline.height > 10).toBe(true);
-      expect(anchor && outline && anchor.y >= outline.y + outline.height - 1).toBe(true);
+      // Placement depends on the window size (CI windows are small); the popover never covers the
+      // element unless the panel is too short for any side.
+      const side = await popover.getAttribute('data-side');
+      if (outline && box && side !== 'inside') {
+        const apart =
+          box.y >= outline.y + outline.height - 1 ||
+          box.y + box.height <= outline.y + 1 ||
+          box.x >= outline.x + outline.width - 1 ||
+          box.x + box.width <= outline.x + 1;
+        expect(apart, `popover (${side}) overlaps the outline`).toBe(true);
+      }
       // The click was the inspector's; the page's own handler did not run.
       expect(await inPage<string>(app, `document.querySelector('[data-testid="card-counter"] p').textContent`)).toBe(
         'Clicked 0 times',

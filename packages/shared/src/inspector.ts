@@ -207,13 +207,18 @@ export function clipRect(rect: Rect, bounds: Rect): Rect {
 export interface PopoverPlacement {
   readonly x: number;
   readonly y: number;
-  readonly side: 'below' | 'above' | 'inside';
+  readonly side: 'below' | 'above' | 'right' | 'left' | 'inside';
+}
+
+function overlapArea(a: Rect, b: Rect): number {
+  const clipped = clipRect(a, b);
+  return clipped.width * clipped.height;
 }
 
 /**
  * Places a popover of `size` next to `anchor` inside `area` (all in the same coordinates): below
- * the anchor when it fits, else above, else pinned inside the area. Horizontally aligned with the
- * anchor's left edge and clamped to the area.
+ * the anchor, else above, else to its right or left. When none fits (a short panel), it is pinned
+ * to the top or bottom of the area, whichever covers less of the anchor.
  */
 export function placePopover(
   anchor: Rect,
@@ -221,12 +226,19 @@ export function placePopover(
   area: Rect,
   gap = 8,
 ): PopoverPlacement {
-  const maxX = area.x + Math.max(0, area.width - size.width);
-  const x = Math.min(Math.max(anchor.x, area.x), maxX);
+  const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), Math.max(min, max));
+  const x = clamp(anchor.x, area.x, area.x + area.width - size.width);
+  const y = clamp(anchor.y, area.y, area.y + area.height - size.height);
   const below = anchor.y + anchor.height + gap;
   if (below + size.height <= area.y + area.height) return { x, y: below, side: 'below' };
   const above = anchor.y - gap - size.height;
   if (above >= area.y) return { x, y: above, side: 'above' };
-  const y = Math.max(area.y, area.y + area.height - size.height);
-  return { x, y, side: 'inside' };
+  const right = anchor.x + anchor.width + gap;
+  if (right + size.width <= area.x + area.width) return { x: right, y, side: 'right' };
+  const left = anchor.x - gap - size.width;
+  if (left >= area.x) return { x: left, y, side: 'left' };
+  const top = area.y;
+  const bottom = Math.max(area.y, area.y + area.height - size.height);
+  const cover = (py: number): number => overlapArea({ x, y: py, ...size }, anchor);
+  return { x, y: cover(top) < cover(bottom) ? top : bottom, side: 'inside' };
 }

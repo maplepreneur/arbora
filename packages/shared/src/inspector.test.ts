@@ -81,10 +81,32 @@ describe('placePopover', () => {
     });
   });
 
-  it('pins inside the area when neither side fits', () => {
+  it('goes beside a tall anchor when neither above nor below fits', () => {
     expect(placePopover({ x: 10, y: 150, width: 50, height: 300 }, size, area)).toEqual({
-      x: 10,
-      y: 400,
+      x: 68,
+      y: 150,
+      side: 'right',
+    });
+    expect(placePopover({ x: 600, y: 150, width: 190, height: 300 }, size, area)).toEqual({
+      x: 292,
+      y: 150,
+      side: 'left',
+    });
+  });
+
+  it('pins to the edge that covers less of the anchor in a short panel', () => {
+    const short = { x: 0, y: 0, width: 500, height: 400 };
+    const popover = { width: 400, height: 260 };
+    // Anchor low in the panel: pin to the top.
+    expect(placePopover({ x: 20, y: 250, width: 460, height: 40 }, popover, short)).toEqual({
+      x: 20,
+      y: 0,
+      side: 'inside',
+    });
+    // Anchor high in the panel: pin to the bottom.
+    expect(placePopover({ x: 20, y: 100, width: 460, height: 40 }, popover, short)).toEqual({
+      x: 20,
+      y: 140,
       side: 'inside',
     });
   });

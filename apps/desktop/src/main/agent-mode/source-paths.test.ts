@@ -1,9 +1,10 @@
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { isProjectSource, resolveSource, sourcePathCandidates } from './source-paths.js';
 
-const ROOT = join('/', 'work', 'app');
+// `resolve` adds the drive letter on Windows, as `fileURLToPath` does.
+const ROOT = resolve('/work/app');
 const at = (...parts: string[]) => join(ROOT, ...parts);
 
 describe('sourcePathCandidates', () => {
@@ -52,7 +53,7 @@ describe('isProjectSource', () => {
     expect(isProjectSource(at('.env.ts'), ROOT)).toBe(true);
     expect(isProjectSource(at('node_modules', 'x', 'a.js'), ROOT)).toBe(false);
     expect(isProjectSource(at('.next', 'dev', 'server', 'chunk.js'), ROOT)).toBe(false);
-    expect(isProjectSource(join('/', 'work', 'other', 'a.ts'), ROOT)).toBe(false);
+    expect(isProjectSource(resolve('/work/other/a.ts'), ROOT)).toBe(false);
     expect(isProjectSource(ROOT, ROOT)).toBe(false);
   });
 });
