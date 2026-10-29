@@ -134,6 +134,16 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - Frameless windows on Linux lose the native resize border; add an 8px CSS resize region or rely on the compositor (Hyprland handles resize for tiled and floating windows itself, so only Windows needs the CSS fallback).
 - `react-resizable-panels` needs explicit `id` and `order` on every panel when panels are conditionally rendered, or layouts get corrupted on persist/restore.
 - Playwright for Electron requires `electron.launch({ args: [path/to/main.js] })` against the built output; add a `pnpm build:test` script that builds once without minification.
+- Playwright's `page.keyboard.press` goes through CDP `Input.dispatchKeyEvent`, which never reaches `before-input-event`, so intercepted chords silently do nothing in e2e. Use `webContents.sendInputEvent` from main (`pressNative` in `apps/desktop/e2e/app.ts`). Real keyboard input (checked with `xdotool`) does fire `before-input-event`.
+- Electron 45+ has no postinstall download: `require('electron')` fetches the binary on first launch. CI and `pnpm e2e` handle this automatically; behind a proxy run `node node_modules/electron/install.js` once.
+- `typescript-eslint` 8.x only supports TypeScript below 6.1, so TypeScript is pinned to 6.0.x. Check the peer range before bumping either.
+- `eslint-plugin-import-x`'s `no-cycle` silently checks nothing in `.ts` files unless `importX.flatConfigs.typescript` (parser and resolver settings) is included. Prove lint rules fire with a throwaway violating file when changing the config.
+- `react-resizable-panels` v4 renamed the API to `Group`/`Panel`/`Separator`, dropped the `order` prop (stable `id`s are enough), and reports layouts as `{ [panelId]: percent }`. Imperative panel handles throw "Group not found" while the group is still registering, so derive collapsed state from the layout (size near 0) instead of calling `isCollapsed()` during render or the first effects.
+- The HTML `<title>` overrides `BrowserWindow`'s title after load; prevent `page-title-updated` if main owns the title.
+- Vite 8 bundles with Rolldown: the options key is `build.rolldownOptions`, not `rollupOptions`. Sandboxed preloads must be emitted as CommonJS (`[name].cjs`) with every dependency bundled (`externalizeDeps: false`).
+- Electron's Wayland `app_id` and X11 `WM_CLASS` come from `desktopName` in `package.json` (packaged) or `--class` (dev). electron-builder's deb target fails without `homepage` in the app's `package.json`.
+- Settings files written by a newer Arbora (schema version above the current one) or containing invalid JSON are loaded with defaults and never overwritten, so a downgrade cannot destroy user settings.
+- Stage 0 specifies React 19 for `fixtures/vite-react`, but React 19 removed `fiber._debugSource`, which Stage 4 expects for source paths on "Vite React 18". Stage 4 must either add a React 18 fixture or resolve sources another way (for example `_debugStack` plus source maps).
 
 ### Acceptance
 
@@ -144,22 +154,22 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 
 ### Checklist
 
-- [ ] Monorepo, scripts, `.npmrc`, workspace packages
-- [ ] electron-vite app with four build entries
-- [ ] TypeScript strict + ESLint + Prettier
-- [ ] zod IPC layer and `window.arbora` bridge
-- [ ] Settings store with migrations; `.arbora/project.json`
-- [ ] Window management, frameless custom title bar, Wayland flags, `ARBORA_FLAGS`
-- [ ] Project open: dialog, recents, drag-and-drop, CLI arg
-- [ ] Panel layout with persistence and lazy panels
-- [ ] Command palette and command registry
-- [ ] Keybinding service with `before-input-event` interception and terminal passthrough
+- [x] Monorepo, scripts, `.npmrc`, workspace packages
+- [x] electron-vite app with four build entries
+- [x] TypeScript strict + ESLint + Prettier
+- [x] zod IPC layer and `window.arbora` bridge
+- [x] Settings store with migrations; `.arbora/project.json`
+- [x] Window management, frameless custom title bar, Wayland flags, `ARBORA_FLAGS`
+- [x] Project open: dialog, recents, drag-and-drop, CLI arg
+- [x] Panel layout with persistence and lazy panels
+- [x] Command palette and command registry
+- [x] Keybinding service with `before-input-event` interception and terminal passthrough
 - [ ] Verified locally on Omarchy/Hyprland (see checklist above)
-- [ ] Theme
+- [x] Theme
 - [ ] CI matrix and package workflow
-- [ ] electron-builder config
-- [ ] Fixtures `vite-react`, `plain-html`
-- [ ] Unit tests and Playwright smoke test
+- [x] electron-builder config
+- [x] Fixtures `vite-react`, `plain-html`
+- [x] Unit tests and Playwright smoke test
 
 ---
 
