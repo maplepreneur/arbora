@@ -1,0 +1,10 @@
+{
+  "name": "@arbora-fixtures/plain-html",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "start": "node server.mjs"
+  }
+}

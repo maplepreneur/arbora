@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./node_modules/.tsbuild/tools",
+    "types": ["node"],
+    "allowJs": true,
+    "checkJs": true
+  },
+  "include": ["eslint.config.js", "vitest.config.ts", "fixtures/plain-html/server.mjs"]
+}

@@ -27,7 +27,7 @@ This document breaks [PLAN.md](./PLAN.md) into stages a coding agent can execute
 
 | Stage | Name | Status | Notes |
 | --- | --- | --- | --- |
-| 0 | Foundation | Not started | |
+| 0 | Foundation | In progress (PR #2) | Code, CI matrix and Linux tarball done; awaiting `arch-ok` on Omarchy/Hyprland |
 | 1 | Browser panel | Not started | |
 | 2 | Terminal panel | Not started | |
 | 3 | Agent panel (ACP) | Not started | |
@@ -124,6 +124,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 13. electron-builder config: `appId: dev.arbora.app`, targets AppImage + deb (Linux), dmg + zip (macOS, unsigned for now), nsis (Windows). `asarUnpack` native modules.
 14. Fixtures: `fixtures/vite-react` (React 19 + Vite + Tailwind), `fixtures/plain-html` (static server). Next and Nuxt fixtures come in Stage 4.
 15. Unit tests with Vitest for the IPC helpers, keybinding parser and settings migrations. One Playwright-for-Electron smoke test: launch, open `fixtures/vite-react`, assert the layout renders.
+16. Local setup guide in `README.md`: prerequisites per OS, clone and install, `pnpm dev` (including opening a project on launch), running the fixtures, checks and e2e, packaging, where settings live, and troubleshooting.
 
 ### Gotchas
 
@@ -134,6 +135,16 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - Frameless windows on Linux lose the native resize border; add an 8px CSS resize region or rely on the compositor (Hyprland handles resize for tiled and floating windows itself, so only Windows needs the CSS fallback).
 - `react-resizable-panels` needs explicit `id` and `order` on every panel when panels are conditionally rendered, or layouts get corrupted on persist/restore.
 - Playwright for Electron requires `electron.launch({ args: [path/to/main.js] })` against the built output; add a `pnpm build:test` script that builds once without minification.
+- Electron 45 no longer downloads its binary in a postinstall hook; `apps/desktop` runs `install-electron` in its own `postinstall`, otherwise `electron` fails with a missing `dist/`.
+- `typescript-eslint` 8.x supports TypeScript `<6.1`, so TypeScript is pinned to 6.0.x (the TypeScript 7 native compiler is not usable with the linter yet).
+- Vite 8 renamed `build.rollupOptions` to `build.rolldownOptions`, and electron-vite 6 replaced `externalizeDepsPlugin` with `build.externalizeDeps`. Workspace packages export TypeScript source, so they are excluded from externalisation in main and live in `devDependencies`. Sandboxed preloads are built with `externalizeDeps: false`, `isolatedEntries: true` and CommonJS output (`out/preload/*.cjs`).
+- `File.path` is gone; dropped folders are resolved with `webUtils.getPathForFile` in the preload (exposed as `window.arbora.getPathForFile`).
+- The renderer's `<title>` overwrites `BrowserWindow.setTitle` unless `page-title-updated` is prevented.
+- Playwright's `page.keyboard` (CDP `Input.dispatchKeyEvent`) bypasses `before-input-event`. The renderer therefore also dispatches intercepted bindings it receives (a keydown that reaches the renderer was not consumed by main, so nothing fires twice); e2e tests use `webContents.sendInputEvent` to prove the main-process interception.
+- `react-resizable-panels` v4 renamed the API (`Group`/`Panel`/`Separator`, `orientation`, `panelRef`). Layouts are persisted per project from `onLayoutChanged` using `meta.requestedLayout`; a collapsed panel is stored as size `0` and restores collapsed. Groups remount (via a key) to reset the layout.
+- electron-builder derives installer names from the scoped workspace package (`dist/@arbora/desktop-...`, invalid deb name); `extraMetadata.name: arbora` plus `artifactName` fix it, and `desktopName: arbora.desktop` with `linux.syncDesktopName` keeps the Wayland app_id / WM_CLASS in sync with the `.desktop` file.
+- GitHub's Ubuntu runners block unprivileged user namespaces, so Electron needs `--no-sandbox` there; the e2e launcher adds it only when `CI` is set on Linux. The packaged tarball runs sandboxed on a normal desktop.
+- Stage 4 acceptance expects `fixtures/vite-react` to be a React 18 dev build (for `_debugSource`), but Stage 0 specifies React 19. The fixture is React 19; Stage 4 should add a React 18 fixture (or variant) rather than downgrading this one.
 
 ### Acceptance
 
@@ -144,22 +155,23 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 
 ### Checklist
 
-- [ ] Monorepo, scripts, `.npmrc`, workspace packages
-- [ ] electron-vite app with four build entries
-- [ ] TypeScript strict + ESLint + Prettier
-- [ ] zod IPC layer and `window.arbora` bridge
-- [ ] Settings store with migrations; `.arbora/project.json`
-- [ ] Window management, frameless custom title bar, Wayland flags, `ARBORA_FLAGS`
-- [ ] Project open: dialog, recents, drag-and-drop, CLI arg
-- [ ] Panel layout with persistence and lazy panels
-- [ ] Command palette and command registry
-- [ ] Keybinding service with `before-input-event` interception and terminal passthrough
+- [x] Monorepo, scripts, `.npmrc`, workspace packages
+- [x] electron-vite app with four build entries
+- [x] TypeScript strict + ESLint + Prettier
+- [x] zod IPC layer and `window.arbora` bridge
+- [x] Settings store with migrations; `.arbora/project.json`
+- [x] Window management, frameless custom title bar, Wayland flags, `ARBORA_FLAGS`
+- [x] Project open: dialog, recents, drag-and-drop, CLI arg
+- [x] Panel layout with persistence and lazy panels
+- [x] Command palette and command registry
+- [x] Keybinding service with `before-input-event` interception and terminal passthrough
 - [ ] Verified locally on Omarchy/Hyprland (see checklist above)
-- [ ] Theme
-- [ ] CI matrix and package workflow
-- [ ] electron-builder config
-- [ ] Fixtures `vite-react`, `plain-html`
-- [ ] Unit tests and Playwright smoke test
+- [x] Theme
+- [x] CI matrix and package workflow
+- [x] electron-builder config
+- [x] Fixtures `vite-react`, `plain-html`
+- [x] Unit tests and Playwright smoke test
+- [x] README guide for setting up and running the app locally
 
 ---
 

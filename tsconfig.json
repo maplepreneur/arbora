@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.tools.json" },
+    { "path": "./packages/shared" },
+    { "path": "./packages/acp-client" },
+    { "path": "./packages/browser-bridge" },
+    { "path": "./packages/mcp-browser-server" },
+    { "path": "./apps/desktop/tsconfig.node.json" },
+    { "path": "./apps/desktop/tsconfig.web.json" },
+    { "path": "./apps/desktop/tsconfig.e2e.json" },
+    { "path": "./fixtures/vite-react" }
+  ]
+}

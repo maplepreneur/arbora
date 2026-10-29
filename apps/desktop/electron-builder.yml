@@ -1,0 +1,54 @@
+appId: dev.arbora.app
+productName: Arbora
+executableName: arbora
+copyright: Copyright © 2026 Arbora
+artifactName: arbora-${version}-${os}-${arch}.${ext}
+# The workspace package is scoped (@arbora/desktop); installers need a plain name.
+extraMetadata:
+  name: arbora
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - out/**
+  - package.json
+  - '!**/*.map'
+
+# Native modules (node-pty from Stage 2) must live outside the asar so they can be loaded and signed.
+asarUnpack:
+  - '**/*.node'
+
+publish: null
+
+linux:
+  target:
+    - AppImage
+    - deb
+    - tar.gz
+  category: Development
+  executableName: arbora
+  syncDesktopName: true
+  maintainer: Arbora <hello@arbora.dev>
+  synopsis: Design mode for coding agents
+  desktop:
+    entry:
+      StartupWMClass: arbora
+
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.developer-tools
+  # Unsigned until Stage 9 (signing and notarization).
+  identity: null
+
+win:
+  target:
+    - nsis
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true

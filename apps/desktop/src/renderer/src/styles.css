@@ -1,0 +1,94 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg: #ffffff;
+  --bg-subtle: #f5f6f8;
+  --bg-muted: #eceef2;
+  --bg-elevated: #ffffff;
+  --fg: #16181d;
+  --fg-muted: #5c6370;
+  --fg-subtle: #8a909c;
+  --border: #e1e4ea;
+  --accent: #2f7d5b;
+  --accent-fg: #ffffff;
+  --accent-soft: #e3f2ea;
+  --danger: #c93c3c;
+  --ring: #2f7d5b66;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #0b0d10;
+  --bg-subtle: #12151a;
+  --bg-muted: #1a1e25;
+  --bg-elevated: #181c22;
+  --fg: #e6e8ec;
+  --fg-muted: #a0a6b1;
+  --fg-subtle: #6c7380;
+  --border: #252a33;
+  --accent: #4fb385;
+  --accent-fg: #06120c;
+  --accent-soft: #15291f;
+  --danger: #ef6b6b;
+  --ring: #4fb38566;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-subtle: var(--bg-subtle);
+  --color-bg-muted: var(--bg-muted);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-ring: var(--ring);
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Ubuntu, Cantarell, 'Noto Sans', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', Menlo, Consolas, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.app-drag {
+  -webkit-app-region: drag;
+}
+
+.app-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

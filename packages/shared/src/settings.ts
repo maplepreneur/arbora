@@ -1,0 +1,173 @@
+import { z } from 'zod';
+
+export const themeModeSchema = z.enum(['system', 'light', 'dark']);
+export type ThemeMode = z.infer<typeof themeModeSchema>;
+
+export const keybindingOverridesSchema = z.record(z.string(), z.string().nullable());
+
+export const windowBoundsSchema = z.object({
+  x: z.number().int(),
+  y: z.number().int(),
+  width: z.number().int().min(200),
+  height: z.number().int().min(200),
+  maximized: z.boolean(),
+});
+export type WindowBounds = z.infer<typeof windowBoundsSchema>;
+
+/** Map of panel id to percentage size (0..100), as produced by react-resizable-panels. */
+export const panelGroupLayoutSchema = z.record(z.string(), z.number().min(0).max(100));
+export type PanelGroupLayout = z.infer<typeof panelGroupLayoutSchema>;
+
+export const sidebarViewSchema = z.enum(['files', 'git', 'search']);
+export type SidebarView = z.infer<typeof sidebarViewSchema>;
+
+export const bottomTabSchema = z.enum(['terminal', 'git', 'problems']);
+export type BottomTab = z.infer<typeof bottomTabSchema>;
+
+export const layoutStateSchema = z.object({
+  groups: z.record(z.string(), panelGroupLayoutSchema).default({}),
+  sidebarView: sidebarViewSchema.default('files'),
+  bottomTab: bottomTabSchema.default('terminal'),
+});
+export type LayoutState = z.infer<typeof layoutStateSchema>;
+
+export const recentProjectSchema = z.object({
+  path: z.string().min(1),
+  name: z.string(),
+  openedAt: z.number().int(),
+});
+export type RecentProject = z.infer<typeof recentProjectSchema>;
+
+/** Per-machine state for a project (not committed): window bounds and panel layout. */
+export const projectStateSchema = z.object({
+  bounds: windowBoundsSchema.optional(),
+  layout: layoutStateSchema.optional(),
+});
+export type ProjectState = z.infer<typeof projectStateSchema>;
+
+export const MAX_RECENT_PROJECTS = 10;
+
+export const SETTINGS_VERSION = 1;
+
+/**
+ * User settings stored in `<userData>/settings.json`. Every field has a default so a partially
+ * written or hand-edited file still loads.
+ */
+export const appSettingsSchema = z.object({
+  version: z.literal(SETTINGS_VERSION),
+  theme: themeModeSchema.default('system'),
+  /** Command id -> chord (`mod+k`) or `null` to unbind. */
+  keybindings: keybindingOverridesSchema.default({}),
+  /** When a terminal is focused, plain `Ctrl+<key>` chords go to the shell. */
+  terminalPassthrough: z.boolean().default(true),
+  recentProjects: z.array(recentProjectSchema).max(MAX_RECENT_PROJECTS).default([]),
+  projects: z.record(z.string(), projectStateSchema).default({}),
+});
+export type AppSettings = z.infer<typeof appSettingsSchema>;
+
+/** Fields a renderer may change through `settings.update`. */
+export const appSettingsPatchSchema = z
+  .object({
+    theme: themeModeSchema,
+    keybindings: keybindingOverridesSchema,
+    terminalPassthrough: z.boolean(),
+  })
+  .partial();
+export type AppSettingsPatch = z.infer<typeof appSettingsPatchSchema>;
+
+export function defaultSettings(): AppSettings {
+  return appSettingsSchema.parse({ version: SETTINGS_VERSION });
+}
+
+export type Migration = (input: Record<string, unknown>) => Record<string, unknown>;
+
+/**
+ * Migrations keyed by the version they upgrade *from*. `0` is a file written before versioning
+ * existed (no `version` field). Append new entries; never edit shipped ones.
+ */
+export const SETTINGS_MIGRATIONS: Readonly<Record<number, Migration>> = {
+  0: (input) => ({ ...input, version: 1 }),
+};
+
+export class SettingsMigrationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SettingsMigrationError';
+  }
+}
+
+/** Runs migrations from the file's version up to `targetVersion`. Throws for files from a newer app. */
+export function migrateSettings(
+  raw: unknown,
+  migrations: Readonly<Record<number, Migration>> = SETTINGS_MIGRATIONS,
+  targetVersion: number = SETTINGS_VERSION,
+): Record<string, unknown> {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { version: targetVersion };
+  }
+  let current = { ...(raw as Record<string, unknown>) };
+  const declared = current['version'];
+  let version = typeof declared === 'number' && Number.isInteger(declared) ? declared : 0;
+  if (version > targetVersion) {
+    throw new SettingsMigrationError(`Settings version ${version} is newer than supported version ${targetVersion}`);
+  }
+  while (version < targetVersion) {
+    const migrate = migrations[version];
+    if (!migrate) {
+      throw new SettingsMigrationError(`No settings migration from version ${version}`);
+    }
+    current = migrate(current);
+    const next = current['version'];
+    if (typeof next !== 'number' || next <= version) {
+      throw new SettingsMigrationError(`Migration from version ${version} did not advance the version`);
+    }
+    version = next;
+  }
+  return current;
+}
+
+export interface LoadSettingsResult {
+  readonly settings: AppSettings;
+  /** Human-readable problems; non-empty means some values were reset to defaults. */
+  readonly warnings: readonly string[];
+}
+
+/**
+ * Migrates then validates. Invalid top-level fields fall back to their defaults individually so a
+ * single bad hand edit does not wipe the whole file.
+ */
+export function loadSettings(raw: unknown): LoadSettingsResult {
+  const warnings: string[] = [];
+  const migrated = migrateSettings(raw);
+  const parsed = appSettingsSchema.safeParse(migrated);
+  if (parsed.success) {
+    return { settings: parsed.data, warnings };
+  }
+  const badKeys = new Set(parsed.error.issues.map((issue) => issue.path[0]).filter((k) => typeof k === 'string'));
+  for (const key of badKeys) warnings.push(`settings.${key} is invalid and was reset to its default`);
+  const repaired = Object.fromEntries(
+    Object.entries({ ...migrated, version: SETTINGS_VERSION }).filter(([key]) => !badKeys.has(key)),
+  );
+  const second = appSettingsSchema.safeParse(repaired);
+  if (second.success) {
+    return { settings: second.data, warnings };
+  }
+  warnings.push('settings file is invalid and was reset to defaults');
+  return { settings: defaultSettings(), warnings };
+}
+
+export const PROJECT_SETTINGS_VERSION = 1;
+
+/** Committed per-project settings in `<project>/.arbora/project.json`. */
+export const projectSettingsSchema = z.object({
+  version: z.literal(PROJECT_SETTINGS_VERSION).default(PROJECT_SETTINGS_VERSION),
+  devCommand: z.string().optional(),
+  devUrl: z.string().optional(),
+  defaultAgent: z.string().optional(),
+  keybindings: keybindingOverridesSchema.optional(),
+});
+export type ProjectSettings = z.infer<typeof projectSettingsSchema>;
+
+export function addRecentProject(recents: readonly RecentProject[], entry: RecentProject): RecentProject[] {
+  return [entry, ...recents.filter((r) => r.path !== entry.path)].slice(0, MAX_RECENT_PROJECTS);
+}
