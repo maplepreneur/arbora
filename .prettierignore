@@ -5,3 +5,4 @@ test-results
 playwright-report
 pnpm-lock.yaml
 *.md
+apps/desktop/resources/extensions/*/

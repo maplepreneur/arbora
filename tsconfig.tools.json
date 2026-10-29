@@ -6,5 +6,5 @@
     "allowJs": true,
     "checkJs": true
   },
-  "include": ["eslint.config.js", "vitest.config.ts", "fixtures/plain-html/server.mjs"]
+  "include": ["eslint.config.js", "vitest.config.ts", "fixtures/plain-html/server.mjs", "apps/desktop/scripts/*.mjs"]
 }

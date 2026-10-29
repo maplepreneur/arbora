@@ -8,3 +8,6 @@ playwright-report/
 .DS_Store
 *.log
 fixtures/*/.arbora/
+
+# Unpacked DevTools extensions (fetched by apps/desktop/scripts/fetch-devtools-extensions.mjs)
+apps/desktop/resources/extensions/*/
