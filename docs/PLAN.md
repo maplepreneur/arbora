@@ -10,7 +10,7 @@ Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents 
 
 **Now:** Stages 0–2 are `Done` ([PR #2](https://github.com/maplepreneur/arbora/pull/2), [PR #4](https://github.com/maplepreneur/arbora/pull/4), [PR #7](https://github.com/maplepreneur/arbora/pull/7)). Stage 3, the Agent panel (ACP), is merged ([PR #10](https://github.com/maplepreneur/arbora/pull/10)) and stays `In progress` until the Claude Code and Codex matrix cells and its `arch-ok` pass are done. Stage 4, Agent mode (`Mod+K`), is `In progress` in [PR #11](https://github.com/maplepreneur/arbora/pull/11), which is not merged. Its CI is green on all six jobs in [run 40971281943](https://github.com/maplepreneur/arbora/actions/runs/40971281943), after one red run ([run 40969942207](https://github.com/maplepreneur/arbora/actions/runs/40969942207)): a Windows test-portability bug, and the popover covering the element in CI's small window. It contains the in-page inspector, React/Vue component chains resolved in the page's main world, source mapping onto project files with grep candidates, the outlined and downscaled screenshot (an image, or a file link for agents without images), the prompt popover over a frozen frame, and the new `fixtures/next` and `fixtures/nuxt`. 288 unit tests and 23 e2e pass locally on Omarchy/Hyprland, also at a forced DPR of 1.5, and the packaged build runs agent mode end to end. Manual matrix (29 Oct 2026): OpenCode (free model), Kimi Code and Grok Build `ok` for "make this button red".
 
-**Next:** Do the Stage 4 hand checks on Omarchy (tiling and floating moves and real fractional scaling with the popover open), then merge and start Stage 5 (Browser control MCP server). The [Stage 5 Notes](./BUILD_STAGES.md#progress) list what Stage 4 hands over. Stage 10 (Grove) is specified and not next.
+**Next:** Do the Stage 4 hand checks on Omarchy (tiling and floating moves and real fractional scaling with the popover open), then merge and start Stage 5 (Browser control MCP server). The [Stage 5 Notes](./BUILD_STAGES.md#progress) list what Stage 4 hands over. Stage 10 (Grove) is specified and not next. Stage 12 (browser tabs, cross-tab agent work and 1Password) is specified in § 4.13–4.15 and in BUILD_STAGES and is not started; it comes after Stage 11 and starts with an extension spike.
 
 **Blockers / open:** Claude Code and Codex are not logged in on the test machine, which blocks their Stage 3 and Stage 4 matrix cells (user action). Still open from Stage 2: the flaky macOS e2e clipboard step in the terminal tests.
 
@@ -29,12 +29,16 @@ Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents 
 | Terminal panel | Tabs and splits, mostly for running dev servers. Detects dev-server URLs and opens them in the browser. |
 | Git panel | Status, stage, hunks, commit, branches, log, push/pull, stash, GitHub PRs. Click a change to see a diff. |
 | Files and editor | Explorer, quick open, ripgrep search, CodeMirror editor with highlighting and diagnostics. Zed-like lightness; hand editing is secondary. |
+| Browser tabs | Several tabs per project: one **app tab** (the dev server) and any number of **reference tabs** (a Figma file, docs, the production site). A good-enough everyday browser, so you do not alt-tab to Chrome to log in or look something up. |
+| Cross-tab agent work | Prompt from any tab and send it to a chosen project and thread. "Implement this design" from a Figma tab gives the agent read access to that tab. It studies the design, edits the project, screenshots the app tab and compares the two until they match. |
+| Passwords (1Password) | The 1Password extension (or the `op` CLI as a fallback) fills and saves logins in every tab. A setup script installs and connects 1Password. Agents can ask Arbora to log in to a site but never see a password. |
 
 Design principles:
 
 - The browser is the product. Everything else supports pointing at a thing and describing a change.
 - Two workspaces, one window. The browser workspace is the default. Grove is the other full layout, for several agents at once. Switching parks the page and keeps agents running. Quitting the app stops them.
 - Agents own their auth, models and tools. Arbora is a client, never a proxy for provider keys.
+- Secrets stay with the user. Passwords, one-time codes and vault contents never enter a prompt, a tool result, a log or a screenshot sent to an agent. Agents can ask Arbora to log in; they cannot read what was filled.
 - One Chromium. No extra webviews, no language servers by default, no telemetry.
 - Every stage ends with an app you can actually use.
 
@@ -194,6 +198,7 @@ arbora/
 - ACP `fs/*` handlers are path-scoped to the project root (resolve + prefix check, deny symlink escapes).
 - Agent navigation off the dev-server origin requires a one-time allow.
 - No remote code loading, no telemetry.
+- Agents see a reference tab only after the user sends a prompt from it or grants it (`F-XTAB-03`). Agent-driven logins go through a permission card and the password manager, never through the agent (`F-VAULT-04`). Password-field values are redacted from snapshots, `browser_evaluate` results and the ACP log.
 
 ---
 
@@ -437,6 +442,73 @@ Per project, in the machine-local project state (not committed): `workspace` (`b
 - An agent spawning other agents. That is a Stage 11 stretch item, and it would be another MCP tool on top of Grove, not a PTY API.
 - Dev servers inside the Grove sidebar. They stay in the terminal panel. Grove does not show a command runner.
 
+### 4.13 Browser tabs (`F-TABS`)
+
+The browser panel grows from one page to a tab strip, so Arbora is a browser you can work in all day: log in to the tools the project depends on, keep docs and designs open next to the app, and never alt-tab to Chrome for it. This replaces the "Multiple browser tabs" stretch item.
+
+- `F-TABS-01` A tab strip above the URL bar. Each tab is its own `WebContentsView`. New tab `Mod+T`, close `Mod+W`, reopen closed `Mod+Shift+T`, next/previous `Ctrl+Tab` / `Ctrl+Shift+Tab` (also `Ctrl+PageDown` / `Ctrl+PageUp`), drag to reorder, middle-click to close. All chords are intercepted in main like the mode chords, so they work while the page has focus. Plain `Ctrl` chords still pass through to a focused terminal.
+- `F-TABS-02` Tab roles. Every project has exactly one **app tab**: pinned first, it cannot be closed, and it follows the dev server URL (`F-BROWSER-03`). Agent mode (`Mod+K`) and design mode (`Mod+D`) default to it. Every other tab is a **reference tab** (a Figma file, a design spec, docs, production, a competitor). The user can make any tab the app tab from its context menu. Each tab shows its role with an icon.
+- `F-TABS-03` Per-tab state: URL, title, favicon, zoom, viewport preset, history and its own console and network buffers. The Problems tab filters by tab and defaults to the app tab. Tabs are saved per project and restored lazily: only the active tab loads at startup, and the others load when first shown. Background tabs are throttled. Above a cap (default 12 live tabs), the least recently used reference tab is discarded to a placeholder that reloads on focus.
+- `F-TABS-04` Partitions. The app tab keeps the project partition (`F-BROWSER-04`), so dev-server cookies stay per project. Reference tabs use one shared persistent partition, `persist:arbora-web`, so logging in to Figma or GitHub once works in every project. A per-tab "use project session" toggle covers sites that must share the app's cookies. Bundled extensions (React DevTools, Vue DevTools, 1Password) load into both.
+- `F-TABS-05` `window.open` and `target="_blank"` to http(s) open as a reference tab next to the opener instead of the OS browser. This is a setting, on by default; other schemes still go to the OS. OAuth popups that need `window.opener` (Google, GitHub, Figma sign-in) open as a child popup window tied to the tab, not a tab, so the login flow can complete and close itself.
+- `F-TABS-06` Agents address tabs. Every Stage 5 browser tool takes `target`: a tab id, `"app"` (the default), or `"active"`. New tools: `browser_tabs` lists `{ id, role, url, title, active, granted }`; `browser_tab_open` opens a reference tab, which belongs to the session and is closed when the session ends unless the user pins it; `browser_tab_close` closes only tabs the agent opened. Tools act on background tabs without switching the user's view. Results always name the tab they came from.
+- `F-TABS-07` Tab memory: per-tab CPU and memory in a hover card, and a "Discard tab" command, so a heavy Figma file does not slow the app tab down.
+
+### 4.14 Cross-tab agent work (`F-XTAB`)
+
+Prompts can start in any tab and go to any open project. The motivating flow: a Figma file is open in one tab and the app in another. The user says "implement this design" from the Figma tab. The agent looks at the frames in that tab, edits the project's source, screenshots the app tab, compares the two and iterates until they match.
+
+- `F-XTAB-01` Agent mode in every tab. `Mod+K` works in reference tabs too, and an element click there gives the agent what the page exposes (component chain, HTML, styles, screenshot). The popover's target picker has two levels: the **project** (this window's project first, then every other open Arbora window, then recent projects) and the **thread** in that project (last used, any open thread, or a new thread with that project's `defaultAgent`). Picking another project routes the prompt to that project's `AgentService` through main. The window that owns the project comes forward when the user opens the thread.
+- `F-XTAB-02` "Send tab to agent" (`Mod+Shift+K`, also a button in the tab strip and in the tab's context menu) prompts about the whole tab, with no element picked. The prompt carries the tab's id, role, URL and title, a viewport screenshot (and optionally a full-page one), the selected text, and a compact accessibility-snapshot summary. It also tells the agent which tab is the app tab of the target project.
+- `F-XTAB-03` Tab grants. Sending from a reference tab grants that thread MCP access to that tab. Read-type tools are allowed (snapshot, screenshot, scroll, hover, click to move around a design, zoom, and `browser_evaluate` behind the existing setting). Typing into forms needs a one-time allow. Other reference tabs stay invisible to the agent until granted. Grants show as chips in the thread header (tab favicon and title) with a revoke button, and they end when the tab closes. The app tab of the thread's own project is always granted.
+- `F-XTAB-04` The design-implementation loop, taught in the instruction block and `.arbora/SKILL.md`:
+  1. Study the reference: list frames, zoom to the one asked for, screenshot it, and read exact values (colors, spacing, typography, assets) from the design tool's inspect panel when it has one.
+  2. Match the viewport: set the app tab to the frame width with `browser_set_viewport`.
+  3. Implement in the target project's source. Use existing components and design tokens before adding new ones.
+  4. Wait for HMR, screenshot the app tab, and run `browser_compare` against the reference.
+  5. Iterate on the regions with the largest differences. Stop when the score reaches the threshold (default 0.92), after N rounds (default 5), or when the user stops it.
+  6. Finish with a summary, a side-by-side image and a list of what still differs.
+- `F-XTAB-05` `browser_compare { a: { target, selector?, rect? }, b: { target, selector?, rect? }, mode: "side_by_side" | "overlay" | "diff" }`. Both captures are scaled to the same CSS width. It returns one image (an MCP `image` block, at most 1568 px) and JSON with a 0–1 similarity score (SSIM on luminance plus a color-histogram distance) and the grid cells that differ most, each as a rect in both tabs' coordinates. It is deterministic, so the agent can track progress across rounds.
+- `F-XTAB-06` Figma. Figma draws the design in a WebGL canvas, so the DOM and the accessibility tree show Figma's own UI, not the layers. The agent therefore works from:
+  - screenshots;
+  - the `node-id` URL parameter, which jumps straight to a frame;
+  - the Dev Mode inspect panel, whose CSS and values are DOM text when the user has Dev Mode;
+  - Figma's own MCP server when configured. It is passed through to the session's `mcpServers` via a new project setting, `mcp.extraServers`, and is local in the Figma desktop app or remote with the user's own Figma auth.
+  
+  Arbora never stores a Figma API token. The same approach covers other canvas tools (Penpot, Framer, Canva).
+- `F-XTAB-07` Loop visibility. While the loop runs, the thread shows a "Matching design" card: the round number, the latest reference and app screenshots side by side, the score history, and a Stop button. Stop sends `session/cancel`. Each round's images are saved under `.arbora/screenshots/<thread>/` and linked from the transcript.
+
+### 4.15 Passwords: 1Password (`F-VAULT`)
+
+Arbora's browser fills and saves passwords like a normal browser through 1Password. It is the first provider behind a small `PasswordProvider` interface (`listLogins(origin)`, `fill(target, item)`, `save(origin, credentials)`, `totp(item)`), so Bitwarden (`bw`) or the OS keychain can follow.
+
+- `F-VAULT-01` Setup script. It lives at `scripts/setup-1password.sh` (Linux and macOS) and `scripts/setup-1password.ps1` (Windows), and can also be run from Settings → Passwords and the onboarding wizard. It is idempotent and has `--check` (report only), `--yes` (non-interactive) and `--uninstall` (removes only what it added). It never reads, prints or stores a secret. In order:
+  1. Detect the OS and distribution.
+  2. Install the 1Password desktop app and the `op` CLI from official channels:
+     - Arch/Omarchy: AUR `1password` and `1password-cli` through `yay` or `paru` when present, else print the commands.
+     - Debian/Ubuntu: 1Password's apt repository with its signing key and debsig policy.
+     - Fedora: 1Password's rpm repository.
+     - macOS: `brew install --cask 1password 1password-cli`.
+     - Windows: `winget install AgileBits.1Password AgileBits.1Password.CLI`.
+  3. Fetch the pinned 1Password browser extension (Chrome Web Store id `aeblfdkhhhdcdjpifhhbdiojplfjncoa`) into Arbora's extensions folder with a recorded SHA-256, using the same pattern as `fetch-devtools-extensions.mjs`.
+  4. Register Arbora as a browser 1Password will talk to. On Linux, add the Arbora executable name to `/etc/1password/custom_allowed_browsers`, which needs sudo and explicit consent. On macOS and Windows, report what the 1Password app requires; the spike settles this.
+  5. Open 1Password's settings and tell the user to turn on "Integrate with 1Password CLI" and browser integration.
+  6. Verify that `op --version` works, `op account list` shows an account, the desktop app is running, and the extension loads. Print a pass/fail table.
+- `F-VAULT-02` Extension mode, preferred. The 1Password extension is loaded into the app and reference partitions (`F-TABS-04`). Its inline autofill menu and "Save login?" prompt work inside pages and unlock through the desktop app. Electron does not draw extension toolbar buttons or popups, so the browser chrome adds a 1Password button. It opens the extension's popup page in a small frameless `WebContentsView` anchored under the button, with the same view-over-DOM handling as other overlays.
+- `F-VAULT-03` CLI mode, the fallback when the extension cannot reach the desktop app inside Electron (see the Stage 12 spike). Arbora fills and saves natively:
+  - **Fill from 1Password** (key icon in the URL bar and on focused login fields, plus `Mod+Shift+L`) lists `op item list --categories Login --format json`, filtered by the tab's origin. On pick, main runs `op item get <id> --fields username,password --reveal` and types the values into the focused form through CDP `Input.insertText` in the isolated world.
+  - **Save to 1Password** appears after a form with a password field is submitted. It runs `op item create --category login` with a JSON template on stdin, so secrets never appear in `argv` or a temp file.
+  - `op` unlocks through the desktop app's CLI integration (biometrics or the system prompt). Arbora keeps no session token on disk.
+- `F-VAULT-04` Agent logins without secrets. MCP tool `browser_login { target, origin? }`:
+  1. Arbora finds matching logins.
+  2. A permission card shows the site and the item titles. It never shows usernames or passwords; this is the user's choice to make.
+  3. On approval, Arbora fills and submits through `F-VAULT-02` or `F-VAULT-03`.
+  4. The tool returns only `logged_in`, `needs_user` (a captcha, a new device, an unknown 2FA) or `failed`.
+
+  `browser_snapshot`, `browser_evaluate` and screenshots in tool results replace password-field values with `•••`. The ACP log and the redaction rules treat any `op` output as secret.
+- `F-VAULT-05` One-time codes. When the item has an OTP and the site asks for a second factor, the same approval fills it (`op item get --otp`). Passkeys are handed to the extension or the user; the agent never answers them.
+- `F-VAULT-06` Settings: `passwords.provider` (`none` | `1password`, default `none` until setup ran), `passwords.mode` (`auto` | `extension` | `cli`), `passwords.agentLogins` (`ask` | `never`, default `ask`), and per-origin "always allow agent login" entries. These are machine settings, never committed.
+
 ---
 
 ## 5. Phase overview
@@ -456,7 +528,8 @@ Detailed instructions, gotchas and progress live in [BUILD_STAGES.md](./BUILD_ST
 | 8 | Git and GitHub | Full git workflow and PRs |
 | 9 | Distribution and polish | Signing, installers, updater, onboarding, settings |
 | 10 | Grove | Second workspace: many ACP agents, title-bar switch, default agent, attention |
-| 11 | Stretch | Dev plugin for exact source mapping, tabs, worktrees, write-through, Grove orchestration |
+| 11 | Stretch | Dev plugin for exact source mapping, worktrees, write-through, Grove orchestration |
+| 12 | Tabs, cross-tab agent work and passwords | Browser tabs with app and reference roles, prompts from any tab to any open project, the design-match loop (Figma → app), and 1Password with a setup script and secret-free agent logins |
 
 ---
 
@@ -498,6 +571,26 @@ Detailed instructions, gotchas and progress live in [BUILD_STAGES.md](./BUILD_ST
 
 **Rejected.** Docking a second agent list inside the browser workspace (it fights the page). Replacing the docked panel with Grove (agent mode and design mode need an agent beside the page). Wrapping each agent in a PTY the way Solo and Herdr do (duplicates the terminal panel and drops diffs, plans and permission cards). A Herdr-style background server (a second product, and a second thing that must be trusted with the project).
 
+### ADR 0005: Reference tabs are granted, not shared
+
+**Context.** With tabs, the browser holds logged-in sessions to the user's other tools (Figma, GitHub, email). An agent with browser tools could otherwise read any of them.
+
+**Decision.** An agent session can always use its own project's app tab. A reference tab is visible to it only after the user sends a prompt from that tab or grants it explicitly. Grants are per thread, shown in the thread header, revocable, and end when the tab closes. Agent-opened tabs belong to the session.
+
+**Consequences.** The "implement this design" flow needs no extra click, because sending from the tab is the grant. An agent cannot go browsing through the user's other logged-in tabs. Every browser tool resolves `target` against the grant list in main. This adds a lookup per call and a clear error ("tab not granted") the agent can relay.
+
+**Rejected.** All tabs visible to every session (too much reach). A separate browser profile per agent session (logins would have to be repeated, and the design tab the user is looking at is the one the agent must see).
+
+### ADR 0006: Passwords through 1Password, never through the agent
+
+**Context.** Users want Arbora to be a browser they can log in with, and agents sometimes need to get past a login to verify their work. Storing passwords in Arbora, or giving them to an agent, would make Arbora a credential store and put secrets in model context and logs.
+
+**Decision.** Arbora integrates a password manager instead of storing passwords, starting with 1Password. The extension is preferred and the `op` CLI is the fallback. Agents ask for a login with `browser_login`; the user approves; Arbora fills. The tool result says only whether it worked.
+
+**Consequences.** It needs a setup script and per-OS install paths. Electron's partial extension support may push most users onto CLI mode, so Arbora owns a small fill/save UI. Redaction has to cover snapshots, `browser_evaluate` and logs. Users without 1Password get nothing until another provider is added.
+
+**Rejected.** A built-in password store (security liability, sync expectations). Passing credentials to the agent as env or prompt text (leaks into model context and transcripts). Reading the user's Chrome profile passwords (OS-keychain encrypted and explicitly out of scope, like Chrome extensions).
+
 ---
 
 ## 7. Assumptions
@@ -510,3 +603,6 @@ Detailed instructions, gotchas and progress live in [BUILD_STAGES.md](./BUILD_ST
 - Design-mode edits go through the agent first; direct write-through is a stretch item.
 - "Linting" means surfacing the project's own ESLint/tsc output; LSP is opt-in.
 - Fixture apps in `fixtures/` are the acceptance baseline for every stage; they stay green.
+- Browser tabs, cross-tab prompts and passwords come last (Stage 12), after the single-tab workflow is solid. Reference tabs share one logged-in partition across projects; the app tab stays per project.
+- 1Password is the first password manager. Arbora never stores a password and agents never receive one. Whether the extension's desktop-app unlock works inside Electron is unverified, so Stage 12 starts with a spike and the `op` CLI fallback is planned from the start.
+- Figma and other canvas design tools are read through screenshots, their inspect panels and, optionally, their own MCP servers. Arbora ships no design-tool API keys.

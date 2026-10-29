@@ -14,7 +14,7 @@ This document breaks [PLAN.md](./PLAN.md) into stages a coding agent can execute
 
 ## Progress
 
-**Now:** Stages 0–2 are `Done`. Stage 3 (Agent panel, ACP) is merged ([PR #10](https://github.com/maplepreneur/arbora/pull/10)) and stays `In progress` until Claude Code and Codex are logged in for the last Appendix B cells and the Omarchy `arch-ok` pass is done. Stage 4 (Agent mode, `Mod+K`) is `In progress` in [PR #11](https://github.com/maplepreneur/arbora/pull/11): the inspector overlay, React/Vue component chains, source resolution, grep candidates, the outlined screenshot, the prompt popover and the composer are all in, with the `fixtures/next` and `fixtures/nuxt` fixtures. 288 unit tests and 23 e2e pass locally on Omarchy/Hyprland, including the agent-mode spec at `--force-device-scale-factor=1.5`. The packaged Linux build runs agent mode end to end (sandboxed, native Wayland). Manual matrix on 29 Oct 2026: OpenCode (free `opencode/deepseek-v4.1-flash-free`), Kimi Code and Grok Build `ok` for "make this button red" through `Mod+K`. PR #11 CI: the first run ([run 40969942207](https://github.com/maplepreneur/arbora/actions/runs/40969942207)) was red on Windows `Check` (source-path tests assumed roots without a drive letter) and on macOS/Windows E2E (in CI's small window the popover was pinned over the element). Both are fixed, and [run 40971281943](https://github.com/maplepreneur/arbora/actions/runs/40971281943) is green on all six jobs. **Next:** the hand checks for Stage 4 (tiling and floating moves, real fractional scaling) and merge; Stage 5 (Browser control MCP server) after that. Stage 10 (Grove) is specified and not started.
+**Now:** Stages 0–2 are `Done`. Stage 3 (Agent panel, ACP) is merged ([PR #10](https://github.com/maplepreneur/arbora/pull/10)) and stays `In progress` until Claude Code and Codex are logged in for the last Appendix B cells and the Omarchy `arch-ok` pass is done. Stage 4 (Agent mode, `Mod+K`) is `In progress` in [PR #11](https://github.com/maplepreneur/arbora/pull/11): the inspector overlay, React/Vue component chains, source resolution, grep candidates, the outlined screenshot, the prompt popover and the composer are all in, with the `fixtures/next` and `fixtures/nuxt` fixtures. 288 unit tests and 23 e2e pass locally on Omarchy/Hyprland, including the agent-mode spec at `--force-device-scale-factor=1.5`. The packaged Linux build runs agent mode end to end (sandboxed, native Wayland). Manual matrix on 29 Oct 2026: OpenCode (free `opencode/deepseek-v4.1-flash-free`), Kimi Code and Grok Build `ok` for "make this button red" through `Mod+K`. PR #11 CI: the first run ([run 40969942207](https://github.com/maplepreneur/arbora/actions/runs/40969942207)) was red on Windows `Check` (source-path tests assumed roots without a drive letter) and on macOS/Windows E2E (in CI's small window the popover was pinned over the element). Both are fixed, and [run 40971281943](https://github.com/maplepreneur/arbora/actions/runs/40971281943) is green on all six jobs. **Next:** the hand checks for Stage 4 (tiling and floating moves, real fractional scaling) and merge; Stage 5 (Browser control MCP server) after that. Stage 10 (Grove) is specified and not started. Stage 12 (browser tabs, cross-tab agent work, 1Password) is specified and not started.
 
 | Stage | Name | Status | Notes |
 | --- | --- | --- | --- |
@@ -29,7 +29,8 @@ This document breaks [PLAN.md](./PLAN.md) into stages a coding agent can execute
 | 8 | Git and GitHub | Not started | |
 | 9 | Distribution and polish | Not started | |
 | 10 | Grove | Not started | Specified. Depends on Stage 3's ACP sessions and on the transcript components living in `panels/agent/`. Not the next stage. It may be pulled forward once Stage 3 is merged; it does not need Stages 4–9 first. |
-| 11 | Stretch | Not started | Renumbered from Stage 10 when Grove was added. The dev plugin, browser tabs and Grove orchestration live here. |
+| 11 | Stretch | Not started | Renumbered from Stage 10 when Grove was added. The dev plugin, worktrees and Grove orchestration live here. Browser tabs moved to Stage 12. |
+| 12 | Tabs, cross-tab agent work and passwords | Not started | Specified 29 Oct 2026 (PLAN § 4.13–4.15, ADR 0005–0006). Three sub-parts, one PR each: 12a tabs, 12b cross-tab prompts and the design-match loop, 12c 1Password. Starts with a spike on whether the 1Password extension unlocks through the desktop app inside Electron. Depends on Stages 1, 4 and 5; Stage 9 for the settings and onboarding UI. |
 
 Status values: `Not started`, `In progress (PR #N)` / `In progress (PR #N, merged)`, `Blocked (reason)`, `Done (PR #N)`. Never mark `Done` from CI alone; `arch-ok` on Omarchy/Hyprland is required.
 
@@ -791,7 +792,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 
 1. **`@arbora/dev-plugin`** (tier 1 source mapping): Vite plugin, Next/webpack loader and Nuxt module that add `data-arbora-src="path:line:col"` to JSX/Vue template elements in development (same approach as `code-inspector-plugin`). Arbora detects the attribute and reports exact locations regardless of React version. Offer "Install dev plugin" from the inspector when tier 3 is in use.
    - Gotcha: attributes on fragments and custom components do not reach the DOM; only host elements get them, so the chain still comes from fibers.
-2. **Multiple browser tabs**: one `WebContentsView` per tab, tab strip in the browser chrome, MCP `target` parameter wired.
+2. **Multiple browser tabs**: moved to Stage 12 (`F-TABS`), which also covers cross-tab prompts and passwords.
 3. **Parallel agent sessions with git worktrees**: each thread optionally gets a worktree and its own dev server port; the browser switches per thread.
    - Gotcha: `node_modules` per worktree; offer `pnpm install` on worktree creation or share via a workspace symlink strategy.
 4. **Design-mode direct write-through**: for tier 1 targets in Tailwind projects, apply class edits directly to the source file and skip the agent round trip; keep a one-click "Ask agent instead".
@@ -805,7 +806,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 ### Checklist
 
 - [ ] Dev plugin (Vite, webpack/Next, Nuxt) and inspector integration
-- [ ] Browser tabs
+- [x] Browser tabs (moved to Stage 12)
 - [ ] Worktree sessions
 - [ ] Tailwind write-through
 - [ ] Design session history
@@ -813,6 +814,150 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - [ ] LSP opt-in
 - [ ] Source-map assisted mapping
 - [ ] Grove orchestration MCP tools
+
+---
+
+## Stage 12: Tabs, cross-tab agent work and passwords
+
+**Goal.** Make Arbora's browser one you can work in all day, and let an agent work across tabs:
+
+- Several tabs per project.
+- Logins filled and saved through 1Password.
+- Prompts sent from any tab to any open project.
+- An agent that reads a design in one tab (Figma), implements it in the app tab's project, screenshots the result and iterates until the two match.
+
+**Features.** `F-TABS-01` to `F-TABS-07`, `F-XTAB-01` to `F-XTAB-07`, `F-VAULT-01` to `F-VAULT-06` ([PLAN § 4.13–4.15](./PLAN.md#413-browser-tabs-f-tabs)), ADR 0005 and ADR 0006.
+
+**Depends on.**
+- Stage 1: `BrowserService`, partitions, extensions.
+- Stage 4: the inspector and composer, reused per tab.
+- Stage 5: the MCP server; every tool already takes an optional `target`.
+- Stage 9: the settings UI and onboarding entry points. Until it lands, use `settings.json` and a palette command.
+- Grove, if present, simply shows cross-tab threads like any other.
+
+**Sub-parts, one PR each, in order.** 12a tabs (`F-TABS`), 12b cross-tab agent work (`F-XTAB`), 12c passwords (`F-VAULT`). 12c can start in parallel with 12b once the spike is done, because it only needs tabs and partitions from 12a.
+
+**Out of scope.**
+- Password sync or storage inside Arbora.
+- Providers other than 1Password: the interface only, no implementation.
+- Figma API tokens stored by Arbora.
+- Design-to-code without an agent.
+- Reading Chrome profile data.
+- Cross-origin iframes inside a design tool.
+- Sharing tabs between machines.
+
+### Instructions
+
+0. **Spike: 1Password in Electron (half a day, before 12c).** Load the pinned 1Password extension into a test partition with `session.extensions.loadExtension`, then record:
+   - whether its MV3 service worker starts;
+   - whether the inline menu appears on a login form;
+   - whether "Save login?" fires;
+   - whether it can reach the desktop app.
+
+   Electron implements only part of `chrome.*`. In particular, native messaging (`chrome.runtime.connectNative`), which 1Password uses to unlock through the desktop app, is believed to be missing as of Electron 45; confirm it. Also try the extension's standalone sign-in. Write the results into this section's Gotchas, and pick the default `passwords.mode`: `extension` if fill and save work, else `cli`.
+1. **Tabs model (12a).**
+   - `BrowserService` becomes `BrowserTab`, one per `WebContentsView`. A new `BrowserTabs` service per window owns the list, the active tab, the app-tab id and the LRU discard. It moves the view-rect sync to whichever tab is active and parks hidden tabs (`setVisible(false)`, zero bounds, the same rule as Grove's `setViewVisible`).
+   - Problems buffers, screenshots, CDP, emulation and the inspector stay per tab.
+   - Persist `{ id, role, url, title, zoom, preset }[]` and `activeTabId` in the machine-local project state.
+   - Channels gain an optional `tabId`, defaulting to the active tab, and events carry `tabId`.
+   - New channels: `browser.tabs.list`, `browser.tabs.open`, `browser.tabs.close`, `browser.tabs.activate`, `browser.tabs.move`, `browser.tabs.setRole`; event `browser.tabsChanged`.
+2. **Tab strip UI (12a).** Use `panels/browser/TabStrip.tsx`.
+   - Show favicon, title, a role icon (app or reference), a loading spinner, close on hover, and middle-click to close.
+   - Support drag to reorder and overflow scrolling. The strip collapses to icons below 400 px of panel width, using the same container queries as the toolbar.
+   - The context menu (native, `contextMenu.show`) offers: Make app tab, Duplicate, Use project session, Discard, Close others, and Send tab to agent.
+   - Register the commands from `F-TABS-01` in `commands.ts` with `intercept: true`. Handle them in the exhaustive switch.
+3. **Partitions and popups (12a).**
+   - Create `persist:arbora-web` in `BrowserSessions` with the same certificate rule and extensions as project partitions.
+   - `setWindowOpenHandler`: http(s) without `opener` becomes a new reference tab. Requests whose features need `opener` (OAuth) are allowed as a child `BrowserWindow` with the same partition, `contextIsolation`, `sandbox`, no preload and a deny-all `setWindowOpenHandler` of its own, closed when the opener tab closes.
+4. **MCP targets (12a).**
+   - Resolve `target` in main: a tab id, `"app"` or `"active"`.
+   - Add `browser_tabs`, `browser_tab_open` and `browser_tab_close`.
+   - Tools on hidden tabs must not activate them. Capture with CDP `Page.captureScreenshot` after `webContents.setBackgroundThrottling(false)` for the duration of the call, because `capturePage()` on a parked view is empty (Stage 4 gotcha).
+5. **Cross-project routing (12b).**
+   - `agentMode.submit`'s target gains `projectPath`. When it is not this window's project, main hands the composed prompt to that project's window (`WindowManager.findByProject`) and its `AgentService`.
+   - If the project is not open, offer "Open project and send". It opens the window, then sends.
+   - Selections from a reference tab carry `tabId`, and their sources resolve against the target project (they usually stay tier 3, and that is fine).
+6. **Send tab to agent (12b).** Add the `agentMode.sendTab` channel and a popover variant without an element. Blocks:
+   - a text body naming the tab id, role, URL, title and the target project's app tab id;
+   - a viewport `image` (or a file link);
+   - an optional full-page image, behind a toggle;
+   - selected text;
+   - an accessibility summary capped at 4 KB.
+7. **Grants (12b).**
+   - `AgentModeService` records `{ threadId, tabId }` grants on send. Add `agent.listGrants` and `agent.revokeGrant`, and an `agent.grantsChanged` event.
+   - The MCP server checks the grant list on every call that resolves `target` to a reference tab. Write-type tools (`browser_type`, `browser_select_option`, form submit) on a granted reference tab need a one-time allow.
+   - Show grant chips in the thread header (`panels/agent/`) with revoke.
+8. **`browser_compare` (12b).**
+   - Pure image code in `packages/mcp-browser-server/src/compare.ts`: scale both captures to the same CSS width, compute SSIM on luminance in 8×8 windows plus a color-histogram distance, pick the top-k differing cells of a 12×12 grid, and render `side_by_side`, `overlay` (50 %) or `diff` (heatmap).
+   - Unit-test it with synthetic bitmaps: identical images score 1.0, a shifted box drops the score, and the worst cell is the changed one.
+   - Return one image of at most 1568 px plus JSON.
+9. **Design-match loop (12b).**
+   - Extend the instruction block and `.arbora/SKILL.md` with the `F-XTAB-04` loop, the threshold and round defaults (project settings `designMatch.threshold`, `designMatch.maxRounds`), and the Figma notes from `F-XTAB-06`.
+   - Add `mcp.extraServers` to `projectSettingsSchema`: entries with the ACP `mcpServers` shape. Pass them through in `session/new` unchanged. The Figma MCP server is configured there by the user; never ship tokens.
+   - Render the "Matching design" card from `browser_compare` tool calls in the transcript: round, images and score history, with Stop.
+10. **Setup script (12c).**
+    - Write `scripts/setup-1password.sh` (POSIX sh plus bash where needed) and `scripts/setup-1password.ps1` following `F-VAULT-01`, with `--check`, `--yes` and `--uninstall`. Shellcheck clean.
+    - The extension fetch reuses `fetch-devtools-extensions.mjs` (add an `--only 1password` flag) with a pinned version and SHA-256.
+    - Add `pnpm setup:1password`. Document in the README.
+    - On Linux, writing `/etc/1password/custom_allowed_browsers` asks first and uses `sudo tee -a` only if the line is missing. For packaged builds the executable name is `arbora`; for `pnpm dev` it is `electron`, so print a note that dev builds need that line too.
+11. **Password provider (12c).**
+    - `apps/desktop/src/main/passwords/`: `PasswordProvider` interface and `OnePasswordProvider`.
+    - Extension mode: load the extension and render its popup in an anchored `WebContentsView`.
+    - CLI mode: `op` via `execFile` with the login-shell PATH, JSON output, secrets passed through stdin, a 30 s timeout, and no secret ever logged. Treat stderr as redactable too.
+    - Fill uses CDP `Input.insertText` after focusing the field, through the isolated world, so the page sees real input events.
+    - Detect login-form submits in the browser preload (a `submit` event or a navigation after a password field was filled) and send `passwords.offerSave` over the page channel. Send the origin and the field names only; the values are read in main via CDP at save time.
+12. **Agent logins (12c).**
+    - Add `browser_login` to the MCP server, with a permission card listing item titles only.
+    - Add a redaction pass: `browser_snapshot` replaces `value` on `input[type=password]` and on fields 1Password marked; `browser_evaluate` results are scanned for strings filled in this session and masked; the ACP log masks them too.
+    - Settings from `F-VAULT-06`, with a migration if `SETTINGS_VERSION` changes.
+13. **Tests.**
+    - Unit: the tabs model (LRU discard, app-tab invariants, persistence), `target` resolution and grants, `browser_compare`, `op` argument building (no secrets in argv), the redaction pass, and the setup script's `--check` on a fake `PATH`.
+    - e2e:
+      - Open three tabs; close and reopen; `Mod+T`/`Mod+W` with the page focused; the app tab can't be closed.
+      - A fake ACP agent calls `browser_tabs` and is refused an ungranted reference tab, then is granted after "Send tab to agent".
+      - `browser_compare` between `fixtures/vite-react` and a reference fixture page (`fixtures/design-reference/`, a static HTML "design" of the counter card) returns a score below the threshold, then above after the fake agent applies a scripted edit.
+      - Cross-project send between two open windows.
+      - A login fixture (`fixtures/login/`) where a fake `op` on `PATH` fills the form and a fake agent's `browser_login` returns `logged_in` without the password appearing in the transcript, tool result or ACP log.
+    - Manual: the Figma flow with OpenCode on a free model first, then one run each with Kimi and Grok. Record it in Appendix B.
+
+### Gotchas
+
+- **Electron extension support is partial.** MV3 service workers load, but toolbar actions, popups, `chrome.identity`, and probably native messaging are not provided. Assume the 1Password extension cannot unlock through the desktop app until the spike shows it can, and keep CLI mode working regardless. Pin the extension version. A new 1Password release can break Electron compatibility without notice.
+- **1Password only talks to browsers it trusts.** On Linux, the desktop app checks the browser's executable name against its own list plus `/etc/1password/custom_allowed_browsers`. A dev build runs as `electron`, a packaged build as `arbora`, so the line must match the build in use. Never edit that file without the user's consent; it needs root.
+- **Never put secrets in argv.** `op item create` with `password=...` on the command line is visible in `ps` and shell history. Use the JSON template on stdin. `op item get --reveal` output is secret: never log it, never send it over IPC to the renderer, and type it into the page from main.
+- **Hidden tabs are empty to `capturePage()`** (Stage 4). Use CDP `Page.captureScreenshot` on the hidden tab, with background throttling off during the call, or the agent's reference screenshots come back blank.
+- **Figma is a canvas.** `browser_snapshot` on Figma returns its toolbar and layer panel, not the design. Teach the agent to screenshot frames and read Dev Mode values. Figma's keyboard shortcuts also fight injected keys; prefer clicks and the `node-id` URL to navigate. A Figma tab is heavy (WebGL, hundreds of MB), so the LRU cap must never discard the app tab or a tab granted to a running loop.
+- **Comparing different renderers.** Fonts, anti-aliasing and DPR differ between Figma's canvas and the app's DOM. Compare at the same CSS width and DPR, blur slightly before SSIM, and keep the threshold below 1 (0.92 default). A perfect score is not the goal; the remaining-differences list is.
+- **OAuth popups need `window.opener`.** Turning every `window.open` into a tab breaks "Sign in with Google" in Figma and GitHub. Popups with `opener` stay child windows of the tab's partition.
+- **Shared reference partition.** Logging in once for every project is the point, but a project's dev server on `localhost` must not share cookies with reference tabs. The app tab keeps the project partition, and "Use project session" is an explicit per-tab switch.
+- **Chord collisions.** `Mod+W` closes the window in many apps, and Electron's default macOS menu binds it. Rebind the menu item to close the tab, and keep Close Window on `Mod+Shift+W`. `Ctrl+Tab` is a plain `Ctrl` chord, so it passes through to a focused terminal.
+- **Cross-window sends.** The target project's window may be on another workspace (Hyprland) or minimized. Do not steal focus on send; focus only when the user clicks "Open thread".
+
+### Acceptance
+
+- Three tabs (app, docs and a Figma file) survive a restart. Only the active one loads at startup. The app tab cannot be closed, and `Mod+K` defaults to it.
+- From the Figma tab, "Send tab to agent" → "implement this design" → project `fixtures/vite-react` starts a thread with that tab granted. The agent screenshots the frame, edits the fixture, compares the two tabs at least twice, and finishes with a side-by-side image and a score at or above the threshold, or an honest list of what still differs.
+- An ungranted reference tab is refused to the agent with "tab not granted". Revoking a grant mid-loop stops further access.
+- `pnpm setup:1password --check` reports correctly on Omarchy, Debian, macOS and Windows. A full run installs 1Password and `op`, registers Arbora, and the browser fills a login on the login fixture and on one real site.
+- Saving a new login from a form creates a 1Password item, and no secret appears in `ps`, logs or the transcript.
+- `browser_login` with a fake agent logs in to the login fixture after one approval. The password never appears in the tool result, the transcript, the ACP log or a snapshot.
+
+### Checklist
+
+- [ ] Spike: 1Password extension in Electron, results recorded, default mode chosen
+- [ ] `BrowserTabs` service, tab persistence, LRU discard, parked hidden tabs
+- [ ] Tab strip UI, chords, context menu, roles
+- [ ] Shared `persist:arbora-web` partition, OAuth popups as child windows
+- [ ] MCP `target` resolution, `browser_tabs` / `browser_tab_open` / `browser_tab_close`, hidden-tab capture
+- [ ] Cross-project routing and "Open project and send"
+- [ ] Send tab to agent, grants with chips and revoke
+- [ ] `browser_compare` with unit tests
+- [ ] Design-match loop instructions, `mcp.extraServers`, "Matching design" card
+- [ ] `scripts/setup-1password.sh` / `.ps1` with `--check`, `--yes`, `--uninstall`; `pnpm setup:1password`
+- [ ] `PasswordProvider` + 1Password extension mode and CLI mode (fill, save, OTP)
+- [ ] `browser_login` with permission card and redaction pass
+- [ ] Fixtures `design-reference` and `login`, unit and e2e tests
+- [ ] Manual matrix (Figma flow, agent login) and `arch-ok` on Omarchy/Hyprland
 
 ---
 
@@ -839,5 +984,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 | Stage 6: design save applied correctly | | | | |  |
 | Stage 8: generate commit message | | | | |  |
 | Stage 10: Grove session, status, switch away and back | | | | |  |
+| Stage 12: Figma tab → "implement this design" → match loop | | | | |  |
+| Stage 12: `browser_login` with 1Password, secret never visible | | | | |  |
 
 Fill cells with `ok`, `partial (note)` or `fail (issue link)` and the agent/adapter version tested.
