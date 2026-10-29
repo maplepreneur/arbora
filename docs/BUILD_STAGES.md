@@ -43,7 +43,8 @@ Status values: `Not started`, `In progress`, `Blocked (reason)`, `Done (PR #)`.
 
 ## Cross-cutting gotchas (read before any stage)
 
-- **Super key is unreliable.** `Win+K` opens Cast on Windows, `Super+D` shows the desktop on Windows and many Linux WMs, GNOME grabs many Super chords. Implement `Mod` as Cmd on macOS and Super elsewhere, detect failures (the keydown never arrives) and offer `Ctrl+Alt+K` / `Ctrl+Alt+D` as the fallback. Make every binding configurable from day one.
+- **`Mod` is Ctrl on Linux and Windows, Cmd on macOS. Never Super.** Omarchy binds `Super+K` (keybindings viewer), `Super+P`, `Super+Shift+D` and dozens of other Super chords at the Hyprland level; Windows owns `Win+K`/`Win+D`; GNOME grabs many Super chords. Those are consumed before the app sees a keydown, and `globalShortcut` does not work on Wayland at all. Ctrl is free in Omarchy's defaults. Make every binding configurable from day one.
+- **Mode chords must beat the embedded page and respect the terminal.** Many web apps bind `Ctrl+K` to their own command palette (cmdk and friends). When the `WebContentsView` has focus the renderer gets no keydown, so intercept `Mod+K`/`Mod+D`/`Esc` in main with `webContents.on('before-input-event')` and `event.preventDefault()` for both the browser view and the app window. When an xterm terminal is focused, `Ctrl+K` (kill line) and `Ctrl+D` (EOF) go to the shell by default; a setting flips that.
 - **macOS GUI apps do not inherit your shell PATH.** `kimi`, `grok`, `node`, `pnpm`, `git` may not resolve when Arbora is launched from Finder/Dock. On startup, spawn the user's login shell (`$SHELL -ilc 'echo -n "$PATH"'`) once, cache the result, and use it for every child process (agents, terminals, git). Linux desktop launchers have the same problem with user-local bins (`~/.local/bin`, nvm, volta).
 - **Windows path and shell differences.** Spawn `npx` as `npx.cmd` (or use `shell: true` with careful quoting). Use `PowerShell` or `pwsh` as the default terminal. Normalise paths with `path.posix` before sending to agents and MCP tools; ACP agents expect absolute paths, and Codex/Claude Code handle `C:\...` but prompts read better with forward slashes.
 - **Native modules must be rebuilt for Electron.** `node-pty` (and anything else with a `.node` binary) must be compiled against Electron's Node ABI. Use `electron-builder install-app-deps` (or `@electron/rebuild`) in `postinstall`, and never import native modules from the renderer.
@@ -53,6 +54,47 @@ Status values: `Not started`, `In progress`, `Blocked (reason)`, `Done (PR #)`.
 - **Agent CLIs change weekly.** Pin adapter versions in the registry (`npx -y pkg@x.y.z`) and expose an "update adapters" action. Always read `agentCapabilities` and `promptCapabilities` from `initialize` instead of hard-coding what an agent can do.
 - **Keep secrets out of logs.** The ACP log viewer must redact `env` values and auth tokens. The MCP bearer token must never appear in prompts.
 
+## Local testing on Arch Linux (Omarchy + Hyprland)
+
+The primary development machine is Arch Linux running Omarchy with Hyprland on Wayland. Every stage is verified there with `pnpm dev` and, from Stage 0 onward, with the packaged tarball. Do not mark a stage done on CI results alone.
+
+### One-time setup
+
+```bash
+# Omarchy ships most of this; install what is missing
+sudo pacman -S --needed base-devel git nodejs npm python make gcc \
+  libarchive rpm-tools fakeroot xdg-desktop-portal-hyprland xdg-desktop-portal-gtk
+corepack enable && corepack prepare pnpm@latest --activate
+
+# Native Wayland for Electron. Omarchy already exports this in its Hyprland env config;
+# confirm it, otherwise Electron runs under XWayland and text is blurry with fractional scaling.
+echo "$ELECTRON_OZONE_PLATFORM_HINT"    # expect: auto
+```
+
+Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide. Do not add Hyprland rebinds for Arbora.
+
+### Per-stage verification (run before ticking a stage done)
+
+1. `pnpm dev` starts under Hyprland and `hyprctl clients -j | jq '.[] | select(.class|test("arbora|electron";"i")) | {class, xwayland, size}'` shows `"xwayland": false`.
+2. Tiling: move the window between tiled/floating (`Super+V`), resize with `Super+-`/`Super+=`, send it across workspaces, and confirm the `WebContentsView` tracks the panel rect with no stale offsets or black bands.
+3. Fractional scaling: change scaling with `Super+/` (Omarchy monitor scaling up/down) while running; confirm overlays, popovers and screenshot `dpr` stay correct.
+4. Keyboard: `Ctrl+K`, `Ctrl+D`, `Ctrl+Shift+P`, `Ctrl+P`, `Esc` work with focus in the app chrome, in the embedded page, and (where appropriate) are passed through in the terminal.
+5. Native dialogs (open project, save) appear via the xdg portal and return paths; `shell.openExternal` opens Omarchy's default browser; clipboard copy/paste works in the terminal and editor.
+6. Packaged build: `pnpm package` then run the Linux tarball or AppImage from `dist/`; the same checks pass without `--no-sandbox`. If the AppImage needs `--no-sandbox`, record it in Stage 9 and fix the chrome-sandbox permissions or prefer the tarball/AUR path.
+7. Record the result in the Progress table notes as `arch-ok` or `arch-fail (note)`.
+
+### Hyprland and Wayland gotchas
+
+- **XWayland fallback is silent.** If `ELECTRON_OZONE_PLATFORM_HINT` is unset, Electron picks X11 and everything still works but blurry on fractional scaling, and Wayland-only behaviours differ. Also call `app.commandLine.appendSwitch('ozone-platform-hint', 'auto')` in main so packaged builds do not depend on the env var, and enable `WaylandWindowDecorations` in `enable-features`.
+- **No server-side decorations.** Hyprland does not draw titlebars, so Arbora uses a frameless window with its own title bar on Linux (as on Windows). Window dragging works via `-webkit-app-region: drag`; test that the drag region does not cover the URL bar or tabs.
+- **Tiling WMs ignore saved window bounds.** `BrowserWindow.setBounds` on restore is pointless under Hyprland and can fight the compositor; only restore bounds when the window is floating (or skip on Linux). Expect many rapid `resize` events; the view-rect sync must be rAF-throttled and never loop.
+- **`app_id` in dev is `electron`.** Hyprland window rules and `hyprctl clients` key off `class`/`app_id`. Set `app.setName('arbora')` early in main (and `--class=arbora` in the dev script) so the dev build is identifiable and so Omarchy's `omarchy-launch-or-focus` style scripts can target it later.
+- **`globalShortcut` is a no-op on Wayland.** Do not use it for anything, including probes.
+- **Portals.** File dialogs go through `xdg-desktop-portal` (`-hyprland` for screen things, `-gtk` for file chooser). If dialogs never appear, check `systemctl --user status xdg-desktop-portal*`.
+- **NVIDIA.** Electron on Hyprland with proprietary NVIDIA drivers may need `--disable-gpu-sandbox` or fall back to software rendering; expose `ARBORA_FLAGS` (space-separated Chromium switches appended at startup) and document it.
+- **Screen capture is not needed for screenshots.** `webContents.capturePage` renders from Chromium's own compositor and works regardless of Wayland screen-capture permissions. Only the Stage 9 "export diagnostics" video/recording features (if ever added) would need the portal.
+- **Omarchy updates Hyprland frequently.** If something breaks after `omarchy-update`, check Hyprland's and Electron's release notes before debugging Arbora; keep Electron on the latest stable.
+
 ---
 
 ## Stage 0: Foundation
@@ -61,7 +103,7 @@ Status values: `Not started`, `In progress`, `Blocked (reason)`, `Done (PR #)`.
 
 **Features.** `F-SHELL-01` to `F-SHELL-06`, `F-NFR-01`, `F-NFR-03` (partial).
 
-**In scope.** pnpm monorepo, electron-vite app, TypeScript strict, ESLint + Prettier, zod IPC layer, settings store, project open/recent, panel layout skeleton with persisted sizes, command palette, keybinding service with Super fallback, GitHub Actions matrix (typecheck, lint, unit), electron-builder producing unsigned artifacts.
+**In scope.** pnpm monorepo, electron-vite app, TypeScript strict, ESLint + Prettier, zod IPC layer, settings store, project open/recent, panel layout skeleton with persisted sizes, command palette, keybinding service (Ctrl/Cmd chords with main-process interception), Wayland-native startup flags, GitHub Actions matrix (typecheck, lint, unit), electron-builder producing unsigned artifacts.
 
 **Out of scope.** Any real panel content, signing, updater.
 
@@ -72,11 +114,11 @@ Status values: `Not started`, `In progress`, `Blocked (reason)`, `Done (PR #)`.
 3. TypeScript: `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, project references per package. ESLint flat config with `typescript-eslint` strict, `react-hooks`, `import/no-cycle`, and a rule banning inline imports (`no-restricted-syntax` on `ImportExpression` outside `src/main/lazy/`).
 4. IPC layer in `packages/shared`: define each channel as `{ name, request: z.ZodType, response: z.ZodType }` and each event as `{ name, payload: z.ZodType }`. Write `defineHandler` (main) and `createClient` (preload) helpers that validate both directions. Expose the client through `contextBridge.exposeInMainWorld('arbora', ...)`. The renderer must never call `ipcRenderer` directly.
 5. Settings store in main (`electron-store` or a hand-rolled JSON file under `app.getPath('userData')`), with a zod schema and migrations table. Per-project settings live in `<project>/.arbora/project.json`.
-6. Window management: one `BrowserWindow` per project, `titleBarStyle: 'hiddenInset'` on macOS, custom title bar on Linux/Windows with window controls. Remember bounds per project.
+6. Window management: one `BrowserWindow` per project, `titleBarStyle: 'hiddenInset'` on macOS, frameless with a custom title bar on Linux/Windows (Hyprland draws no decorations anyway). Remember bounds per project but only restore them when not under a tiling compositor (skip restore on Linux unless the window is floating). Call `app.setName('arbora')` before `ready` and append `ozone-platform-hint=auto` plus `enable-features=WaylandWindowDecorations` so Linux runs natively on Wayland; append any switches from `ARBORA_FLAGS`.
 7. Project open: native dialog, recent projects list (most recent 10), drag-and-drop a folder onto the welcome screen, CLI argument `arbora <path>`.
 8. Layout: `react-resizable-panels` with the layout from PLAN section 4.1. Persist sizes and collapsed state per project. Lazy-load panel components with `React.lazy` so Stage 0 ships placeholders.
 9. Command palette with `cmdk`, command registry in `packages/shared` (`{ id, title, keybinding?, run }`). Every later feature registers commands here.
-10. Keybinding service: parse chords like `mod+k`, resolve `mod` per OS, register via renderer `keydown` for in-window chords and `globalShortcut` only for the `Mod+K` / `Mod+D` fallback probe. On first run, probe whether `Super+K` reaches the window; if not, switch defaults to `Ctrl+Alt+K/D` and record the decision in settings.
+10. Keybinding service: parse chords like `mod+k`, resolve `mod` to `Meta` on macOS and `Control` elsewhere. Two dispatch paths: (a) renderer `keydown` for everything inside the app chrome; (b) main-process `webContents.on('before-input-event')` on the app window and (from Stage 1) on the browser `WebContentsView`, which `preventDefault()`s the mode chords (`Mod+K`, `Mod+D`, `Esc` while a mode is active, `Mod+Shift+P`) and forwards them to the command registry so they work even when the embedded page has focus or binds the same keys. Add a `terminalPassthrough` setting (default on) so `Ctrl+K`/`Ctrl+D` reach the shell when a terminal is focused. Never use `globalShortcut`.
 11. Theme: Tailwind with CSS variables for dark/light, follow `nativeTheme`, toggle command.
 12. CI: `.github/workflows/ci.yml` matrix `ubuntu-latest`, `macos-latest`, `windows-latest` running `pnpm install --frozen-lockfile`, `typecheck`, `lint`, `test`. A separate `package.yml` on tags running `electron-builder --publish never` and uploading artifacts.
 13. electron-builder config: `appId: dev.arbora.app`, targets AppImage + deb (Linux), dmg + zip (macOS, unsigned for now), nsis (Windows). `asarUnpack` native modules.
@@ -88,15 +130,17 @@ Status values: `Not started`, `In progress`, `Blocked (reason)`, `Done (PR #)`.
 - electron-vite externalises Electron and Node built-ins in `main` and `preload` by default but bundles everything else. Native modules (`node-pty` later) must be listed in `build.rollupOptions.external` and kept in `dependencies` (not `devDependencies`) so electron-builder packages them.
 - With `sandbox: true` the preload cannot `require` arbitrary modules. Keep preloads tiny: `contextBridge` + `ipcRenderer` only. Everything else lives in main.
 - `electron-builder` on Linux needs `libarchive-tools`, `rpm` (if you add rpm) and `fakeroot`; on CI install them in the Linux job. The AppImage needs `--no-sandbox` on some Arch setups unless the AppImage's chrome-sandbox is setuid; document this rather than fighting it.
-- `globalShortcut` steals the chord from every other app while Arbora runs. Use it only for the one-time probe and release it immediately.
+- `before-input-event` fires for every key in every `webContents`; keep the handler a cheap table lookup and only `preventDefault()` on exact chord matches, or typing in the embedded page and in xterm will lag.
+- Frameless windows on Linux lose the native resize border; add an 8px CSS resize region or rely on the compositor (Hyprland handles resize for tiled and floating windows itself, so only Windows needs the CSS fallback).
 - `react-resizable-panels` needs explicit `id` and `order` on every panel when panels are conditionally rendered, or layouts get corrupted on persist/restore.
 - Playwright for Electron requires `electron.launch({ args: [path/to/main.js] })` against the built output; add a `pnpm build:test` script that builds once without minification.
 
 ### Acceptance
 
 - `pnpm dev` opens the app on Linux, macOS and Windows; opening `fixtures/vite-react` shows the empty layout with persisted sizes after restart.
-- `Mod+Shift+P` opens the palette; `Mod+K` and `Mod+D` dispatch commands (placeholders) or the fallback chords do, and the choice is visible in settings.
-- CI matrix is green; `package.yml` produces AppImage, deb, dmg, exe artifacts.
+- On Omarchy/Hyprland the window is native Wayland (`xwayland: false`), tiles and floats correctly, and the custom title bar drags the window.
+- `Ctrl+Shift+P` opens the palette; `Ctrl+K` and `Ctrl+D` dispatch placeholder commands from the app chrome, and the bindings are editable in the settings JSON.
+- CI matrix is green; `package.yml` produces AppImage, deb, tarball, dmg, exe artifacts; the tarball runs on Arch.
 
 ### Checklist
 
@@ -105,11 +149,12 @@ Status values: `Not started`, `In progress`, `Blocked (reason)`, `Done (PR #)`.
 - [ ] TypeScript strict + ESLint + Prettier
 - [ ] zod IPC layer and `window.arbora` bridge
 - [ ] Settings store with migrations; `.arbora/project.json`
-- [ ] Window management and custom title bar
+- [ ] Window management, frameless custom title bar, Wayland flags, `ARBORA_FLAGS`
 - [ ] Project open: dialog, recents, drag-and-drop, CLI arg
 - [ ] Panel layout with persistence and lazy panels
 - [ ] Command palette and command registry
-- [ ] Keybinding service with Super probe and fallback
+- [ ] Keybinding service with `before-input-event` interception and terminal passthrough
+- [ ] Verified locally on Omarchy/Hyprland (see checklist above)
 - [ ] Theme
 - [ ] CI matrix and package workflow
 - [ ] electron-builder config
@@ -129,7 +174,7 @@ Status values: `Not started`, `In progress`, `Blocked (reason)`, `Done (PR #)`.
 ### Instructions
 
 1. `BrowserService` in main: creates one `WebContentsView` per window with `webPreferences: { partition: 'persist:arbora-browser-<projectHash>', preload: browserPreloadPath, contextIsolation: true, sandbox: true, nodeIntegration: false }`. Attach it to `win.contentView`. The renderer sends the browser panel's rect on every layout change (`ResizeObserver` -> IPC, throttled with rAF), and main calls `view.setBounds`.
-2. Navigation API: `navigate(url)`, `back`, `forward`, `reload`, `hardReload` (`reloadIgnoringCache`), `stop`, `openExternal`, `toggleDevTools`, `setZoom`. Emit `navigation-state` events (url, title, canGoBack, canGoForward, loading, favicon).
+2. Navigation API: `navigate(url)`, `back`, `forward`, `reload`, `hardReload` (`reloadIgnoringCache`), `stop`, `openExternal`, `toggleDevTools`, `setZoom`. Emit `navigation-state` events (url, title, canGoBack, canGoForward, loading, favicon). Register the Stage 0 keybinding interceptor on the view's `webContents` (`before-input-event`) so `Ctrl+K`/`Ctrl+D`/`Esc` reach Arbora even when the page binds them.
 3. URL bar component: accepts bare `localhost:5173`, defaults to `http://`, shows an insecure/local badge, history dropdown from the partition.
 4. Viewport presets: the renderer draws a letterboxed container; the view is sized to the preset width/height and centred. Emulate DPR and touch via CDP `Emulation.setDeviceMetricsOverride` so mobile presets are honest.
 5. CDP: `webContents.debugger.attach('1.3')` on `did-start-loading`. Enable `Runtime`, `Log`, `Network`, `Page`. Buffer `Runtime.consoleAPICalled`, `Runtime.exceptionThrown`, `Log.entryAdded`, `Network.loadingFailed`, `Network.responseReceived` (status >= 400) into a ring buffer (last 500 entries) in `BrowserService`. Expose `getConsole()`, `getNetworkErrors()`, `clear()`. Render in the Problems tab.
@@ -144,7 +189,8 @@ Status values: `Not started`, `In progress`, `Blocked (reason)`, `Done (PR #)`.
 - `WebContentsView` draws above all renderer DOM. Anything that must appear over the browser (prompt popovers, drop indicators, modals) must either be another `WebContentsView` or be rendered inside the page by the preload. Decide now: Arbora renders popovers in the renderer and temporarily shrinks or hides the view only for full-screen modals; in-page overlays are rendered by the preload. The Stage 4 prompt popover is drawn by the renderer next to the view (the view is clipped if the popover would overlap), not inside the page.
 - `loadExtension` only works on persistent partitions and must be awaited before loading a page, otherwise the hook is not injected and React DevTools reports "no React detected" even though it is loaded.
 - React DevTools only exposes component names in development builds. Production builds of the user's app will fall back to tier 3 source resolution; surface this in the UI.
-- Electron's `webContents.capturePage` returns the visible area at device scale. On HiDPI screens the PNG is 2x; store `dpr` with every screenshot so element rects can be mapped back.
+- Electron's `webContents.capturePage` returns the visible area at device scale. On HiDPI screens the PNG is 2x; store `dpr` with every screenshot so element rects can be mapped back. Hyprland fractional scaling (1.25, 1.5, 1.666...) produces non-integer `dpr`; round rects when burning in highlights and test with Omarchy's `Super+/` scaling toggle.
+- Under Hyprland the window is resized by the compositor on every tiling change; `view.setBounds` must be driven by the renderer's `ResizeObserver`, not by `BrowserWindow` `resize` events, or the view lags one frame behind and leaves black bands.
 - Attaching the debugger after DevTools is open throws "Another debugger is already attached". Wrap `attach` in try/catch, listen for `devtools-closed` and retry.
 - `Network.enable` with large pages can flood the main process. Set `maxTotalBufferSize` and drop bodies; only metadata goes in the ring buffer.
 - If the dev server redirects to `0.0.0.0` or an IPv6 host, Chromium may refuse. Normalise `0.0.0.0` to `localhost` in the URL bar.
@@ -539,26 +585,26 @@ Status values: `Not started`, `In progress`, `Blocked (reason)`, `Done (PR #)`.
 2. Targets: AppImage and `.deb` (Debian/Ubuntu), a `.tar.gz` plus an AUR `PKGBUILD` (`arbora-bin`) in a separate `aur/` directory with a release script that bumps `pkgver` and `sha256sums`; `.dmg` universal (arm64 + x64) or separate; NSIS `.exe` with per-user install.
 3. Auto-update: `electron-updater` with GitHub Releases provider, channels `latest` and `beta`, "check for updates" command, release notes dialog. AppImage updates in place; `.deb` and AUR users get a notification with instructions instead.
 4. Release workflow: tag `v*` -> matrix build -> sign -> notarize -> upload to a draft release -> publish on approval.
-5. Onboarding wizard: welcome, open project, detect dev command (editable), start dev server, detect agents (with install hints and "test connection" that runs `initialize`), keybinding probe with fallback explanation, finish with a guided `Mod+K` on the running page.
+5. Onboarding wizard: welcome, open project, detect dev command (editable), start dev server, detect agents (with install hints and "test connection" that runs `initialize`), show the mode chords for this OS (`Ctrl+K`/`Ctrl+D` or `Cmd+K`/`Cmd+D`) with a "press it now" check and a link to the keybinding editor, finish with a guided `Mod+K` on the running page.
 6. Settings UI: agents (add/edit custom, env overrides, adapter versions and "update adapters"), keybindings editor with conflict detection, theme, browser (partition reset, trust localhost certs, DevTools extensions), MCP tool permissions, dev server, screenshots folder, diagnostics toggles, LSP opt-in (Stage 10 ships it).
 7. Performance budget in CI: launch the packaged app on Linux, load the fixture, measure RSS after 10 s and screenshot latency; fail if over budget (350 MB, 300 ms). Lazy-load CodeMirror languages and xterm addons.
 8. Accessibility: keyboard navigation across panels, focus rings, ARIA on custom controls, reduced-motion support.
 9. Crash handling: `crashReporter` disabled (no telemetry); local crash dumps and an "Export diagnostics" command that zips logs and settings (redacted).
-10. Docs: `README.md` install instructions per OS, FAQ (Super key fallback, macOS PATH, Windows SmartScreen, Arch sandbox), agent setup pages.
+10. Docs: `README.md` install instructions per OS, FAQ (why Ctrl instead of Super, macOS PATH, Windows SmartScreen, Hyprland/Wayland flags, Arch sandbox), agent setup pages.
 
 ### Gotchas
 
 - **Notarization fails on unsigned native binaries inside `node_modules`** (node-pty's spawn-helper, ripgrep). `electron-builder` signs nested binaries when they are not in `asar`; keep them in `asarUnpack` and verify with `codesign --verify --deep --strict`.
 - **Universal macOS builds need both architectures of every native module.** Either build arm64 and x64 separately (simpler, two downloads) or use `@electron/universal` and ensure prebuilt binaries exist for both.
-- **AppImage on Arch and Wayland.** Some setups need `--no-sandbox` or `--ozone-platform=wayland`; expose `ARBORA_FLAGS` env and document. The AUR package should install to `/opt/arbora` with a `.desktop` file and a wrapper script.
+- **AppImage on Arch and Wayland.** Some setups need `--no-sandbox`; the Wayland flags are already baked in from Stage 0 and `ARBORA_FLAGS` covers the rest. Prefer the AUR package for Omarchy users: install to `/opt/arbora`, ship a `.desktop` file with `StartupWMClass=arbora` and a wrapper script, and test `omarchy-launch-or-focus arbora` style launching from a Hyprland bind.
 - **Windows per-user NSIS installs and auto-update** work without admin; per-machine installs break `electron-updater`. Keep per-user.
 - **`electron-updater` requires `latest.yml` / `latest-mac.yml` / `latest-linux.yml`** in the release; publishing from a draft requires `GH_TOKEN` with `repo` scope in CI.
-- **Keybinding editor must prevent trapping `Esc`** and the exit-mode chords; reserve them.
+- **Keybinding editor must prevent trapping `Esc`** and the exit-mode chords; reserve them. Warn when a user picks a Super chord on Linux, since the compositor usually takes it first.
 - **`safeStorage` on Linux** depends on a keyring (gnome-keyring/kwallet). Fall back to a warning and plaintext-with-consent if `isEncryptionAvailable()` is false.
 
 ### Acceptance
 
-- Fresh install on Debian, Arch (AUR), macOS and Windows reaches a working `Mod+K` prompt through onboarding without reading docs.
+- Fresh install on Debian, Arch via AUR under Omarchy/Hyprland, macOS and Windows reaches a working `Mod+K` prompt through onboarding without reading docs.
 - Updates download and apply on macOS/Windows/AppImage; others get a notification.
 - CI release pipeline produces signed and notarized artifacts from a tag.
 - Performance budget job passes.
@@ -614,6 +660,7 @@ Status values: `Not started`, `In progress`, `Blocked (reason)`, `Done (PR #)`.
 
 - Code typechecks (`strict`), lints, unit tests pass on all three OSes in CI.
 - e2e smoke passes against the fixtures touched by the stage.
+- The stage's features are exercised by hand on the Arch Linux / Omarchy / Hyprland machine using the per-stage verification list, with the result recorded in the Progress table.
 - New IPC channels have zod schemas in `packages/shared` and are documented in the channel registry.
 - New settings have defaults, schema entries and UI (from Stage 9 onward).
 - Stage checklist and Progress table updated in this file; new gotchas recorded.

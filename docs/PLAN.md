@@ -57,6 +57,7 @@ Tauri uses the OS webview (WebKitGTK on Linux, WKWebView on macOS, WebView2 on W
 | Files | `chokidar` (watch), `@vscode/ripgrep` (search) | |
 | Packaging | `electron-builder`: AppImage, `.deb`, AUR PKGBUILD (wrapping tarball), notarized `.dmg`, NSIS `.exe` | `electron-updater` + GitHub Releases |
 | Testing | Vitest (unit), Playwright for Electron (e2e) against `fixtures/` apps | Fixtures: Vite+React, Next.js, Nuxt, plain HTML |
+| Primary dev target | Arch Linux, Omarchy, Hyprland (Wayland) | Electron runs natively on Wayland via `ELECTRON_OZONE_PLATFORM_HINT=auto` (set by Omarchy) |
 
 ### Agent launch commands (verified Oct 2026, all stdio JSON-RPC)
 
@@ -190,8 +191,8 @@ Feature IDs (`F-AREA-NN`) are referenced from [BUILD_STAGES.md](./BUILD_STAGES.m
 - `F-SHELL-01` Open a project folder (dialog, recent projects, drag-and-drop). One window per project.
 - `F-SHELL-02` Layout: centre browser panel, right agent panel, bottom drawer (Terminal, Git, Problems), left activity rail (Files, Git, Search). Resizable, collapsible, persisted per project.
 - `F-SHELL-03` Command palette (`Mod+Shift+P`).
-- `F-SHELL-04` Keybinding service with JSON settings and a settings UI. Defaults: `Mod+K` agent mode, `Mod+D` design mode, `Esc` exit mode, `Mod+P` quick open.
-- `F-SHELL-05` `Mod` = Cmd on macOS, Super on Linux/Windows, with automatic fallback to `Ctrl+Alt` when the OS or WM intercepts Super. Conflicts surfaced in onboarding.
+- `F-SHELL-04` Keybinding service with JSON settings and a settings UI. Defaults: `Mod+K` agent mode, `Mod+D` design mode, `Esc` exit mode, `Mod+P` quick open, `Mod+Shift+P` command palette.
+- `F-SHELL-05` `Mod` = Cmd on macOS, Ctrl on Linux and Windows. Super is deliberately not used: Omarchy binds `Super+K` to its keybindings viewer, Windows binds `Win+K`/`Win+D`, and GNOME grabs many Super chords, all at a level the app cannot intercept. Mode chords must also work while the embedded browser has focus (intercepted in main via `before-input-event` before the page sees them) and are passed through to the shell when a terminal is focused. Every binding is configurable.
 - `F-SHELL-06` Dark/light theme, system fonts, no telemetry.
 
 ### 4.2 Browser panel (`F-BROWSER`)
@@ -345,7 +346,8 @@ Detailed instructions, gotchas and progress live in [BUILD_STAGES.md](./BUILD_ST
 ## 7. Assumptions
 
 - Electron over Tauri; TypeScript end to end, no Rust.
-- `Super+K` / `Super+D` are the intent, exposed as `Mod+K` / `Mod+D` with OS fallback, fully configurable.
+- Mode chords are `Mod+K` / `Mod+D` with `Mod` = Cmd on macOS and Ctrl on Linux and Windows, fully configurable. Super is avoided because compositors and OSes claim it first.
+- The primary development and test machine is Arch Linux running Omarchy (Hyprland, Wayland). Every stage is verified there locally before it is considered done; macOS and Windows are verified in CI and on hardware when available.
 - Agents own their auth; Arbora only passes optional env overrides.
 - Design-mode edits go through the agent first; direct write-through is a stretch item.
 - "Linting" means surfacing the project's own ESLint/tsc output; LSP is opt-in.
