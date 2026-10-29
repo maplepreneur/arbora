@@ -102,6 +102,8 @@ export class ProjectWindow {
     this.window.on('resize', () => this.scheduleBoundsSave());
     this.window.on('move', () => this.scheduleBoundsSave());
     this.window.on('close', () => this.saveBounds());
+    // The window title reflects the project; ignore the renderer's <title>.
+    this.window.on('page-title-updated', (event) => event.preventDefault());
     this.window.once('ready-to-show', () => this.window.show());
     this.window.on('closed', () => this.dispose());
 

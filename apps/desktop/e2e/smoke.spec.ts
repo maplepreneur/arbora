@@ -22,6 +22,9 @@ test.describe('Stage 0 smoke', () => {
         await expect(page.getByTestId(id)).toBeVisible();
       }
       expect(await app.evaluate(({ app: electronApp }) => electronApp.getName())).toBe('arbora');
+      expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getTitle())).toBe(
+        'vite-react — Arbora',
+      );
       const globals = await page.evaluate(() => {
         const w = window as unknown as Record<string, unknown>;
         return { require: typeof w['require'], process: typeof w['process'], arbora: typeof w['arbora'] };

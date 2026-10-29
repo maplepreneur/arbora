@@ -67,7 +67,7 @@ export function Welcome() {
           {openLabel && <kbd className="font-mono text-[11px] text-fg-subtle">{openLabel}</kbd>}
         </button>
         <p className="mt-2 text-xs text-fg-subtle">
-          Or drop a folder anywhere in this window, or run `arbora &lt;path&gt;`.
+          Or drop a folder anywhere in this window, or run <code className="font-mono">arbora &lt;path&gt;</code>.
         </p>
 
         <section className="mt-10">
