@@ -124,6 +124,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 13. electron-builder config: `appId: dev.arbora.app`, targets AppImage + deb (Linux), dmg + zip (macOS, unsigned for now), nsis (Windows). `asarUnpack` native modules.
 14. Fixtures: `fixtures/vite-react` (React 19 + Vite + Tailwind), `fixtures/plain-html` (static server). Next and Nuxt fixtures come in Stage 4.
 15. Unit tests with Vitest for the IPC helpers, keybinding parser and settings migrations. One Playwright-for-Electron smoke test: launch, open `fixtures/vite-react`, assert the layout renders.
+16. Local setup guide in `README.md`: prerequisites per OS, clone and install, `pnpm dev` (including opening a project on launch), running the fixtures, checks and e2e, packaging, where settings live, and troubleshooting.
 
 ### Gotchas
 
@@ -170,6 +171,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - [x] electron-builder config
 - [x] Fixtures `vite-react`, `plain-html`
 - [x] Unit tests and Playwright smoke test
+- [x] README guide for setting up and running the app locally
 
 ---
 
