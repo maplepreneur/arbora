@@ -29,16 +29,6 @@ function on<K extends PageEventName>(name: K, listener: (payload: PageEvent<K>) 
   };
 }
 
-declare global {
-  interface Window {
-    ELECTRON_DISABLE_SECURITY_WARNINGS?: boolean;
-  }
-}
-
-// Electron's dev-build security warnings judge Arbora's view settings, not the user's page; read
-// from this (isolated) world on page load.
-window.ELECTRON_DISABLE_SECURITY_WARNINGS = true;
-
 on('ping', ({ nonce }) => send('pong', { nonce }));
 
 function reportReady(): void {

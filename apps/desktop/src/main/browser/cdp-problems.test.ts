@@ -121,6 +121,10 @@ describe('fromLogEntryAdded', () => {
     expect(
       fromLogEntryAdded({ entry: { source: 'network', level: 'error', text: 'Failed to load', timestamp: 1 } }),
     ).toBeUndefined();
+    const text = 'Electron Security Warning (Insecure Content-Security-Policy) This renderer process has...';
+    expect(
+      fromLogEntryAdded({ entry: { source: 'javascript', level: 'warning', text, timestamp: 1 } }),
+    ).toBeUndefined();
   });
 });
 

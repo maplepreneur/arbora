@@ -200,7 +200,7 @@ export function fromLogEntryAdded(params: unknown): ProblemDraft | undefined {
   if (!parsed.success) return undefined;
   const { entry } = parsed.data;
   // Failed requests are reported from Network events with method and status instead.
-  if (entry.source === 'network') return undefined;
+  if (entry.source === 'network' || entry.text.startsWith(ELECTRON_SECURITY_WARNING)) return undefined;
   return {
     source: 'browser',
     level: logLevel(entry.level),
