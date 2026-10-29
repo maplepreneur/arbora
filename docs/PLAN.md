@@ -1,6 +1,6 @@
 # Arbora: App Plan
 
-Arbora is a cross-platform desktop app (Linux Arch/Debian, macOS, Windows) for building web apps by pointing at the running app instead of editing code. It is inspired by Cursor's design mode. The main panel is an embedded browser showing your dev server. A side panel hosts any ACP-compatible coding agent. Two modes act on the live page: agent mode (point at a component, describe a change) and design mode (visually edit, then hand the diff to the agent).
+Arbora is a cross-platform desktop app (Linux Arch/Debian, macOS, Windows) for building web apps by pointing at the running app instead of editing code. It is inspired by Cursor's design mode. The main panel is an embedded browser showing your dev server. A side panel hosts any ACP-compatible coding agent. Two modes act on the live page: agent mode (point at a component, describe a change) and design mode (visually edit, then hand the diff to the agent). A second workspace, Grove, replaces that layout with a manager for many ACP agents at once. The browser workspace stays the default.
 
 The companion document [BUILD_STAGES.md](./BUILD_STAGES.md) breaks the build into stages with instructions, gotchas and a progress tracker. This file is the "what and why"; that file is the "how and when".
 
@@ -10,7 +10,7 @@ Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents 
 
 **Now:** Stages 0–2 are `Done` ([PR #2](https://github.com/maplepreneur/arbora/pull/2), [PR #4](https://github.com/maplepreneur/arbora/pull/4), [PR #7](https://github.com/maplepreneur/arbora/pull/7)). Stage 3, Agent panel (ACP), is `In progress` in [PR #10](https://github.com/maplepreneur/arbora/pull/10) (not merged; CI pending): `packages/acp-client`, `AgentService` with thread persistence and `session/load`, permission cards, client fs/terminal handlers, the agent panel UI and the ACP log viewer. 214 unit tests and 19 e2e pass locally on Omarchy/Hyprland. Manual matrix (29 Oct 2026): Kimi Code and Grok Build `ok` end to end; Claude Code and Codex `blocked` because neither CLI is logged in on this machine (their auth cards were verified instead).
 
-**Next:** Watch CI on PR #10 and merge. Log in to Claude Code (`claude /login`) and Codex (`codex login`) on the Omarchy machine and fill their Appendix B cells, run the Omarchy per-stage checks with the agent panel open, then mark Stage 3 `Done` and start Stage 4 (Agent mode, `Mod+K`); the [Stage 4 Notes](./BUILD_STAGES.md#progress) list the hand-off.
+**Next:** Watch CI on PR #10 and merge. Log in to Claude Code (`claude /login`) and Codex (`codex login`) on the Omarchy machine and fill their Appendix B cells, run the Omarchy per-stage checks with the agent panel open, then mark Stage 3 `Done` and start Stage 4 (Agent mode, `Mod+K`); the [Stage 4 Notes](./BUILD_STAGES.md#progress) list the hand-off. Stage 10 (Grove, the agent-manager workspace) is specified and waits on Stage 3; it is not next.
 
 **Blockers / open:** Claude Code and Codex logins are missing on the test machine (user action). Open item carried over: the flaky macOS e2e clipboard step in the terminal tests (see the Stage 2 gotchas).
 ---
@@ -20,7 +20,8 @@ Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents 
 | Area | Summary |
 | --- | --- |
 | Browser panel | Embedded Chromium showing the user's dev server. URL bar, navigation, viewport presets, screenshots, console/network capture, React/Vue DevTools. |
-| Agent panel | Any ACP agent (Claude Code, Codex, Kimi Code, Grok Build, custom). Streaming messages, tool calls, diffs, permissions, plans, slash commands. |
+| Agent panel | Any ACP agent (Claude Code, Codex, Kimi Code, Grok Build, custom). Streaming messages, tool calls, diffs, permissions, plans, slash commands. Docked beside the browser. |
+| Grove | A second workspace that takes the whole window: a list of ACP sessions and one transcript. Title-bar switch, hotkeys, a default agent, and a badge when an agent needs you. |
 | Agent mode (`Mod+K`) | Inspector-style hover/click on components. Click opens a prompt popover. Submit sends prompt + component source + screenshot to the agent. |
 | Browser control for agents | An MCP server exposing browser and dev-server tools (navigate, click, type, scroll, screenshot, snapshot, logs, restart) so the agent can verify its own work. |
 | Design mode (`Mod+D`) | Webflow-like visual editing (text, spacing, layout, typography, colors, structure). Save sends before/after screenshots + change list + component sources to the agent. |
@@ -31,6 +32,7 @@ Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents 
 Design principles:
 
 - The browser is the product. Everything else supports pointing at a thing and describing a change.
+- Two workspaces, one window. The browser workspace is the default. Grove is the other full layout, for several agents at once. Switching parks the page and keeps agents running. Quitting the app stops them.
 - Agents own their auth, models and tools. Arbora is a client, never a proxy for provider keys.
 - One Chromium. No extra webviews, no language servers by default, no telemetry.
 - Every stage ends with an app you can actually use.
@@ -98,6 +100,7 @@ flowchart LR
     Layout[Panel layout and command palette]
     BrowserUI[Browser chrome: url bar, mode toggles]
     AgentUI[Agent panel: threads, tool calls, permissions]
+    GroveUI[Grove workspace: session list and the same transcript]
     TermUI[xterm tabs]
     GitUI[Git panel and diff viewer]
     FilesUI[Explorer and CodeMirror editor]
@@ -110,6 +113,7 @@ flowchart LR
   BrowserUI <--> BrowserSvc
   BrowserSvc <-->|CDP + ipc| Preload
   AgentUI <--> AgentSvc
+  GroveUI <--> AgentSvc
   AgentSvc <-->|stdio JSON-RPC| Agents
   Agents -->|MCP http| McpSrv
   McpSrv --> BrowserSvc
@@ -171,7 +175,7 @@ arbora/
 
 ```
 .arbora/
-  project.json          dev command, dev URL, keybinding overrides, agent default
+  project.json          dev command, dev URL, keybinding overrides, default agent, Grove open-default flag
   threads/              persisted agent threads (JSON)
   screenshots/          screenshots for agents that lack image prompt support
   design-sessions/      saved design-mode op lists + before/after screenshots
@@ -198,10 +202,10 @@ Feature IDs (`F-AREA-NN`) are referenced from [BUILD_STAGES.md](./BUILD_STAGES.m
 ### 4.1 Shell and layout (`F-SHELL`)
 
 - `F-SHELL-01` Open a project folder (dialog, recent projects, drag-and-drop). One window per project.
-- `F-SHELL-02` Layout: centre browser panel, right agent panel, bottom drawer (Terminal, Git, Problems), left activity rail (Files, Git, Search). Resizable, collapsible, persisted per project.
+- `F-SHELL-02` Browser workspace layout: centre browser panel, right agent panel, bottom drawer (Terminal, Git, Problems), left activity rail (Files, Git, Search). Resizable, collapsible, persisted per project. Grove (`F-GROVE`) replaces this whole layout while it is active. The saved browser layout is restored on the way back.
 - `F-SHELL-03` Command palette (`Mod+Shift+P`).
-- `F-SHELL-04` Keybinding service with JSON settings and a settings UI. Defaults: `Mod+K` agent mode, `Mod+D` design mode, `Esc` exit mode, `Mod+P` quick open, `Mod+Shift+P` command palette.
-- `F-SHELL-05` `Mod` = Cmd on macOS, Ctrl on Linux and Windows. Super is deliberately not used: Omarchy binds `Super+K` to its keybindings viewer, Windows binds `Win+K`/`Win+D`, and GNOME grabs many Super chords, all at a level the app cannot intercept. Mode chords must also work while the embedded browser has focus (intercepted in main via `before-input-event` before the page sees them) and are passed through to the shell when a terminal is focused. Every binding is configurable.
+- `F-SHELL-04` Keybinding service with JSON settings and a settings UI. Defaults: `Mod+K` agent mode, `Mod+D` design mode, `Esc` exit mode, `Mod+P` quick open, `Mod+Shift+P` command palette, plus the Grove chords in `F-GROVE-02`.
+- `F-SHELL-05` `Mod` = Cmd on macOS, Ctrl on Linux and Windows. Super is deliberately not used: Omarchy binds `Super+K` to its keybindings viewer, Windows binds `Win+K`/`Win+D`, and GNOME grabs many Super chords, all at a level the app cannot intercept. Mode chords and the Grove workspace chords must also work while the embedded browser has focus (intercepted in main via `before-input-event` before the page sees them). Plain `Ctrl` chords are passed through to the shell when a terminal is focused. Every binding is configurable.
 - `F-SHELL-06` Dark/light theme, system fonts, no telemetry.
 
 ### 4.2 Browser panel (`F-BROWSER`)
@@ -235,7 +239,7 @@ Feature IDs (`F-AREA-NN`) are referenced from [BUILD_STAGES.md](./BUILD_STAGES.m
 - `F-AGENT-04` Streaming UI for `session/update`: message chunks (markdown), thoughts (collapsible), tool calls with status, locations and diffs, plan/todo lists, available commands (slash commands).
 - `F-AGENT-05` Permission requests: allow once / always / reject, per-tool remembered choices.
 - `F-AGENT-06` Client-side methods: `fs/read_text_file`, `fs/write_text_file` (project-scoped, feeding the Git panel's "Agent changes" group), `terminal/*` backed by `TerminalService` (visible as tabs), `session/request_permission`.
-- `F-AGENT-07` Multiple threads per project, persisted locally, with titles and pinned context.
+- `F-AGENT-07` Multiple threads per project, persisted locally, with titles and pinned context. The docked panel and Grove (`F-GROVE-07`) are two views of this same list. Creating or archiving a thread in either place updates the other. Each workspace remembers its own selected thread.
 - `F-AGENT-08` ACP log viewer (raw JSON-RPC both directions) for debugging.
 - `F-AGENT-09` Image and embedded-context prompt blocks when the agent's `promptCapabilities` allow; otherwise fall back per `F-INSPECT-06`.
 
@@ -290,8 +294,8 @@ Feature IDs (`F-AREA-NN`) are referenced from [BUILD_STAGES.md](./BUILD_STAGES.m
 
 ### 4.10 Onboarding and settings (`F-ONBOARD`)
 
-- `F-ONBOARD-01` First-run: pick project, detect dev command from `package.json` scripts, detect installed agents, test-launch chosen agent, verify keybindings.
-- `F-ONBOARD-02` Settings UI and JSON: agents, keybindings, theme, browser partition reset, MCP tool permissions, dev-server command, screenshot storage.
+- `F-ONBOARD-01` First-run: pick project, detect dev command from `package.json` scripts, detect installed agents, test-launch chosen agent, verify keybindings. The Grove step (pick a default agent, press the workspace chord once) is added by Stage 10, not by the first version of this wizard.
+- `F-ONBOARD-02` Settings UI and JSON: agents, keybindings, theme, browser partition reset, MCP tool permissions, dev-server command, screenshot storage. The Grove section (`notify`, fallback agent) is added by Stage 10.
 
 ### 4.11 Non-functional (`F-NFR`)
 
@@ -299,6 +303,137 @@ Feature IDs (`F-AREA-NN`) are referenced from [BUILD_STAGES.md](./BUILD_STAGES.m
 - `F-NFR-02` Performance targets: idle RSS under ~350 MB with the browser loaded, panel open under 100 ms, screenshot under 300 ms.
 - `F-NFR-03` CI matrix (ubuntu, macos, windows): typecheck, lint, unit, e2e smoke, package artifacts on tags.
 - `F-NFR-04` Signed and notarized builds, auto-update.
+
+---
+
+### 4.12 Grove (`F-GROVE`)
+
+Grove is the other workspace. The browser workspace stays the one the app opens on: the page in the centre, one agent docked beside it, the terminal underneath. Grove takes that whole area and turns it into a manager for many ACP agents in the same project. The name is the workspace, the command category, and the sidebar heading. A grove is a tended group of trees; this view is the group of agents working the project the browser is shaping.
+
+It is inspired by [Solo](https://soloterm.com/) and [Herdr](https://herdr.dev/). Both are places where several coding agents sit in a sidebar, each with a live status, and you jump into the one that needs you. Grove takes that job and keeps Arbora's ACP client (ADR 0002, ADR 0004). The main pane is the structured transcript from Stage 3 (messages, thoughts, tool calls, diffs, plans, permissions), not a copy of the agent's terminal UI. Solo's and Herdr's PTY attach, SSH machines, and "agents keep running after the app quits" are out of scope. Agents are child processes of Arbora. Switching to the browser leaves them running. Quitting Arbora stops them. The empty state says so.
+
+- `F-GROVE-01` Title-bar switch. Grove replaces the browser layout; the page is parked, not reloaded.
+- `F-GROVE-02` Hotkeys, including chords that only apply inside Grove.
+- `F-GROVE-03` Session list: status, order, rename, stop, restart, archive, Recent.
+- `F-GROVE-04` Default agent, and opening it when Grove is empty.
+- `F-GROVE-05` Main pane: the shared transcript, a pinned permission card, the composer.
+- `F-GROVE-06` Attention: badge, desktop notification, jump to the session that needs you.
+- `F-GROVE-07` One thread list shared with the docked agent panel. Each workspace keeps its own selection.
+- `F-GROVE-08` Narrow window: the list collapses to a rail.
+- `F-GROVE-09` What a switch does to agent mode, design mode, terminals and the page.
+
+#### Layout
+
+The switch sits in the title bar, in the right-hand cluster, immediately left of the Commands button. It is a two-segment control, the same height as that button (`h-6`), `app-no-drag`, with a border and a 4px gap from Commands.
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ ● Arbora / vite-react          [ Browser | Grove 2 ]  Commands   theme  │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+- Left segment: lucide `AppWindow`, label "Browser", `data-testid="workspace-browser"`.
+- Right segment: lucide `Trees`, label "Grove", `data-testid="workspace-grove"`.
+- The active segment uses `bg-accent-soft` and `text-accent`, and `aria-pressed="true"`. The inactive segment is `text-fg-muted`.
+- Each segment's tooltip includes its chord (`Mod+1`, `Mod+2`). The toggle chord (`Mod+Alt+G`) is on the group.
+- A count chip on the Grove segment (`data-testid="grove-attention-badge"`) shows how many sessions need attention. It uses `--attention` / `--attention-soft` (light `#9a6700` / `#fbf1d4`, dark `#e3b341` / `#2a220c`), registered as `attention` and `attention-soft` Tailwind colours. The chip is hidden at 0 and reads `9+` above 9. It is visible in both workspaces.
+- Under a 640px-wide window the labels hide and the icons stay. The project name truncates (`min-w-0 truncate`) before the switch is clipped. The switch does not shrink.
+- With no project open, both segments are disabled. A click or chord toasts "Open a project first."
+
+Activating Grove unmounts the browser workspace (activity rail, sidebar, browser chrome, docked agent, bottom drawer) and mounts Grove in the content area under the title bar. Activating Browser does the reverse. This is a layout switch, not a panel collapse. The browser `WebContentsView` is parked (`setVisible(false)` and bounds `0,0,0,0`), not destroyed and not reloaded. Coming back applies the last rect the renderer sent. Terminal pty sessions and their xterm instances stay alive; the terminal panel already reattaches on mount. ACP processes stay alive.
+
+```
+┌─────────────────┬────────────────────────────────────────────────────────┐
+│ Grove        [+]│  Claude Code          Working          opus · edit   ⋯ │
+│                 │────────────────────────────────────────────────────────│
+│ ● Claude Code   │                                                        │
+│   Working       │   transcript (the Stage 3 components)                  │
+│   fix the nav   │                                                        │
+│ ○ Codex         │────────────────────────────────────────────────────────│
+│   Needs you     │  Allow edit to src/App.tsx?    Once  Always  Reject    │
+│   permission    │────────────────────────────────────────────────────────│
+│ ○ Grok          │  Ask Claude Code…                               Send   │
+│   Idle          │                                                        │
+│                 │                                                        │
+│ Default         │                                                        │
+│ Claude Code     │                                                        │
+│ ☑ Open when     │                                                        │
+│   Grove is empty│                                                        │
+└─────────────────┴────────────────────────────────────────────────────────┘
+```
+
+The session list is a `react-resizable-panels` group id `grove` (list id `grove-list`, main id `grove-main`), default list size 240px worth of the row, minimum 180px, maximum 420px. Sizes persist the same way as the browser layout. `Mod+B` in Grove toggles this list and does not change the files sidebar's saved state. Under 520px of content width the list forces a 44px rail of status dots and tooltips, and that forced size is not written back. A wide window restores the saved size. The browser layout's 764px minimum does not apply here.
+
+The list header is the word "Grove" and one split button. The main click matches **New Agent** (the default agent, or the picker when none is set). The chevron matches **New Agent…** and lists detected agents plus "Choose agent…". A row is two lines, about 44px: an 8px status dot, the display name, and a subline (the permission title, the first line of the last assistant message, or the status word).
+
+The main pane header is one row: display name, status word, model and mode pickers (`F-AGENT-03`), overflow menu. A pending permission card is pinned between the transcript and the composer, not only inside the scrollback. The composer placeholder is `Ask {name}…`. Selecting a session focuses the composer.
+
+#### How a session looks
+
+Status is derived from the ACP session, not from terminal output.
+
+| Status | When | Dot |
+| --- | --- | --- |
+| Starting | Process spawned; `initialize` / auth / `session/new` not finished | Muted, pulsing |
+| Working | A prompt turn is in flight and nothing is waiting on the user | Accent, pulsing |
+| Needs you | Auth is unfinished, or a permission request has no response | Attention |
+| Idle | Session is alive, no turn in flight, nothing unread | Muted, solid |
+| Finished | The turn ended (any `stopReason` except `cancelled`) after this session was last looked at | Accent, solid |
+| Failed | Spawn failed, or the process exited because it crashed | Danger |
+| Stopped | The user stopped it, or it exited because the user stopped it | Empty ring |
+
+A cancelled turn does not become Finished. Finished clears when that session is the selected one and the window is focused on it (Grove, or the docked panel showing that same thread). Sort the list: Needs you and Failed first (oldest wait first), then Starting and Working (newest update first), then Finished, Idle, Stopped. Several sessions may use the same agent. The display name is the agent name, with ` 2`, ` 3` by creation order when another live session already has it. Rename replaces that title and is the thread title from `F-AGENT-07`.
+
+Row menu: Set as default agent, Rename, Restart, Stop, Archive. Stop keeps the row and can Restart (Stage 3's load/resume rules). Archive asks "Stop {name} and remove it from Grove? The transcript stays in Recent." when a turn is in flight or the process is alive, and "Remove {name} from Grove?" otherwise. Recent, under the list, shows the last five archived titles. Opening one calls `session/load` when the agent advertises it; otherwise the saved transcript is shown and **Continue** starts a new session of the same agent without resending the old transcript as a prompt.
+
+The attention count is Needs you + Failed + unread Finished. A desktop notification fires on the transition into one of those, unless that session is already the visible focused one. Title and body: "{name}: waiting for permission" (or the permission title), "{name} finished" plus the first line of the last assistant message, or "{name} failed" plus the exit reason. Clicking it focuses the window, switches to Grove, and selects that session. `settings.grove.notify` (default `true`) turns notifications off. The badge stays either way. Nothing notifies for Starting or Working.
+
+#### Default agent
+
+`defaultAgent` in `.arbora/project.json` is the registry id. It already exists in the schema; Grove is the UI that sets it. The project value wins, then `settings.grove.fallbackAgent` (this machine only, for a repo that does not commit a default), then none. An id that is not in the registry is treated as none, with the same warning path as a bad `project.json`.
+
+The sidebar footer shows "Default", the resolved name or "Not set", **Change**, and a checkbox "Open when Grove is empty" (`startDefaultOnOpen`, default `true`, stored in `project.json`). The checkbox is disabled until a default exists.
+
+Opening Grove starts one session of the default agent only when all of these are true: the project has no live sessions, a default id is set, that agent is detected, `startDefaultOnOpen` is true, and this visit has not already tried. Toggling Browser → Grove → Browser does not start another. A failed start does not retry on its own; the pane shows the Stage 3 install or login hint and **Retry**. The "already tried" flag resets when leaving Grove.
+
+When that auto-start does not run and nothing is live, the pane is centred copy: "No agent running." If a default is set but auto-start is off, the primary button is "Start {name}" and the secondary is "Choose an agent". If no default is set, the primary button is "Choose an agent". Under the buttons: "Agents keep running while you switch back to the browser. Quitting Arbora stops them."
+
+**Change** and **Set as default agent** write the project `defaultAgent`. They do not spawn a session.
+
+#### Hotkeys
+
+All of these are `intercept: true` and configurable. `when: 'grove'` chords match only while Grove is the workspace, so the same keys still reach the page in the browser workspace. Main's interceptor has to receive the current workspace whenever it changes, the same way it receives the current mode, and it has to use the same `match()` as the renderer.
+
+| Command | Id | Default | When |
+| --- | --- | --- | --- |
+| Show Browser | `arbora.showBrowserWorkspace` | `mod+1` | always |
+| Show Grove | `arbora.showGrove` | `mod+2` | always |
+| Toggle Browser / Grove | `arbora.toggleWorkspace` | `mod+alt+g` | always |
+| New Agent | `arbora.grove.newDefault` | `mod+alt+n` | grove |
+| New Agent… | `arbora.grove.newPicker` | `mod+alt+shift+n` | grove |
+| Next Agent | `arbora.grove.nextSession` | `mod+alt+down` | grove |
+| Previous Agent | `arbora.grove.previousSession` | `mod+alt+up` | grove |
+| Show Agent That Needs You | `arbora.grove.showAttention` | `mod+alt+2` | always |
+| Archive Agent | `arbora.grove.archiveSession` | `mod+alt+w` | grove |
+| Set Default Agent | `arbora.grove.setDefaultAgent` | none | grove |
+
+`Mod+1` shows the browser workspace and restores its last selection. `Mod+2` shows Grove and restores its last selected session. Neither chord jumps to whoever needs you. **Show Agent That Needs You** and the badge click do that: switch to Grove and select the oldest Needs you session, else the oldest Failed, else the oldest unread Finished. If none, toast "No agent needs you."
+
+`Mod+K` or `Mod+D` while Grove is showing switches to the browser workspace and then enters that mode. Entering Grove while agent mode is on exits it. Entering Grove during design mode with an unsaved op list asks "Discard design edits and open Grove?" with Stay and Discard. Stay does nothing. Discard reverts the DOM (`F-DESIGN-08`) and then switches. An empty design session exits without asking.
+
+`Mod+1` and `Mod+2` are plain `Ctrl` chords on Linux and Windows. While a terminal is focused they follow terminal passthrough and do not switch workspace; click the title-bar control or press `Mod+Alt+G`, which is not a plain `Ctrl` chord. Do not bind the toggle to `Mod+\`. On Linux that key is `Ctrl+\` (SIGQUIT) and, with Shift, the key event's character is `|` rather than `\`, so the binding would not match.
+
+#### Persistence
+
+Per project, in the machine-local project state (not committed): `workspace` (`browser` or `grove`, default `browser`), the `grove` panel-group sizes, and `grove.selectedThreadId`. Per project, committed in `project.json`: `defaultAgent`, `startDefaultOnOpen` (default `true`). Per machine, in `settings.json`: `grove.notify` (default `true`), `grove.fallbackAgent` (optional). Adding `grove` to app settings bumps `SETTINGS_VERSION` to 3 with a migration that only advances the version. `startDefaultOnOpen` is a defaulted field on the existing project schema and does not bump `PROJECT_SETTINGS_VERSION`.
+
+#### Out of scope
+
+- A terminal-UI clone of the agent. ACP terminals still appear as Stage 3 read-only tabs when the browser workspace is showing.
+- A background daemon so agents survive quit.
+- SSH, a herd across machines, or more than one project in the window.
+- An agent spawning other agents. That is a Stage 11 stretch item, and it would be another MCP tool on top of Grove, not a PTY API.
+- Dev servers inside the Grove sidebar. They stay in the terminal panel. Grove does not show a command runner.
 
 ---
 
@@ -318,7 +453,8 @@ Detailed instructions, gotchas and progress live in [BUILD_STAGES.md](./BUILD_ST
 | 7 | Files and editor | Explorer, quick open, search, CodeMirror, diagnostics, diff viewer |
 | 8 | Git and GitHub | Full git workflow and PRs |
 | 9 | Distribution and polish | Signing, installers, updater, onboarding, settings |
-| 10 | Stretch | Dev plugin for exact source mapping, tabs, worktrees, write-through |
+| 10 | Grove | Second workspace: many ACP agents, title-bar switch, default agent, attention |
+| 11 | Stretch | Dev plugin for exact source mapping, tabs, worktrees, write-through, Grove orchestration |
 
 ---
 
@@ -350,6 +486,16 @@ Detailed instructions, gotchas and progress live in [BUILD_STAGES.md](./BUILD_ST
 
 **Consequences.** Tools are discoverable and permissioned through each agent's native MCP handling. Arbora provides http (Streamable HTTP) by default and a stdio shim for agents that only forward stdio MCP. A skill/instruction block teaches the agent the verify loop.
 
+### ADR 0004: Grove is a second workspace over the ACP client
+
+**Context.** Solo and Herdr manage a group of coding agents: a sidebar, a live status per agent, a way to jump to the one that is blocked, and a default tool so "new" does not ask every time. Both do it by owning the agent's real terminal. Arbora already decided to be an ACP client (ADR 0002) and to keep the browser as the product. Users still want that group view without giving up the page.
+
+**Decision.** Grove is a workspace, switched from the title bar, that lists ACP sessions and shows one transcript. It reuses `AgentService` and the Stage 3 transcript. It does not embed agent TUIs, does not add a process supervisor that outlives the app, and does not replace the docked agent panel. The browser workspace remains the default.
+
+**Consequences.** Status, permissions and "needs you" come from ACP events, so they are exact when the agent speaks ACP and useless for a CLI that does not. An agent keeps running across a workspace switch and dies when Arbora quits; the empty state says that. Session UI has to be built once and mounted in both places. A later orchestration tool (Stage 11) can start Grove sessions through MCP; it is not part of this workspace.
+
+**Rejected.** Docking a second agent list inside the browser workspace (it fights the page). Replacing the docked panel with Grove (agent mode and design mode need an agent beside the page). Wrapping each agent in a PTY the way Solo and Herdr do (duplicates the terminal panel and drops diffs, plans and permission cards). A Herdr-style background server (a second product, and a second thing that must be trusted with the project).
+
 ---
 
 ## 7. Assumptions
@@ -358,6 +504,7 @@ Detailed instructions, gotchas and progress live in [BUILD_STAGES.md](./BUILD_ST
 - Mode chords are `Mod+K` / `Mod+D` with `Mod` = Cmd on macOS and Ctrl on Linux and Windows, fully configurable. Super is avoided because compositors and OSes claim it first.
 - The primary development and test machine is Arch Linux running Omarchy (Hyprland, Wayland). Every stage is verified there locally before it is considered done; macOS and Windows are verified in CI and on hardware when available.
 - Agents own their auth; Arbora only passes optional env overrides.
+- Grove is an ACP session manager in a second workspace. It does not embed agent TUIs, and agents do not keep running after Arbora quits.
 - Design-mode edits go through the agent first; direct write-through is a stretch item.
 - "Linting" means surfacing the project's own ESLint/tsc output; LSP is opt-in.
 - Fixture apps in `fixtures/` are the acceptance baseline for every stage; they stay green.

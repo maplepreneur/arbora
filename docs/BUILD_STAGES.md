@@ -14,21 +14,22 @@ This document breaks [PLAN.md](./PLAN.md) into stages a coding agent can execute
 
 ## Progress
 
-**Now:** Stages 0–2 are `Done`. Stage 3 (Agent panel, ACP) is `In progress` in [PR #10](https://github.com/maplepreneur/arbora/pull/10): the ACP client, `AgentService`, the agent panel UI, the log viewer, the fake-agent tests and the e2e spec are all in; 214 unit tests and 19 e2e pass locally on Omarchy. The manual matrix on 29 Oct 2026 is `ok` for Kimi Code and Grok Build; Claude Code and Codex are `blocked` only because neither CLI is logged in on this machine (their auth cards show correctly). **Next:** merge PR #10 once CI is green, log in to Claude Code and Codex and finish Appendix B, then Stage 4 (Agent mode).
+**Now:** Stages 0–2 are `Done`. Stage 3 (Agent panel, ACP) is `In progress` in [PR #10](https://github.com/maplepreneur/arbora/pull/10): the ACP client, `AgentService`, the agent panel UI, the log viewer, the fake-agent tests and the e2e spec are all in; 214 unit tests and 19 e2e pass locally on Omarchy. The manual matrix on 29 Oct 2026 is `ok` for Kimi Code and Grok Build; Claude Code and Codex are `blocked` only because neither CLI is logged in on this machine (their auth cards show correctly). **Next:** merge PR #10 once CI is green, log in to Claude Code and Codex and finish Appendix B, then Stage 4 (Agent mode). Stage 10 (Grove) is specified and not started.
 
 | Stage | Name | Status | Notes |
 | --- | --- | --- | --- |
 | 0 | Foundation | Done (PR #2) | Built in [PR #2](https://github.com/maplepreneur/arbora/pull/2). Omarchy fixes came in [PR #7](https://github.com/maplepreneur/arbora/pull/7), both merged 29 Oct 2026. `arch-ok` on 29 Oct 2026 (Hyprland 0.56.2, Electron 45.1.0): native Wayland with class `arbora` in dev and packaged builds, tiling, floating and workspace moves, the portal file dialog, and the sandboxed packaged tarball. The narrow 687px column works, and title-bar drag was tested by hand. The Windows e2e failures on `main` (settings write race) are fixed. `scripts/install-local.sh` installs an app-launcher entry that runs the checkout and rebuilds at launch when the source changed. |
 | 1 | Browser panel | Done (PR #4) | Built in [PR #4](https://github.com/maplepreneur/arbora/pull/4). Omarchy fixes came in [PR #7](https://github.com/maplepreneur/arbora/pull/7), both merged 29 Oct 2026. `arch-ok` on 29 Oct 2026: rect sync through tiling, floating and workspace moves; fractional-scale screenshots; chords with the page focused; `shell.openExternal`. A background page load no longer takes keyboard focus, which on Windows needed a guard that outlives the load. The toolbar collapses in narrow columns. |
 | 2 | Terminal panel | Done (PR #7) | [PR #7](https://github.com/maplepreneur/arbora/pull/7) merged 29 Oct 2026 (`8ccbe38`), and `main` CI is green ([run 40931674159](https://github.com/maplepreneur/arbora/actions/runs/40931674159)). Covers F-TERM-01..04 and F-BROWSER-03; F-TERM-05 (read-only `agent` tabs with a badge) is wired for Stage 3. 127 unit tests and 17 e2e pass on all three OSes. `arch-ok` on 29 Oct 2026 in `pnpm dev` and the packaged tarball. Open: the macOS e2e clipboard copy is flaky (see the Stage 2 gotchas); fix it opportunistically. |
-| 3 | Agent panel (ACP) | In progress (PR #10) | [PR #10](https://github.com/maplepreneur/arbora/pull/10), not merged yet; CI pending at the time of writing. Covers F-AGENT-01..09 and F-TERM-05: `packages/acp-client` (`AgentRegistry`, `AgentProcess`, `AcpSession`, `UpdateNormalizer`, path scoping, redaction, fake agent), `AgentService` with `.arbora/threads/` persistence and `session/load`, permission cards with remembered "always" answers and per-thread auto-approve, client fs and terminal handlers (agent tabs), the agent panel (threads, markdown transcript, thoughts, tool cards with unified diff, plan, slash commands, mode/model pickers, attachments, cancel) and the ACP log viewer with export. 214 unit tests (57 in `acp-client`, 9 `AgentService` runs against the fake agent) and 19 e2e (2 new, against the fake agent as a custom agent) pass locally on Omarchy/Hyprland. Manual matrix 29 Oct 2026 (Appendix B): Kimi Code 2.3.1 `ok` and Grok Build 1.0.70 `ok` for edit with permission, agent terminal and restore after restart; Claude Code (adapter 0.16.2) and Codex (adapter 2.5.0) `blocked`: not logged in on this machine (`claude -p` says "Not logged in", `codex login status` says "Not logged in"), their auth cards and pending-prompt flow were verified instead. Left: log in and finish those two matrix cells, merge, then `arch-ok` for the rest of the per-stage checks (tiling, scaling, packaged build) before `Done`. |
+| 3 | Agent panel (ACP) | In progress (PR #10) | [PR #10](https://github.com/maplepreneur/arbora/pull/10), not merged yet; CI pending at the time of writing. Covers F-AGENT-01..09 and F-TERM-05: `packages/acp-client` (`AgentRegistry`, `AgentProcess`, `AcpSession`, `UpdateNormalizer`, path scoping, redaction, fake agent), `AgentService` with `.arbora/threads/` persistence and `session/load`, permission cards with remembered "always" answers and per-thread auto-approve, client fs and terminal handlers (agent tabs), the agent panel (threads, markdown transcript, thoughts, tool cards with unified diff, plan, slash commands, mode/model pickers, attachments, cancel) and the ACP log viewer with export. 214 unit tests (57 in `acp-client`, 9 `AgentService` runs against the fake agent) and 19 e2e (2 new, against the fake agent as a custom agent) pass locally on Omarchy/Hyprland. The transcript, composer and permission card in `panels/agent/` take a thread and project path as props, so Grove (Stage 10) can mount them outside the dock. Manual matrix 29 Oct 2026 (Appendix B): Kimi Code 2.3.1 `ok` and Grok Build 1.0.70 `ok` for edit with permission, agent terminal and restore after restart; Claude Code (adapter 0.16.2) and Codex (adapter 2.5.0) `blocked`: not logged in on this machine (`claude -p` says "Not logged in", `codex login status` says "Not logged in"), their auth cards and pending-prompt flow were verified instead. Left: log in and finish those two matrix cells, merge, then `arch-ok` for the rest of the per-stage checks (tiling, scaling, packaged build) before `Done`. |
 | 4 | Agent mode (`Mod+K`) | Not started | Next stage after PR #10 merges. Hand-off: `AgentService.prompt(threadId, blocks, attachments)` accepts `image` and `resource_link` blocks (converted in main by `attachments.ts`, which checks `promptCapabilities.image`), the renderer has `useAgents` + `sendPrompt`, and `commands.ts` already has `agentFocusComposer`/`agentNewThread` to build the `Mod+K` overlay on. |
 | 5 | Browser control MCP server | Not started | |
 | 6 | Design mode (`Mod+D`) | Not started | |
 | 7 | Files and editor | Not started | |
 | 8 | Git and GitHub | Not started | |
 | 9 | Distribution and polish | Not started | |
-| 10 | Stretch | Not started | |
+| 10 | Grove | Not started | Specified. Depends on Stage 3's ACP sessions and on the transcript components living in `panels/agent/`. Not the next stage. It may be pulled forward once Stage 3 is merged; it does not need Stages 4–9 first. |
+| 11 | Stretch | Not started | Renumbered from Stage 10 when Grove was added. The dev plugin, browser tabs and Grove orchestration live here. |
 
 Status values: `Not started`, `In progress (PR #N)` / `In progress (PR #N, merged)`, `Blocked (reason)`, `Done (PR #N)`. Never mark `Done` from CI alone; `arch-ok` on Omarchy/Hyprland is required.
 
@@ -46,7 +47,7 @@ Status values: `Not started`, `In progress (PR #N)` / `In progress (PR #N, merge
 ## Cross-cutting gotchas (read before any stage)
 
 - **`Mod` is Ctrl on Linux and Windows, Cmd on macOS. Never Super.** Omarchy binds `Super+K` (keybindings viewer), `Super+P`, `Super+Shift+D` and dozens of other Super chords at the Hyprland level; Windows owns `Win+K`/`Win+D`; GNOME grabs many Super chords. Those are consumed before the app sees a keydown, and `globalShortcut` does not work on Wayland at all. Ctrl is free in Omarchy's defaults. Make every binding configurable from day one.
-- **Mode chords must beat the embedded page and respect the terminal.** Many web apps bind `Ctrl+K` to their own command palette (cmdk and friends). When the `WebContentsView` has focus the renderer gets no keydown, so intercept `Mod+K`/`Mod+D`/`Esc` in main with `webContents.on('before-input-event')` and `event.preventDefault()` for both the browser view and the app window. When an xterm terminal is focused, `Ctrl+K` (kill line) and `Ctrl+D` (EOF) go to the shell by default; a setting flips that.
+- **Mode chords must beat the embedded page and respect the terminal.** Many web apps bind `Ctrl+K` to their own command palette (cmdk and friends). When the `WebContentsView` has focus the renderer gets no keydown, so intercept `Mod+K`/`Mod+D`/`Esc` in main with `webContents.on('before-input-event')` and `event.preventDefault()` for both the browser view and the app window. The Grove workspace chords (Stage 10: `Mod+Alt+G`, `Mod+1`, `Mod+2`) are intercepted the same way. When an xterm terminal is focused, plain `Ctrl` chords go to the shell by default (`isTerminalPassthroughChord`); a setting flips that. `Ctrl+K` and `Ctrl+D` are the ones people notice. `Mod+1` and `Mod+2` are in that same set on Linux and Windows.
 - **macOS GUI apps do not inherit your shell PATH.** `kimi`, `grok`, `node`, `pnpm`, `git` may not resolve when Arbora is launched from Finder/Dock. On startup, spawn the user's login shell (`$SHELL -ilc 'echo -n "$PATH"'`) once, cache the result, and use it for every child process (agents, terminals, git). Linux desktop launchers have the same problem with user-local bins (`~/.local/bin`, nvm, volta).
 - **Windows path and shell differences.** Spawn `npx` as `npx.cmd` (or use `shell: true` with careful quoting). Use `PowerShell` or `pwsh` as the default terminal. Normalise paths with `path.posix` before sending to agents and MCP tools; ACP agents expect absolute paths, and Codex/Claude Code handle `C:\...` but prompts read better with forward slashes.
 - **Native modules must be rebuilt for Electron.** `node-pty` (and anything else with a `.node` binary) must be compiled against Electron's Node ABI. Use `electron-builder install-app-deps` (or `@electron/rebuild`) in `postinstall`, and never import native modules from the renderer.
@@ -192,7 +193,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 
 **Features.** `F-BROWSER-01` to `F-BROWSER-08`.
 
-**Out of scope.** Multiple tabs (Stage 10), overlays (Stage 4/6), MCP tools (Stage 5).
+**Out of scope.** Multiple tabs (Stage 11), overlays (Stage 4/6), MCP tools (Stage 5).
 
 ### Instructions
 
@@ -321,6 +322,8 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 
 **Features.** `F-AGENT-01` to `F-AGENT-09`, `F-TERM-05`.
 
+**Out of scope.** The Grove workspace (Stage 10). This stage ships the docked panel only. Build the transcript so Grove can mount it later; do not build the title-bar switch here.
+
 ### Instructions
 
 1. `packages/acp-client`:
@@ -332,7 +335,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 3. Permissions: show a card with the tool title, kind, locations and raw input; buttons map to the agent's `options` (`allow_once`, `allow_always`, `reject_once`, `reject_always`). Remember "always" choices per agent + tool kind in settings. Add a per-thread "auto-approve edits in project" toggle.
 4. Client fs handlers: resolve path, ensure it is inside the project root (`path.relative` not starting with `..`, and `realpath` check), read/write UTF-8, emit `file-changed` events that Stage 8 will consume for "Agent changes".
 5. Client terminal handlers: back them with `TerminalService` (Stage 2). Show agent terminals as read-only tabs with an "agent" badge; `terminal/output` returns the buffered output with `truncated` flag honouring `outputByteLimit`.
-6. Renderer agent panel: thread list, new thread (agent picker), message list (markdown with code highlighting, images inline), thoughts collapsible, tool call cards with status icon and diff view (reuse CodeMirror merge later; a simple unified diff component now), plan checklist, slash command autocomplete from `available_commands_update`, mode/model dropdowns, cancel button, composer with attachments (files via `resource_link`, images via `image`).
+6. Renderer agent panel: thread list, new thread (agent picker), message list (markdown with code highlighting, images inline), thoughts collapsible, tool call cards with status icon and diff view (reuse CodeMirror merge later; a simple unified diff component now), plan checklist, slash command autocomplete from `available_commands_update`, mode/model dropdowns, cancel button, composer with attachments (files via `resource_link`, images via `image`). Put the transcript, composer, permission card and tool cards in `apps/desktop/src/renderer/src/panels/agent/`. They take a thread id and must not assume they live in the right-hand dock. The docked panel is one layout of those components. Grove (Stage 10) is the other.
 7. ACP log viewer: raw JSON-RPC both directions with redaction of `env` and `token`-like values; export to file.
 8. First-prompt instruction block (Stage 5 will extend it): a short system-style preface describing Arbora, the project cwd, and the dev URL.
 9. Tests: unit tests for the normalizer and path scoping; an integration test that runs a tiny fake ACP agent (from the SDK examples) end to end; manual matrix against the four real agents recorded in the Progress notes.
@@ -382,7 +385,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - [x] Permission UI with remembered choices
 - [x] Client fs handlers with path scoping and change events
 - [x] Client terminal handlers on `TerminalService`
-- [x] Agent panel UI (threads, transcript, tool cards, plan, slash commands, mode/model, composer)
+- [x] Agent panel UI (threads, transcript, tool cards, plan, slash commands, mode/model, composer) in `panels/agent/`, mountable outside the dock
 - [x] ACP log viewer with redaction
 - [x] Fake-agent integration test (unit + e2e)
 - [ ] Manual matrix recorded for all four agents (Kimi and Grok `ok`; Claude Code and Codex blocked on login, see Appendix B)
@@ -407,7 +410,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
    - Svelte/Angular/plain: skip to tier 3.
 5. Tier 3 descriptor: trimmed `outerHTML` (depth-limited to 3 levels, text truncated at 200 chars, data-* and style attributes preserved), class list, text content, a subset of computed styles (display, position, colour, background, font-size, padding, margin), bounding box in CSS pixels. Also list candidate source files by grepping the project (in main, with ripgrep) for the component name and the first two unique class names; include the top five matches as `resource_link`s.
 6. Source path mapping: `_debugSource.fileName` can be absolute, `webpack://`, or Vite `/src/...`. Normalise: strip `webpack://_N_E/`, `webpack:///`, resolve `/src/...` against the project root, and verify existence before sending.
-7. Prompt popover: rendered by the renderer, anchored at the element rect (converted from page CSS px to window coordinates using the view bounds and zoom). Multiline textarea, Enter submits, `Shift+Enter` newline, chips for attachments with toggles, agent/thread picker defaulting to the last used thread. If the popover would overlap the `WebContentsView`, shrink the view's bounds temporarily (view-over-DOM gotcha).
+7. Prompt popover: rendered by the renderer, anchored at the element rect (converted from page CSS px to window coordinates using the view bounds and zoom). Multiline textarea, Enter submits, `Shift+Enter` newline, chips for attachments with toggles, agent/thread picker defaulting to the last used thread, and to the project's `defaultAgent` (`F-GROVE-04`) when there is no last-used thread. If the popover would overlap the `WebContentsView`, shrink the view's bounds temporarily (view-over-DOM gotcha).
 8. Screenshot: hide the overlay, `captureViewport()`, burn in a 2px outline at the element rect (scaled by `dpr`), restore the overlay.
 9. Prompt composer (`packages/browser-bridge/prompt.ts`): deterministic template with sections: Request, Target (framework, tier, component chain, file path:line if known), Context (HTML, styles, console errors since last navigation), Instructions (edit the source, wait for HMR, verify via browser tools when available, report what changed). Blocks: `text` for the body, `image` for the screenshot (or a path when unsupported), `resource_link` for each known file.
 10. Mode state machine in the renderer: `idle -> inspecting -> selected -> prompting -> idle`. Entering design mode (Stage 6) from agent mode is a transition, not a reload.
@@ -415,7 +418,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 
 ### Gotchas
 
-- **React 19 removed `_debugSource`.** Only React <= 18 development builds provide file:line per fiber. On React 19, you get owner stacks and component names; file resolution falls to tier 3 or the Stage 10 dev plugin. Say this clearly in the prompt payload (`tier: 3`) so the agent greps.
+- **React 19 removed `_debugSource`.** Only React <= 18 development builds provide file:line per fiber. On React 19, you get owner stacks and component names; file resolution falls to tier 3 or the Stage 11 dev plugin. Say this clearly in the prompt payload (`tier: 3`) so the agent greps.
 - **Fibers on DOM nodes point at host components.** The first interesting ancestor is the nearest function/class component; the user usually means that one, but offer the breadcrumb so they can pick `Card` instead of `CardHeader`.
 - **Production builds minify names.** If `displayName` looks minified (one or two characters), label it "anonymous component" and rely on HTML descriptors.
 - **Shadow DOM and iframes.** `document.elementFromPoint` stops at shadow hosts; use `composedPath()` from the event to find the deepest element. Cross-origin iframes are opaque; highlight the iframe element and say so.
@@ -654,8 +657,8 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 2. Targets: AppImage and `.deb` (Debian/Ubuntu), a `.tar.gz` plus an AUR `PKGBUILD` (`arbora-bin`) in a separate `aur/` directory with a release script that bumps `pkgver` and `sha256sums`; `.dmg` universal (arm64 + x64) or separate; NSIS `.exe` with per-user install.
 3. Auto-update: `electron-updater` with GitHub Releases provider, channels `latest` and `beta`, "check for updates" command, release notes dialog. AppImage updates in place; `.deb` and AUR users get a notification with instructions instead.
 4. Release workflow: tag `v*` -> matrix build -> sign -> notarize -> upload to a draft release -> publish on approval.
-5. Onboarding wizard: welcome, open project, detect dev command (editable), start dev server, detect agents (with install hints and "test connection" that runs `initialize`), show the mode chords for this OS (`Ctrl+K`/`Ctrl+D` or `Cmd+K`/`Cmd+D`) with a "press it now" check and a link to the keybinding editor, finish with a guided `Mod+K` on the running page.
-6. Settings UI: agents (add/edit custom, env overrides, adapter versions and "update adapters"), keybindings editor with conflict detection, theme, browser (partition reset, trust localhost certs, DevTools extensions), MCP tool permissions, dev server, screenshots folder, diagnostics toggles, LSP opt-in (Stage 10 ships it).
+5. Onboarding wizard: welcome, open project, detect dev command (editable), start dev server, detect agents (with install hints and "test connection" that runs `initialize`), show the mode chords for this OS (`Ctrl+K`/`Ctrl+D` or `Cmd+K`/`Cmd+D`) with a "press it now" check and a link to the keybinding editor, finish with a guided `Mod+K` on the running page. Do not add a Grove step here. Stage 10 adds the default-agent choice and a one-time press of the workspace chord.
+6. Settings UI: agents (add/edit custom, env overrides, adapter versions and "update adapters"), keybindings editor with conflict detection, theme, browser (partition reset, trust localhost certs, DevTools extensions), MCP tool permissions, dev server, screenshots folder, diagnostics toggles, LSP opt-in (Stage 11 ships it). Do not add a Grove page here. Stage 10 adds `notify` and the fallback agent.
 7. Performance budget in CI: launch the packaged app on Linux, load the fixture, measure RSS after 10 s and screenshot latency; fail if over budget (350 MB, 300 ms). Lazy-load CodeMirror languages and xterm addons.
 8. Accessibility: keyboard navigation across panels, focus rings, ARIA on custom controls, reduced-motion support.
 9. Crash handling: `crashReporter` disabled (no telemetry); local crash dumps and an "Export diagnostics" command that zips logs and settings (redacted).
@@ -694,7 +697,74 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 
 ---
 
-## Stage 10: Stretch
+## Stage 10: Grove
+
+**Goal.** A second workspace, named Grove, that replaces the browser layout with a manager for many ACP agents. The title-bar switch and the hotkeys change the whole pane. A project can name the agent that opens. Sessions keep running when you go back to the page.
+
+**Features.** `F-GROVE-01` to `F-GROVE-09`. The look, the status rules, the default-agent rules and the chord table are in [PLAN.md § 4.12](./PLAN.md#412-grove-f-grove). If a label here and there ever diverges, PLAN wins.
+
+**Depends on.** Stage 3 (`AgentService`, thread persistence, the fake ACP agent, and the transcript components in `panels/agent/`). It does not depend on Stages 4–9. If those have not landed, skip the design-mode discard prompt and the settings-UI page: keep the discard branch behind the existence of design mode, and write `grove.notify` / `grove.fallbackAgent` through the existing settings JSON until Stage 9's settings UI exists. Add the onboarding step only if that wizard already exists.
+
+**Out of scope.** Agent TUIs, a daemon that outlives the app, SSH, multi-project herds, agent-to-agent spawn (Stage 11), dev-server rows in the Grove sidebar.
+
+### Instructions
+
+1. Extend `KeybindingWhen` in `packages/shared/src/keybindings.ts` with `'grove'`. Add `workspace: 'browser' | 'grove'` to `KeybindingContext`. `match()` stays a single lookup, then: passthrough still wins for a plain `Ctrl` chord while a terminal is focused; otherwise a binding applies when `when` is `'always'`, or `'modeActive'` and a mode is active, or `'grove'` and the workspace is Grove. The `when` check is an exhaustive `switch` with a `never` default. Push the workspace to the main-process interceptor whenever it changes, the same path that already pushes `modeActive`. A `'grove'` chord must not be `preventDefault`ed while the browser workspace is showing, or the page will lose keys it should receive.
+2. Register the commands from the PLAN chord table in `packages/shared/src/commands.ts` (`CommandId` plus `DEFAULT_COMMANDS`). Workspace commands are category `View`. Session commands are category `Grove`. All of them are `intercept: true`. Handle every id in the exhaustive `switch` in `apps/desktop/src/renderer/src/commands.ts`.
+3. Settings. In `projectStateSchema`, add `workspace` (`'browser' | 'grove'`, default `'browser'`) and `grove: { selectedThreadId?: string }`. Persist the list width with the existing panel-group mechanism under group id `grove` (`grove-list`, `grove-main`). In `projectSettingsSchema`, add `startDefaultOnOpen` defaulting to `true`. Do not bump `PROJECT_SETTINGS_VERSION`; a missing field takes the default. `defaultAgent` is already the registry id. In `appSettingsSchema`, add `grove: { notify: boolean (default true), fallbackAgent?: string }`. Bump `SETTINGS_VERSION` to 3 and append a migration from 2 that only sets `version: 3`, matching the 1 → 2 migration. Export new types from `packages/shared/src/index.ts`.
+4. `packages/shared/src/grove.ts`: `shouldStartDefaultSession({ sessionCount, defaultAgentId, defaultAgentDetected, startDefaultOnOpen, alreadyTriedThisVisit })`. True only when the count is 0, an id is set, detection succeeded, the flag is on, and this visit has not already tried. Unit test each failing clause. Resolve the id as project `defaultAgent`, then `settings.grove.fallbackAgent`, then none. An unknown registry id is none, and uses the existing invalid-`project.json` warning.
+5. `packages/acp-client/src/session-status.ts`: `deriveSessionStatus` implementing the PLAN status table from the process state, the normalized event log, and the timestamp the session was last looked at. Unit test: in-flight prompt is Working; an unanswered permission overrides that to Needs you; `stopReason: 'cancelled'` stays Idle; any other completed turn after the last look is Finished; non-zero exit is Failed; a user stop is Stopped. Export it from the package index.
+6. `BrowserService.setViewVisible(visible: boolean)`. Hidden means `view.setVisible(false)` and bounds `{ x: 0, y: 0, width: 0, height: 0 }`. Shown means `setVisible(true)` and the last rect the renderer sent. Do not destroy the view, call `loadURL`, or clear the session. Unit-test the parked bounds if the service is already tested with a fake view; otherwise cover it from the e2e below.
+7. Renderer. `apps/desktop/src/renderer/src/grove/WorkspaceSwitch.tsx` is the title-bar control specified in PLAN (test ids `workspace-browser`, `workspace-grove`, `grove-attention-badge`). Mount it in `TitleBar.tsx` immediately left of `data-testid="open-palette"`. `GroveWorkspace.tsx` is lazy-loaded from `Workspace.tsx` when `workspace === 'grove'`; the browser layout is not rendered in that branch. `SessionList.tsx` is the list, split button, footer and Recent. The main pane mounts the Stage 3 transcript, composer and permission card for `grove.selectedThreadId`. Add `--attention` and `--attention-soft` to `styles.css` and the Tailwind theme (values in PLAN). Respect `prefers-reduced-motion` by not pulsing dots.
+8. Switching. Entering Grove parks the browser view and unmounts the browser workspace. Do not dispose terminal sessions or kill ptys; `initTerminalSessions` already keeps writing to xterm while `TerminalPanel` is unmounted, and the panel reattaches on mount. Do not cancel ACP sessions. Exit agent mode on the way in. If design mode has ops, show the Stay / Discard prompt from PLAN before switching; Discard uses the Stage 6 revert. `Mod+K` and `Mod+D` from Grove switch to the browser workspace, then enter the mode. `Mod+B` toggles `grove-list` and leaves the files sidebar state alone. Reset Layout resets whichever workspace is visible.
+9. Attention. The badge count is Needs you + Failed + unread Finished, capped at `9+` for display. `new Notification` from main when `grove.notify` is true and the session is not already the focused visible one. The click handler focuses the window, sets the workspace to Grove, and selects that session. **Show Agent That Needs You** selects the oldest Needs you, else oldest Failed, else oldest unread Finished, else toasts "No agent needs you." Badge click runs that command.
+10. Default agent and new session. The footer checkbox writes `startDefaultOnOpen`. **Change** and **Set Default Agent** write project `defaultAgent` and do not spawn. **New Agent** spawns the resolved default when it is detected; otherwise it opens the picker. **New Agent…** always opens the picker (built-ins, custom entries, detection state, install hint, and "Use as default for this project"). On entering Grove, call `shouldStartDefaultSession`. A failed spawn sets `alreadyTriedThisVisit` so it does not loop; **Retry** clears the flag and tries once. Leaving Grove clears the flag. Empty-state copy is the PLAN copy, including the sentence that quitting Arbora stops agents.
+11. Archive and Recent. Stop does not archive. Archive confirms with the PLAN strings, removes the thread from the active list in both Grove and the docked panel, and keeps the JSON file. Recent lists the last five. Reopen uses `session/load` when advertised; otherwise show the saved transcript and let **Continue** call `session/new` for the same agent without replaying the old prompt.
+12. Tests. Unit tests from steps 4 and 5. Extend the keybinding tests: `mod+alt+n` does not match when the workspace is browser; `mod+1` matches in both; `ctrl+1` does not match when a terminal is focused and passthrough is on; `ctrl+alt+g` does. e2e (`apps/desktop/e2e/grove.spec.ts`), driving chords with `webContents.sendInputEvent` and using Stage 3's fake ACP agent: the title-bar control and `Mod+2` hide the browser panel test id and show `grove`; `Mod+1` brings the same URL back; a permission request sets the badge while the browser workspace is showing; with `defaultAgent` set and no sessions, entering Grove starts one session and entering again does not start a second. Assert the terminal-focus passthrough case only on Linux and Windows (`Mod+1` does not switch, `Mod+Alt+G` does). On macOS `Mod` is Cmd, so `Mod+1` still switches while a terminal is focused. Record the four real agents in Appendix B.
+
+### Gotchas
+
+- **The `WebContentsView` paints above the renderer.** Hiding Grove's sibling with CSS leaves the page on top of the session list. Park it from main. On the way back, the rect sync has to run on the same frame the layout mounts, or the page sits at `0,0,0,0` until the next resize.
+- **Do not spawn on every toggle.** The auto-start predicate is the whole rule. A visit that already tried, including a failed try, does not try again until the user leaves Grove or presses Retry.
+- **`isTerminalPassthroughChord` is every plain `Ctrl` chord**, not only `Ctrl+K` and `Ctrl+D`. On Linux and Windows, `Mod+1` and `Mod+2` do nothing while a terminal is focused. `Mod+Alt+G` still switches. Do not "fix" the toggle to `Mod+\`: that is SIGQUIT in a terminal, and Shift makes the DOM key `|` so the chord will not match.
+- **Stale interceptor context.** If main still thinks the workspace is Grove after you switch back, `Mod+Alt+N` is stolen from the page. Push the workspace before the next key.
+- **Unmounting the terminal panel must not dispose sessions.** The data subscription lives in `initTerminalSessions`, which is once-only. A cleanup that disposes xterm instances will look like the dev server died. After Browser → Grove → Browser, a running `pnpm dev` is still printing, and the xterm shows the lines that arrived while Grove was up.
+- **Omarchy's narrow column.** Grove does not use the browser layout's 764px minimum. Below 520px of content width, force the 44px rail and do not persist that width, or the next full-size launch opens with a collapsed list the user did not choose.
+- **Title-bar drag.** The switch is `app-no-drag`. On Linux the header is the drag region; a drag that starts on the switch must not move the window, and a double-click on the header must still maximize.
+- **Shared threads.** Archiving in Grove removes the docked panel's row too. Selecting in one workspace does not change the other workspace's selected thread. `Mod+K` keeps using the docked panel's thread.
+- **Permission card.** Pin the unanswered request above the composer. A long transcript will hide it otherwise, and the row will say Needs you while the pane looks idle.
+- **Reduced motion and the badge.** Pulsing status dots are the only animation. The badge is a count, not a second way to enter agent mode.
+- **Notifications.** Electron `Notification` on Linux needs a notification daemon (Omarchy has one). If `isSupported()` is false, keep the badge and skip the OS notification without throwing. Never put env or tokens in the body; a permission title is fine, a raw tool input is not.
+
+### Acceptance
+
+- With a project open, the title-bar control and `Mod+Alt+G` swap the whole content area. The page URL is unchanged on return. A dev server that was running in the terminal is still running, and its output from the Grove visit is on screen.
+- `Mod+1` and `Mod+2` do the same swap while the embedded page is focused. While a terminal is focused, `Mod+Alt+G` still swaps. On Linux and Windows `Mod+1` does not (it is a plain `Ctrl` chord and passthrough takes it). On macOS `Mod+1` is Cmd+1, so it still swaps.
+- Setting the default agent and entering an empty Grove starts one session of that agent. Toggling away and back does not start another. With the checkbox off, Grove opens on "Start {name}" and does not spawn.
+- A fake-agent permission turns the row to Needs you, increments the badge in the browser workspace, and **Show Agent That Needs You** lands on that session. Approving clears it.
+- `Mod+K` from Grove opens the browser workspace in agent mode. Design mode with unsaved ops asks before leaving, and Stay leaves the user on the page.
+- On a ~687px-wide Omarchy column the session list collapses to the rail and the transcript is usable. Floating the window restores the saved width.
+- Appendix B has a Grove row filled for each agent that was actually run.
+
+### Checklist
+
+- [ ] `KeybindingWhen` `'grove'`, workspace on the interceptor context, chord tests
+- [ ] Commands registered and handled in the exhaustive command switch
+- [ ] Settings: `workspace`, selected thread, `startDefaultOnOpen`, `grove.notify`, `fallbackAgent`, settings migration to v3
+- [ ] `shouldStartDefaultSession` and `deriveSessionStatus` unit tests
+- [ ] `BrowserService.setViewVisible` parks without reload
+- [ ] Title-bar switch, labels hide under 640px, disabled with no project
+- [ ] Grove layout: list, split button, footer, transcript, pinned permission, narrow rail
+- [ ] Attention badge, notification, show-attention command
+- [ ] Default agent, auto-start rules, empty state copy
+- [ ] Archive, Recent, shared thread list with the docked panel
+- [ ] Mode and design-edit handling on the way in and out
+- [ ] e2e with the fake agent; Appendix B updated for real agents
+- [ ] Settings UI section and onboarding step, if Stage 9 has already landed
+
+---
+
+## Stage 11: Stretch
 
 **Goal.** Improvements that are valuable but not required for the core workflow. Pick in order of user demand.
 
@@ -711,6 +781,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 7. **LSP opt-in**: `@codemirror/lsp-client` + `typescript-language-server` spawned per project; hover, go-to-definition, completions.
    - Gotcha: the language server must be the project's TypeScript version; resolve `node_modules/typescript` first.
 8. **Agent-mode on production builds**: heuristics to map minified components via source maps when available (`//# sourceMappingURL`), using CDP `Debugger.getScriptSource`.
+9. **Grove orchestration**: an MCP server, separate from the browser tools, so one ACP agent can start another Grove session, send it a prompt, and wait until that session needs you or finishes. Sessions it starts show up in the Grove list like any other. No PTY API and no daemon.
 
 ### Checklist
 
@@ -722,6 +793,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - [ ] Action traces
 - [ ] LSP opt-in
 - [ ] Source-map assisted mapping
+- [ ] Grove orchestration MCP tools
 
 ---
 
@@ -747,5 +819,6 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 | Stage 5: verify loop completes unaided | | | | |
 | Stage 6: design save applied correctly | | | | |
 | Stage 8: generate commit message | | | | |
+| Stage 10: Grove session, status, switch away and back | | | | |
 
 Fill cells with `ok`, `partial (note)` or `fail (issue link)` and the agent/adapter version tested.

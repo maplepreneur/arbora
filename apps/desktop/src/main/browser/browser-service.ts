@@ -360,7 +360,7 @@ export class BrowserService {
     const refresh = (): void => this.update({});
 
     contents.setWindowOpenHandler(({ url }) => {
-      // Single-tab browser until Stage 10: local links stay in the panel, everything else goes to the OS.
+      // Single-tab browser until Stage 11: local links stay in the panel, everything else goes to the OS.
       const normalized = normalizeUrl(url);
       if (normalized && new URL(normalized).origin === safeOrigin(this.state.url)) this.navigate(normalized);
       else if (/^https?:/.test(url)) void shell.openExternal(url);
