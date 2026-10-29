@@ -220,7 +220,27 @@ test.describe('Stage 4 agent mode on Vite + React 18', () => {
       // Leaving the mode removes the overlay and brings the page back.
       await expect.poll(() => inPage<boolean>(app, OVERLAY)).toBe(false);
       await expect.poll(() => viewVisible(app)).toBe(true);
-      expect([...screenshotsIn(VITE_REACT)].some((f) => f.endsWith('-agent-mode.png') && !before.has(f))).toBe(true);
+      // The outline is burned into the image the agent got, on the button's left edge (DPR-scaled).
+      const sent = [...screenshotsIn(VITE_REACT)].find((f) => f.endsWith('-agent-mode.png') && !before.has(f));
+      expect(sent).toBeDefined();
+      const rect = await inPage<{ x: number; y: number; height: number; innerWidth: number }>(
+        app,
+        `(() => { const r = document.querySelector(${JSON.stringify(BUTTON)}).getBoundingClientRect(); return { x: r.x, y: r.y, height: r.height, innerWidth }; })()`,
+      );
+      const pixel = await app.evaluate(
+        ({ nativeImage }, args) => {
+          const image = nativeImage.createFromPath(args.file);
+          const { width } = image.getSize();
+          const bitmap = image.toBitmap();
+          const scale = width / args.rect.innerWidth;
+          const x = Math.round(args.rect.x * scale + scale);
+          const y = Math.round((args.rect.y + args.rect.height / 2) * scale);
+          const i = (y * width + x) * 4;
+          return { b: bitmap[i] ?? 0, g: bitmap[i + 1] ?? 0, r: bitmap[i + 2] ?? 0 };
+        },
+        { file: join(VITE_REACT, '.arbora/screenshots', sent ?? ''), rect },
+      );
+      expect(pixel).toEqual({ r: 0xff, g: 0x3b, b: 0x6b });
     } finally {
       await deleteThreads(page).catch(() => undefined);
       await app.close();
