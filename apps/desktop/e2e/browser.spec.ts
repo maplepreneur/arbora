@@ -225,6 +225,9 @@ test.describe('Stage 1 browser panel', () => {
       await openUrl(page, vite.url, FIXTURE_TITLE);
       const columns = (): Promise<number> =>
         inPage<number>(app, `getComputedStyle(document.querySelector('.grid')).gridTemplateColumns.split(' ').length`);
+      // Laptop (1280 CSS px) shows the fixture's two-column grid whatever the window size.
+      await page.getByTestId('viewport-preset').selectOption('laptop');
+      await expect.poll(() => inPage<number>(app, 'window.innerWidth')).toBe(1280);
       await expect.poll(columns).toBe(2);
 
       await page.getByTestId('viewport-preset').selectOption('mobile');
