@@ -26,6 +26,7 @@ export default defineConfig(
       '**/test-results/**',
       '**/playwright-report/**',
       'fixtures/plain-html/app.js',
+      'apps/desktop/resources/extensions/*/**',
     ],
   },
   js.configs.recommended,
@@ -83,12 +84,17 @@ export default defineConfig(
       'apps/desktop/e2e/**',
       '**/*.config.{js,ts}',
       'fixtures/plain-html/server.mjs',
+      'apps/desktop/scripts/**',
     ],
     languageOptions: { globals: globals.node },
   },
   {
-    files: ['fixtures/plain-html/server.mjs', 'fixtures/plain-html/*.config.js'],
+    files: ['fixtures/plain-html/server.mjs', 'fixtures/plain-html/*.config.js', 'apps/desktop/scripts/**'],
     ...tseslint.configs.disableTypeChecked,
+  },
+  {
+    files: ['apps/desktop/scripts/**'],
+    rules: { 'no-console': 'off' },
   },
   {
     files: ['fixtures/**'],

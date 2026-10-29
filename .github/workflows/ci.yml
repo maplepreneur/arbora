@@ -47,6 +47,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Fetch DevTools extensions
+        run: pnpm --filter @arbora/desktop extensions --optional
       - run: pnpm build:test
       - name: Playwright (Linux, Xvfb)
         if: runner.os == 'Linux'

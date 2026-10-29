@@ -13,13 +13,15 @@
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
-    "dev": "electron-vite dev -- --class=arbora",
+    "dev": "node scripts/fetch-devtools-extensions.mjs --optional && electron-vite dev -- --class=arbora",
     "build": "electron-vite build",
     "build:test": "electron-vite build --mode test",
     "preview": "electron-vite preview",
-    "e2e": "pnpm build:test && playwright test",
-    "package": "electron-vite build && electron-builder --publish never",
-    "postinstall": "install-electron && electron-builder install-app-deps"
+    "e2e": "node scripts/fetch-devtools-extensions.mjs --optional && pnpm build:test && playwright test",
+    "package": "node scripts/fetch-devtools-extensions.mjs && electron-vite build && electron-builder --publish never",
+    "postinstall": "install-electron && electron-builder install-app-deps",
+    "extensions": "node scripts/fetch-devtools-extensions.mjs",
+    "extensions:update": "node scripts/fetch-devtools-extensions.mjs --update"
   },
   "dependencies": {
     "zod": "4.6.7"
@@ -36,6 +38,7 @@
     "electron": "45.1.0",
     "electron-builder": "26.18.0",
     "electron-vite": "6.0.0",
+    "fflate": "0.8.3",
     "lucide-react": "1.64.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",

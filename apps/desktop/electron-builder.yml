@@ -16,6 +16,13 @@ files:
   - package.json
   - '!**/*.map'
 
+# React/Vue DevTools for the browser panel, fetched and verified by scripts/fetch-devtools-extensions.mjs.
+extraResources:
+  - from: resources/extensions
+    to: extensions
+    filter:
+      - '*/**'
+
 # Native modules (node-pty from Stage 2) must live outside the asar so they can be loaded and signed.
 asarUnpack:
   - '**/*.node'

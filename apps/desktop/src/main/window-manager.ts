@@ -1,21 +1,29 @@
 import { realpathSync, statSync } from 'node:fs';
-import { basename } from 'node:path';
+import { basename, join } from 'node:path';
 import { BrowserWindow, screen, shell, type BrowserWindowConstructorOptions, type WebContents } from 'electron';
 import {
   addRecentProject,
+  CommandId,
   DEFAULT_COMMANDS,
   KeybindingTable,
   resolveKeybindingSpecs,
   type KeybindingContext,
   type LayoutState,
+  type BrowserHistoryEntry,
+  type ProjectBrowserState,
+  type Rect,
+  type ViewportEmulation,
   type Platform,
   type ProjectInfo,
   type ProjectSettings,
   type WindowBounds,
   type WindowState,
 } from '@arbora/shared';
+import { BrowserHistory } from './browser/browser-history.js';
+import { BrowserService } from './browser/browser-service.js';
+import { browserPartition, type BrowserSessions } from './browser/browser-sessions.js';
 import { sendEvent } from './ipc.js';
-import { attachKeybindingInterceptor } from './keybinding-interceptor.js';
+import { attachKeybindingInterceptor, type InterceptorSource } from './keybinding-interceptor.js';
 import { readProjectSettings } from './project-settings.js';
 import type { SettingsStore } from './settings-store.js';
 import { shouldRestoreBounds } from './startup.js';
@@ -27,6 +35,9 @@ export interface WindowManagerOptions {
   readonly settings: SettingsStore;
   readonly theme: ThemeService;
   readonly preloadPath: string;
+  readonly browserPreloadPath: string;
+  readonly browserSessions: BrowserSessions;
+  readonly userDataPath: string;
   /** Dev server URL in development, otherwise the built `index.html` path. */
   readonly renderer: { readonly url: string } | { readonly file: string };
 }
@@ -39,6 +50,8 @@ interface OpenProject {
 }
 
 const DEFAULT_SIZE = { width: 1440, height: 900 };
+/** Intercepted while the page has focus, these move keyboard focus to the app UI first. */
+const FOCUS_APP_COMMANDS: ReadonlySet<string> = new Set([CommandId.commandPalette, CommandId.browserFocusUrl]);
 const BOUNDS_SAVE_DELAY_MS = 500;
 
 export class ProjectWindowError extends Error {}
@@ -65,6 +78,11 @@ export class ProjectWindow {
   private keybindings: KeybindingTable;
   private boundsTimer: NodeJS.Timeout | undefined;
   private readonly disposers: (() => void)[] = [];
+  browser: BrowserService | null = null;
+  private browserHistory: BrowserHistory | null = null;
+  /** Bumped whenever the browser is (re)started or stopped, to drop stale async starts. */
+  private browserGeneration = 0;
+  private browserBounds: { rect: Rect | null; emulation: ViewportEmulation | null } = { rect: null, emulation: null };
 
   constructor(
     private readonly manager: WindowManager,
@@ -75,11 +93,10 @@ export class ProjectWindow {
     const contents = this.window.webContents;
 
     this.disposers.push(
-      attachKeybindingInterceptor(contents, {
-        table: () => this.keybindings,
-        context: () => ({ ...this.context, terminalPassthrough: this.options.settings.get().terminalPassthrough }),
-        dispatch: (commandId) => sendEvent(contents, 'command.invoke', { commandId }),
-      }),
+      attachKeybindingInterceptor(
+        contents,
+        this.interceptorSource((commandId) => sendEvent(contents, 'command.invoke', { commandId })),
+      ),
     );
 
     // The app renderer only ever shows its own UI; everything else opens in the OS browser.
@@ -139,6 +156,15 @@ export class ProjectWindow {
     this.context = context;
   }
 
+  browserHistoryEntries(): BrowserHistoryEntry[] {
+    return this.browserHistory?.list() ?? [];
+  }
+
+  setBrowserBounds(rect: Rect | null, emulation: ViewportEmulation | null): void {
+    this.browserBounds = { rect, emulation };
+    this.browser?.setBounds(rect, emulation);
+  }
+
   rebuildKeybindings(): void {
     this.keybindings = this.buildKeybindings();
   }
@@ -149,6 +175,7 @@ export class ProjectWindow {
     this.window.setTitle(`${this.project.name} — Arbora`);
     this.rebuildKeybindings();
     this.restoreBounds();
+    void this.startBrowser(path);
     this.options.settings.update((s) => ({
       ...s,
       recentProjects: addRecentProject(s.recentProjects, { path, name: basename(path), openedAt: Date.now() }),
@@ -158,6 +185,7 @@ export class ProjectWindow {
 
   closeProject(): void {
     this.saveBounds();
+    this.stopBrowser();
     this.project = null;
     this.context = { modeActive: false, terminalFocused: false };
     this.window.setTitle('Arbora');
@@ -187,6 +215,67 @@ export class ProjectWindow {
     this.project.settingsWarnings = warnings;
     this.rebuildKeybindings();
     this.emitProject();
+  }
+
+  private interceptorSource(dispatch: (commandId: string) => void): InterceptorSource {
+    return {
+      table: () => this.keybindings,
+      context: () => ({ ...this.context, terminalPassthrough: this.options.settings.get().terminalPassthrough }),
+      dispatch,
+    };
+  }
+
+  private async startBrowser(projectPath: string): Promise<void> {
+    this.stopBrowser();
+    const generation = ++this.browserGeneration;
+    const partition = browserPartition(projectPath);
+    const session = await this.options.browserSessions.prepare(partition);
+    if (generation !== this.browserGeneration || this.window.isDestroyed()) return;
+
+    const app = this.contents;
+    const history = new BrowserHistory(
+      join(this.options.userDataPath, 'browser', partition.replace(/^persist:/, ''), 'history.json'),
+    );
+    this.browserHistory = history;
+    this.browser = new BrowserService({
+      window: this.window,
+      session,
+      preloadPath: this.options.browserPreloadPath,
+      projectPath,
+      history,
+      initial: this.options.settings.get().projects[projectPath]?.browser,
+      events: {
+        state: (state) => sendEvent(app, 'browser.stateChanged', state),
+        problemsAdded: (entries) => sendEvent(app, 'browser.problemsAdded', { entries }),
+        problemsCleared: () => sendEvent(app, 'browser.problemsCleared', {}),
+        urlSuggested: (url) => sendEvent(app, 'browser.urlSuggested', { url }),
+      },
+      attachInterceptor: (page) =>
+        attachKeybindingInterceptor(
+          page,
+          this.interceptorSource((commandId) => {
+            if (FOCUS_APP_COMMANDS.has(commandId)) app.focus();
+            sendEvent(app, 'command.invoke', { commandId });
+          }),
+        ),
+      saveState: (browser) => this.saveBrowserState(projectPath, browser),
+    });
+    this.browser.setBounds(this.browserBounds.rect, this.browserBounds.emulation);
+  }
+
+  private stopBrowser(): void {
+    this.browserGeneration++;
+    this.browser?.dispose();
+    this.browser = null;
+    this.browserHistory?.dispose();
+    this.browserHistory = null;
+  }
+
+  private saveBrowserState(projectPath: string, browser: ProjectBrowserState): void {
+    this.options.settings.update((s) => ({
+      ...s,
+      projects: { ...s.projects, [projectPath]: { ...s.projects[projectPath], browser } },
+    }));
   }
 
   private emitProject(): void {
@@ -255,9 +344,11 @@ export class ProjectWindow {
   }
 
   private dispose(): void {
-    clearTimeout(this.boundsTimer);
-    for (const dispose of this.disposers.splice(0)) dispose();
+    // Forget first: disposing saves settings, and settings listeners walk every live window.
     this.manager.forget(this);
+    clearTimeout(this.boundsTimer);
+    this.stopBrowser();
+    for (const dispose of this.disposers.splice(0)) dispose();
   }
 }
 
@@ -303,6 +394,12 @@ export class WindowManager {
 
   fromWebContents(contents: WebContents): ProjectWindow | undefined {
     for (const w of this.windows) if (w.contents === contents) return w;
+    return undefined;
+  }
+
+  /** The browser panel whose page is `contents`, for the private page channel. */
+  browserFromPage(contents: WebContents): BrowserService | undefined {
+    for (const w of this.windows) if (w.browser?.contents === contents) return w.browser;
     return undefined;
   }
 

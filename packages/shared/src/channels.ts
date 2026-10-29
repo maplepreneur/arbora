@@ -1,4 +1,15 @@
 import { z } from 'zod';
+import {
+  browserActionSchema,
+  browserHistoryEntrySchema,
+  navigationStateSchema,
+  problemEntrySchema,
+  rectSchema,
+  screenshotRequestSchema,
+  screenshotResultSchema,
+  viewportEmulationSchema,
+  viewportPresetIdSchema,
+} from './browser.js';
 import { defineChannel, defineEvent, type IpcClient } from './ipc.js';
 import { platformSchema } from './platform.js';
 import {
@@ -89,6 +100,37 @@ export const channels = {
   ),
   'project.saveLayout': defineChannel('project.saveLayout', z.object({ layout: layoutStateSchema }), none),
   'project.openSettingsFile': defineChannel('project.openSettingsFile', none, none),
+
+  'browser.getState': defineChannel('browser.getState', none, navigationStateSchema.nullable()),
+  /**
+   * Where the browser view goes (window CSS px) and the device emulation for the current preset.
+   * `null` hides the view, e.g. while a full-screen modal or the empty/error state is shown.
+   */
+  'browser.setBounds': defineChannel(
+    'browser.setBounds',
+    z.object({ rect: rectSchema.nullable(), emulation: viewportEmulationSchema.nullable() }),
+    none,
+  ),
+  'browser.navigate': defineChannel(
+    'browser.navigate',
+    z.object({ url: z.string() }),
+    z.object({ ok: z.boolean(), url: z.string().optional(), error: z.string().optional() }),
+  ),
+  'browser.action': defineChannel('browser.action', z.object({ action: browserActionSchema }), none),
+  'browser.setPreset': defineChannel('browser.setPreset', z.object({ preset: viewportPresetIdSchema }), none),
+  'browser.history': defineChannel('browser.history', none, z.array(browserHistoryEntrySchema)),
+  'browser.getConsole': defineChannel('browser.getConsole', none, z.array(problemEntrySchema)),
+  'browser.getNetworkErrors': defineChannel('browser.getNetworkErrors', none, z.array(problemEntrySchema)),
+  'browser.clearProblems': defineChannel('browser.clearProblems', none, none),
+  'browser.screenshot': defineChannel('browser.screenshot', screenshotRequestSchema, screenshotResultSchema),
+  /** Round trip over the page's private channel; `ok: false` means the browser preload is not running. */
+  'browser.pingPage': defineChannel('browser.pingPage', none, z.object({ ok: z.boolean() })),
+  /** Dev-server URL detected elsewhere (the terminal in Stage 2). Loads it if the browser is empty. */
+  'browser.suggestUrl': defineChannel(
+    'browser.suggestUrl',
+    z.object({ url: z.string() }),
+    z.object({ navigated: z.boolean() }),
+  ),
 } as const;
 
 /** Main -> renderer events. */
@@ -99,6 +141,11 @@ export const events = {
   'window.stateChanged': defineEvent('window.stateChanged', windowStateSchema),
   /** A chord intercepted in main (or a menu action) asks the renderer to run a command. */
   'command.invoke': defineEvent('command.invoke', z.object({ commandId: z.string() })),
+  'browser.stateChanged': defineEvent('browser.stateChanged', navigationStateSchema),
+  /** New console/exception/network entries since the last event, batched. */
+  'browser.problemsAdded': defineEvent('browser.problemsAdded', z.object({ entries: z.array(problemEntrySchema) })),
+  'browser.problemsCleared': defineEvent('browser.problemsCleared', z.object({})),
+  'browser.urlSuggested': defineEvent('browser.urlSuggested', z.object({ url: z.string() })),
 } as const;
 
 export type Channels = typeof channels;

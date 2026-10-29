@@ -6,7 +6,7 @@ import { Welcome } from './components/Welcome';
 import { Workspace } from './components/Workspace';
 import { executeCommand, registerBuiltinCommands } from './commands';
 import { useKeybindingContextSync, useKeybindingDispatch } from './keybindings';
-import { setProject, useApp } from './store';
+import { addProblems, setProblems, setProject, useApp } from './store';
 
 function useMainEvents(): void {
   useEffect(() => {
@@ -17,11 +17,38 @@ function useMainEvents(): void {
       arbora.on('project.changed', (project) => setProject(project)),
       arbora.on('window.stateChanged', (windowState) => useApp.setState({ windowState })),
       arbora.on('command.invoke', ({ commandId }) => executeCommand(commandId)),
+      arbora.on('browser.stateChanged', (browser) => useApp.setState({ browser })),
+      arbora.on('browser.problemsAdded', ({ entries }) => addProblems(entries)),
+      arbora.on('browser.problemsCleared', () => useApp.setState({ problems: [] })),
+      arbora.on('browser.urlSuggested', ({ url }) => useApp.setState({ suggestedUrl: url })),
     ];
     return () => {
       for (const off of offs) off();
     };
   }, []);
+}
+
+/** Loads the browser panel's state and buffered problems whenever the project changes. */
+function useBrowserSnapshot(): void {
+  const projectPath = useApp((s) => s.project?.path);
+  useEffect(() => {
+    if (!projectPath) return;
+    let active = true;
+    const { arbora } = window;
+    void Promise.all([
+      arbora.invoke('browser.getState'),
+      arbora.invoke('browser.getConsole'),
+      arbora.invoke('browser.getNetworkErrors'),
+    ]).then(([browser, consoleEntries, network]) => {
+      if (!active) return;
+      // Events may have arrived first; never replace a live state with an older null.
+      if (browser) useApp.setState({ browser });
+      setProblems(consoleEntries, network);
+    });
+    return () => {
+      active = false;
+    };
+  }, [projectPath]);
 }
 
 function useThemeClass(): void {
@@ -49,6 +76,7 @@ export function App() {
   const project = useApp((s) => s.project);
   useEffect(() => registerBuiltinCommands(), []);
   useMainEvents();
+  useBrowserSnapshot();
   useThemeClass();
   usePreventFileNavigation();
   useKeybindingDispatch();

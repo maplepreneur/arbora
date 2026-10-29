@@ -22,6 +22,12 @@ export function App() {
           actionLabel="Log error"
           onAction={() => console.error('fixture: intentional error')}
         />
+        <Card
+          title="Network"
+          description="Requests a missing API route so the Problems tab shows a 404."
+          actionLabel="Request missing API"
+          onAction={() => void fetch('/api/missing.json', { headers: { accept: 'application/json' } })}
+        />
       </div>
     </main>
   );

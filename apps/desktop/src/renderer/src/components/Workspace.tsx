@@ -34,6 +34,19 @@ const BOTTOM_TABS: readonly { id: BottomTab; label: string }[] = [
   { id: 'problems', label: 'Problems' },
 ];
 
+function ProblemCount() {
+  const errors = useApp((s) => s.problems.filter((p) => p.level === 'error').length);
+  if (errors === 0) return null;
+  return (
+    <span
+      data-testid="problems-badge"
+      className="ml-1.5 rounded-full bg-danger px-1.5 text-[10px] leading-4 font-medium text-white tabular-nums"
+    >
+      {errors}
+    </span>
+  );
+}
+
 function PanelFallback() {
   return <div className="h-full w-full bg-bg" />;
 }
@@ -261,6 +274,7 @@ export function Workspace() {
                       )}
                     >
                       {tab.label}
+                      {tab.id === 'problems' && <ProblemCount />}
                     </button>
                   ))}
                 </div>

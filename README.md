@@ -48,12 +48,16 @@ Per-project settings (`devCommand`, `devUrl`, `defaultAgent`, keybinding overrid
 
 ### 4. Try the sample projects
 
-`fixtures/` contains two small apps that later stages will drive from inside Arbora. You can already run them on their own:
+`fixtures/` contains two small apps for trying Arbora (and for the e2e tests):
 
 ```bash
 pnpm --filter @arbora-fixtures/vite-react dev    # http://localhost:5173
 pnpm --filter @arbora-fixtures/plain-html dev    # http://localhost:5500 (PORT=... to change)
 ```
+
+With the Vite fixture running, open `fixtures/vite-react` in Arbora and type `localhost:5173` in the browser panel's address bar (`Mod+L`), or click **Open http://localhost:5173** on the empty panel (the default comes from `devUrl` in `.arbora/project.json`). The panel remembers the last URL, viewport preset and zoom per project. The fixture's **Log error** and **Request missing API** buttons fill the **Problems** tab with a console error and a 404.
+
+The browser panel loads React DevTools and Vue DevTools into the page's DevTools (`Mod+Alt+I`). `pnpm dev` and `pnpm e2e` download them from the Chrome Web Store on first run and check them against the SHA-256 pins in `apps/desktop/resources/extensions/extensions.json`; offline, they are skipped with a warning. `pnpm --filter @arbora/desktop extensions:update` re-pins them to the current store versions.
 
 ### 5. Check your changes
 
@@ -84,16 +88,20 @@ User settings are in `settings.json` under Electron's user-data directory:
 
 Open the file from the app with `Mod+,`. The app picks up hand edits immediately. Set `ARBORA_USER_DATA_DIR=/tmp/arbora-test` to start with a clean profile without touching your real settings.
 
+Browser panel settings live under `"browser"`: `devToolsExtensions` (default `true`) loads React/Vue DevTools, and `trustLocalhostCertificates` (default `true`) accepts self-signed certificates for HTTPS dev servers on local hosts only (`localhost`, `*.localhost`, `127.x.x.x`, `[::1]`). Each project's page gets its own persistent browser profile (cookies, storage, history) under the user-data directory's `Partitions/` folder. Screenshots are saved to `<project>/.arbora/screenshots/`, which Arbora git-ignores.
+
 ### Troubleshooting
 
 - **Blank or black window on Linux with NVIDIA:** `ARBORA_FLAGS="--disable-gpu-sandbox" pnpm dev`. If Wayland misbehaves, try `ARBORA_FLAGS="--ozone-platform=x11"`.
 - **AppImage will not start:** your system may lack FUSE 2 (Arch: `sudo pacman -S fuse2`). The tar.gz needs no FUSE.
 - **`Mod+K` does nothing:** check that your window manager or desktop does not bind it globally, and check `settings.json` for an override. Arbora never uses Super in its default bindings.
 - **Stale build output:** delete `apps/desktop/out` and rerun `pnpm dev`.
+- **"Could not load the page" in the browser panel:** `ERR_CONNECTION_REFUSED` means the dev server is not running on that port; start it and press Retry. For certificate errors on an HTTPS dev server, check that `browser.trustLocalhostCertificates` is on and that you are using a localhost address.
+- **React DevTools tab missing:** run `pnpm --filter @arbora/desktop extensions` and check its output; a pin mismatch means the store published a new version (`extensions:update`).
 
 ## Development reference
 
-`Mod` is Ctrl on Linux and Windows and Cmd on macOS. Defaults: `Mod+Shift+P` command palette, `Mod+K` agent mode, `Mod+D` design mode, `Esc` exits a mode, `Mod+,` opens `settings.json`. Override any binding in `settings.json` (`"keybindings": { "arbora.agentMode": "mod+i" }`, `null` unbinds) or per project in `.arbora/project.json`.
+`Mod` is Ctrl on Linux and Windows and Cmd on macOS. Defaults: `Mod+Shift+P` command palette, `Mod+K` agent mode, `Mod+D` design mode, `Esc` exits a mode, `Mod+,` opens `settings.json`. Browser panel: `Mod+L` address bar, `Alt+Left`/`Alt+Right` back/forward, `Mod+R` reload, `Mod+Shift+R` hard reload, `Mod+=`/`Mod+-`/`Mod+0` zoom, `Mod+Alt+I` page DevTools; these work while the page has focus. Viewport presets, screenshots and "Clear Problems" are in the palette. Override any binding in `settings.json` (`"keybindings": { "arbora.agentMode": "mod+i" }`, `null` unbinds) or per project in `.arbora/project.json`.
 
 Environment variables: `ARBORA_FLAGS` appends Chromium switches at startup (for example `--disable-gpu-sandbox` on NVIDIA + Hyprland, or `--ozone-platform=x11`); `ARBORA_USER_DATA_DIR` points the app at a different settings directory (used by the e2e tests).
 

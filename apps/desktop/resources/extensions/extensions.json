@@ -1,0 +1,16 @@
+{
+  "extensions": [
+    {
+      "name": "react-devtools",
+      "id": "fmkadmapgofadopljbjfkapdkoienihi",
+      "version": "8.0.0",
+      "sha256": "d92e1122a16362cc5510927068a5b1a8d50b43e1f3be25c3117f7c005807b302"
+    },
+    {
+      "name": "vue-devtools",
+      "id": "nhdogjmejiglipccpnnnanhbledajbpd",
+      "version": "7.7.7",
+      "sha256": "bf565c23fd9e2c074ed47144d0504336f787e5f105388f73c62846dee92f0124"
+    }
+  ]
+}

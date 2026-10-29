@@ -1,6 +1,9 @@
 import { join } from 'node:path';
 import { app, BrowserWindow, dialog, Menu, shell, type WebContents } from 'electron';
 import { toPlatform, type AppSettingsPatch } from '@arbora/shared';
+import { BrowserSessions } from './browser/browser-sessions.js';
+import type { BrowserService } from './browser/browser-service.js';
+import { registerPageIpc } from './browser/page-ipc.js';
 import { defineHandler, sendEvent } from './ipc.js';
 import { buildMacMenu } from './menu.js';
 import { ensureProjectSettingsFile } from './project-settings.js';
@@ -72,6 +75,12 @@ function main(): void {
     for (const warning of settings.warnings) console.warn(`[settings] ${warning}`);
     settings.watch();
     const theme = new ThemeService(settings.get().theme);
+    const browserSessions = new BrowserSessions({
+      extensionsDir: app.isPackaged
+        ? join(process.resourcesPath, 'extensions')
+        : join(import.meta.dirname, '../../resources/extensions'),
+      settings: () => settings.get().browser,
+    });
 
     const rendererUrl = process.env['ELECTRON_RENDERER_URL'];
     windows = new WindowManager({
@@ -80,6 +89,9 @@ function main(): void {
       settings,
       theme,
       preloadPath: join(import.meta.dirname, '../preload/index.cjs'),
+      browserPreloadPath: join(import.meta.dirname, '../preload/browser.cjs'),
+      browserSessions,
+      userDataPath: app.getPath('userData'),
       renderer:
         !app.isPackaged && rendererUrl
           ? { url: rendererUrl }
@@ -104,8 +116,11 @@ function main(): void {
       return w;
     };
 
+    const disposePageIpc = registerPageIpc((sender) => manager.browserFromPage(sender));
+
     settings.onChange((next) => {
       theme.setMode(next.theme);
+      void browserSessions.applySettings();
       manager.rebuildKeybindings();
       for (const w of manager.all()) sendEvent(w.contents, 'settings.changed', next);
     });
@@ -159,6 +174,15 @@ function main(): void {
         ...(patch.theme !== undefined ? { theme: patch.theme } : {}),
         ...(patch.keybindings !== undefined ? { keybindings: patch.keybindings } : {}),
         ...(patch.terminalPassthrough !== undefined ? { terminalPassthrough: patch.terminalPassthrough } : {}),
+        ...(patch.browser !== undefined
+          ? {
+              browser: {
+                devToolsExtensions: patch.browser.devToolsExtensions ?? s.browser.devToolsExtensions,
+                trustLocalhostCertificates:
+                  patch.browser.trustLocalhostCertificates ?? s.browser.trustLocalhostCertificates,
+              },
+            }
+          : {}),
       })),
     );
     defineHandler('settings.openFile', isTrusted, async () => {
@@ -221,6 +245,53 @@ function main(): void {
       return undefined;
     });
 
+    const requireBrowser = (sender: WebContents): BrowserService => {
+      const browser = windowFor(sender).browser;
+      if (!browser) throw new Error('The browser panel is not ready (open a project first)');
+      return browser;
+    };
+    defineHandler('browser.getState', isTrusted, (_req, event) => windowFor(event.sender).browser?.getState() ?? null);
+    defineHandler('browser.setBounds', isTrusted, ({ rect, emulation }, event) => {
+      windowFor(event.sender).setBrowserBounds(rect, emulation);
+      return undefined;
+    });
+    defineHandler('browser.navigate', isTrusted, ({ url }, event) => {
+      const browser = windowFor(event.sender).browser;
+      return browser ? browser.navigate(url) : { ok: false, error: 'Open a project first' };
+    });
+    defineHandler('browser.action', isTrusted, ({ action }, event) => {
+      windowFor(event.sender).browser?.action(action);
+      return undefined;
+    });
+    defineHandler('browser.setPreset', isTrusted, ({ preset }, event) => {
+      windowFor(event.sender).browser?.setPreset(preset);
+      return undefined;
+    });
+    defineHandler('browser.history', isTrusted, (_req, event) => windowFor(event.sender).browserHistoryEntries());
+    defineHandler(
+      'browser.getConsole',
+      isTrusted,
+      (_req, event) => windowFor(event.sender).browser?.getConsole() ?? [],
+    );
+    defineHandler(
+      'browser.getNetworkErrors',
+      isTrusted,
+      (_req, event) => windowFor(event.sender).browser?.getNetworkErrors() ?? [],
+    );
+    defineHandler('browser.clearProblems', isTrusted, (_req, event) => {
+      windowFor(event.sender).browser?.clearProblems();
+      return undefined;
+    });
+    defineHandler('browser.screenshot', isTrusted, (request, event) =>
+      requireBrowser(event.sender).screenshot(request),
+    );
+    defineHandler('browser.pingPage', isTrusted, async (_req, event) => ({
+      ok: (await windowFor(event.sender).browser?.ping()) ?? false,
+    }));
+    defineHandler('browser.suggestUrl', isTrusted, ({ url }, event) => ({
+      navigated: windowFor(event.sender).browser?.suggestUrl(url) ?? false,
+    }));
+
     const queued = pendingPaths.splice(0);
     const first = initialProject ?? queued.shift() ?? null;
     try {
@@ -236,6 +307,8 @@ function main(): void {
     });
 
     app.on('will-quit', () => {
+      disposePageIpc();
+      browserSessions.dispose();
       settings.dispose();
       theme.dispose();
     });
