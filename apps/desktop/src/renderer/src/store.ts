@@ -5,7 +5,9 @@ import {
   type AppInfo,
   type AppSettings,
   type LayoutState,
+  type NavigationState,
   type PanelGroupLayout,
+  type ProblemEntry,
   type ProjectInfo,
   type ThemeState,
   type WindowState,
@@ -32,6 +34,14 @@ export interface AppState {
   paletteOpen: boolean;
   terminalFocused: boolean;
   toasts: Toast[];
+  /** Browser panel state from main; null until the project's browser view exists. */
+  browser: NavigationState | null;
+  /** Console, exception and network entries for the Problems tab, oldest first. */
+  problems: ProblemEntry[];
+  /** Dev-server URL offered by `browser.suggestUrl` while another page is open. */
+  suggestedUrl: string | null;
+  /** Bumped to move focus to the URL bar. */
+  urlFocusRequest: number;
 }
 
 export interface InitialState {
@@ -59,7 +69,14 @@ export const useApp = create<AppState>()(() => ({
   paletteOpen: false,
   terminalFocused: false,
   toasts: [],
+  browser: null,
+  problems: [],
+  suggestedUrl: null,
+  urlFocusRequest: 0,
 }));
+
+/** The Problems tab keeps at most this many entries (main keeps 500 console + 500 network). */
+export const MAX_PROBLEMS = 1000;
 
 export function initStore(initial: InitialState): void {
   useApp.setState({ ...initial, layout: initial.project?.layout ?? DEFAULT_LAYOUT });
@@ -76,6 +93,9 @@ export function setProject(project: ProjectInfo | null): void {
           layoutEpoch: s.layoutEpoch + 1,
           mode: 'idle' as const,
           paletteOpen: false,
+          browser: null,
+          problems: [],
+          suggestedUrl: null,
         }
       : {}),
   }));
@@ -113,4 +133,13 @@ export function showToast(message: string): void {
   const toast = { id: nextToastId++, message };
   useApp.setState((s) => ({ toasts: [...s.toasts, toast] }));
   setTimeout(() => useApp.setState((s) => ({ toasts: s.toasts.filter((t) => t.id !== toast.id) })), 3500);
+}
+
+export function addProblems(entries: readonly ProblemEntry[]): void {
+  useApp.setState((s) => ({ problems: [...s.problems, ...entries].slice(-MAX_PROBLEMS) }));
+}
+
+/** Replaces the Problems list with main's buffers (console and network merged in arrival order). */
+export function setProblems(consoleEntries: readonly ProblemEntry[], network: readonly ProblemEntry[]): void {
+  useApp.setState({ problems: [...consoleEntries, ...network].sort((a, b) => a.id - b.id).slice(-MAX_PROBLEMS) });
 }

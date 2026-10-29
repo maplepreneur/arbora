@@ -4,8 +4,11 @@ import {
   commandIdSchema,
   DEFAULT_COMMANDS,
   type BottomTab,
+  type BrowserAction,
+  type ScreenshotRequest,
   type SidebarView,
   type ThemeMode,
+  type ViewportPresetId,
 } from '@arbora/shared';
 import { resetLayout, setMode, showToast, useApp } from './store';
 
@@ -40,6 +43,42 @@ function toggleMode(mode: 'agent' | 'design'): void {
   }
   const next = useApp.getState().mode === mode ? 'idle' : mode;
   setMode(next);
+}
+
+const DEFAULT_DEV_URL = 'http://localhost:5173';
+
+function hasProject(): boolean {
+  if (useApp.getState().project) return true;
+  showToast('Open a project first');
+  return false;
+}
+
+async function browserAction(action: BrowserAction): Promise<void> {
+  if (hasProject()) await window.arbora.invoke('browser.action', { action });
+}
+
+async function setViewport(preset: ViewportPresetId): Promise<void> {
+  if (hasProject()) await window.arbora.invoke('browser.setPreset', { preset });
+}
+
+export async function navigateBrowser(url: string): Promise<void> {
+  const result = await window.arbora.invoke('browser.navigate', { url });
+  if (!result.ok) showToast(result.error ?? `Could not open ${url}`);
+  else useApp.setState({ suggestedUrl: null });
+}
+
+async function takeScreenshot(mode: ScreenshotRequest['mode']): Promise<void> {
+  const project = useApp.getState().project;
+  if (!hasProject() || !project) return;
+  try {
+    const shot = await window.arbora.invoke('browser.screenshot', { mode, save: true });
+    const path = shot.path?.startsWith(project.path) ? shot.path.slice(project.path.length + 1) : shot.path;
+    showToast(`Screenshot saved (${shot.width}×${shot.height}): ${path ?? ''}`);
+  } catch (error) {
+    showToast(
+      `Screenshot failed: ${(error as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`,
+    );
+  }
 }
 
 async function runCommand(id: CommandId): Promise<void> {
@@ -116,6 +155,66 @@ async function runCommand(id: CommandId): Promise<void> {
       return;
     case CommandId.toggleAppDevTools:
       await arbora.invoke('window.control', { action: 'toggleDevTools' });
+      return;
+    case CommandId.browserFocusUrl:
+      if (hasProject()) useApp.setState((s) => ({ urlFocusRequest: s.urlFocusRequest + 1 }));
+      return;
+    case CommandId.browserOpenDevUrl: {
+      const project = useApp.getState().project;
+      if (project) await navigateBrowser(project.settings.devUrl ?? DEFAULT_DEV_URL);
+      else showToast('Open a project first');
+      return;
+    }
+    case CommandId.browserBack:
+      await browserAction('back');
+      return;
+    case CommandId.browserForward:
+      await browserAction('forward');
+      return;
+    case CommandId.browserReload:
+      await browserAction('reload');
+      return;
+    case CommandId.browserHardReload:
+      await browserAction('hardReload');
+      return;
+    case CommandId.browserOpenExternal:
+      await browserAction('openExternal');
+      return;
+    case CommandId.browserToggleDevTools:
+      await browserAction('toggleDevTools');
+      return;
+    case CommandId.browserZoomIn:
+      await browserAction('zoomIn');
+      return;
+    case CommandId.browserZoomOut:
+      await browserAction('zoomOut');
+      return;
+    case CommandId.browserZoomReset:
+      await browserAction('zoomReset');
+      return;
+    case CommandId.browserViewportResponsive:
+      await setViewport('responsive');
+      return;
+    case CommandId.browserViewportMobile:
+      await setViewport('mobile');
+      return;
+    case CommandId.browserViewportTablet:
+      await setViewport('tablet');
+      return;
+    case CommandId.browserViewportLaptop:
+      await setViewport('laptop');
+      return;
+    case CommandId.browserViewportDesktop:
+      await setViewport('desktop');
+      return;
+    case CommandId.browserScreenshot:
+      await takeScreenshot('viewport');
+      return;
+    case CommandId.browserFullPageScreenshot:
+      await takeScreenshot('fullPage');
+      return;
+    case CommandId.browserClearProblems:
+      if (hasProject()) await arbora.invoke('browser.clearProblems');
       return;
     default: {
       const unreachable: never = id;
