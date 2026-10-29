@@ -27,8 +27,8 @@ This document breaks [PLAN.md](./PLAN.md) into stages a coding agent can execute
 
 | Stage | Name | Status | Notes |
 | --- | --- | --- | --- |
-| 0 | Foundation | In progress (PR #2) | Code, CI matrix and Linux tarball done; awaiting `arch-ok` on Omarchy/Hyprland |
-| 1 | Browser panel | In progress (PR #4) | Code and e2e done (CI matrix); React DevTools Components panel verified in e2e; awaiting `arch-ok` on Omarchy/Hyprland (rect sync under tiling, fractional-scale screenshots) |
+| 0 | Foundation | In progress (PR #2, merged) | Code, CI matrix and Linux tarball merged; only the Omarchy/Hyprland check remains (awaiting `arch-ok`) |
+| 1 | Browser panel | In progress (PR #4) | Checklist done except the Arch check; CI green on Linux, macOS and Windows (typecheck, lint, 90 unit tests, 14 e2e incl. React DevTools Components panel); awaiting `arch-ok` on Omarchy/Hyprland (rect sync under tiling, `Super+/` screenshot `dpr`, chords with the page focused), then merge |
 | 2 | Terminal panel | Not started | |
 | 3 | Agent panel (ACP) | Not started | |
 | 4 | Agent mode (`Mod+K`) | Not started | |
