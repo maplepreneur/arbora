@@ -12,7 +12,7 @@ Arbora is a cross-platform desktop app (Linux, macOS, Windows) for building web 
 | Node.js | 22.12+  | [nodejs.org](https://nodejs.org), `fnm`/`nvm`, or `sudo pacman -S nodejs` on Arch               |
 | pnpm    | 10.x    | `corepack enable` (ships with Node; picks the version pinned in `package.json`) or `npm i -g pnpm@10` |
 
-No compiler toolchain is needed: Arbora has no native Node modules yet, and Electron is downloaded as a prebuilt binary. Platform notes:
+Electron is downloaded as a prebuilt binary. The terminal uses `node-pty`, a native module: macOS and Windows use its bundled prebuilt binaries, while Linux compiles it during `pnpm install`, so Linux needs Python 3, `make` and a C++ compiler (Arch: `sudo pacman -S --needed base-devel python`; Debian/Ubuntu: `sudo apt install build-essential python3`). Platform notes:
 
 - **Linux (including Arch/Omarchy/Hyprland):** Wayland works out of the box. The app passes `--ozone-platform-hint=auto` itself, so you do not need to set `ELECTRON_OZONE_PLATFORM_HINT`. Native dialogs need an xdg-desktop-portal (`xdg-desktop-portal-hyprland` or `-gtk`), which Omarchy already ships.
 - **macOS:** no extra setup. Packaged builds are unsigned, so right-click and choose Open the first time.
@@ -57,6 +57,8 @@ pnpm --filter @arbora-fixtures/plain-html dev    # http://localhost:5500 (PORT=.
 
 With the Vite fixture running, open `fixtures/vite-react` in Arbora and type `localhost:5173` in the browser panel's address bar (`Mod+L`), or click **Open http://localhost:5173** on the empty panel (the default comes from `devUrl` in `.arbora/project.json`). The panel remembers the last URL, viewport preset and zoom per project. The fixture's **Log error** and **Request missing API** buttons fill the **Problems** tab with a console error and a 404.
 
+You can also start the dev server from Arbora itself. The **Terminal** tab (`Ctrl+\``) opens your shell in the project folder. Run `pnpm dev` there, and the first local URL it prints (`localhost`, `127.0.0.1`, `0.0.0.0`, `[::1]` or `*.local`) loads in the browser panel if nothing is loaded yet. Otherwise a toast offers to open it. Set `"autoOpenDevUrl": false` in `.arbora/project.json` to always ask. The ▷ button (**Run Dev Server**) does the same in a dedicated `dev` terminal. On first use it infers the command from `package.json` (`dev`, `start` or `serve`) and the lockfile, then saves it as `devCommand`. Restart and stop kill the whole process tree, so the port is freed. Terminals support tabs, splits, search (the magnifier button or **Find in Terminal**), and clickable links.
+
 The browser panel loads React DevTools and Vue DevTools into the page's DevTools (`Mod+Alt+I`). `pnpm dev` and `pnpm e2e` download them from the Chrome Web Store on first run and check them against the SHA-256 pins in `apps/desktop/resources/extensions/extensions.json`; offline, they are skipped with a warning. `pnpm --filter @arbora/desktop extensions:update` re-pins them to the current store versions.
 
 ### 5. Check your changes
@@ -90,6 +92,8 @@ Open the file from the app with `Mod+,`. The app picks up hand edits immediately
 
 Browser panel settings live under `"browser"`: `devToolsExtensions` (default `true`) loads React/Vue DevTools, and `trustLocalhostCertificates` (default `true`) accepts self-signed certificates for HTTPS dev servers on local hosts only (`localhost`, `*.localhost`, `127.x.x.x`, `[::1]`). Each project's page gets its own persistent browser profile (cookies, storage, history) under the user-data directory's `Partitions/` folder. Screenshots are saved to `<project>/.arbora/screenshots/`, which Arbora git-ignores.
 
+Terminal settings live under `"terminal"`: `shell` (default: `$SHELL` on macOS and Linux, else PowerShell 7, Windows PowerShell or `cmd.exe` on Windows) and `fontSize` (default `13`). Terminals and dev servers get the PATH from your login shell, so tools installed by `mise`, `nvm` or `~/.local/bin` resolve even when Arbora is started from a desktop launcher.
+
 ### Troubleshooting
 
 - **Blank or black window on Linux with NVIDIA:** `ARBORA_FLAGS="--disable-gpu-sandbox" pnpm dev`. If Wayland misbehaves, try `ARBORA_FLAGS="--ozone-platform=x11"`.
@@ -97,11 +101,13 @@ Browser panel settings live under `"browser"`: `devToolsExtensions` (default `tr
 - **`Mod+K` does nothing:** check that your window manager or desktop does not bind it globally, and check `settings.json` for an override. Arbora never uses Super in its default bindings.
 - **Stale build output:** delete `apps/desktop/out` and rerun `pnpm dev`.
 - **"Could not load the page" in the browser panel:** `ERR_CONNECTION_REFUSED` means the dev server is not running on that port; start it and press Retry. For certificate errors on an HTTPS dev server, check that `browser.trustLocalhostCertificates` is on and that you are using a localhost address.
+- **Prompt icons show as boxes in the terminal:** the terminal asks for `JetBrainsMono Nerd Font` and similar fonts, but fontconfig rules can override that choice. A `<match>` that prepends a font to every `monospace` request (with `binding="strong"`) wins over the Nerd Font, and Chromium then renders tofu. Check with `fc-match "JetBrainsMono Nerd Font"`.
+- **`pnpm install` fails building `node-pty` on Linux:** install the compiler toolchain from step 1, then rerun `pnpm install`.
 - **React DevTools tab missing:** run `pnpm --filter @arbora/desktop extensions` and check its output; a pin mismatch means the store published a new version (`extensions:update`).
 
 ## Development reference
 
-`Mod` is Ctrl on Linux and Windows and Cmd on macOS. Defaults: `Mod+Shift+P` command palette, `Mod+K` agent mode, `Mod+D` design mode, `Esc` exits a mode, `Mod+,` opens `settings.json`. Browser panel: `Mod+L` address bar, `Alt+Left`/`Alt+Right` back/forward, `Mod+R` reload, `Mod+Shift+R` hard reload, `Mod+=`/`Mod+-`/`Mod+0` zoom, `Mod+Alt+I` page DevTools; these work while the page has focus. Viewport presets, screenshots and "Clear Problems" are in the palette. Override any binding in `settings.json` (`"keybindings": { "arbora.agentMode": "mod+i" }`, `null` unbinds) or per project in `.arbora/project.json`.
+`Mod` is Ctrl on Linux and Windows and Cmd on macOS. Defaults: `Mod+Shift+P` command palette, `Mod+K` agent mode, `Mod+D` design mode, `Esc` exits a mode, `Mod+,` opens `settings.json`. Browser panel: `Mod+L` address bar, `Alt+Left`/`Alt+Right` back/forward, `Mod+R` reload, `Mod+Shift+R` hard reload, `Mod+=`/`Mod+-`/`Mod+0` zoom, `Mod+Alt+I` page DevTools; these work while the page has focus. Terminal: `Ctrl+\`` shows and focuses the terminal, `Ctrl+Shift+\`` opens a new one, and `Ctrl+Shift+5` splits it. Copy is `Ctrl+Shift+C`, or `Ctrl+C` while text is selected, and paste is `Ctrl+Shift+V` or `Ctrl+V` (`Cmd+C`/`Cmd+V` on macOS). Plain `Ctrl` chords such as `Ctrl+K` and `Ctrl+D` go to the shell while the terminal has focus. Viewport presets, screenshots and "Clear Problems" are in the palette. Override any binding in `settings.json` (`"keybindings": { "arbora.agentMode": "mod+i" }`, `null` unbinds) or per project in `.arbora/project.json`.
 
 Environment variables: `ARBORA_FLAGS` appends Chromium switches at startup (for example `--disable-gpu-sandbox` on NVIDIA + Hyprland, or `--ozone-platform=x11`); `ARBORA_USER_DATA_DIR` points the app at a different settings directory (used by the e2e tests).
 
