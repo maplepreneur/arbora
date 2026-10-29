@@ -1,3 +1,4 @@
+export * from './agent.js';
 export * from './browser.js';
 export * from './channels.js';
 export * from './commands.js';

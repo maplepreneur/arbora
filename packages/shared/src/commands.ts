@@ -71,6 +71,11 @@ export const CommandId = {
   devServerRestart: 'arbora.devServer.restart',
   devServerStop: 'arbora.devServer.stop',
   openFileAtLocation: 'arbora.editor.openFileAtLocation',
+  agentNewThread: 'arbora.agent.newThread',
+  agentFocusComposer: 'arbora.agent.focusComposer',
+  agentCancel: 'arbora.agent.cancel',
+  agentToggleLog: 'arbora.agent.toggleLog',
+  agentShowThreads: 'arbora.agent.showThreads',
 } as const;
 
 export type CommandId = (typeof CommandId)[keyof typeof CommandId];
@@ -158,6 +163,11 @@ export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
   { id: CommandId.devServerStop, title: 'Stop Dev Server', category: 'Dev Server' },
   // Terminal `path:line:col` links call this; the editor arrives in Stage 7.
   { id: CommandId.openFileAtLocation, title: 'Open File at Location', category: 'Files', hidden: true },
+  { id: CommandId.agentNewThread, title: 'New Agent Thread', category: 'Agent', keybinding: 'mod+shift+n' },
+  { id: CommandId.agentFocusComposer, title: 'Focus Agent Composer', category: 'Agent', keybinding: 'mod+shift+a' },
+  { id: CommandId.agentCancel, title: 'Cancel Agent Turn', category: 'Agent' },
+  { id: CommandId.agentToggleLog, title: 'Toggle ACP Log', category: 'Agent' },
+  { id: CommandId.agentShowThreads, title: 'Show Agent Threads', category: 'Agent' },
 ];
 
 /** Overrides map a command id to a chord string, or `null` to unbind it. */
