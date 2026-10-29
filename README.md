@@ -1,6 +1,6 @@
 # arbora
 
-Arbora is a cross-platform desktop app (Linux, macOS, Windows) for building web apps by pointing at the running app instead of editing code. An embedded browser shows your dev server; a side panel hosts any ACP-compatible coding agent (Claude Code, Codex, Kimi Code, Grok Build, or your own). Press `Mod+K` to point at a component and describe a change, or `Mod+D` to edit the page visually and hand the agent the diff.
+Arbora is a cross-platform desktop app (Linux, macOS, Windows) for building web apps by pointing at the running app instead of editing code. An embedded browser shows your dev server; a side panel hosts any ACP-compatible coding agent (Claude Code, Codex, Kimi Code, Grok Build, or your own). Press `Mod+K` to point at a component and describe a change, or `Mod+D` to edit the page visually and hand the agent the diff. A second workspace, Grove, is specified in the plan (Stage 10) for managing several ACP agents at once. It is not built yet.
 
 ## Running Arbora locally
 
