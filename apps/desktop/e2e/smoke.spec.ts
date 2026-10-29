@@ -133,7 +133,7 @@ test('persists panel sizes and collapsed state per project', async () => {
       const state = JSON.parse(readFileSync(join(userData.path, 'state.json'), 'utf8')) as {
         projects: Record<string, { layout?: { collapsed: Record<string, boolean> } }>;
       };
-      return Object.values(state.projects)[0]?.layout?.collapsed['sidebar'];
+      return Object.values(state.projects)[0]?.layout?.collapsed.sidebar;
     })
     .toBe(true);
 
@@ -147,7 +147,9 @@ test('persists panel sizes and collapsed state per project', async () => {
 });
 
 test('welcome screen opens a project from the dialog and lists it in recents', async () => {
-  let { app, page } = await launch();
+  const first = await launch();
+  const { app } = first;
+  let { page } = first;
   await expect(page.getByTestId('welcome')).toBeVisible();
   await page.screenshot({ path: test.info().outputPath('welcome.png') });
 
@@ -158,10 +160,30 @@ test('welcome screen opens a project from the dialog and lists it in recents', a
   await expect(page.getByTestId('workspace')).toBeVisible();
   await expect(page.getByTestId('title-bar')).toContainText('plain-html');
 
-  ({ app, page } = await relaunch());
+  ({ page } = await relaunch());
   await expect(page.getByTestId('recent-projects')).toContainText('plain-html');
   await page.getByTestId('recent-projects').getByText('plain-html').first().click();
   await expect(page.getByTestId('workspace')).toBeVisible();
+});
+
+test('welcome screen opens a folder dropped from the file manager', async () => {
+  const { page } = await launch();
+  const dropZone = page.getByTestId('drop-zone');
+  await expect(dropZone).toBeVisible();
+  const box = await dropZone.boundingBox();
+  if (!box) throw new Error('drop zone not found');
+
+  // CDP drag events carry real file paths, like a drop from a file manager; synthetic DOM
+  // drops cannot, because `webUtils.getPathForFile` only resolves files backed by disk.
+  const cdp = await page.context().newCDPSession(page);
+  const position = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  const data = { items: [], files: [fixtures.viteReact], dragOperationsMask: 1 };
+  for (const type of ['dragEnter', 'dragOver', 'drop'] as const) {
+    await cdp.send('Input.dispatchDragEvent', { type, ...position, data });
+  }
+
+  await expect(page.getByTestId('workspace')).toBeVisible();
+  await expect(page.getByTestId('title-bar')).toContainText('vite-react');
 });
 
 test('keybindings are editable in settings.json, including while running', async () => {

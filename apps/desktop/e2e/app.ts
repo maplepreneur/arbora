@@ -57,12 +57,12 @@ export async function launchArbora(userDataDir: string, args: string[] = []): Pr
   const chromiumArgs =
     // GitHub's Ubuntu runners restrict unprivileged user namespaces, which the Chromium sandbox
     // needs. Only CI disables it; local runs keep the sandbox.
-    process.platform === 'linux' && process.env['CI'] ? ['--no-sandbox'] : [];
+    process.platform === 'linux' && process.env.CI ? ['--no-sandbox'] : [];
   const env: Record<string, string> = {};
   for (const [name, value] of Object.entries(process.env)) {
     if (value !== undefined && name !== 'ELECTRON_RENDERER_URL') env[name] = value;
   }
-  env['ARBORA_USER_DATA_DIR'] = userDataDir;
+  env.ARBORA_USER_DATA_DIR = userDataDir;
   const app = await electron.launch({ args: [mainEntry, ...chromiumArgs, ...args], env });
   const page = await app.firstWindow();
   await page.waitForLoadState('domcontentloaded');
