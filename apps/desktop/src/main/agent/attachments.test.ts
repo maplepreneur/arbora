@@ -1,6 +1,7 @@
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { attachmentBlocks, describeAttachment, mimeTypeFor } from './attachments.js';
 
@@ -45,12 +46,12 @@ describe('attachments', () => {
       type: 'image',
       data: Buffer.from([1, 2, 3]).toString('base64'),
       mimeType: 'image/png',
-      uri: `file://${image}`,
+      uri: pathToFileURL(image).toString(),
     });
     expect(withImages[1]).toMatchObject({
       type: 'resource_link',
       name: 'src.ts',
-      uri: `file://${join(dir, 'src.ts')}`,
+      uri: pathToFileURL(join(dir, 'src.ts')).toString(),
       mimeType: 'text/typescript',
       size: 10,
     });

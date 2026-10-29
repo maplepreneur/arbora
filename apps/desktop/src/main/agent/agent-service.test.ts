@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -17,6 +17,11 @@ import { threadsDir } from './thread-store.js';
 
 const platform = toPlatform(process.platform);
 const FAKE = 'fake';
+
+/** A temp project root; `realpath` so fs change paths compare equal on macOS, where `/var` is a symlink. */
+function makeRoot(): string {
+  return realpathSync(mkdtempSync(join(tmpdir(), 'arbora-agent-')));
+}
 
 function processEnv(): Record<string, string> {
   const env: Record<string, string> = {};
@@ -44,7 +49,8 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
       await h.service.dispose();
       h.terminals.dispose();
     }
-    rmSync(root, { recursive: true, force: true });
+    // Windows reports EBUSY while the killed agent process is still releasing its cwd.
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   });
 
   function setup(options: { env?: Record<string, string>; permissions?: RememberedPermissions } = {}): Harness {
@@ -101,7 +107,7 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
   }
 
   it('creates a thread, edits a file after a permission card is answered, and persists the transcript', async () => {
-    root = mkdtempSync(join(tmpdir(), 'arbora-agent-'));
+    root = makeRoot();
     writeFileSync(join(root, 'App.tsx'), 'export const App = () => null;\n');
     const h = setup();
     const thread = h.service.createThread(FAKE);
@@ -177,7 +183,7 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
   });
 
   it('remembers "always" answers per agent and tool kind, and auto-approves edits inside the project', async () => {
-    root = mkdtempSync(join(tmpdir(), 'arbora-agent-'));
+    root = makeRoot();
     writeFileSync(join(root, 'a.ts'), 'a\n');
     writeFileSync(join(root, 'b.ts'), 'b\n');
     const h = setup();
@@ -211,7 +217,7 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
   });
 
   it('rejects file access outside the project', async () => {
-    root = mkdtempSync(join(tmpdir(), 'arbora-agent-'));
+    root = makeRoot();
     const outside = join(tmpdir(), `arbora-outside-${Date.now()}.ts`);
     const h = setup();
     const thread = h.service.createThread(FAKE);
@@ -235,7 +241,7 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
   });
 
   it('runs agent commands as read-only agent terminals and feeds the output back', async () => {
-    root = mkdtempSync(join(tmpdir(), 'arbora-agent-'));
+    root = makeRoot();
     const h = setup();
     const thread = h.service.createThread(FAKE);
     const result = await h.service.prompt(thread.id, [{ type: 'text', text: 'run echo' }]);
@@ -255,7 +261,7 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
   });
 
   it('cancels a slow turn', async () => {
-    root = mkdtempSync(join(tmpdir(), 'arbora-agent-'));
+    root = makeRoot();
     const h = setup();
     const thread = h.service.createThread(FAKE);
     const turn = h.service.prompt(thread.id, [{ type: 'text', text: 'slow' }]);
@@ -266,7 +272,7 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
   });
 
   it('restores persisted threads on construction and loads the session where advertised', async () => {
-    root = mkdtempSync(join(tmpdir(), 'arbora-agent-'));
+    root = makeRoot();
     const first = setup();
     const thread = first.service.createThread(FAKE);
     await first.service.prompt(thread.id, [{ type: 'text', text: 'hello' }]);
@@ -292,7 +298,7 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
   });
 
   it('reports a crash with the exit code and recovers on the next prompt', async () => {
-    root = mkdtempSync(join(tmpdir(), 'arbora-agent-'));
+    root = makeRoot();
     const h = setup();
     const thread = h.service.createThread(FAKE);
     const result = await h.service.prompt(thread.id, [{ type: 'text', text: 'crash' }]);
@@ -309,7 +315,7 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
   });
 
   it('surfaces auth_required with the agent methods and continues after authenticate', async () => {
-    root = mkdtempSync(join(tmpdir(), 'arbora-agent-'));
+    root = makeRoot();
     const h = setup({ env: { FAKE_AGENT_AUTH: '1' } });
     const thread = h.service.createThread(FAKE);
     await expect.poll(() => latestState(h, thread.id)?.status, { timeout: 15_000 }).toBe('auth_required');
@@ -327,7 +333,7 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
   });
 
   it('redacts secrets in the log and exports it', async () => {
-    root = mkdtempSync(join(tmpdir(), 'arbora-agent-'));
+    root = makeRoot();
     const h = setup({ env: { FAKE_TOKEN: 'super-secret' } });
     const thread = h.service.createThread(FAKE);
     await h.service.prompt(thread.id, [{ type: 'text', text: 'hello' }]);

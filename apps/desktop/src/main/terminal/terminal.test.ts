@@ -180,7 +180,8 @@ describe('TerminalService', { timeout: 20_000 }, () => {
     let raw = '';
     const info = await service.create({
       kind: 'agent',
-      command: `"${process.execPath}" -e "console.log('shell ' + (40 + 2))"`,
+      // Unquoted `node`, like the other shell tests: PowerShell reads a leading quoted path as a string literal.
+      command: nodeScript("console.log('shell ' + (40 + 2))"),
       onData: (data) => (raw += data),
     });
     expect((await service.waitForExit(info.id)).exitCode).toBe(0);
