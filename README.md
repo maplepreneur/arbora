@@ -80,6 +80,14 @@ pnpm package
 
 This writes unsigned installers for the current OS to `apps/desktop/dist/`: AppImage, deb and tar.gz on Linux, dmg and zip on macOS, and an NSIS installer on Windows. Building the deb needs `fakeroot` and `dpkg` (on Arch: `sudo pacman -S fakeroot dpkg`). The tar.gz is the quickest to test: extract it and run `./arbora /path/to/project`.
 
+### 7. Use your checkout as an installed app (Linux)
+
+```bash
+scripts/install-local.sh
+```
+
+This adds **Arbora** to your app launcher (Omarchy: `Super+Space`) and an `arbora [project-dir]` command in `~/.local/bin`. Both run this checkout, not a packaged copy. On each launch the app rebuilds if the source in `apps/desktop` or `packages/shared` changed since the last build (about a second), and runs `pnpm install` if `pnpm-lock.yaml` changed. You therefore always get the code currently on disk, including uncommitted and branch work. It also rebuilds after `pnpm e2e`, which leaves a test-mode build in `out/`. A running window keeps its old code until you quit and relaunch. Launch output goes to `~/.local/state/arbora/launcher.log`, and failures show a desktop notification. Re-run the script after moving the checkout; `scripts/install-local.sh --uninstall` removes it.
+
 ### Where settings live
 
 User settings are in `settings.json` under Electron's user-data directory:

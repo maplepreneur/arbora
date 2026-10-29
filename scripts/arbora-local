@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Runs Arbora from this checkout, rebuilding first when the source is newer than the last build.
+# Installed as ~/.local/bin/arbora by scripts/install-local.sh. Usage: arbora [project-dir]
+set -euo pipefail
+
+repo="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+desktop="$repo/apps/desktop"
+state="${XDG_STATE_HOME:-$HOME/.local/state}/arbora"
+log="$state/launcher.log"
+stamp="$state/build-stamp"
+mkdir -p "$state"
+
+fail() {
+  echo "arbora: $1 (see $log)" >&2
+  command -v notify-send >/dev/null && notify-send -a Arbora "Arbora failed to start" "$1. Log: $log"
+  exit 1
+}
+
+# The user's login shell provides node and pnpm (mise etc.) when launched from the app menu.
+run() {
+  bash -lc "cd \"$repo\" && $1" >>"$log" 2>&1
+}
+
+{
+  echo
+  echo "== $(date -Is) launch $*"
+} >>"$log"
+
+if [[ ! -f "$repo/node_modules/.modules.yaml" || "$repo/pnpm-lock.yaml" -nt "$repo/node_modules/.modules.yaml" ]]; then
+  run "pnpm install --frozen-lockfile" || fail "pnpm install failed"
+fi
+
+# `pnpm e2e` writes a test-mode build to the same out/ directory, so a build this script did not
+# make (different mtime from the stamp) is rebuilt too.
+entry="$desktop/out/main/index.js"
+needs_build=0
+if [[ ! -f "$entry" || ! -f "$stamp" || "$(stat -c %Y "$entry")" != "$(cat "$stamp")" ]]; then
+  needs_build=1
+elif [[ -n "$(find "$desktop/src" "$repo/packages/shared/src" "$desktop/electron.vite.config.ts" \
+  "$desktop/package.json" "$repo/packages/shared/package.json" -newer "$entry" -print -quit)" ]]; then
+  needs_build=1
+fi
+if ((needs_build)); then
+  run "pnpm --filter @arbora/desktop build" || fail "build failed"
+  stat -c %Y "$entry" >"$stamp"
+fi
+
+electron="$repo/node_modules/electron/dist/electron"
+[[ -x "$electron" ]] || fail "Electron binary missing at $electron; run pnpm install"
+unset ELECTRON_RENDERER_URL ELECTRON_RUN_AS_NODE
+exec "$electron" --class=arbora "$desktop" "$@" >>"$log" 2>&1
