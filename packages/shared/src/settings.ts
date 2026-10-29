@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { viewportPresetIdSchema } from './browser.js';
 
 export const themeModeSchema = z.enum(['system', 'light', 'dark']);
 export type ThemeMode = z.infer<typeof themeModeSchema>;
@@ -38,16 +39,33 @@ export const recentProjectSchema = z.object({
 });
 export type RecentProject = z.infer<typeof recentProjectSchema>;
 
-/** Per-machine state for a project (not committed): window bounds and panel layout. */
+/** Browser panel state restored when the project reopens. */
+export const projectBrowserStateSchema = z.object({
+  lastUrl: z.string().optional(),
+  preset: viewportPresetIdSchema.default('responsive'),
+  zoomFactor: z.number().min(0.25).max(5).default(1),
+});
+export type ProjectBrowserState = z.infer<typeof projectBrowserStateSchema>;
+
+/** Per-machine state for a project (not committed): window bounds, panel layout, browser state. */
 export const projectStateSchema = z.object({
   bounds: windowBoundsSchema.optional(),
   layout: layoutStateSchema.optional(),
+  browser: projectBrowserStateSchema.optional(),
 });
 export type ProjectState = z.infer<typeof projectStateSchema>;
 
 export const MAX_RECENT_PROJECTS = 10;
 
-export const SETTINGS_VERSION = 1;
+export const SETTINGS_VERSION = 2;
+
+export const browserSettingsSchema = z.object({
+  /** Load the bundled React and Vue DevTools into the browser panel's session. */
+  devToolsExtensions: z.boolean().default(true),
+  /** Accept self-signed certificates from localhost dev servers (Vite `https: true`, mkcert, ...). */
+  trustLocalhostCertificates: z.boolean().default(true),
+});
+export type BrowserSettings = z.infer<typeof browserSettingsSchema>;
 
 /**
  * User settings stored in `<userData>/settings.json`. Every field has a default so a partially
@@ -60,6 +78,7 @@ export const appSettingsSchema = z.object({
   keybindings: keybindingOverridesSchema.default({}),
   /** When a terminal is focused, plain `Ctrl+<key>` chords go to the shell. */
   terminalPassthrough: z.boolean().default(true),
+  browser: browserSettingsSchema.default(browserSettingsSchema.parse({})),
   recentProjects: z.array(recentProjectSchema).max(MAX_RECENT_PROJECTS).default([]),
   projects: z.record(z.string(), projectStateSchema).default({}),
 });
@@ -71,6 +90,7 @@ export const appSettingsPatchSchema = z
     theme: themeModeSchema,
     keybindings: keybindingOverridesSchema,
     terminalPassthrough: z.boolean(),
+    browser: browserSettingsSchema.partial(),
   })
   .partial();
 export type AppSettingsPatch = z.infer<typeof appSettingsPatchSchema>;
@@ -87,6 +107,8 @@ export type Migration = (input: Record<string, unknown>) => Record<string, unkno
  */
 export const SETTINGS_MIGRATIONS: Readonly<Record<number, Migration>> = {
   0: (input) => ({ ...input, version: 1 }),
+  // v2 added `browser` settings and per-project browser state; both are defaulted by the schema.
+  1: (input) => ({ ...input, version: 2 }),
 };
 
 export class SettingsMigrationError extends Error {

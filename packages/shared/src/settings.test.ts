@@ -70,6 +70,27 @@ describe('loadSettings', () => {
     };
     expect(loadSettings({ version: 1, projects }).settings.projects).toEqual(projects);
   });
+
+  it('upgrades a v1 file with browser defaults and keeps existing values', () => {
+    const { settings, warnings } = loadSettings({ version: 1, theme: 'dark', projects: { '/p': {} } });
+    expect(warnings).toEqual([]);
+    expect(settings.version).toBe(2);
+    expect(settings.theme).toBe('dark');
+    expect(settings.browser).toEqual({ devToolsExtensions: true, trustLocalhostCertificates: true });
+    expect(settings.projects['/p']?.browser).toBeUndefined();
+  });
+
+  it('defaults per-project browser state fields', () => {
+    const { settings } = loadSettings({
+      version: 2,
+      projects: { '/p': { browser: { lastUrl: 'http://localhost:5173/' } } },
+    });
+    expect(settings.projects['/p']?.browser).toEqual({
+      lastUrl: 'http://localhost:5173/',
+      preset: 'responsive',
+      zoomFactor: 1,
+    });
+  });
 });
 
 describe('addRecentProject', () => {
