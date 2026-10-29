@@ -1,0 +1,82 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --color-bg: var(--arbora-bg);
+  --color-surface: var(--arbora-surface);
+  --color-surface-2: var(--arbora-surface-2);
+  --color-border: var(--arbora-border);
+  --color-fg: var(--arbora-fg);
+  --color-muted: var(--arbora-muted);
+  --color-accent: var(--arbora-accent);
+  --color-accent-fg: var(--arbora-accent-fg);
+  --color-danger: var(--arbora-danger);
+  --font-sans: system-ui, -apple-system, 'Segoe UI', 'Cantarell', 'Noto Sans', 'Ubuntu', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+:root {
+  --arbora-bg: #ffffff;
+  --arbora-surface: #f6f7f9;
+  --arbora-surface-2: #eceef2;
+  --arbora-border: #dfe2e8;
+  --arbora-fg: #16181d;
+  --arbora-muted: #636a76;
+  --arbora-accent: #2f7d4f;
+  --arbora-accent-fg: #ffffff;
+  --arbora-danger: #c2410c;
+  color-scheme: light;
+}
+
+:root.dark {
+  --arbora-bg: #0e1013;
+  --arbora-surface: #15181d;
+  --arbora-surface-2: #1d2128;
+  --arbora-border: #2a2f38;
+  --arbora-fg: #e6e8ec;
+  --arbora-muted: #8b93a1;
+  --arbora-accent: #4cb87a;
+  --arbora-accent-fg: #07130c;
+  --arbora-danger: #f97316;
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: var(--arbora-bg);
+  color: var(--arbora-fg);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--arbora-accent);
+  outline-offset: -2px;
+}
+
+.app-drag {
+  -webkit-app-region: drag;
+}
+
+.app-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+  }
+}

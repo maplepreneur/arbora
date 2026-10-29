@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "../../.tsbuild/desktop-node",
+    "tsBuildInfoFile": "../../.tsbuild/desktop-node.tsbuildinfo",
+    "types": ["node"]
+  },
+  "include": ["src/main", "electron.vite.config.ts"],
+  "references": [{ "path": "../../packages/shared" }]
+}
