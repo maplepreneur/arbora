@@ -95,7 +95,9 @@ test.describe('Stage 0 smoke', () => {
       await expect(page.getByTestId('mode-banner')).toBeHidden();
       // Esc outside a mode is not intercepted and reaches the page.
       await send('Escape', []);
-      await expect.poll(() => page.evaluate(() => (window as unknown as { seenKeys: string[] }).seenKeys)).toContain('escape');
+      await expect
+        .poll(() => page.evaluate(() => (window as unknown as { seenKeys: string[] }).seenKeys))
+        .toContain('escape');
       const seen = await page.evaluate(() => (window as unknown as { seenKeys: string[] }).seenKeys);
       expect(seen).not.toContain('k');
       expect(seen.filter((k) => k === 'escape')).toHaveLength(1);
@@ -149,9 +151,11 @@ test.describe('Stage 0 smoke', () => {
       const settings = JSON.parse(readFileSync(settingsFile, 'utf8')) as Record<string, unknown>;
       settings['keybindings'] = { 'arbora.agentMode': 'mod+i' };
       writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
-      await expect.poll(() => page.evaluate(() => window.arbora.invoke('settings.get').then((s) => s.keybindings))).toEqual({
-        'arbora.agentMode': 'mod+i',
-      });
+      await expect
+        .poll(() => page.evaluate(() => window.arbora.invoke('settings.get').then((s) => s.keybindings)))
+        .toEqual({
+          'arbora.agentMode': 'mod+i',
+        });
       await page.getByTestId('panel-browser').click();
       await page.keyboard.press('ControlOrMeta+K');
       await page.waitForTimeout(300);

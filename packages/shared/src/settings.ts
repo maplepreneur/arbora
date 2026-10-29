@@ -143,12 +143,11 @@ export function loadSettings(raw: unknown): LoadSettingsResult {
   if (parsed.success) {
     return { settings: parsed.data, warnings };
   }
-  const repaired: Record<string, unknown> = { ...migrated, version: SETTINGS_VERSION };
   const badKeys = new Set(parsed.error.issues.map((issue) => issue.path[0]).filter((k) => typeof k === 'string'));
-  for (const key of badKeys) {
-    warnings.push(`settings.${key} is invalid and was reset to its default`);
-    delete repaired[key];
-  }
+  for (const key of badKeys) warnings.push(`settings.${key} is invalid and was reset to its default`);
+  const repaired = Object.fromEntries(
+    Object.entries({ ...migrated, version: SETTINGS_VERSION }).filter(([key]) => !badKeys.has(key)),
+  );
   const second = appSettingsSchema.safeParse(repaired);
   if (second.success) {
     return { settings: second.data, warnings };

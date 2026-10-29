@@ -82,7 +82,11 @@ export function CommandPalette() {
                       className="flex cursor-default items-center rounded px-3 py-1.5 data-[selected=true]:bg-accent-soft data-[selected=true]:text-fg"
                     >
                       <span className="flex-1">{command.title}</span>
-                      {binding && <kbd className="font-mono text-[11px] text-fg-subtle">{formatChord(binding.chord, platform)}</kbd>}
+                      {binding && (
+                        <kbd className="font-mono text-[11px] text-fg-subtle">
+                          {formatChord(binding.chord, platform)}
+                        </kbd>
+                      )}
                     </Command.Item>
                   );
                 })}

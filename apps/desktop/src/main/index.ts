@@ -21,7 +21,8 @@ for (const flag of startupSwitches(platform, process.env['ARBORA_FLAGS'])) {
   else app.commandLine.appendSwitch(flag.name, flag.value);
 }
 
-const isDefaultApp = Boolean(process.defaultApp);
+// Typed as boolean but undefined in packaged builds; both falsy values mean "packaged".
+const isDefaultApp: boolean = process.defaultApp;
 
 function main(): void {
   if (!app.requestSingleInstanceLock()) {
@@ -79,15 +80,22 @@ function main(): void {
       settings,
       theme,
       preloadPath: join(import.meta.dirname, '../preload/index.cjs'),
-      renderer: !app.isPackaged && rendererUrl ? { url: rendererUrl } : { file: join(import.meta.dirname, '../renderer/index.html') },
+      renderer:
+        !app.isPackaged && rendererUrl
+          ? { url: rendererUrl }
+          : { file: join(import.meta.dirname, '../renderer/index.html') },
     });
     const manager = windows;
 
-    Menu.setApplicationMenu(platform === 'darwin' ? buildMacMenu((commandId) => {
-      const focused = BrowserWindow.getFocusedWindow();
-      const target = focused ? manager.all().find((w) => w.window === focused) : undefined;
-      if (target) sendEvent(target.contents, 'command.invoke', { commandId });
-    }) : null);
+    Menu.setApplicationMenu(
+      platform === 'darwin'
+        ? buildMacMenu((commandId) => {
+            const focused = BrowserWindow.getFocusedWindow();
+            const target = focused ? manager.all().find((w) => w.window === focused) : undefined;
+            if (target) sendEvent(target.contents, 'command.invoke', { commandId });
+          })
+        : null,
+    );
 
     const isTrusted = (sender: WebContents): boolean => manager.fromWebContents(sender) !== undefined;
     const windowFor = (sender: WebContents): ProjectWindow => {
@@ -195,8 +203,12 @@ function main(): void {
       return undefined;
     });
     defineHandler('project.recents', isTrusted, () => settings.get().recentProjects);
-    defineHandler('project.removeRecent', isTrusted, ({ path }) =>
-      settings.update((s) => ({ ...s, recentProjects: s.recentProjects.filter((r) => r.path !== path) })).recentProjects,
+    defineHandler(
+      'project.removeRecent',
+      isTrusted,
+      ({ path }) =>
+        settings.update((s) => ({ ...s, recentProjects: s.recentProjects.filter((r) => r.path !== path) }))
+          .recentProjects,
     );
     defineHandler('project.saveLayout', isTrusted, ({ layout }, event) => {
       windowFor(event.sender).saveLayout(layout);

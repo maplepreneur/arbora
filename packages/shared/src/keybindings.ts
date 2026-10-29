@@ -23,13 +23,28 @@ export interface KeyInput {
 }
 
 export class ChordParseError extends Error {
-  constructor(readonly source: string, reason: string) {
+  constructor(
+    readonly source: string,
+    reason: string,
+  ) {
     super(`Invalid keybinding "${source}": ${reason}`);
     this.name = 'ChordParseError';
   }
 }
 
-const MODIFIER_TOKENS = new Set(['mod', 'ctrl', 'control', 'cmd', 'command', 'meta', 'super', 'alt', 'option', 'opt', 'shift']);
+const MODIFIER_TOKENS = new Set([
+  'mod',
+  'ctrl',
+  'control',
+  'cmd',
+  'command',
+  'meta',
+  'super',
+  'alt',
+  'option',
+  'opt',
+  'shift',
+]);
 
 const KEY_ALIASES: Readonly<Record<string, string>> = {
   esc: 'escape',
@@ -63,9 +78,7 @@ export function parseChord(source: string, platform: Platform): Chord {
     throw new ChordParseError(source, 'empty');
   }
   // Split on "+" but allow a literal "+" key as the last token (e.g. "mod++").
-  const tokens = trimmed.endsWith('++')
-    ? [...trimmed.slice(0, -2).split('+'), '+']
-    : trimmed.split('+');
+  const tokens = trimmed.endsWith('++') ? [...trimmed.slice(0, -2).split('+'), '+'] : trimmed.split('+');
   if (tokens.some((t) => t.trim().length === 0)) {
     throw new ChordParseError(source, 'empty token');
   }
@@ -167,7 +180,7 @@ const DISPLAY_KEYS: Readonly<Record<string, string>> = {
 };
 
 function displayKey(key: string): string {
-  return DISPLAY_KEYS[key] ?? (key.length === 1 ? key.toUpperCase() : key[0]?.toUpperCase() + key.slice(1));
+  return DISPLAY_KEYS[key] ?? (key.length === 1 ? key.toUpperCase() : key.charAt(0).toUpperCase() + key.slice(1));
 }
 
 /** Human-readable label: `⌘⇧P` on macOS, `Ctrl+Shift+P` elsewhere. */

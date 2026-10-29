@@ -35,7 +35,9 @@ describe('migrateSettings', () => {
   });
 
   it('throws on a missing step or a migration that does not advance', () => {
-    expect(() => migrateSettings({ version: 1 }, { 0: (s) => ({ ...s, version: 1 }) }, 2)).toThrow(/No settings migration/);
+    expect(() => migrateSettings({ version: 1 }, { 0: (s) => ({ ...s, version: 1 }) }, 2)).toThrow(
+      /No settings migration/,
+    );
     expect(() => migrateSettings({}, { 0: (s) => ({ ...s, version: 0 }) }, 1)).toThrow(/did not advance/);
   });
 });
@@ -63,14 +65,20 @@ describe('loadSettings', () => {
   });
 
   it('preserves per-project layout state', () => {
-    const projects = { '/p': { layout: { groups: { main: { browser: 70, agent: 30 } }, sidebarView: 'git', bottomTab: 'problems' } } };
+    const projects = {
+      '/p': { layout: { groups: { main: { browser: 70, agent: 30 } }, sidebarView: 'git', bottomTab: 'problems' } },
+    };
     expect(loadSettings({ version: 1, projects }).settings.projects).toEqual(projects);
   });
 });
 
 describe('addRecentProject', () => {
   it('moves an existing entry to the front and caps the list', () => {
-    let recents = Array.from({ length: MAX_RECENT_PROJECTS }, (_, i) => ({ path: `/p${i}`, name: `p${i}`, openedAt: i }));
+    let recents = Array.from({ length: MAX_RECENT_PROJECTS }, (_, i) => ({
+      path: `/p${i}`,
+      name: `p${i}`,
+      openedAt: i,
+    }));
     recents = addRecentProject(recents, { path: '/p5', name: 'p5', openedAt: 100 });
     expect(recents[0]?.path).toBe('/p5');
     expect(recents.filter((r) => r.path === '/p5')).toHaveLength(1);

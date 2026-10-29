@@ -100,7 +100,8 @@ export class SettingsStore {
       this.warnings = warnings;
       return settings;
     } catch (error) {
-      const reason = error instanceof SettingsMigrationError ? error.message : `invalid JSON (${(error as Error).message})`;
+      const reason =
+        error instanceof SettingsMigrationError ? error.message : `invalid JSON (${(error as Error).message})`;
       // Keep the unreadable file for the user instead of overwriting it on the next save.
       try {
         renameSync(this.filePath, `${this.filePath}.${Date.now()}.bak`);

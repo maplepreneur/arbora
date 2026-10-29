@@ -175,7 +175,10 @@ export class ProjectWindow {
   reloadProjectSettings(): void {
     if (!this.project) return;
     const { settings, warnings } = readProjectSettings(this.project.path);
-    if (JSON.stringify(settings) === JSON.stringify(this.project.settings) && warnings.join() === this.project.settingsWarnings.join()) {
+    if (
+      JSON.stringify(settings) === JSON.stringify(this.project.settings) &&
+      warnings.join() === this.project.settingsWarnings.join()
+    ) {
       return;
     }
     this.project.settings = settings;

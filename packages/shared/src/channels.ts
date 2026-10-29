@@ -82,7 +82,11 @@ export const channels = {
   ),
   'project.close': defineChannel('project.close', none, none),
   'project.recents': defineChannel('project.recents', none, z.array(recentProjectSchema)),
-  'project.removeRecent': defineChannel('project.removeRecent', z.object({ path: z.string() }), z.array(recentProjectSchema)),
+  'project.removeRecent': defineChannel(
+    'project.removeRecent',
+    z.object({ path: z.string() }),
+    z.array(recentProjectSchema),
+  ),
   'project.saveLayout': defineChannel('project.saveLayout', z.object({ layout: layoutStateSchema }), none),
   'project.openSettingsFile': defineChannel('project.openSettingsFile', none, none),
 } as const;

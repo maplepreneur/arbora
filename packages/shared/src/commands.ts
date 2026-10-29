@@ -48,10 +48,24 @@ export type CommandId = (typeof CommandId)[keyof typeof CommandId];
 export const commandIdSchema = z.enum(Object.values(CommandId) as [CommandId, ...CommandId[]]);
 
 export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
-  { id: CommandId.commandPalette, title: 'Show Command Palette', category: 'View', keybinding: 'mod+shift+p', intercept: true },
+  {
+    id: CommandId.commandPalette,
+    title: 'Show Command Palette',
+    category: 'View',
+    keybinding: 'mod+shift+p',
+    intercept: true,
+  },
   { id: CommandId.agentMode, title: 'Toggle Agent Mode', category: 'Modes', keybinding: 'mod+k', intercept: true },
   { id: CommandId.designMode, title: 'Toggle Design Mode', category: 'Modes', keybinding: 'mod+d', intercept: true },
-  { id: CommandId.exitMode, title: 'Exit Mode', category: 'Modes', keybinding: 'escape', when: 'modeActive', intercept: true, hidden: true },
+  {
+    id: CommandId.exitMode,
+    title: 'Exit Mode',
+    category: 'Modes',
+    keybinding: 'escape',
+    when: 'modeActive',
+    intercept: true,
+    hidden: true,
+  },
   { id: CommandId.quickOpen, title: 'Quick Open File', category: 'Files', keybinding: 'mod+p' },
   { id: CommandId.openProject, title: 'Open Project…', category: 'Project', keybinding: 'mod+o' },
   { id: CommandId.closeProject, title: 'Close Project', category: 'Project' },

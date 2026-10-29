@@ -10,7 +10,12 @@ export function App() {
         <p className="text-slate-600">Vite + React + Tailwind. Used by Arbora&apos;s end-to-end tests.</p>
       </header>
       <div className="grid gap-4 md:grid-cols-2">
-        <Card title="Counter" description={`Clicked ${count} times`} actionLabel="Increment" onAction={() => setCount((c) => c + 1)} />
+        <Card
+          title="Counter"
+          description={`Clicked ${count} times`}
+          actionLabel="Increment"
+          onAction={() => setCount((c) => c + 1)}
+        />
         <Card
           title="Console"
           description="Logs an error so the Problems tab has something to show."

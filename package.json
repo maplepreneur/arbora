@@ -11,7 +11,7 @@
     "build": "pnpm --filter @arbora/desktop build",
     "build:test": "pnpm --filter @arbora/desktop build:test",
     "typecheck": "tsc -b",
-    "lint": "eslint . --max-warnings 0",
+    "lint": "eslint . --max-warnings 0 && prettier --check .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",

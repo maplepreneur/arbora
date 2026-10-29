@@ -22,7 +22,8 @@ export default function BrowserPanel() {
         <div className="font-medium text-fg-muted">Browser</div>
         <div className="text-xs">Arrives in Stage 1</div>
         <div className="mt-3 text-xs">
-          <kbd className="font-mono">{agentLabel}</kbd> agent mode · <kbd className="font-mono">{designLabel}</kbd> design mode
+          <kbd className="font-mono">{agentLabel}</kbd> agent mode · <kbd className="font-mono">{designLabel}</kbd>{' '}
+          design mode
         </div>
       </div>
       {mode !== 'idle' && (

@@ -22,7 +22,13 @@ describe('parseChord', () => {
 
   it('parses multiple modifiers case-insensitively with aliases', () => {
     expect(parseChord('Mod+Shift+P', 'linux')).toEqual({ key: 'p', ctrl: true, meta: false, alt: false, shift: true });
-    expect(parseChord('cmd+option+i', 'darwin')).toEqual({ key: 'i', ctrl: false, meta: true, alt: true, shift: false });
+    expect(parseChord('cmd+option+i', 'darwin')).toEqual({
+      key: 'i',
+      ctrl: false,
+      meta: true,
+      alt: true,
+      shift: false,
+    });
     expect(parseChord('esc', 'linux').key).toBe('escape');
     expect(parseChord('ctrl+`', 'linux').key).toBe('`');
     expect(parseChord('mod+,', 'linux').key).toBe(',');
@@ -52,7 +58,9 @@ describe('chordFromInput', () => {
   });
 
   it('falls back to key for non-alphanumerics', () => {
-    expect(chordFromInput({ key: 'Escape', code: 'Escape', ctrl: false, meta: false, alt: false, shift: false }).key).toBe('escape');
+    expect(
+      chordFromInput({ key: 'Escape', code: 'Escape', ctrl: false, meta: false, alt: false, shift: false }).key,
+    ).toBe('escape');
     expect(chordFromInput({ key: ',', ctrl: true, meta: false, alt: false, shift: false }).key).toBe(',');
   });
 });
@@ -108,7 +116,11 @@ describe('KeybindingTable', () => {
   });
 
   it('applies user then project overrides and allows unbinding', () => {
-    const { table } = build('linux', { [CommandId.agentMode]: 'mod+i' }, { [CommandId.agentMode]: 'mod+alt+k', [CommandId.designMode]: null });
+    const { table } = build(
+      'linux',
+      { [CommandId.agentMode]: 'mod+i' },
+      { [CommandId.agentMode]: 'mod+alt+k', [CommandId.designMode]: null },
+    );
     expect(table.match(parseChord('ctrl+k', 'linux'), idle)).toBeUndefined();
     expect(table.match(parseChord('ctrl+i', 'linux'), idle)).toBeUndefined();
     expect(table.match(parseChord('ctrl+alt+k', 'linux'), idle)?.commandId).toBe(CommandId.agentMode);

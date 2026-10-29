@@ -71,7 +71,12 @@ export function setProject(project: ProjectInfo | null): void {
   useApp.setState((s) => ({
     project,
     ...(switched
-      ? { layout: project?.layout ?? DEFAULT_LAYOUT, layoutEpoch: s.layoutEpoch + 1, mode: 'idle' as const, paletteOpen: false }
+      ? {
+          layout: project?.layout ?? DEFAULT_LAYOUT,
+          layoutEpoch: s.layoutEpoch + 1,
+          mode: 'idle' as const,
+          paletteOpen: false,
+        }
       : {}),
   }));
 }

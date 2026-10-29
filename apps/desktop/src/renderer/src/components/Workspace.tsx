@@ -80,9 +80,21 @@ function BottomContent({ tab }: { tab: BottomTab }) {
   }
 }
 
-function ActivityRail({ active, sidebarOpen, onSelect }: { active: SidebarView; sidebarOpen: boolean; onSelect: (view: SidebarView) => void }) {
+function ActivityRail({
+  active,
+  sidebarOpen,
+  onSelect,
+}: {
+  active: SidebarView;
+  sidebarOpen: boolean;
+  onSelect: (view: SidebarView) => void;
+}) {
   return (
-    <nav aria-label="Activity" data-testid="activity-rail" className="flex w-11 shrink-0 flex-col items-center gap-1 border-r border-border bg-bg-subtle py-2">
+    <nav
+      aria-label="Activity"
+      data-testid="activity-rail"
+      className="flex w-11 shrink-0 flex-col items-center gap-1 border-r border-border bg-bg-subtle py-2"
+    >
       {SIDEBAR_VIEWS.map(({ id, label, icon: Icon }) => (
         <RailButton key={id} id={id} label={label} selected={sidebarOpen && active === id} onClick={() => onSelect(id)}>
           <Icon size={18} />
@@ -92,7 +104,19 @@ function ActivityRail({ active, sidebarOpen, onSelect }: { active: SidebarView; 
   );
 }
 
-function RailButton({ id, label, selected, onClick, children }: { id: SidebarView; label: string; selected: boolean; onClick: () => void; children: ReactNode }) {
+function RailButton({
+  id,
+  label,
+  selected,
+  onClick,
+  children,
+}: {
+  id: SidebarView;
+  label: string;
+  selected: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
   const command = SIDEBAR_VIEWS.find((v) => v.id === id)?.command ?? '';
   const chord = useChordLabel(command);
   return (
@@ -178,7 +202,14 @@ export function Workspace() {
         onLayoutChanged={(next, meta) => setGroupLayout(MAIN_GROUP, meta.requestedLayout ?? next)}
         className="min-w-0 flex-1"
       >
-        <Panel id="sidebar" panelRef={sidebarRef} collapsible collapsedSize={0} minSize="160px" defaultSize={DEFAULT_MAIN['sidebar']}>
+        <Panel
+          id="sidebar"
+          panelRef={sidebarRef}
+          collapsible
+          collapsedSize={0}
+          minSize="160px"
+          defaultSize={DEFAULT_MAIN['sidebar']}
+        >
           <aside data-testid="panel-sidebar" className="h-full overflow-hidden bg-bg-subtle">
             <Suspense fallback={<PanelFallback />}>
               <SidebarContent view={layout.sidebarView} />
@@ -202,9 +233,20 @@ export function Workspace() {
               </section>
             </Panel>
             <ResizeHandle id="sep-bottom" orientation="vertical" />
-            <Panel id="bottom" panelRef={bottomRef} collapsible collapsedSize={0} minSize="96px" defaultSize={DEFAULT_CENTER['bottom']}>
+            <Panel
+              id="bottom"
+              panelRef={bottomRef}
+              collapsible
+              collapsedSize={0}
+              minSize="96px"
+              defaultSize={DEFAULT_CENTER['bottom']}
+            >
               <section data-testid="panel-bottom" className="flex h-full flex-col bg-bg">
-                <div role="tablist" aria-label="Bottom panel" className="flex h-8 shrink-0 items-center gap-1 border-b border-border px-2">
+                <div
+                  role="tablist"
+                  aria-label="Bottom panel"
+                  className="flex h-8 shrink-0 items-center gap-1 border-b border-border px-2"
+                >
                   {BOTTOM_TABS.map((tab) => (
                     <button
                       key={tab.id}
@@ -232,7 +274,14 @@ export function Workspace() {
           </Group>
         </Panel>
         <ResizeHandle id="sep-agent" orientation="horizontal" />
-        <Panel id="agent" panelRef={agentRef} collapsible collapsedSize={0} minSize="240px" defaultSize={DEFAULT_MAIN['agent']}>
+        <Panel
+          id="agent"
+          panelRef={agentRef}
+          collapsible
+          collapsedSize={0}
+          minSize="240px"
+          defaultSize={DEFAULT_MAIN['agent']}
+        >
           <aside data-testid="panel-agent" className="h-full overflow-hidden bg-bg-subtle">
             <Suspense fallback={<PanelFallback />}>
               <AgentPanel />

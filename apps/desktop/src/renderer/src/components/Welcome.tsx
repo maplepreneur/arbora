@@ -66,7 +66,9 @@ export function Welcome() {
           <span className="flex-1 font-medium">Open project folder…</span>
           {openLabel && <kbd className="font-mono text-[11px] text-fg-subtle">{openLabel}</kbd>}
         </button>
-        <p className="mt-2 text-xs text-fg-subtle">Or drop a folder anywhere in this window, or run `arbora &lt;path&gt;`.</p>
+        <p className="mt-2 text-xs text-fg-subtle">
+          Or drop a folder anywhere in this window, or run `arbora &lt;path&gt;`.
+        </p>
 
         <section className="mt-10">
           <h2 className="text-xs font-semibold tracking-wide text-fg-subtle uppercase">Recent</h2>

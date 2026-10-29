@@ -25,16 +25,27 @@ function WindowControls() {
   const control = (action: 'minimize' | 'toggleMaximize' | 'close') => () => {
     void window.arbora.invoke('window.control', { action });
   };
-  const button = 'app-no-drag flex h-full w-11 items-center justify-center text-fg-muted hover:bg-bg-muted hover:text-fg';
+  const button =
+    'app-no-drag flex h-full w-11 items-center justify-center text-fg-muted hover:bg-bg-muted hover:text-fg';
   return (
     <div className="flex h-full" data-testid="window-controls">
       <button type="button" aria-label="Minimize" className={button} onClick={control('minimize')}>
         <Minus size={14} />
       </button>
-      <button type="button" aria-label={maximized ? 'Restore' : 'Maximize'} className={button} onClick={control('toggleMaximize')}>
+      <button
+        type="button"
+        aria-label={maximized ? 'Restore' : 'Maximize'}
+        className={button}
+        onClick={control('toggleMaximize')}
+      >
         {maximized ? <Copy size={12} /> : <Square size={12} />}
       </button>
-      <button type="button" aria-label="Close" className={`${button} hover:!bg-danger hover:!text-white`} onClick={control('close')}>
+      <button
+        type="button"
+        aria-label="Close"
+        className={`${button} hover:!bg-danger hover:!text-white`}
+        onClick={control('close')}
+      >
         <X size={15} />
       </button>
     </div>
@@ -77,7 +88,10 @@ export function TitleBar() {
           </>
         )}
         {mode !== 'idle' && (
-          <span data-testid="mode-indicator" className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold text-accent uppercase">
+          <span
+            data-testid="mode-indicator"
+            className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold text-accent uppercase"
+          >
             {mode === 'agent' ? 'Agent mode' : 'Design mode'}
           </span>
         )}

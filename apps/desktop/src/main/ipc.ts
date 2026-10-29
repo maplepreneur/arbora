@@ -33,9 +33,7 @@ export function defineHandler<K extends ChannelName>(
     if (!isTrusted(event.sender)) {
       return Promise.reject(new Error(`Untrusted sender for "${channel.name}"`));
     }
-    return wrapHandler(channel, (request) => handler(request as z.output<Channels[K]['request']>, event))(raw) as Promise<
-      ResponseOf<Channels[K]>
-    >;
+    return wrapHandler(channel, (request) => handler(request, event))(raw);
   });
   return () => ipcMain.removeHandler(ipc);
 }

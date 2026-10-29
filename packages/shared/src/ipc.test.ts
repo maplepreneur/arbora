@@ -84,7 +84,9 @@ describe('createClient', () => {
   it('rejects unknown channels and events', async () => {
     const client = createClient(channels, events, { invoke: vi.fn(), on: vi.fn() });
     await expect((client.invoke as (n: string) => Promise<unknown>)('nope')).rejects.toThrow(/Unknown IPC channel/);
-    expect(() => (client.on as (n: string, l: () => void) => void)('nope', () => undefined)).toThrow(/Unknown IPC event/);
+    expect(() => (client.on as (n: string, l: () => void) => void)('nope', () => undefined)).toThrow(
+      /Unknown IPC event/,
+    );
     await expect((client.invoke as (n: string) => Promise<unknown>)('toString')).rejects.toThrow(/Unknown IPC channel/);
   });
 

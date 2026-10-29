@@ -4,7 +4,12 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'electron-vite';
 
 /** Workspace packages export TypeScript source, so they must be bundled rather than externalised. */
-const WORKSPACE_PACKAGES = ['@arbora/shared', '@arbora/acp-client', '@arbora/browser-bridge', '@arbora/mcp-browser-server'];
+const WORKSPACE_PACKAGES = [
+  '@arbora/shared',
+  '@arbora/acp-client',
+  '@arbora/browser-bridge',
+  '@arbora/mcp-browser-server',
+];
 
 export default defineConfig(({ mode }) => {
   const testBuild = mode === 'test';
@@ -14,7 +19,7 @@ export default defineConfig(({ mode }) => {
         externalizeDeps: { exclude: WORKSPACE_PACKAGES },
         minify: false,
         sourcemap: testBuild,
-        rollupOptions: {
+        rolldownOptions: {
           input: { index: resolve(import.meta.dirname, 'src/main/index.ts') },
         },
       },
@@ -27,7 +32,7 @@ export default defineConfig(({ mode }) => {
         isolatedEntries: true,
         minify: false,
         sourcemap: testBuild,
-        rollupOptions: {
+        rolldownOptions: {
           external: ['electron'],
           input: {
             index: resolve(import.meta.dirname, 'src/preload/index.ts'),
@@ -43,7 +48,7 @@ export default defineConfig(({ mode }) => {
       build: {
         minify: !testBuild,
         sourcemap: testBuild,
-        rollupOptions: {
+        rolldownOptions: {
           input: { index: resolve(import.meta.dirname, 'src/renderer/index.html') },
         },
       },
