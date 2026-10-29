@@ -64,8 +64,9 @@ test.describe('Stage 2 terminal panel', () => {
       await expect(page.getByTestId('toast').filter({ hasText: `Opened ${url}` })).toBeVisible({ timeout: 30_000 });
       await expect.poll(async () => (await browserState(page))?.title, { timeout: 20_000 }).toBe(FIXTURE_TITLE);
       expect(await lines(page, shell.id)).toContain(`Local:   ${url}`);
-      // Loading the page in the background must not take keyboard focus from the shell.
-      await page.waitForTimeout(500);
+      // Loading the page in the background must not take keyboard focus from the shell, even after
+      // the main process stops guarding it.
+      await page.waitForTimeout(1500);
       expect(await pageHasFocus(app)).toBe(false);
 
       // Ctrl+K reaches the shell (kill line) instead of toggling agent mode.

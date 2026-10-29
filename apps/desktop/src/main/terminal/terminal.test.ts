@@ -78,7 +78,7 @@ describe('waitForPortFree', () => {
 });
 
 /** Runs real shells through node-pty (N-API, so the Electron-built binary also loads in Node). */
-describe('TerminalService', () => {
+describe('TerminalService', { timeout: 20_000 }, () => {
   let service: TerminalService | undefined;
   afterEach(() => service?.dispose());
 

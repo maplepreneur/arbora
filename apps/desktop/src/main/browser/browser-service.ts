@@ -6,6 +6,7 @@ import {
   shell,
   WebContentsView,
   type BrowserWindow,
+  type InputEvent,
   type NativeImage,
   type Session,
   type WebContents,
@@ -38,6 +39,7 @@ import {
 import { drawOutline, pngSize, scaleRect } from './image.js';
 
 export const PROBLEM_BUFFER_SIZE = 500;
+const FOCUS_GUARD_AFTER_LOAD_MS = 1000;
 const PROBLEM_FLUSH_MS = 100;
 const STATE_SAVE_DELAY_MS = 500;
 const PING_TIMEOUT_MS = 2000;
@@ -96,6 +98,7 @@ export class BrowserService {
   private readonly pings = new Map<string, () => void>();
   private readonly disposers: (() => void)[] = [];
   private disposed = false;
+  private releaseFocusGuard: (() => void) | undefined;
 
   constructor(private readonly options: BrowserServiceOptions) {
     this.view = new WebContentsView({
@@ -178,18 +181,41 @@ export class BrowserService {
     return false;
   }
 
-  /** Chromium focuses a view when it first loads a page; a background load must not take the keyboard. */
+  /**
+   * Chromium focuses a view when it first loads a page; a background load must not take the keyboard.
+   * On Windows that focus can land after `did-stop-loading`, so the guard outlives the load briefly
+   * and ends early only when the user deliberately focuses the page.
+   */
   private keepAppFocusDuringLoad(): void {
+    const contents = this.contents;
+    if (contents.isFocused()) return;
+    this.releaseFocusGuard?.();
     const ui = this.options.window.webContents;
-    if (!ui.isFocused()) return;
     const restore = (): void => {
-      if (this.contents.isFocused()) ui.focus();
+      if (!contents.isDestroyed() && contents.isFocused() && !ui.isDestroyed()) ui.focus();
     };
-    this.contents.on('focus', restore);
-    this.contents.once('did-stop-loading', () => {
-      this.contents.off('focus', restore);
+    const onInput = (_event: unknown, input: InputEvent): void => {
+      if (input.type === 'mouseDown') release();
+    };
+    let timer: NodeJS.Timeout | undefined;
+    const onStop = (): void => {
       restore();
-    });
+      clearTimeout(timer);
+      timer = setTimeout(release, FOCUS_GUARD_AFTER_LOAD_MS);
+    };
+    const release = (): void => {
+      clearTimeout(timer);
+      if (!contents.isDestroyed()) {
+        contents.off('focus', restore);
+        contents.off('input-event', onInput);
+        contents.off('did-stop-loading', onStop);
+      }
+      if (this.releaseFocusGuard === release) this.releaseFocusGuard = undefined;
+    };
+    contents.on('focus', restore);
+    contents.on('input-event', onInput);
+    contents.on('did-stop-loading', onStop);
+    this.releaseFocusGuard = release;
   }
 
   action(action: BrowserAction): void {
@@ -229,6 +255,7 @@ export class BrowserService {
         this.setZoom(1);
         break;
       case 'focusPage':
+        this.releaseFocusGuard?.();
         contents.focus();
         break;
       default: {
@@ -311,6 +338,7 @@ export class BrowserService {
     clearTimeout(this.flushTimer);
     const pendingSave = this.saveTimer !== undefined;
     clearTimeout(this.saveTimer);
+    this.releaseFocusGuard?.();
     for (const dispose of this.disposers.splice(0)) dispose();
     if (!this.options.window.isDestroyed()) this.options.window.contentView.removeChildView(this.view);
     if (!this.contents.isDestroyed()) {
