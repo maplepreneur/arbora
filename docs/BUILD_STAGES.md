@@ -27,9 +27,9 @@ This document breaks [PLAN.md](./PLAN.md) into stages a coding agent can execute
 
 | Stage | Name | Status | Notes |
 | --- | --- | --- | --- |
-| 0 | Foundation | In progress (PR #2, merged) | Code, CI matrix and Linux tarball merged; only the Omarchy/Hyprland check remains (awaiting `arch-ok`) |
-| 1 | Browser panel | In progress (PR #4) | Checklist done except the Arch check; CI green on Linux, macOS and Windows (typecheck, lint, 90 unit tests, 14 e2e incl. React DevTools Components panel); awaiting `arch-ok` on Omarchy/Hyprland (rect sync under tiling, `Super+/` screenshot `dpr`, chords with the page focused), then merge |
-| 2 | Terminal panel | Not started | |
+| 0 | Foundation | In progress (PR #2, merged) | Merged; typecheck, lint, unit, e2e and Linux `pnpm package` (AppImage, deb, tar.gz) re-verified on main. Only the Omarchy/Hyprland check remains (awaiting `arch-ok`) |
+| 1 | Browser panel | In progress (PR #4, merged) | Merged with CI green on Linux, macOS and Windows (typecheck, lint, 90 unit tests, 14 e2e incl. React DevTools Components panel). Only the Omarchy/Hyprland check remains (awaiting `arch-ok`: rect sync under tiling, `Super+/` screenshot `dpr`, chords with the page focused) |
+| 2 | Terminal panel | Not started | Next stage; `BrowserService.suggestUrl` is ready for dev-server URL detection |
 | 3 | Agent panel (ACP) | Not started | |
 | 4 | Agent mode (`Mod+K`) | Not started | |
 | 5 | Browser control MCP server | Not started | |
