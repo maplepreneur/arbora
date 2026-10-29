@@ -153,6 +153,26 @@ describe('TerminalService', { timeout: 20_000 }, () => {
     expect(service.scrollback(info.id)).toContain('restarting');
   });
 
+  it('runs an agent terminal directly (no shell), streams raw output to subscribers and reports the exit', async () => {
+    const { service, terminals } = setup();
+    let raw = '';
+    const info = await service.create({
+      kind: 'agent',
+      command: process.execPath,
+      args: ['-e', "console.log('from ' + process.env.ARBORA_AGENT_TEST); process.exit(5)"],
+      env: { ARBORA_AGENT_TEST: 'agent' },
+    });
+    expect(info.readOnly).toBe(true);
+    expect(info.command).toContain(process.execPath);
+    const unsubscribe = service.subscribe(info.id, (data) => (raw += data));
+    const exit = await service.waitForExit(info.id);
+    expect(exit.exitCode).toBe(5);
+    expect(raw + service.scrollback(info.id)).toContain('from agent');
+    unsubscribe();
+    expect(await service.waitForExit(info.id)).toEqual(exit);
+    expect(terminals().find((t) => t.id === info.id)?.exitCode).toBe(5);
+  });
+
   it('runs interactive shells that accept input', async () => {
     const { service, data } = setup();
     const info = await service.create({ cols: 120, rows: 30 });

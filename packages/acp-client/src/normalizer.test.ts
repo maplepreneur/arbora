@@ -10,8 +10,10 @@ function normalizer(events: ThreadEvent[] = []): UpdateNormalizer {
 }
 
 const text = (s: string): { type: 'text'; text: string } => ({ type: 'text', text: s });
-const chunk = (kind: 'agent_message_chunk' | 'agent_thought_chunk' | 'user_message_chunk', s: string): SessionUpdate =>
-  ({ sessionUpdate: kind, content: text(s) }) as SessionUpdate;
+const chunk = (kind: 'agent_message_chunk' | 'agent_thought_chunk' | 'user_message_chunk', s: string): SessionUpdate => ({
+  sessionUpdate: kind,
+  content: text(s),
+});
 
 describe('UpdateNormalizer', () => {
   it('coalesces consecutive agent message chunks into one event', () => {
@@ -191,7 +193,8 @@ describe('UpdateNormalizer', () => {
     });
     expect(n.events[0]).toMatchObject({ kind: 'permission', requestId: 'r1', toolKind: 'edit', outcome: null });
     const resolved = n.permissionResolved('r1', { optionId: 'yes', auto: false });
-    expect(resolved).toEqual([{ type: 'replace', index: 0, event: expect.objectContaining({ outcome: { optionId: 'yes', auto: false } }) }]);
+    expect(resolved).toHaveLength(1);
+    expect(resolved[0]).toMatchObject({ type: 'replace', index: 0, event: { outcome: { optionId: 'yes', auto: false } } });
     expect(n.permissionResolved('missing', 'cancelled')).toEqual([]);
   });
 

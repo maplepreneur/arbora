@@ -1,6 +1,9 @@
 import { join } from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, Menu, shell, type WebContents } from 'electron';
+import { AgentRegistry } from '@arbora/acp-client';
 import { toPlatform, type AppSettingsPatch } from '@arbora/shared';
+import type { AgentService } from './agent/agent-service.js';
+import { describeAttachment } from './agent/attachments.js';
 import { BrowserSessions } from './browser/browser-sessions.js';
 import type { BrowserService } from './browser/browser-service.js';
 import { registerPageIpc } from './browser/page-ipc.js';
@@ -86,12 +89,14 @@ function main(): void {
       settings: () => settings.get().browser,
     });
 
+    const agentRegistry = new AgentRegistry(() => settings.get().agents.custom);
     const rendererUrl = process.env['ELECTRON_RENDERER_URL'];
     windows = new WindowManager({
       platform,
       tilingCompositor,
       settings,
       theme,
+      agentRegistry,
       preloadPath: join(import.meta.dirname, '../preload/index.cjs'),
       browserPreloadPath: join(import.meta.dirname, '../preload/browser.cjs'),
       browserSessions,
@@ -194,6 +199,14 @@ function main(): void {
                 ...s.terminal,
                 ...(patch.terminal.shell !== undefined ? { shell: patch.terminal.shell } : {}),
                 fontSize: patch.terminal.fontSize ?? s.terminal.fontSize,
+              },
+            }
+          : {}),
+        ...(patch.agents !== undefined
+          ? {
+              agents: {
+                custom: patch.agents.custom ?? s.agents.custom,
+                permissions: patch.agents.permissions ?? s.agents.permissions,
               },
             }
           : {}),
@@ -396,6 +409,103 @@ function main(): void {
       return undefined;
     });
     defineHandler('devServer.status', isTrusted, (_req, event) => requireDevServer(event.sender).status());
+
+    const requireAgents = (sender: WebContents): AgentService => {
+      const agents = windowFor(sender).agents;
+      if (!agents) throw new Error('Open a project first');
+      return agents;
+    };
+    defineHandler('agent.listAgents', isTrusted, async (_req, event) => {
+      await shellEnvironment.ready;
+      return requireAgents(event.sender).listAgents();
+    });
+    defineHandler('agent.listThreads', isTrusted, (_req, event) => windowFor(event.sender).agents?.listThreads() ?? []);
+    defineHandler('agent.createThread', isTrusted, ({ agentId }, event) => requireAgents(event.sender).createThread(agentId));
+    defineHandler('agent.getThread', isTrusted, ({ threadId }, event) => requireAgents(event.sender).getThread(threadId));
+    defineHandler('agent.deleteThread', isTrusted, async ({ threadId }, event) => {
+      await requireAgents(event.sender).deleteThread(threadId);
+      return undefined;
+    });
+    defineHandler('agent.renameThread', isTrusted, ({ threadId, title }, event) => {
+      requireAgents(event.sender).renameThread(threadId, title);
+      return undefined;
+    });
+    defineHandler('agent.prompt', isTrusted, ({ threadId, blocks, attachments }, event) =>
+      requireAgents(event.sender).prompt(threadId, blocks, attachments),
+    );
+    defineHandler('agent.cancel', isTrusted, async ({ threadId }, event) => {
+      await requireAgents(event.sender).cancel(threadId);
+      return undefined;
+    });
+    defineHandler('agent.respondPermission', isTrusted, ({ threadId, requestId, optionId }, event) => {
+      requireAgents(event.sender).respondPermission(threadId, requestId, optionId);
+      return undefined;
+    });
+    defineHandler('agent.setMode', isTrusted, async ({ threadId, modeId }, event) => {
+      await requireAgents(event.sender).setMode(threadId, modeId);
+      return undefined;
+    });
+    defineHandler('agent.setConfigOption', isTrusted, async ({ threadId, configId, value }, event) => {
+      await requireAgents(event.sender).setConfigOption(threadId, configId, value);
+      return undefined;
+    });
+    defineHandler('agent.setAutoApproveEdits', isTrusted, ({ threadId, enabled }, event) => {
+      requireAgents(event.sender).setAutoApproveEdits(threadId, enabled);
+      return undefined;
+    });
+    defineHandler('agent.authenticate', isTrusted, async ({ threadId, methodId }, event) => {
+      await requireAgents(event.sender).authenticate(threadId, methodId);
+      return undefined;
+    });
+    defineHandler('agent.restart', isTrusted, async ({ threadId }, event) => {
+      await requireAgents(event.sender).restart(threadId);
+      return undefined;
+    });
+    defineHandler('agent.getLog', isTrusted, ({ threadId }, event) => requireAgents(event.sender).getLog(threadId));
+    defineHandler('agent.exportLog', isTrusted, async ({ threadId }, event) => {
+      const projectWindow = windowFor(event.sender);
+      const agents = requireAgents(event.sender);
+      const result = await dialog.showSaveDialog(projectWindow.window, {
+        title: 'Export ACP log',
+        defaultPath: join(projectWindow.project?.path ?? app.getPath('home'), `acp-log-${threadId.slice(0, 8)}.json`),
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+      if (result.canceled || !result.filePath) return { path: null };
+      await agents.exportLog(threadId, result.filePath);
+      return { path: result.filePath };
+    });
+    defineHandler('agent.pickAttachments', isTrusted, async (_req, event) => {
+      const projectWindow = windowFor(event.sender);
+      const result = await dialog.showOpenDialog(projectWindow.window, {
+        title: 'Attach files',
+        ...(projectWindow.project ? { defaultPath: projectWindow.project.path } : {}),
+        properties: ['openFile', 'multiSelections'],
+      });
+      if (result.canceled) return [];
+      return result.filePaths.flatMap((path) => {
+        const attachment = describeAttachment(path);
+        return attachment ? [attachment] : [];
+      });
+    });
+    defineHandler('agent.describeAttachments', isTrusted, ({ paths }) =>
+      paths.flatMap((path) => {
+        const attachment = describeAttachment(path);
+        return attachment ? [attachment] : [];
+      }),
+    );
+    defineHandler('agent.forgetPermissions', isTrusted, ({ agentId }) => {
+      settings.update((s) => ({
+        ...s,
+        agents: {
+          ...s.agents,
+          permissions:
+            agentId === undefined
+              ? {}
+              : Object.fromEntries(Object.entries(s.agents.permissions).filter(([key]) => !key.startsWith(`${agentId}:`))),
+        },
+      }));
+      return undefined;
+    });
 
     const queued = pendingPaths.splice(0);
     const first = initialProject ?? queued.shift() ?? null;

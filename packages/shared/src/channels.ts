@@ -229,7 +229,11 @@ export const channels = {
    */
   'agent.prompt': defineChannel(
     'agent.prompt',
-    threadId.extend({ blocks: z.array(contentBlockSchema).min(1) }),
+    threadId.extend({
+      blocks: z.array(contentBlockSchema),
+      /** Converted in main: images to `image` blocks when supported, other files to `resource_link`s. */
+      attachments: z.array(attachmentSchema).default([]),
+    }),
     z.object({ stopReason: z.string().nullable(), error: z.string().optional() }),
   ),
   'agent.cancel': defineChannel('agent.cancel', threadId, none),

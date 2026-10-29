@@ -1,0 +1,800 @@
+import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
+import type {
+  ReadTextFileRequest,
+  ReadTextFileResponse,
+  RequestPermissionRequest,
+  RequestPermissionResponse,
+  SessionNotification,
+  WriteTextFileRequest,
+} from '@agentclientprotocol/sdk';
+import {
+  AcpSession,
+  AgentProcess,
+  firstPromptPreface,
+  PathScopeError,
+  redact,
+  resolveInsideRoot,
+  restartDelay,
+  UpdateNormalizer,
+  type AcpLogMessage,
+  type AgentRegistry,
+  type CommandLookup,
+  type StateUpdate,
+} from '@arbora/acp-client';
+import {
+  ACP_LOG_LIMIT,
+  EDIT_TOOL_KINDS,
+  idleThreadState,
+  permissionMemoryKey,
+  sessionConfigOptionSchema,
+  stopReasonSchema,
+  type AcpLogEntry,
+  type AgentAvailability,
+  type AgentDefinition,
+  type Attachment,
+  type AuthMethod,
+  type ContentBlock,
+  type Platform,
+  type RememberedPermissions,
+  type SessionConfigOption,
+  type Thread,
+  type ThreadChange,
+  type ThreadState,
+  type ThreadSummary,
+  type ToolKind,
+} from '@arbora/shared';
+import type { TerminalService } from '../terminal/terminal-service.js';
+import { AgentTerminals } from './agent-terminals.js';
+import { attachmentBlocks } from './attachments.js';
+import { ThreadStore } from './thread-store.js';
+
+export interface AgentServiceEvents {
+  threadsChanged(threads: ThreadSummary[]): void;
+  threadEvents(threadId: string, changes: ThreadChange[]): void;
+  threadState(threadId: string, state: ThreadState): void;
+  log(threadId: string, entry: AcpLogEntry): void;
+  fileChanged(threadId: string, path: string): void;
+}
+
+export interface AgentServiceOptions {
+  readonly platform: Platform;
+  readonly projectPath: string;
+  readonly registry: AgentRegistry;
+  /** Child-process environment with the login-shell PATH. */
+  readonly environment: () => Promise<Record<string, string>>;
+  readonly lookup: () => CommandLookup;
+  readonly terminals: TerminalService;
+  readonly devUrl: () => string | null;
+  readonly permissions: {
+    get(): RememberedPermissions;
+    remember(key: string, decision: 'allow' | 'reject'): void;
+  };
+  readonly events: AgentServiceEvents;
+  readonly now?: () => number;
+}
+
+/** One agent process plus its ACP connection; `sessionId` is set once `session/new` or load succeeded. */
+class Runtime {
+  readonly session: AcpSession;
+  sessionId: string | null = null;
+
+  constructor(
+    readonly process: AgentProcess,
+    readonly terminals: AgentTerminals,
+    makeSession: (runtime: Runtime) => AcpSession,
+  ) {
+    this.session = makeSession(this);
+  }
+}
+
+interface PendingPermission {
+  resolve(optionId: string | null): void;
+}
+
+interface ThreadRecord {
+  thread: Thread;
+  normalizer: UpdateNormalizer;
+  log: AcpLogEntry[];
+  logCounter: number;
+  runtime: Runtime | null;
+  starting: Promise<Runtime> | null;
+  /** `session/load` replays history Arbora already has; transcript updates are dropped meanwhile. */
+  replaying: boolean;
+  pendingPermissions: Map<string, PendingPermission>;
+  pendingPrompt: { blocks: ContentBlock[]; attachments: Attachment[] } | null;
+  crashes: number;
+  saveTimer: NodeJS.Timeout | undefined;
+}
+
+const SAVE_DELAY_MS = 300;
+const MAX_AUTO_RESTARTS = 3;
+const DEFAULT_TITLE = 'New thread';
+const TITLE_LENGTH = 60;
+
+export class AgentServiceError extends Error {}
+
+/**
+ * Agent threads for one project: one ACP session (and process) per thread, started on the first
+ * prompt (or eagerly for a brand-new thread), persisted to `.arbora/threads/<id>.json`.
+ */
+export class AgentService {
+  private readonly records = new Map<string, ThreadRecord>();
+  private readonly store: ThreadStore;
+  private readonly now: () => number;
+  private disposed = false;
+
+  constructor(private readonly options: AgentServiceOptions) {
+    this.store = new ThreadStore(options.projectPath);
+    this.now = options.now ?? (() => Date.now());
+    for (const summary of this.store.list()) {
+      const thread = this.store.load(summary.id);
+      if (thread) this.records.set(thread.id, this.record(thread));
+    }
+  }
+
+  // --- Agents and threads -------------------------------------------------------------------
+
+  listAgents(): { agents: AgentDefinition[]; availability: AgentAvailability[] } {
+    return { agents: this.options.registry.list(), availability: this.options.registry.detect(this.options.lookup()) };
+  }
+
+  listThreads(): ThreadSummary[] {
+    return [...this.records.values()]
+      .map((r) => this.summary(r))
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+
+  getThread(threadId: string): Thread | null {
+    const record = this.records.get(threadId);
+    return record ? { ...record.thread, state: record.thread.state, events: [...record.normalizer.events] } : null;
+  }
+
+  createThread(agentId: string): ThreadSummary {
+    const agent = this.options.registry.get(agentId);
+    if (!agent) throw new AgentServiceError(`Unknown agent ${agentId}`);
+    const now = this.now();
+    const thread: Thread = {
+      id: randomUUID(),
+      agentId,
+      title: DEFAULT_TITLE,
+      createdAt: now,
+      updatedAt: now,
+      sessionId: null,
+      autoApproveEdits: false,
+      state: idleThreadState(),
+      events: [],
+    };
+    const record = this.record(thread);
+    this.records.set(thread.id, record);
+    this.store.save(this.getThread(thread.id) ?? thread);
+    this.emitThreads();
+    // Start now so modes, models and slash commands are there before the first prompt.
+    void this.ensureRuntime(record).catch(() => undefined);
+    return this.summary(record);
+  }
+
+  async deleteThread(threadId: string): Promise<void> {
+    const record = this.records.get(threadId);
+    if (!record) return;
+    this.records.delete(threadId);
+    clearTimeout(record.saveTimer);
+    await this.stopRuntime(record);
+    this.store.delete(threadId);
+    this.emitThreads();
+  }
+
+  renameThread(threadId: string, title: string): void {
+    const record = this.require(threadId);
+    record.thread = { ...record.thread, title, updatedAt: this.now() };
+    this.scheduleSave(record);
+    this.emitThreads();
+  }
+
+  setAutoApproveEdits(threadId: string, enabled: boolean): void {
+    const record = this.require(threadId);
+    record.thread = { ...record.thread, autoApproveEdits: enabled };
+    this.scheduleSave(record);
+    this.emitThreads();
+  }
+
+  // --- Turns ---------------------------------------------------------------------------------
+
+  async prompt(
+    threadId: string,
+    blocks: ContentBlock[],
+    attachments: Attachment[] = [],
+  ): Promise<{ stopReason: string | null; error?: string }> {
+    const record = this.require(threadId);
+    if (blocks.length === 0 && attachments.length === 0) throw new AgentServiceError('Nothing to send');
+    if (record.thread.state.status === 'prompting') throw new AgentServiceError('The agent is still working');
+
+    let runtime: Runtime;
+    try {
+      runtime = await this.ensureRuntime(record);
+    } catch (error) {
+      if (record.thread.state.status === 'auth_required') {
+        record.pendingPrompt = { blocks, attachments };
+        return { stopReason: null, error: 'auth_required' };
+      }
+      return { stopReason: null, error: messageOf(error) };
+    }
+    if (!runtime.sessionId) return { stopReason: null, error: 'No session' };
+    return this.runTurn(record, runtime, blocks, attachments);
+  }
+
+  async cancel(threadId: string): Promise<void> {
+    const record = this.require(threadId);
+    const runtime = record.runtime;
+    if (!runtime?.sessionId || record.thread.state.status !== 'prompting') return;
+    await runtime.session.cancel(runtime.sessionId);
+  }
+
+  respondPermission(threadId: string, requestId: string, optionId: string): void {
+    const record = this.require(threadId);
+    const pending = record.pendingPermissions.get(requestId);
+    if (!pending) throw new AgentServiceError('That permission request is no longer pending');
+    pending.resolve(optionId);
+  }
+
+  async setMode(threadId: string, modeId: string): Promise<void> {
+    const record = this.require(threadId);
+    const runtime = this.requireRuntime(record);
+    await runtime.session.setMode(runtime.sessionId ?? '', modeId);
+    const modes = record.thread.state.modes;
+    if (modes) this.setState(record, { modes: { ...modes, currentModeId: modeId } });
+  }
+
+  async setConfigOption(threadId: string, configId: string, value: string | boolean): Promise<void> {
+    const record = this.require(threadId);
+    const runtime = this.requireRuntime(record);
+    const response = await runtime.session.setConfigOption(runtime.sessionId ?? '', configId, value);
+    this.applyState(record, [{ type: 'configOptions', options: parseConfigOptions(response.configOptions) }]);
+  }
+
+  async authenticate(threadId: string, methodId: string): Promise<void> {
+    const record = this.require(threadId);
+    const runtime = record.runtime;
+    if (!runtime) throw new AgentServiceError('The agent is not running');
+    this.setState(record, { status: 'starting', error: null });
+    try {
+      await runtime.session.authenticate(methodId);
+      this.info(record, `authenticated with ${methodId}`);
+      await this.openSession(record, runtime);
+    } catch (error) {
+      if (AcpSession.isAuthRequired(error)) {
+        this.setState(record, { status: 'auth_required', error: messageOf(error) });
+        return;
+      }
+      this.setState(record, { status: 'error', error: messageOf(error) });
+      throw error;
+    }
+    const pending = record.pendingPrompt;
+    record.pendingPrompt = null;
+    if (pending && runtime.sessionId) void this.runTurn(record, runtime, pending.blocks, pending.attachments);
+  }
+
+  /** Stops the agent process; the next prompt starts it again from scratch. */
+  async restart(threadId: string): Promise<void> {
+    const record = this.require(threadId);
+    await this.stopRuntime(record);
+    record.crashes = 0;
+    record.pendingPrompt = null;
+    this.setState(record, { ...idleThreadState() });
+    void this.ensureRuntime(record).catch(() => undefined);
+  }
+
+  // --- Log -----------------------------------------------------------------------------------
+
+  getLog(threadId: string): AcpLogEntry[] {
+    return [...this.require(threadId).log];
+  }
+
+  async exportLog(threadId: string, path: string): Promise<void> {
+    const record = this.require(threadId);
+    const payload = {
+      exportedAt: new Date(this.now()).toISOString(),
+      thread: { id: record.thread.id, agentId: record.thread.agentId, title: record.thread.title },
+      entries: record.log,
+    };
+    await writeFile(path, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+  }
+
+  // --- Lifecycle -----------------------------------------------------------------------------
+
+  async dispose(): Promise<void> {
+    this.disposed = true;
+    for (const record of this.records.values()) {
+      clearTimeout(record.saveTimer);
+      this.saveNow(record);
+    }
+    await Promise.all([...this.records.values()].map((record) => this.stopRuntime(record)));
+  }
+
+  // --- Internals -----------------------------------------------------------------------------
+
+  private record(thread: Thread): ThreadRecord {
+    const events = [...thread.events];
+    return {
+      thread: { ...thread, events: [] },
+      normalizer: new UpdateNormalizer({ nextId: () => randomUUID(), now: this.now, events }),
+      log: [],
+      logCounter: 0,
+      runtime: null,
+      starting: null,
+      replaying: false,
+      pendingPermissions: new Map(),
+      pendingPrompt: null,
+      crashes: 0,
+      saveTimer: undefined,
+    };
+  }
+
+  private require(threadId: string): ThreadRecord {
+    const record = this.records.get(threadId);
+    if (!record) throw new AgentServiceError(`Unknown thread ${threadId}`);
+    return record;
+  }
+
+  private requireRuntime(record: ThreadRecord): Runtime {
+    if (!record.runtime?.sessionId) throw new AgentServiceError('The agent has not started a session yet');
+    return record.runtime;
+  }
+
+  private summary(record: ThreadRecord): ThreadSummary {
+    const { events: _events, ...summary } = record.thread;
+    return summary;
+  }
+
+  private emitThreads(): void {
+    if (!this.disposed) this.options.events.threadsChanged(this.listThreads());
+  }
+
+  private emitChanges(record: ThreadRecord, changes: ThreadChange[]): void {
+    if (changes.length === 0) return;
+    record.thread = { ...record.thread, updatedAt: this.now() };
+    if (!this.disposed) this.options.events.threadEvents(record.thread.id, changes);
+    this.scheduleSave(record);
+  }
+
+  private setState(record: ThreadRecord, patch: Partial<ThreadState>): void {
+    record.thread = { ...record.thread, state: { ...record.thread.state, ...patch } };
+    if (!this.disposed) {
+      this.options.events.threadState(record.thread.id, record.thread.state);
+      if (patch.status !== undefined) this.emitThreads();
+    }
+  }
+
+  private applyState(record: ThreadRecord, updates: StateUpdate[]): void {
+    for (const update of updates) {
+      switch (update.type) {
+        case 'availableCommands':
+          this.setState(record, { availableCommands: update.commands });
+          break;
+        case 'currentMode': {
+          const modes = record.thread.state.modes;
+          if (modes) this.setState(record, { modes: { ...modes, currentModeId: update.modeId } });
+          break;
+        }
+        case 'configOptions':
+          this.setState(record, { configOptions: update.options });
+          break;
+        case 'title':
+          record.thread = { ...record.thread, title: update.title.slice(0, 200) };
+          this.scheduleSave(record);
+          this.emitThreads();
+          break;
+        default: {
+          const unreachable: never = update;
+          throw new Error(`Unhandled state update ${String(unreachable)}`);
+        }
+      }
+    }
+  }
+
+  private scheduleSave(record: ThreadRecord): void {
+    clearTimeout(record.saveTimer);
+    record.saveTimer = setTimeout(() => this.saveNow(record), SAVE_DELAY_MS);
+  }
+
+  private saveNow(record: ThreadRecord): void {
+    record.saveTimer = undefined;
+    if (!this.records.has(record.thread.id)) return;
+    try {
+      this.store.save({ ...record.thread, events: record.normalizer.events });
+    } catch (error) {
+      console.warn(`[agent] could not save thread ${record.thread.id}: ${messageOf(error)}`);
+    }
+  }
+
+  private pushLog(record: ThreadRecord, entry: Omit<AcpLogEntry, 'id' | 'at'>): void {
+    const full: AcpLogEntry = { id: ++record.logCounter, at: this.now(), ...entry };
+    record.log.push(full);
+    if (record.log.length > ACP_LOG_LIMIT) record.log.splice(0, record.log.length - ACP_LOG_LIMIT);
+    if (!this.disposed) this.options.events.log(record.thread.id, full);
+  }
+
+  private info(record: ThreadRecord, message: string): void {
+    this.pushLog(record, { direction: 'info', message });
+  }
+
+  /** Spawns the agent, negotiates capabilities and opens (or restores) the ACP session. */
+  private ensureRuntime(record: ThreadRecord): Promise<Runtime> {
+    if (record.runtime?.sessionId) return Promise.resolve(record.runtime);
+    if (record.starting) return record.starting;
+    const starting = this.start(record).finally(() => {
+      record.starting = null;
+    });
+    record.starting = starting;
+    return starting;
+  }
+
+  private async start(record: ThreadRecord): Promise<Runtime> {
+    const agent = this.options.registry.get(record.thread.agentId);
+    if (!agent) {
+      this.setState(record, { status: 'error', error: `Agent ${record.thread.agentId} is not configured` });
+      throw new AgentServiceError(`Agent ${record.thread.agentId} is not configured`);
+    }
+    if (record.crashes >= MAX_AUTO_RESTARTS) {
+      const error = `${agent.name} exited ${record.crashes} times in a row. Use Restart to try again.`;
+      this.setState(record, { status: 'error', error });
+      throw new AgentServiceError(error);
+    }
+    const delay = restartDelay(record.crashes);
+    if (delay > 0) {
+      this.info(record, `restarting ${agent.name} in ${delay} ms`);
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, delay));
+    }
+    this.setState(record, { status: 'starting', error: null, authMethods: [] });
+
+    const env = await this.options.environment();
+    Object.assign(env, agent.env);
+    const lookup = this.options.lookup();
+    const resolved = lookup(agent.command);
+    if (!resolved) {
+      const error = `${agent.command} was not found on PATH. ${agent.installHint ?? ''}`.trim();
+      this.setState(record, { status: 'error', error });
+      throw new AgentServiceError(error);
+    }
+    this.info(record, `spawning ${resolved} ${agent.args.join(' ')}`);
+    const process = new AgentProcess({
+      platform: this.options.platform,
+      command: resolved,
+      args: agent.args,
+      env,
+      cwd: this.options.projectPath,
+      lookup,
+      onStderr: (line) => this.pushLog(record, { direction: 'stderr', message: line }),
+    });
+    const terminals = new AgentTerminals(this.options.terminals, this.options.projectPath, () => record.thread.title);
+    const runtime = new Runtime(
+      process,
+      terminals,
+      (self) =>
+        new AcpSession(process.stream, {
+          requestPermission: (request, signal) => this.onPermission(record, request, signal),
+          readTextFile: (request) => this.readTextFile(request),
+          writeTextFile: (request) => this.writeTextFile(record, request),
+          terminal: terminals.terminal,
+          onUpdate: (notification) => this.onUpdate(record, self, notification),
+          onLog: (entry) => this.onLog(record, entry),
+          onClosed: (error) => this.onClosed(record, self, error),
+        }),
+    );
+    record.runtime = runtime;
+
+    try {
+      const initialized = await runtime.session.initialize();
+      const capabilities = runtime.session.capabilities;
+      this.setState(record, {
+        capabilities,
+        authMethods: (initialized.authMethods ?? []).map(
+          (m): AuthMethod => ({ id: m.id, name: m.name, ...(m.description != null ? { description: m.description } : {}) }),
+        ),
+      });
+      this.info(
+        record,
+        `initialized ${initialized.agentInfo?.name ?? agent.name} ${initialized.agentInfo?.version ?? ''} (protocol ${initialized.protocolVersion})`.trim(),
+      );
+      await this.openSession(record, runtime);
+      return runtime;
+    } catch (error) {
+      if (AcpSession.isAuthRequired(error)) {
+        const authMethods = record.thread.state.authMethods;
+        const hint = agent.installHint ? ` ${agent.installHint}` : '';
+        this.setState(record, {
+          status: 'auth_required',
+          error: authMethods.length > 0 ? `${agent.name} needs you to log in.${hint}` : `${agent.name} rejected the session: not authenticated.${hint}`,
+        });
+        throw error;
+      }
+      const message = process.startError ? process.startError.message : messageOf(error);
+      this.setState(record, { status: 'error', error: message });
+      await this.stopRuntime(record);
+      throw error;
+    }
+  }
+
+  /** `session/load` or `session/resume` when advertised and we have a session id; else `session/new`. */
+  private async openSession(record: ThreadRecord, runtime: Runtime): Promise<void> {
+    const previous = record.thread.sessionId;
+    const capabilities = runtime.session.capabilities;
+    let restored = false;
+    if (previous && capabilities) {
+      if (capabilities.loadSession) {
+        restored = await this.tryRestore(record, runtime, 'load', previous);
+      } else if (capabilities.resume) {
+        restored = await this.tryRestore(record, runtime, 'resume', previous);
+      }
+    }
+    if (!restored) {
+      const response = await runtime.session.newSession(this.options.projectPath, []);
+      runtime.sessionId = response.sessionId;
+      // Some agents number sessions per process, so a fresh session may reuse the old id.
+      const contextLost = previous !== null;
+      record.thread = { ...record.thread, sessionId: response.sessionId };
+      this.setState(record, {
+        status: 'ready',
+        error: null,
+        modes: response.modes ?? null,
+        configOptions: parseConfigOptions(response.configOptions ?? []),
+        contextLost,
+      });
+      if (contextLost) {
+        this.emitChanges(
+          record,
+          record.normalizer.apply({
+            sessionUpdate: 'notice',
+            severity: 'warning',
+            title: 'Previous session could not be restored',
+            description: 'The agent starts a new session and does not remember this transcript.',
+          }).changes,
+        );
+      }
+      this.info(record, `session/new -> ${response.sessionId}`);
+    }
+    record.crashes = 0;
+    this.scheduleSave(record);
+  }
+
+  private async tryRestore(record: ThreadRecord, runtime: Runtime, how: 'load' | 'resume', sessionId: string): Promise<boolean> {
+    record.replaying = true;
+    try {
+      const response =
+        how === 'load'
+          ? await runtime.session.loadSession(sessionId, this.options.projectPath, [])
+          : await runtime.session.resumeSession(sessionId, this.options.projectPath, []);
+      runtime.sessionId = sessionId;
+      this.setState(record, {
+        status: 'ready',
+        error: null,
+        modes: response.modes ?? record.thread.state.modes,
+        configOptions: parseConfigOptions(response.configOptions ?? []),
+        contextLost: false,
+      });
+      this.info(record, `session/${how} ${sessionId} ok`);
+      return true;
+    } catch (error) {
+      if (AcpSession.isAuthRequired(error)) throw error;
+      this.info(record, `session/${how} ${sessionId} failed: ${messageOf(error)}`);
+      return false;
+    } finally {
+      record.replaying = false;
+    }
+  }
+
+  private async runTurn(
+    record: ThreadRecord,
+    runtime: Runtime,
+    blocks: ContentBlock[],
+    attachments: Attachment[],
+  ): Promise<{ stopReason: string | null; error?: string }> {
+    const sessionId = runtime.sessionId;
+    if (!sessionId) return { stopReason: null, error: 'No session' };
+    const capabilities = record.thread.state.capabilities ?? { image: false };
+    const attached = await attachmentBlocks(attachments, capabilities);
+    const shown = [...blocks, ...attached];
+    const firstPrompt = !record.normalizer.events.some((e) => e.kind === 'user_message');
+    const sent: ContentBlock[] = firstPrompt
+      ? [
+          {
+            type: 'text',
+            text: firstPromptPreface({ projectPath: this.options.projectPath, devUrl: this.options.devUrl() }),
+          },
+          ...shown,
+        ]
+      : shown;
+
+    if (record.thread.title === DEFAULT_TITLE) {
+      const text = blocks.find((b): b is ContentBlock & { type: 'text' } => b.type === 'text')?.text.trim();
+      if (text) {
+        record.thread = { ...record.thread, title: text.split('\n')[0]?.slice(0, TITLE_LENGTH) ?? DEFAULT_TITLE };
+        this.emitThreads();
+      }
+    }
+    this.emitChanges(record, record.normalizer.userMessage(shown));
+    this.setState(record, { status: 'prompting', error: null });
+    try {
+      const response = await runtime.session.prompt(sessionId, sent);
+      const stopReason = stopReasonSchema.safeParse(response.stopReason);
+      this.emitChanges(record, record.normalizer.turnEnded(stopReason.success ? stopReason.data : 'end_turn'));
+      if (record.runtime === runtime) this.setState(record, { status: 'ready' });
+      return { stopReason: response.stopReason };
+    } catch (error) {
+      const message = messageOf(error);
+      this.emitChanges(record, record.normalizer.error(message));
+      if (record.runtime === runtime) this.setState(record, { status: 'ready', error: message });
+      return { stopReason: null, error: message };
+    } finally {
+      this.cancelPendingPermissions(record);
+    }
+  }
+
+  private onUpdate(record: ThreadRecord, runtime: Runtime, notification: SessionNotification): void {
+    if (record.runtime !== runtime) return;
+    if (record.replaying) {
+      // History we already have; keep only session-level facts.
+      const scratch = new UpdateNormalizer({ nextId: () => randomUUID(), now: this.now });
+      this.applyState(record, scratch.apply(notification.update).state);
+      return;
+    }
+    const result = record.normalizer.apply(notification.update);
+    this.emitChanges(record, result.changes);
+    this.applyState(record, result.state);
+  }
+
+  private onLog(record: ThreadRecord, entry: AcpLogMessage): void {
+    this.pushLog(record, { direction: entry.direction, message: redact(entry.message) });
+  }
+
+  private onClosed(record: ThreadRecord, runtime: Runtime, error: unknown): void {
+    if (record.runtime !== runtime) return;
+    void runtime.process.exited.then((exit) => {
+      if (record.runtime !== runtime) return;
+      record.runtime = null;
+      this.cancelPendingPermissions(record);
+      void runtime.terminals.dispose();
+      const wasPrompting = record.thread.state.status === 'prompting';
+      const detail = exit.signal ? `signal ${exit.signal}` : `code ${exit.code ?? 'unknown'}`;
+      const message = error ? `${messageOf(error)} (${detail})` : `Agent exited with ${detail}`;
+      this.info(record, message);
+      if (this.disposed || !this.records.has(record.thread.id)) return;
+      if (record.thread.state.status === 'idle') return;
+      record.crashes++;
+      if (wasPrompting) this.emitChanges(record, record.normalizer.error(message));
+      this.setState(record, { status: 'error', error: message });
+    });
+  }
+
+  private async stopRuntime(record: ThreadRecord): Promise<void> {
+    const runtime = record.runtime;
+    record.runtime = null;
+    this.cancelPendingPermissions(record);
+    if (!runtime) return;
+    await runtime.terminals.dispose();
+    await runtime.session.close();
+    runtime.process.kill();
+    await Promise.race([runtime.process.exited, new Promise((resolveTimeout) => setTimeout(resolveTimeout, 2000))]);
+    runtime.process.kill('SIGKILL');
+  }
+
+  private cancelPendingPermissions(record: ThreadRecord): void {
+    for (const pending of record.pendingPermissions.values()) pending.resolve(null);
+    record.pendingPermissions.clear();
+  }
+
+  // --- Client-side handlers -------------------------------------------------------------------
+
+  private async onPermission(
+    record: ThreadRecord,
+    request: RequestPermissionRequest,
+    signal: AbortSignal,
+  ): Promise<RequestPermissionResponse> {
+    const toolCall = request.toolCall;
+    const toolKind: ToolKind = toolCall.kind ?? record.normalizer.toolKindOf(toolCall.toolCallId) ?? 'other';
+    const options = request.options;
+    const requestId = randomUUID();
+    this.emitChanges(record, record.normalizer.permissionRequested(requestId, request));
+
+    const locations = toolCall.locations ?? record.normalizer.toolLocationsOf(toolCall.toolCallId);
+    const auto = this.automaticAnswer(record, toolKind, locations, options);
+    if (auto) {
+      this.emitChanges(record, record.normalizer.permissionResolved(requestId, { optionId: auto, auto: true }));
+      return { outcome: { outcome: 'selected', optionId: auto } };
+    }
+
+    const chosen = await new Promise<string | null>((resolvePermission) => {
+      const pending: PendingPermission = {
+        resolve: (optionId) => {
+          record.pendingPermissions.delete(requestId);
+          signal.removeEventListener('abort', onAbort);
+          resolvePermission(optionId);
+        },
+      };
+      const onAbort = (): void => pending.resolve(null);
+      signal.addEventListener('abort', onAbort, { once: true });
+      record.pendingPermissions.set(requestId, pending);
+    });
+    if (chosen === null) {
+      this.emitChanges(record, record.normalizer.permissionResolved(requestId, 'cancelled'));
+      return { outcome: { outcome: 'cancelled' } };
+    }
+    const option = options.find((o) => o.optionId === chosen);
+    if (option?.kind === 'allow_always') this.options.permissions.remember(permissionMemoryKey(record.thread.agentId, toolKind), 'allow');
+    if (option?.kind === 'reject_always') this.options.permissions.remember(permissionMemoryKey(record.thread.agentId, toolKind), 'reject');
+    this.emitChanges(record, record.normalizer.permissionResolved(requestId, { optionId: chosen, auto: false }));
+    return { outcome: { outcome: 'selected', optionId: chosen } };
+  }
+
+  /** The option id to answer without asking, from remembered "always" choices or auto-approve edits. */
+  private automaticAnswer(
+    record: ThreadRecord,
+    toolKind: ToolKind,
+    locations: readonly { path: string }[],
+    options: RequestPermissionRequest['options'],
+  ): string | null {
+    const allow = options.find((o) => o.kind === 'allow_once') ?? options.find((o) => o.kind === 'allow_always');
+    const reject = options.find((o) => o.kind === 'reject_once') ?? options.find((o) => o.kind === 'reject_always');
+    const remembered = this.options.permissions.get()[permissionMemoryKey(record.thread.agentId, toolKind)];
+    if (remembered === 'allow' && allow) return allow.optionId;
+    if (remembered === 'reject' && reject) return reject.optionId;
+    // Without any location we cannot tell what the edit touches, so the card is shown.
+    if (record.thread.autoApproveEdits && EDIT_TOOL_KINDS.has(toolKind) && allow && locations.length > 0) {
+      const insideProject = locations.every((location) => {
+        try {
+          resolveInsideRoot(this.options.projectPath, location.path);
+          return true;
+        } catch {
+          return false;
+        }
+      });
+      if (insideProject) return allow.optionId;
+    }
+    return null;
+  }
+
+  private async readTextFile(request: ReadTextFileRequest): Promise<ReadTextFileResponse> {
+    const path = this.scoped(request.path);
+    const text = await readFile(path, 'utf8');
+    if (request.line == null && request.limit == null) return { content: text };
+    const lines = text.split('\n');
+    const start = Math.max(0, (request.line ?? 1) - 1);
+    const end = request.limit != null ? start + request.limit : lines.length;
+    return { content: lines.slice(start, end).join('\n') };
+  }
+
+  private async writeTextFile(record: ThreadRecord, request: WriteTextFileRequest): Promise<void> {
+    const path = this.scoped(request.path);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, request.content, 'utf8');
+    if (!this.disposed) this.options.events.fileChanged(record.thread.id, path);
+  }
+
+  private scoped(path: string): string {
+    try {
+      return resolveInsideRoot(this.options.projectPath, path);
+    } catch (error) {
+      if (error instanceof PathScopeError) {
+        throw new Error(`Access denied: ${path} is outside the project folder`, { cause: error });
+      }
+      throw error;
+    }
+  }
+}
+
+/** Config options in Arbora's schema; variants from newer protocol versions are skipped. */
+function parseConfigOptions(options: readonly unknown[]): SessionConfigOption[] {
+  return options.flatMap((option) => {
+    const parsed = sessionConfigOptionSchema.safeParse(option);
+    return parsed.success ? [parsed.data] : [];
+  });
+}
+
+function messageOf(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    return String(error.message);
+  }
+  return String(error);
+}

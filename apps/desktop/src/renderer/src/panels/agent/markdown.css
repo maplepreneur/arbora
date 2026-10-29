@@ -1,0 +1,146 @@
+.markdown {
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.markdown > :first-child {
+  margin-top: 0;
+}
+
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown p,
+.markdown ul,
+.markdown ol,
+.markdown pre,
+.markdown blockquote,
+.markdown table {
+  margin: 0.4em 0;
+}
+
+.markdown ul,
+.markdown ol {
+  padding-left: 1.4em;
+}
+
+.markdown ul {
+  list-style: disc;
+}
+
+.markdown ol {
+  list-style: decimal;
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4 {
+  margin: 0.8em 0 0.3em;
+  font-weight: 600;
+}
+
+.markdown h1 {
+  font-size: 1.25em;
+}
+
+.markdown h2 {
+  font-size: 1.15em;
+}
+
+.markdown h3 {
+  font-size: 1.05em;
+}
+
+.markdown code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--bg-muted);
+  border-radius: 3px;
+  padding: 0.1em 0.3em;
+}
+
+.markdown pre {
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  overflow: auto;
+}
+
+.markdown pre code {
+  background: none;
+  padding: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.markdown a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.markdown blockquote {
+  border-left: 3px solid var(--border);
+  color: var(--fg-muted);
+  padding-left: 0.8em;
+}
+
+.markdown table {
+  border-collapse: collapse;
+}
+
+.markdown th,
+.markdown td {
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+}
+
+.markdown hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 0.8em 0;
+}
+
+/* highlight.js github theme is light; neutralise its backgrounds and tune for dark mode. */
+.markdown .hljs {
+  background: transparent;
+  color: inherit;
+}
+
+.dark .markdown .hljs-keyword,
+.dark .markdown .hljs-selector-tag,
+.dark .markdown .hljs-doctag {
+  color: #ff7b72;
+}
+
+.dark .markdown .hljs-string,
+.dark .markdown .hljs-attr,
+.dark .markdown .hljs-meta .hljs-string {
+  color: #a5d6ff;
+}
+
+.dark .markdown .hljs-title,
+.dark .markdown .hljs-title.function_,
+.dark .markdown .hljs-title.class_ {
+  color: #d2a8ff;
+}
+
+.dark .markdown .hljs-number,
+.dark .markdown .hljs-literal,
+.dark .markdown .hljs-variable,
+.dark .markdown .hljs-template-variable {
+  color: #79c0ff;
+}
+
+.dark .markdown .hljs-comment,
+.dark .markdown .hljs-quote {
+  color: #8b949e;
+}
+
+.dark .markdown .hljs-built_in,
+.dark .markdown .hljs-type,
+.dark .markdown .hljs-symbol {
+  color: #ffa657;
+}

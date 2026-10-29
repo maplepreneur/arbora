@@ -19,6 +19,8 @@ import {
   type WindowBounds,
   type WindowState,
 } from '@arbora/shared';
+import type { AgentRegistry } from '@arbora/acp-client';
+import { AgentService } from './agent/agent-service.js';
 import { BrowserHistory } from './browser/browser-history.js';
 import { BrowserService } from './browser/browser-service.js';
 import { browserPartition, type BrowserSessions } from './browser/browser-sessions.js';
@@ -28,7 +30,7 @@ import { readProjectSettings, updateProjectSettingsFile } from './project-settin
 import type { SettingsStore } from './settings-store.js';
 import { shouldRestoreBounds } from './startup.js';
 import { DevServer } from './terminal/dev-server.js';
-import type { ShellEnvironment } from './terminal/shell-env.js';
+import { findExecutable, type ShellEnvironment } from './terminal/shell-env.js';
 import { TerminalService } from './terminal/terminal-service.js';
 import type { ThemeService } from './theme-service.js';
 
@@ -37,6 +39,7 @@ export interface WindowManagerOptions {
   readonly tilingCompositor: string | null;
   readonly settings: SettingsStore;
   readonly theme: ThemeService;
+  readonly agentRegistry: AgentRegistry;
   readonly preloadPath: string;
   readonly browserPreloadPath: string;
   readonly browserSessions: BrowserSessions;
@@ -89,6 +92,7 @@ export class ProjectWindow {
   private browserBounds: { rect: Rect | null; emulation: ViewportEmulation | null } = { rect: null, emulation: null };
   terminals: TerminalService | null = null;
   devServer: DevServer | null = null;
+  agents: AgentService | null = null;
 
   constructor(
     private readonly manager: WindowManager,
@@ -311,9 +315,48 @@ export class ProjectWindow {
         this.reloadProjectSettings();
       },
     });
+    this.agents = new AgentService({
+      platform,
+      projectPath,
+      registry: this.options.agentRegistry,
+      environment: async () => {
+        await shellEnvironment.ready;
+        return shellEnvironment.env();
+      },
+      lookup: () => {
+        const env = shellEnvironment.env();
+        return (command) => findExecutable(command, env, platform);
+      },
+      terminals,
+      devUrl: () => {
+        const dev = this.devServer?.status().url;
+        if (dev) return dev;
+        const url = this.browser?.getState().url;
+        return url && /^https?:\/\//.test(url) ? url : null;
+      },
+      permissions: {
+        get: () => settings.get().agents.permissions,
+        remember: (key, decision) =>
+          settings.update((s) => ({
+            ...s,
+            agents: { ...s.agents, permissions: { ...s.agents.permissions, [key]: decision } },
+          })),
+      },
+      events: {
+        threadsChanged: (threads) => sendEvent(app, 'agent.threadsChanged', { threads }),
+        threadEvents: (threadId, changes) => sendEvent(app, 'agent.threadEvents', { threadId, changes }),
+        threadState: (threadId, state) => sendEvent(app, 'agent.threadState', { threadId, state }),
+        log: (threadId, entry) => sendEvent(app, 'agent.log', { threadId, entry }),
+        fileChanged: (threadId, path) => sendEvent(app, 'agent.fileChanged', { threadId, path }),
+      },
+    });
   }
 
   private stopTerminals(): void {
+    const agents = this.agents;
+    this.agents = null;
+    // Agents own processes and terminals; stop them before the terminal service goes away.
+    void agents?.dispose().catch((error: unknown) => console.warn(`[agent] dispose: ${(error as Error).message}`));
     this.terminals?.dispose();
     this.terminals = null;
     this.devServer = null;

@@ -194,8 +194,7 @@ export class UpdateNormalizer {
       default: {
         // Agents may send variants from newer protocol versions; ignore them.
         const unknown: never = update;
-        void unknown;
-        return NONE;
+        return ignoreUnknownUpdate(unknown);
       }
     }
   }
@@ -258,9 +257,18 @@ export class UpdateNormalizer {
 
   /** Tool kind of a known tool call, for permission memory when the request omits it. */
   toolKindOf(toolCallId: string): ToolKind | undefined {
+    return this.toolCall(toolCallId)?.toolKind;
+  }
+
+  /** Locations announced for a known tool call; permission requests often omit them. */
+  toolLocationsOf(toolCallId: string): readonly ToolCallLocation[] {
+    return this.toolCall(toolCallId)?.locations ?? [];
+  }
+
+  private toolCall(toolCallId: string): ToolCallEvent | undefined {
     const index = this.toolIndex.get(toolCallId);
     const event = index !== undefined ? this.events[index] : undefined;
-    return event?.kind === 'tool_call' ? event.toolKind : undefined;
+    return event?.kind === 'tool_call' ? event : undefined;
   }
 
   private append(event: ThreadEvent): ThreadChange {
@@ -337,6 +345,10 @@ export class UpdateNormalizer {
     this.events[index] = event;
     return [{ type: 'replace', index, event }];
   }
+}
+
+function ignoreUnknownUpdate(_update: never): NormalizedUpdate {
+  return NONE;
 }
 
 function toolContent(content: AcpToolCallContent[] | undefined): ToolCallContent[] {

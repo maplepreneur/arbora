@@ -178,6 +178,9 @@ export function Workspace() {
     setWorkspaceController({
       toggleSidebar: () => toggle(sidebarRef),
       toggleAgentPanel: () => toggle(agentRef),
+      showAgentPanel: () => {
+        if (isCollapsed(agentRef)) agentRef.current?.expand();
+      },
       toggleBottomPanel: () => toggle(bottomRef),
       showSidebarView: (view) => {
         updateLayout({ sidebarView: view });
