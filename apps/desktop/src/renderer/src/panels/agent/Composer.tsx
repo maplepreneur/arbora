@@ -3,14 +3,7 @@ import clsx from 'clsx';
 import { Image as ImageIcon, Paperclip, Send, Square, X } from 'lucide-react';
 import type { Attachment, AvailableCommand, ThreadSummary } from '@arbora/shared';
 import { showToast } from '../../store';
-import {
-  addAttachments,
-  cancelTurn,
-  removeAttachment,
-  sendPrompt,
-  setDraft,
-  useAgents,
-} from '../../agent-store';
+import { addAttachments, cancelTurn, removeAttachment, sendPrompt, setDraft, useAgents } from '../../agent-store';
 
 /** The slash command being typed at the start of the composer, if any. */
 export function slashQuery(text: string, caret: number): string | null {
@@ -108,7 +101,12 @@ export function Composer({ thread, projectPath }: { thread: ThreadSummary; proje
       {attachments.length > 0 && (
         <ul className="mb-1.5 flex flex-wrap gap-1" data-testid="composer-attachments">
           {attachments.map((attachment) => (
-            <AttachmentChip key={attachment.path} attachment={attachment} projectPath={projectPath} onRemove={() => removeAttachment(thread.id, attachment.path)} />
+            <AttachmentChip
+              key={attachment.path}
+              attachment={attachment}
+              projectPath={projectPath}
+              onRemove={() => removeAttachment(thread.id, attachment.path)}
+            />
           ))}
         </ul>
       )}
@@ -124,7 +122,10 @@ export function Composer({ thread, projectPath }: { thread: ThreadSummary; proje
                 key={command.name}
                 role="option"
                 aria-selected={index === selected}
-                className={clsx('flex cursor-pointer items-baseline gap-2 px-2 py-1 text-[12px]', index === selected && 'bg-bg-muted')}
+                className={clsx(
+                  'flex cursor-pointer items-baseline gap-2 px-2 py-1 text-[12px]',
+                  index === selected && 'bg-bg-muted',
+                )}
                 onMouseDown={(event) => {
                   event.preventDefault();
                   accept(command);
@@ -240,16 +241,27 @@ function AttachmentChip({
   projectPath: string;
   onRemove: () => void;
 }) {
-  const label = attachment.path.startsWith(projectPath) ? attachment.path.slice(projectPath.length + 1) : attachment.name;
+  const label = attachment.path.startsWith(projectPath)
+    ? attachment.path.slice(projectPath.length + 1)
+    : attachment.name;
   return (
     <li
       className="flex max-w-full items-center gap-1 rounded border border-border bg-bg px-1.5 py-0.5 font-mono text-[11px]"
       title={attachment.path}
       data-testid="attachment-chip"
     >
-      {attachment.kind === 'image' ? <ImageIcon size={11} className="shrink-0" /> : <Paperclip size={11} className="shrink-0" />}
+      {attachment.kind === 'image' ? (
+        <ImageIcon size={11} className="shrink-0" />
+      ) : (
+        <Paperclip size={11} className="shrink-0" />
+      )}
       <span className="truncate">{label}</span>
-      <button type="button" aria-label={`Remove ${attachment.name}`} onClick={onRemove} className="text-fg-subtle hover:text-fg">
+      <button
+        type="button"
+        aria-label={`Remove ${attachment.name}`}
+        onClick={onRemove}
+        className="text-fg-subtle hover:text-fg"
+      >
         <X size={11} />
       </button>
     </li>

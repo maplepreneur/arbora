@@ -278,12 +278,14 @@ export class AcpSession {
     await this.connection.agent.request(methods.agent.session.setMode, { sessionId, modeId });
   }
 
-  setConfigOption(sessionId: string, configId: string, value: string | boolean): Promise<SetSessionConfigOptionResponse> {
+  setConfigOption(
+    sessionId: string,
+    configId: string,
+    value: string | boolean,
+  ): Promise<SetSessionConfigOptionResponse> {
     return this.connection.agent.request(
       methods.agent.session.setConfigOption,
-      typeof value === 'boolean'
-        ? { sessionId, configId, type: 'boolean', value }
-        : { sessionId, configId, value },
+      typeof value === 'boolean' ? { sessionId, configId, type: 'boolean', value } : { sessionId, configId, value },
     );
   }
 
@@ -329,10 +331,7 @@ export class AcpSession {
   static isAuthRequired(error: unknown): boolean {
     return (
       (error instanceof RequestError && error.code === AUTH_REQUIRED_CODE) ||
-      (typeof error === 'object' &&
-        error !== null &&
-        'code' in error &&
-        error.code === AUTH_REQUIRED_CODE)
+      (typeof error === 'object' && error !== null && 'code' in error && error.code === AUTH_REQUIRED_CODE)
     );
   }
 }

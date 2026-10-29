@@ -126,18 +126,31 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
 
     const result = await turn;
     expect(result).toEqual({ stopReason: 'end_turn' });
-    expect(readFileSync(join(root, 'App.tsx'), 'utf8')).toBe('// Arbora fake agent was here\nexport const App = () => null;\n');
+    expect(readFileSync(join(root, 'App.tsx'), 'utf8')).toBe(
+      '// Arbora fake agent was here\nexport const App = () => null;\n',
+    );
     expect(h.fileChanges).toEqual([join(root, 'App.tsx')]);
 
     const transcript = h.service.getThread(thread.id);
     const kinds = transcript?.events.map((e) => e.kind);
-    expect(kinds).toEqual(['user_message', 'agent_thought', 'agent_message', 'tool_call', 'permission', 'agent_message', 'turn_end']);
+    expect(kinds).toEqual([
+      'user_message',
+      'agent_thought',
+      'agent_message',
+      'tool_call',
+      'permission',
+      'agent_message',
+      'turn_end',
+    ]);
     const tool = transcript?.events.find((e) => e.kind === 'tool_call');
     expect(tool?.kind === 'tool_call' && tool.status).toBe('completed');
     expect(tool?.kind === 'tool_call' && tool.content[0]).toMatchObject({ type: 'diff', path: join(root, 'App.tsx') });
     // The first user message is shown as typed; the preface only goes to the agent.
     const user = transcript?.events[0];
-    expect(user?.kind === 'user_message' && user.blocks[0]).toEqual({ type: 'text', text: 'add a comment to `App.tsx`' });
+    expect(user?.kind === 'user_message' && user.blocks[0]).toEqual({
+      type: 'text',
+      text: 'add a comment to `App.tsx`',
+    });
     const sentPrompt = h.logs.find(
       (entry) =>
         entry.direction === 'out' &&
@@ -153,9 +166,13 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
     // Persisted after the save debounce.
     const file = join(threadsDir(root), `${thread.id}.json`);
     const readFile = (): unknown => (existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : null);
-    await expect
-      .poll(readFile, { timeout: 5_000 })
-      .toMatchObject({ version: 1, id: thread.id, agentId: FAKE, sessionId: 'fake-1', events: expect.any(Array) as unknown });
+    await expect.poll(readFile, { timeout: 5_000 }).toMatchObject({
+      version: 1,
+      id: thread.id,
+      agentId: FAKE,
+      sessionId: 'fake-1',
+      events: expect.any(Array) as unknown,
+    });
     expect((readFile() as { events: unknown[] }).events).toHaveLength(7);
   });
 
@@ -226,7 +243,10 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
     const terminals = h.terminals.list();
     expect(terminals).toHaveLength(1);
     expect(terminals[0]).toMatchObject({ kind: 'agent', readOnly: true });
-    const last = h.service.getThread(thread.id)?.events.filter((e) => e.kind === 'agent_message').pop();
+    const last = h.service
+      .getThread(thread.id)
+      ?.events.filter((e) => e.kind === 'agent_message')
+      .pop();
     expect(last?.kind === 'agent_message' && last.blocks[0]?.type === 'text' && last.blocks[0].text).toContain(
       'hello from fake agent',
     );
@@ -279,7 +299,9 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
     expect(result.stopReason).toBeNull();
     await expect.poll(() => latestState(h, thread.id)?.status, { timeout: 10_000 }).toBe('error');
     expect(latestState(h, thread.id)?.error).toMatch(/code 3/);
-    expect(h.logs.some((e) => e.direction === 'stderr' && String(e.message).includes('crashing on purpose'))).toBe(true);
+    expect(h.logs.some((e) => e.direction === 'stderr' && String(e.message).includes('crashing on purpose'))).toBe(
+      true,
+    );
 
     const next = await h.service.prompt(thread.id, [{ type: 'text', text: 'hello' }]);
     expect(next.stopReason).toBe('end_turn');

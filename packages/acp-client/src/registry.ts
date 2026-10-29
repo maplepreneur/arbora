@@ -45,6 +45,16 @@ export const BUILT_IN_AGENTS: readonly AgentDefinition[] = [
     docsUrl: 'https://docs.x.ai/docs/grok-build',
     builtIn: true,
   },
+  {
+    id: 'opencode',
+    name: 'OpenCode',
+    command: 'opencode',
+    args: ['acp'],
+    env: {},
+    installHint: 'Install OpenCode (v2+), then run `opencode auth login` or `opencode acp --login` once.',
+    docsUrl: 'https://opencode.ai/docs/acp/',
+    builtIn: true,
+  },
 ];
 
 /** Resolves a command name (or absolute path) to an executable path, or undefined when missing. */

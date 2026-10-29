@@ -180,7 +180,9 @@ export function addAttachments(threadId: string, attachments: readonly Attachmen
   useAgents.setState((s) => {
     const current = s.attachments[threadId] ?? [];
     const paths = new Set(current.map((a) => a.path));
-    return { attachments: { ...s.attachments, [threadId]: [...current, ...attachments.filter((a) => !paths.has(a.path))] } };
+    return {
+      attachments: { ...s.attachments, [threadId]: [...current, ...attachments.filter((a) => !paths.has(a.path))] },
+    };
   });
 }
 

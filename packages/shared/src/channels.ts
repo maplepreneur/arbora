@@ -222,7 +222,11 @@ export const channels = {
   'agent.createThread': defineChannel('agent.createThread', z.object({ agentId: z.string() }), threadSummarySchema),
   'agent.getThread': defineChannel('agent.getThread', threadId, threadSchema.nullable()),
   'agent.deleteThread': defineChannel('agent.deleteThread', threadId, none),
-  'agent.renameThread': defineChannel('agent.renameThread', threadId.extend({ title: z.string().min(1).max(200) }), none),
+  'agent.renameThread': defineChannel(
+    'agent.renameThread',
+    threadId.extend({ title: z.string().min(1).max(200) }),
+    none,
+  ),
   /**
    * Sends a prompt. Starts the agent (spawn, `initialize`, `session/new` or load) on the first
    * call. Resolves when the turn ends; progress arrives through `agent.threadEvents`.

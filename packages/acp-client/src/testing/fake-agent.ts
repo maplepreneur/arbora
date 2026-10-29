@@ -140,7 +140,12 @@ async function editFile(cx: AgentContext, sessionId: string, state: SessionState
       sessionId,
       update: { sessionUpdate: 'tool_call_update', toolCallId, status: 'failed' },
     });
-    await say(cx, sessionId, `Could not write ${path}: ${error instanceof Error ? error.message : String(error)}`, state);
+    await say(
+      cx,
+      sessionId,
+      `Could not write ${path}: ${error instanceof Error ? error.message : String(error)}`,
+      state,
+    );
     return;
   }
   await cx.notify(methods.client.session.update, {

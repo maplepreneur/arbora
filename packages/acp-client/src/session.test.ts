@@ -86,7 +86,8 @@ describe('AcpSession against the fake agent', () => {
           terminals.set(terminalId, { buffer, exit });
           return Promise.resolve({ terminalId });
         },
-        output: ({ terminalId }) => Promise.resolve({ ...terminals.get(terminalId)!.buffer.snapshot(), exitStatus: null }),
+        output: ({ terminalId }) =>
+          Promise.resolve({ ...terminals.get(terminalId)!.buffer.snapshot(), exitStatus: null }),
         waitForExit: async ({ terminalId }) => ({ exitCode: await terminals.get(terminalId)!.exit, signal: null }),
         kill: () => Promise.resolve(),
         release: ({ terminalId }) => {
@@ -138,7 +139,10 @@ describe('AcpSession against the fake agent', () => {
       expect(kinds).toEqual(['agent_thought', 'agent_message', 'tool_call', 'agent_message']);
       const tool = h.normalizer.events[2];
       expect(tool).toMatchObject({ kind: 'tool_call', toolKind: 'edit', status: 'completed' });
-      expect(tool?.kind === 'tool_call' && tool.content[0]).toMatchObject({ type: 'diff', path: join(root, 'App.tsx') });
+      expect(tool?.kind === 'tool_call' && tool.content[0]).toMatchObject({
+        type: 'diff',
+        path: join(root, 'App.tsx'),
+      });
 
       expect(h.permissions).toHaveLength(1);
       expect(h.permissions[0]?.options.map((o) => o.kind)).toEqual(['allow_once', 'allow_always', 'reject_once']);
@@ -148,10 +152,12 @@ describe('AcpSession against the fake agent', () => {
       );
 
       // Raw traffic was logged both ways and stderr was captured.
-      expect(h.log.some((e) => e.direction === 'out' && (e.message as { method?: string }).method === 'initialize')).toBe(true);
-      expect(h.log.some((e) => e.direction === 'in' && (e.message as { method?: string }).method === 'session/update')).toBe(
-        true,
-      );
+      expect(
+        h.log.some((e) => e.direction === 'out' && (e.message as { method?: string }).method === 'initialize'),
+      ).toBe(true);
+      expect(
+        h.log.some((e) => e.direction === 'in' && (e.message as { method?: string }).method === 'session/update'),
+      ).toBe(true);
       await expect.poll(() => h.stderr.join('\n')).toContain('fake agent ready');
     },
     TEST_TIMEOUT,
@@ -181,9 +187,9 @@ describe('AcpSession against the fake agent', () => {
       const { sessionId } = await h.session.newSession(root, []);
       await h.session.prompt(sessionId, [{ type: 'text', text: 'run echo' }]);
       const message = h.normalizer.events.filter((e) => e.kind === 'agent_message').pop();
-      expect(message?.kind === 'agent_message' && message.blocks[0]?.type === 'text' && message.blocks[0].text).toContain(
-        'hello from fake agent',
-      );
+      expect(
+        message?.kind === 'agent_message' && message.blocks[0]?.type === 'text' && message.blocks[0].text,
+      ).toContain('hello from fake agent');
       const tool = h.normalizer.events.find((e) => e.kind === 'tool_call');
       expect(tool).toMatchObject({ toolKind: 'execute', status: 'completed' });
     },

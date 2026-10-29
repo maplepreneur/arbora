@@ -1,9 +1,11 @@
 export const REDACTED = '[redacted]';
 
 /** Object keys whose values are secrets (matched case-insensitively against the whole key). */
-const SECRET_KEY = /(^|_|-)(token|secret|password|passwd|apikey|api_key|authorization|credential|cookie)s?$|^(key|auth)$|apikey|api_key|secret|password|token/i;
+const SECRET_KEY =
+  /(^|_|-)(token|secret|password|passwd|apikey|api_key|authorization|credential|cookie)s?$|^(key|auth)$|apikey|api_key|secret|password|token/i;
 /** Keys that look secret-ish but are protocol identifiers. */
-const SAFE_KEY = /^(toolCallId|sessionId|optionId|methodId|terminalId|requestId|configId|messageId|compactionId|id|jsonrpc)$/;
+const SAFE_KEY =
+  /^(toolCallId|sessionId|optionId|methodId|terminalId|requestId|configId|messageId|compactionId|id|jsonrpc)$/;
 const BEARER = /\bBearer\s+[A-Za-z0-9._~+/=-]+/g;
 
 function redactString(value: string): string {

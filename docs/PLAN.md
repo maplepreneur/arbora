@@ -8,7 +8,7 @@ The companion document [BUILD_STAGES.md](./BUILD_STAGES.md) breaks the build int
 
 Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents must update this section and that table at the end of every piece of work.
 
-**Now:** Stages 0–2 are `Done` ([PR #2](https://github.com/maplepreneur/arbora/pull/2), [PR #4](https://github.com/maplepreneur/arbora/pull/4), [PR #7](https://github.com/maplepreneur/arbora/pull/7)). Stage 3, Agent panel (ACP), is `In progress` in [PR #10](https://github.com/maplepreneur/arbora/pull/10) (not merged; CI pending): `packages/acp-client`, `AgentService` with thread persistence and `session/load`, permission cards, client fs/terminal handlers, the agent panel UI and the ACP log viewer. 214 unit tests and 19 e2e pass locally on Omarchy/Hyprland. Manual matrix (29 Oct 2026): Kimi Code and Grok Build `ok` end to end; Claude Code and Codex `blocked` because neither CLI is logged in on this machine (their auth cards were verified instead).
+**Now:** Stages 0–2 are `Done` ([PR #2](https://github.com/maplepreneur/arbora/pull/2), [PR #4](https://github.com/maplepreneur/arbora/pull/4), [PR #7](https://github.com/maplepreneur/arbora/pull/7)). Stage 3, Agent panel (ACP), is `In progress` in [PR #10](https://github.com/maplepreneur/arbora/pull/10) (not merged; first CI run had green e2e on all three OSes and red `Check` jobs from `prettier --check` only, fixed and pushed, rerun pending): `packages/acp-client`, `AgentService` with thread persistence and `session/load`, permission cards, client fs/terminal handlers, the agent panel UI and the ACP log viewer. 214 unit tests and 19 e2e pass locally on Omarchy/Hyprland. Manual matrix (29 Oct 2026): Kimi Code, Grok Build and OpenCode (added as the fifth built-in agent, `opencode acp`) `ok` end to end; Claude Code and Codex `blocked` because neither CLI is logged in on this machine (their auth cards were verified instead).
 
 **Next:** Watch CI on PR #10 and merge. Log in to Claude Code (`claude /login`) and Codex (`codex login`) on the Omarchy machine and fill their Appendix B cells, run the Omarchy per-stage checks with the agent panel open, then mark Stage 3 `Done` and start Stage 4 (Agent mode, `Mod+K`); the [Stage 4 Notes](./BUILD_STAGES.md#progress) list the hand-off. Stage 10 (Grove, the agent-manager workspace) is specified and waits on Stage 3; it is not next.
 
@@ -20,7 +20,7 @@ Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents 
 | Area | Summary |
 | --- | --- |
 | Browser panel | Embedded Chromium showing the user's dev server. URL bar, navigation, viewport presets, screenshots, console/network capture, React/Vue DevTools. |
-| Agent panel | Any ACP agent (Claude Code, Codex, Kimi Code, Grok Build, custom). Streaming messages, tool calls, diffs, permissions, plans, slash commands. Docked beside the browser. |
+| Agent panel | Any ACP agent (Claude Code, Codex, Kimi Code, Grok Build, OpenCode, custom). Streaming messages, tool calls, diffs, permissions, plans, slash commands. Docked beside the browser. |
 | Grove | A second workspace that takes the whole window: a list of ACP sessions and one transcript. Title-bar switch, hotkeys, a default agent, and a badge when an agent needs you. |
 | Agent mode (`Mod+K`) | Inspector-style hover/click on components. Click opens a prompt popover. Submit sends prompt + component source + screenshot to the agent. |
 | Browser control for agents | An MCP server exposing browser and dev-server tools (navigate, click, type, scroll, screenshot, snapshot, logs, restart) so the agent can verify its own work. |
@@ -78,6 +78,7 @@ Tauri uses the OS webview (WebKitGTK on Linux, WKWebView on macOS, WebView2 on W
 | Codex | `npx -y @agentclientprotocol/codex-acp` | ChatGPT login, `CODEX_API_KEY` or `OPENAI_API_KEY` |
 | Kimi Code | `kimi acp` | Prior `kimi` login. Supports image prompts and http/sse/stdio MCP |
 | Grok Build | `grok agent stdio` (or `npx @xai-official/grok agent stdio`) | `grok login` or `XAI_API_KEY`; auth method ids `xai.api_key` / `cached_token` |
+| OpenCode | `opencode acp` (OpenCode v2+) | `opencode auth login` (auth method id `opencode-login`). Does its own fs, shell and permissions; one `model` config option covering every configured provider |
 | Custom | User-supplied `command`, `args`, `env` | Same shape as Zed's `agent_servers` |
 
 ---
@@ -233,7 +234,7 @@ Feature IDs (`F-AREA-NN`) are referenced from [BUILD_STAGES.md](./BUILD_STAGES.m
 
 ### 4.4 Agent panel (`F-AGENT`)
 
-- `F-AGENT-01` Agent registry: built-ins (Claude Code, Codex, Kimi Code, Grok Build) and custom entries; binary detection with install hints; per-agent env overrides.
+- `F-AGENT-01` Agent registry: built-ins (Claude Code, Codex, Kimi Code, Grok Build, OpenCode) and custom entries; binary detection with install hints; per-agent env overrides.
 - `F-AGENT-02` Session lifecycle: `initialize` (advertise `fs.readTextFile`, `fs.writeTextFile`, `terminal: true`), `authenticate` with the agent's advertised methods (device/browser logins surfaced in UI), `session/new` with project cwd and the Arbora MCP server, `session/load` / `session/resume` when supported, `session/cancel`.
 - `F-AGENT-03` Mode and model pickers via `session/set_mode` / `session/set_model` when advertised.
 - `F-AGENT-04` Streaming UI for `session/update`: message chunks (markdown), thoughts (collapsible), tool calls with status, locations and diffs, plan/todo lists, available commands (slash commands).
@@ -446,7 +447,7 @@ Detailed instructions, gotchas and progress live in [BUILD_STAGES.md](./BUILD_ST
 | 0 | Foundation | Monorepo, Electron shell, IPC layer, layout skeleton, keybindings, CI, unsigned builds |
 | 1 | Browser panel | Load a dev server, CDP capture, screenshots, DevTools extensions |
 | 2 | Terminal panel | Run dev servers, URL detection, ring buffer |
-| 3 | Agent panel (ACP) | Talk to Claude Code, Codex, Kimi Code, Grok Build |
+| 3 | Agent panel (ACP) | Talk to Claude Code, Codex, Kimi Code, Grok Build, OpenCode |
 | 4 | Agent mode (`Mod+K`) | Point at a component, prompt the agent with source + screenshot |
 | 5 | Browser control MCP server | Agent drives the browser to verify its work |
 | 6 | Design mode (`Mod+D`) | Visual editing, save to agent with before/after and change list |

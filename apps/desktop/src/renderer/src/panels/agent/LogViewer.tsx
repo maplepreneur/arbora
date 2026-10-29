@@ -39,14 +39,20 @@ function LogRow({ entry }: { entry: AcpLogEntry }) {
   const [open, setOpen] = useState(false);
   const expandable = typeof entry.message !== 'string';
   return (
-    <li className="border-b border-border/60 font-mono text-[11px]" data-testid="log-row" data-direction={entry.direction}>
+    <li
+      className="border-b border-border/60 font-mono text-[11px]"
+      data-testid="log-row"
+      data-direction={entry.direction}
+    >
       <button
         type="button"
         onClick={() => expandable && setOpen((o) => !o)}
         className={clsx('flex w-full items-start gap-2 px-2 py-0.5 text-left', expandable && 'hover:bg-bg-muted')}
       >
         <span className="shrink-0 text-fg-subtle tabular-nums">{formatTime(entry.at)}</span>
-        <span className={clsx('w-6 shrink-0', DIRECTION_CLASS[entry.direction])}>{DIRECTION_LABEL[entry.direction]}</span>
+        <span className={clsx('w-6 shrink-0', DIRECTION_CLASS[entry.direction])}>
+          {DIRECTION_LABEL[entry.direction]}
+        </span>
         <span className="min-w-0 flex-1 truncate select-text">{summarize(entry.message)}</span>
       </button>
       {open && (
@@ -90,7 +96,10 @@ export function LogViewer({ threadId }: { threadId: string }) {
             type="button"
             aria-pressed={filter === id}
             onClick={() => setFilter(id)}
-            className={clsx('h-5 rounded px-1.5', filter === id ? 'bg-bg-muted text-fg' : 'text-fg-subtle hover:text-fg')}
+            className={clsx(
+              'h-5 rounded px-1.5',
+              filter === id ? 'bg-bg-muted text-fg' : 'text-fg-subtle hover:text-fg',
+            )}
           >
             {id === 'rpc' ? 'JSON-RPC' : id === 'stderr' ? 'stderr' : 'All'}
           </button>
@@ -101,7 +110,10 @@ export function LogViewer({ threadId }: { threadId: string }) {
           title="Follow output"
           aria-pressed={follow}
           onClick={() => setFollow((f) => !f)}
-          className={clsx('flex h-5 w-5 items-center justify-center rounded', follow ? 'text-accent' : 'text-fg-subtle hover:text-fg')}
+          className={clsx(
+            'flex h-5 w-5 items-center justify-center rounded',
+            follow ? 'text-accent' : 'text-fg-subtle hover:text-fg',
+          )}
         >
           <ArrowDownToLine size={12} />
         </button>
@@ -125,10 +137,14 @@ export function LogViewer({ threadId }: { threadId: string }) {
           <X size={12} />
         </button>
       </div>
-      <ul ref={list} className="min-h-0 flex-1 overflow-auto" onScroll={(event) => {
-        const el = event.currentTarget;
-        setFollow(el.scrollHeight - el.scrollTop - el.clientHeight < 20);
-      }}>
+      <ul
+        ref={list}
+        className="min-h-0 flex-1 overflow-auto"
+        onScroll={(event) => {
+          const el = event.currentTarget;
+          setFollow(el.scrollHeight - el.scrollTop - el.clientHeight < 20);
+        }}
+      >
         {visible.length === 0 ? (
           <li className="px-2 py-2 text-[11px] text-fg-subtle">No traffic yet.</li>
         ) : (

@@ -21,7 +21,11 @@ describe('spawnSpec', () => {
 
   it('spawns Windows executables directly', () => {
     const lookup = (cmd: string): string | undefined => (cmd === 'kimi' ? 'C:\\kimi\\kimi.exe' : undefined);
-    expect(spawnSpec('win32', 'kimi', ['acp'], lookup)).toEqual({ file: 'C:\\kimi\\kimi.exe', args: ['acp'], shell: false });
+    expect(spawnSpec('win32', 'kimi', ['acp'], lookup)).toEqual({
+      file: 'C:\\kimi\\kimi.exe',
+      args: ['acp'],
+      shell: false,
+    });
   });
 
   it('keeps an unresolved Windows command as given so the spawn error names it', () => {

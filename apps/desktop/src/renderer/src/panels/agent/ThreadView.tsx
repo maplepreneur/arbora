@@ -55,7 +55,10 @@ function AuthCard({ thread }: { thread: ThreadSummary }) {
     }
   };
   return (
-    <div className="mx-2 mt-2 rounded border border-amber-500/60 bg-amber-500/5 px-2 py-2 text-[12px]" data-testid="auth-card">
+    <div
+      className="mx-2 mt-2 rounded border border-amber-500/60 bg-amber-500/5 px-2 py-2 text-[12px]"
+      data-testid="auth-card"
+    >
       <div className="flex items-center gap-2 font-medium">
         <KeyRound size={13} className="text-amber-500" /> Authentication required
       </div>
@@ -124,12 +127,17 @@ export function ThreadView({ thread, projectPath }: { thread: ThreadSummary; pro
         </span>
         <button
           type="button"
-          title={thread.autoApproveEdits ? 'Auto-approve edits in the project: on' : 'Auto-approve edits in the project: off'}
+          title={
+            thread.autoApproveEdits ? 'Auto-approve edits in the project: on' : 'Auto-approve edits in the project: off'
+          }
           aria-pressed={thread.autoApproveEdits}
           data-testid="auto-approve-edits"
           onClick={() =>
             void invoke(() =>
-              window.arbora.invoke('agent.setAutoApproveEdits', { threadId: thread.id, enabled: !thread.autoApproveEdits }),
+              window.arbora.invoke('agent.setAutoApproveEdits', {
+                threadId: thread.id,
+                enabled: !thread.autoApproveEdits,
+              }),
             )
           }
           className={clsx(
@@ -165,14 +173,19 @@ export function ThreadView({ thread, projectPath }: { thread: ThreadSummary; pro
       </div>
 
       {(state.modes || modelOption || otherOptions.length > 0) && (
-        <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border px-2 py-1" data-testid="session-controls">
+        <div
+          className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border px-2 py-1"
+          data-testid="session-controls"
+        >
           {state.modes && state.modes.availableModes.length > 0 && (
             <Select
               label="Mode"
               testId="mode-select"
               value={state.modes.currentModeId}
               options={state.modes.availableModes.map((m) => ({ value: m.id, name: m.name }))}
-              onChange={(modeId) => void invoke(() => window.arbora.invoke('agent.setMode', { threadId: thread.id, modeId }))}
+              onChange={(modeId) =>
+                void invoke(() => window.arbora.invoke('agent.setMode', { threadId: thread.id, modeId }))
+              }
             />
           )}
           {modelOption && (
@@ -182,7 +195,13 @@ export function ThreadView({ thread, projectPath }: { thread: ThreadSummary; pro
               value={modelOption.currentValue}
               options={selectOptions(modelOption)}
               onChange={(value) =>
-                void invoke(() => window.arbora.invoke('agent.setConfigOption', { threadId: thread.id, configId: modelOption.id, value }))
+                void invoke(() =>
+                  window.arbora.invoke('agent.setConfigOption', {
+                    threadId: thread.id,
+                    configId: modelOption.id,
+                    value,
+                  }),
+                )
               }
             />
           )}
@@ -195,11 +214,17 @@ export function ThreadView({ thread, projectPath }: { thread: ThreadSummary; pro
                 value={option.currentValue}
                 options={selectOptions(option)}
                 onChange={(value) =>
-                  void invoke(() => window.arbora.invoke('agent.setConfigOption', { threadId: thread.id, configId: option.id, value }))
+                  void invoke(() =>
+                    window.arbora.invoke('agent.setConfigOption', { threadId: thread.id, configId: option.id, value }),
+                  )
                 }
               />
             ) : (
-              <label key={option.id} className="flex h-6 items-center gap-1 text-[11px]" title={option.description ?? undefined}>
+              <label
+                key={option.id}
+                className="flex h-6 items-center gap-1 text-[11px]"
+                title={option.description ?? undefined}
+              >
                 <input
                   type="checkbox"
                   checked={option.currentValue}
@@ -223,7 +248,10 @@ export function ThreadView({ thread, projectPath }: { thread: ThreadSummary; pro
 
       {state.status === 'auth_required' && <AuthCard thread={thread} />}
       {state.status === 'error' && state.error && (
-        <div className="mx-2 mt-2 rounded border border-danger/50 px-2 py-1.5 text-[12px] text-danger" data-testid="thread-state-error">
+        <div
+          className="mx-2 mt-2 rounded border border-danger/50 px-2 py-1.5 text-[12px] text-danger"
+          data-testid="thread-state-error"
+        >
           {state.error}
         </div>
       )}
@@ -242,7 +270,9 @@ export function ThreadView({ thread, projectPath }: { thread: ThreadSummary; pro
           projectPath={projectPath}
           busy={state.status === 'prompting'}
           onRespond={(requestId, optionId) =>
-            void invoke(() => window.arbora.invoke('agent.respondPermission', { threadId: thread.id, requestId, optionId }))
+            void invoke(() =>
+              window.arbora.invoke('agent.respondPermission', { threadId: thread.id, requestId, optionId }),
+            )
           }
         />
       ) : (

@@ -47,7 +47,9 @@ function clipContent(item: ToolCallContent): ToolCallContent {
         ...(item.oldText != null ? { oldText: clip(item.oldText) } : {}),
       };
     case 'content':
-      return item.content.type === 'text' ? { ...item, content: { ...item.content, text: clip(item.content.text) } } : item;
+      return item.content.type === 'text'
+        ? { ...item, content: { ...item.content, text: clip(item.content.text) } }
+        : item;
     case 'terminal':
       return item;
     default: {

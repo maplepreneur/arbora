@@ -54,7 +54,7 @@ export function ThreadList() {
       {threads.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center text-xs text-fg-subtle">
           <Bot size={24} className="opacity-50" />
-          No threads yet. Start one with Claude Code, Codex, Kimi Code, Grok Build or a custom agent.
+          No threads yet. Start one with Claude Code, Codex, Kimi Code, Grok Build, OpenCode or a custom agent.
         </div>
       ) : (
         <ul className="min-h-0 flex-1 overflow-y-auto">
@@ -75,9 +75,13 @@ export function ThreadList() {
                   <span className="min-w-0 flex-1 truncate text-[12.5px]" title={thread.title}>
                     {thread.title}
                   </span>
-                  <span className="shrink-0 text-[10px] text-fg-subtle tabular-nums">{formatWhen(thread.updatedAt)}</span>
+                  <span className="shrink-0 text-[10px] text-fg-subtle tabular-nums">
+                    {formatWhen(thread.updatedAt)}
+                  </span>
                 </span>
-                <span className="pl-4 text-[11px] text-fg-subtle">{byId.get(thread.agentId)?.name ?? thread.agentId}</span>
+                <span className="pl-4 text-[11px] text-fg-subtle">
+                  {byId.get(thread.agentId)?.name ?? thread.agentId}
+                </span>
               </button>
               <button
                 type="button"

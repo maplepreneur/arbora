@@ -10,7 +10,10 @@ function normalizer(events: ThreadEvent[] = []): UpdateNormalizer {
 }
 
 const text = (s: string): { type: 'text'; text: string } => ({ type: 'text', text: s });
-const chunk = (kind: 'agent_message_chunk' | 'agent_thought_chunk' | 'user_message_chunk', s: string): SessionUpdate => ({
+const chunk = (
+  kind: 'agent_message_chunk' | 'agent_thought_chunk' | 'user_message_chunk',
+  s: string,
+): SessionUpdate => ({
   sessionUpdate: kind,
   content: text(s),
 });
@@ -24,7 +27,11 @@ describe('UpdateNormalizer', () => {
       { type: 'append', event: { id: 'e1', at: 1000, kind: 'agent_message', blocks: [text('Hello')] } },
     ]);
     expect(second.changes).toEqual([
-      { type: 'replace', index: 0, event: { id: 'e1', at: 1000, kind: 'agent_message', blocks: [text('Hello, world')] } },
+      {
+        type: 'replace',
+        index: 0,
+        event: { id: 'e1', at: 1000, kind: 'agent_message', blocks: [text('Hello, world')] },
+      },
     ]);
     expect(n.events).toHaveLength(1);
   });
@@ -102,7 +109,12 @@ describe('UpdateNormalizer', () => {
   it('creates a tool call from an update for an unknown id', () => {
     const n = normalizer();
     n.apply({ sessionUpdate: 'tool_call_update', toolCallId: 'ghost', status: 'in_progress' });
-    expect(n.events[0]).toMatchObject({ kind: 'tool_call', toolCallId: 'ghost', title: 'Tool call', toolKind: 'other' });
+    expect(n.events[0]).toMatchObject({
+      kind: 'tool_call',
+      toolCallId: 'ghost',
+      title: 'Tool call',
+      toolKind: 'other',
+    });
   });
 
   it('defaults missing tool call fields', () => {
@@ -194,7 +206,11 @@ describe('UpdateNormalizer', () => {
     expect(n.events[0]).toMatchObject({ kind: 'permission', requestId: 'r1', toolKind: 'edit', outcome: null });
     const resolved = n.permissionResolved('r1', { optionId: 'yes', auto: false });
     expect(resolved).toHaveLength(1);
-    expect(resolved[0]).toMatchObject({ type: 'replace', index: 0, event: { outcome: { optionId: 'yes', auto: false } } });
+    expect(resolved[0]).toMatchObject({
+      type: 'replace',
+      index: 0,
+      event: { outcome: { optionId: 'yes', auto: false } },
+    });
     expect(n.permissionResolved('missing', 'cancelled')).toEqual([]);
   });
 

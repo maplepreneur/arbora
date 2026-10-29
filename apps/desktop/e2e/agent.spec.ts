@@ -84,11 +84,15 @@ test.describe('Stage 3 agent panel', () => {
       // A normal end of turn draws no marker; the status returns to ready.
       await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready');
       await expect(page.getByTestId('turn-end')).toHaveCount(0);
-      expect(readFileSync(join(project, 'App.tsx'), 'utf8')).toBe('// Arbora fake agent was here\nexport const App = () => null;\n');
+      expect(readFileSync(join(project, 'App.tsx'), 'utf8')).toBe(
+        '// Arbora fake agent was here\nexport const App = () => null;\n',
+      );
 
       // Agent-run commands show up as read-only "agent" terminal tabs.
       await send(page, 'run echo');
-      await expect(page.getByTestId('agent-message').last()).toContainText('hello from fake agent', { timeout: 20_000 });
+      await expect(page.getByTestId('agent-message').last()).toContainText('hello from fake agent', {
+        timeout: 20_000,
+      });
       const agentTerminals = (await terminals(page)).filter((t) => t.kind === 'agent');
       expect(agentTerminals).toHaveLength(1);
       expect(agentTerminals[0]?.readOnly).toBe(true);

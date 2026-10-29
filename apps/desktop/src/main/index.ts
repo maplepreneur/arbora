@@ -420,8 +420,12 @@ function main(): void {
       return requireAgents(event.sender).listAgents();
     });
     defineHandler('agent.listThreads', isTrusted, (_req, event) => windowFor(event.sender).agents?.listThreads() ?? []);
-    defineHandler('agent.createThread', isTrusted, ({ agentId }, event) => requireAgents(event.sender).createThread(agentId));
-    defineHandler('agent.getThread', isTrusted, ({ threadId }, event) => requireAgents(event.sender).getThread(threadId));
+    defineHandler('agent.createThread', isTrusted, ({ agentId }, event) =>
+      requireAgents(event.sender).createThread(agentId),
+    );
+    defineHandler('agent.getThread', isTrusted, ({ threadId }, event) =>
+      requireAgents(event.sender).getThread(threadId),
+    );
     defineHandler('agent.deleteThread', isTrusted, async ({ threadId }, event) => {
       await requireAgents(event.sender).deleteThread(threadId);
       return undefined;
@@ -501,7 +505,9 @@ function main(): void {
           permissions:
             agentId === undefined
               ? {}
-              : Object.fromEntries(Object.entries(s.agents.permissions).filter(([key]) => !key.startsWith(`${agentId}:`))),
+              : Object.fromEntries(
+                  Object.entries(s.agents.permissions).filter(([key]) => !key.startsWith(`${agentId}:`)),
+                ),
         },
       }));
       return undefined;

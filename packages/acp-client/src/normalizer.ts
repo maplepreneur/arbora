@@ -211,7 +211,11 @@ export class UpdateNormalizer {
     const known = this.toolIndex.get(toolCall.toolCallId);
     const knownEvent = known !== undefined ? this.events[known] : undefined;
     const base = knownEvent?.kind === 'tool_call' ? knownEvent : undefined;
-    const options: PermissionOption[] = request.options.map((o) => ({ optionId: o.optionId, name: o.name, kind: o.kind }));
+    const options: PermissionOption[] = request.options.map((o) => ({
+      optionId: o.optionId,
+      name: o.name,
+      kind: o.kind,
+    }));
     const event: PermissionEvent = {
       id: this.options.nextId(),
       at: this.options.now(),

@@ -14,14 +14,14 @@ This document breaks [PLAN.md](./PLAN.md) into stages a coding agent can execute
 
 ## Progress
 
-**Now:** Stages 0–2 are `Done`. Stage 3 (Agent panel, ACP) is `In progress` in [PR #10](https://github.com/maplepreneur/arbora/pull/10): the ACP client, `AgentService`, the agent panel UI, the log viewer, the fake-agent tests and the e2e spec are all in; 214 unit tests and 19 e2e pass locally on Omarchy. The manual matrix on 29 Oct 2026 is `ok` for Kimi Code and Grok Build; Claude Code and Codex are `blocked` only because neither CLI is logged in on this machine (their auth cards show correctly). **Next:** merge PR #10 once CI is green, log in to Claude Code and Codex and finish Appendix B, then Stage 4 (Agent mode). Stage 10 (Grove) is specified and not started.
+**Now:** Stages 0–2 are `Done`. Stage 3 (Agent panel, ACP) is `In progress` in [PR #10](https://github.com/maplepreneur/arbora/pull/10): the ACP client, `AgentService`, the agent panel UI, the log viewer, the fake-agent tests and the e2e spec are all in; 214 unit tests and 19 e2e pass locally on Omarchy. The manual matrix on 29 Oct 2026 is `ok` for Kimi Code, Grok Build and OpenCode; Claude Code and Codex are `blocked` only because neither CLI is logged in on this machine (their auth cards show correctly). PR #10 CI: the three e2e jobs are green, the three `Check` jobs went red on `prettier --check` in the first run ([run 40947604738](https://github.com/maplepreneur/arbora/actions/runs/40947604738)); the formatting fix is pushed and the rerun is pending. **Next:** merge PR #10 once CI is green, log in to Claude Code and Codex and finish Appendix B, then Stage 4 (Agent mode). Stage 10 (Grove) is specified and not started.
 
 | Stage | Name | Status | Notes |
 | --- | --- | --- | --- |
 | 0 | Foundation | Done (PR #2) | Built in [PR #2](https://github.com/maplepreneur/arbora/pull/2). Omarchy fixes came in [PR #7](https://github.com/maplepreneur/arbora/pull/7), both merged 29 Oct 2026. `arch-ok` on 29 Oct 2026 (Hyprland 0.56.2, Electron 45.1.0): native Wayland with class `arbora` in dev and packaged builds, tiling, floating and workspace moves, the portal file dialog, and the sandboxed packaged tarball. The narrow 687px column works, and title-bar drag was tested by hand. The Windows e2e failures on `main` (settings write race) are fixed. `scripts/install-local.sh` installs an app-launcher entry that runs the checkout and rebuilds at launch when the source changed. |
 | 1 | Browser panel | Done (PR #4) | Built in [PR #4](https://github.com/maplepreneur/arbora/pull/4). Omarchy fixes came in [PR #7](https://github.com/maplepreneur/arbora/pull/7), both merged 29 Oct 2026. `arch-ok` on 29 Oct 2026: rect sync through tiling, floating and workspace moves; fractional-scale screenshots; chords with the page focused; `shell.openExternal`. A background page load no longer takes keyboard focus, which on Windows needed a guard that outlives the load. The toolbar collapses in narrow columns. |
 | 2 | Terminal panel | Done (PR #7) | [PR #7](https://github.com/maplepreneur/arbora/pull/7) merged 29 Oct 2026 (`8ccbe38`), and `main` CI is green ([run 40931674159](https://github.com/maplepreneur/arbora/actions/runs/40931674159)). Covers F-TERM-01..04 and F-BROWSER-03; F-TERM-05 (read-only `agent` tabs with a badge) is wired for Stage 3. 127 unit tests and 17 e2e pass on all three OSes. `arch-ok` on 29 Oct 2026 in `pnpm dev` and the packaged tarball. Open: the macOS e2e clipboard copy is flaky (see the Stage 2 gotchas); fix it opportunistically. |
-| 3 | Agent panel (ACP) | In progress (PR #10) | [PR #10](https://github.com/maplepreneur/arbora/pull/10), not merged yet; CI pending at the time of writing. Covers F-AGENT-01..09 and F-TERM-05: `packages/acp-client` (`AgentRegistry`, `AgentProcess`, `AcpSession`, `UpdateNormalizer`, path scoping, redaction, fake agent), `AgentService` with `.arbora/threads/` persistence and `session/load`, permission cards with remembered "always" answers and per-thread auto-approve, client fs and terminal handlers (agent tabs), the agent panel (threads, markdown transcript, thoughts, tool cards with unified diff, plan, slash commands, mode/model pickers, attachments, cancel) and the ACP log viewer with export. 214 unit tests (57 in `acp-client`, 9 `AgentService` runs against the fake agent) and 19 e2e (2 new, against the fake agent as a custom agent) pass locally on Omarchy/Hyprland. The transcript, composer and permission card in `panels/agent/` take a thread and project path as props, so Grove (Stage 10) can mount them outside the dock. Manual matrix 29 Oct 2026 (Appendix B): Kimi Code 2.3.1 `ok` and Grok Build 1.0.70 `ok` for edit with permission, agent terminal and restore after restart; Claude Code (adapter 0.16.2) and Codex (adapter 2.5.0) `blocked`: not logged in on this machine (`claude -p` says "Not logged in", `codex login status` says "Not logged in"), their auth cards and pending-prompt flow were verified instead. Left: log in and finish those two matrix cells, merge, then `arch-ok` for the rest of the per-stage checks (tiling, scaling, packaged build) before `Done`. |
+| 3 | Agent panel (ACP) | In progress (PR #10) | [PR #10](https://github.com/maplepreneur/arbora/pull/10), not merged yet. First CI run ([40947604738](https://github.com/maplepreneur/arbora/actions/runs/40947604738)): E2E smoke green on Ubuntu, macOS and Windows; `Check` red on all three because `prettier --check` found 24 unformatted files (typecheck, eslint and vitest passed). Formatting fixed and pushed; the rerun is pending. Covers F-AGENT-01..09 and F-TERM-05: `packages/acp-client` (`AgentRegistry`, `AgentProcess`, `AcpSession`, `UpdateNormalizer`, path scoping, redaction, fake agent), `AgentService` with `.arbora/threads/` persistence and `session/load`, permission cards with remembered "always" answers and per-thread auto-approve, client fs and terminal handlers (agent tabs), the agent panel (threads, markdown transcript, thoughts, tool cards with unified diff, plan, slash commands, mode/model pickers, attachments, cancel) and the ACP log viewer with export. 214 unit tests (57 in `acp-client`, 9 `AgentService` runs against the fake agent) and 19 e2e (2 new, against the fake agent as a custom agent) pass locally on Omarchy/Hyprland. The transcript, composer and permission card in `panels/agent/` take a thread and project path as props, so Grove (Stage 10) can mount them outside the dock. Manual matrix 29 Oct 2026 (Appendix B): Kimi Code 2.3.1 `ok` and Grok Build 1.0.70 `ok` for edit with permission, agent terminal and restore after restart; OpenCode 2.1.4 (`opencode acp`, added as the fifth built-in) `ok` for edit, shell command and restore, with the caveat that OpenCode handles fs, shell and permissions itself; Claude Code (adapter 0.16.2) and Codex (adapter 2.5.0) `blocked`: not logged in on this machine (`claude -p` says "Not logged in", `codex login status` says "Not logged in"), their auth cards and pending-prompt flow were verified instead. Left: log in and finish those two matrix cells, merge, then `arch-ok` for the rest of the per-stage checks (tiling, scaling, packaged build) before `Done`. |
 | 4 | Agent mode (`Mod+K`) | Not started | Next stage after PR #10 merges. Hand-off: `AgentService.prompt(threadId, blocks, attachments)` accepts `image` and `resource_link` blocks (converted in main by `attachments.ts`, which checks `promptCapabilities.image`), the renderer has `useAgents` + `sendPrompt`, and `commands.ts` already has `agentFocusComposer`/`agentNewThread` to build the `Mod+K` overlay on. |
 | 5 | Browser control MCP server | Not started | |
 | 6 | Design mode (`Mod+D`) | Not started | |
@@ -318,7 +318,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 
 ## Stage 3: Agent panel (ACP)
 
-**Goal.** Talk to any ACP agent from Arbora: Claude Code, Codex, Kimi Code, Grok Build, or a custom command. Full streaming UI, permissions, client-side fs/terminal, persistence.
+**Goal.** Talk to any ACP agent from Arbora: Claude Code, Codex, Kimi Code, Grok Build, OpenCode, or a custom command. Full streaming UI, permissions, client-side fs/terminal, persistence.
 
 **Features.** `F-AGENT-01` to `F-AGENT-09`, `F-TERM-05`.
 
@@ -327,7 +327,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 ### Instructions
 
 1. `packages/acp-client`:
-   - `AgentRegistry`: built-in definitions `{ id, name, command, args, env, installHint, docsUrl }` for the four agents (commands in PLAN section 2), plus custom entries from settings. `detect()` checks `which`/`where` for binaries and `npx` availability.
+   - `AgentRegistry`: built-in definitions `{ id, name, command, args, env, installHint, docsUrl }` for the five agents (commands in PLAN section 2), plus custom entries from settings. `detect()` checks `which`/`where` for binaries and `npx` availability.
    - `AgentProcess`: spawns the command with the cached login-shell PATH, pipes stdio, wraps `stdout`/`stdin` into an ACP `Stream` (`ndJsonStream` from the SDK), forwards `stderr` to the log viewer. Restart with backoff on crash; surface exit codes.
    - `AcpSession`: uses `client({ name: 'arbora' })` from `@agentclientprotocol/sdk` (stable v1 entrypoint). Register client handlers: `session/request_permission`, `fs/read_text_file`, `fs/write_text_file`, `terminal/create`, `terminal/output`, `terminal/wait_for_exit`, `terminal/kill`, `terminal/release`, and `session/update` notifications. Call `initialize` with `clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true }`, then `authenticate` if `authMethods` is non-empty and the agent returns auth-required, then `session/new { cwd, mcpServers }`.
    - `UpdateNormalizer`: converts `session/update` variants (`agent_message_chunk`, `agent_thought_chunk`, `user_message_chunk`, `tool_call`, `tool_call_update`, `plan`, `available_commands_update`, `current_mode_update`) into a flat, append-only event log the renderer renders. Store raw messages for the log viewer.
@@ -367,17 +367,19 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - **Cursor's sandbox blocks `forkpty`.** Run `TerminalService` and `AgentService` tests outside the sandbox or they fail with `forkpty(3) failed`.
 - **`exactOptionalPropertyTypes` vs zod `_meta`.** Arbora's zod-inferred `ContentBlock` allows `_meta: undefined`; the SDK's types do not. `toAcpBlocks()` strips undefined `_meta` before `session/prompt`.
 - **Node runs the fake agent as TypeScript.** `packages/acp-client/src/testing/fake-agent.ts` is executed with `process.execPath` directly (Node type stripping), so the integration tests and the e2e spec need no build step for it. Register it as a custom agent with `command: process.execPath, args: [FAKE_AGENT_PATH]`.
+- **OpenCode v2 keeps fs, shell and permissions on its side.** `opencode acp` advertises `loadSession`, image prompts and `configOptions` (one `model` select listing every provider/model pair), but it never calls `fs/*` or `terminal/*` and applies its own `permission` config instead of `session/request_permission`, so there is no agent terminal tab and no Arbora permission card unless the user sets OpenCode to ask. Its default model may be blocked by the OpenCode workspace privacy setting ("This Go model trains on request data"); the error surfaces in the thread and the model picker fixes it.
+- **`pnpm lint` includes `prettier --check`.** Its findings are printed as `[warn] path` lines, not errors, so filtering lint output for "error" hides them; run `pnpm format` before pushing or CI's `Check` jobs go red while eslint, typecheck and tests are green.
 
 ### Acceptance
 
-- For each of Claude Code, Codex, Kimi Code and Grok Build: create a thread, send "add a comment to `fixtures/vite-react/src/App.tsx`", approve the permission, see the diff and the file change on disk.
+- For each of Claude Code, Codex, Kimi Code, Grok Build and OpenCode: create a thread, send "add a comment to `fixtures/vite-react/src/App.tsx`", approve the permission, see the diff and the file change on disk.
 - An agent command runs in the Terminal panel as a read-only tab.
 - Restarting Arbora restores the thread list and transcript; `session/load` works where advertised.
 - Log viewer shows redacted traffic.
 
 ### Checklist
 
-- [x] `AgentRegistry` with four built-ins, custom entries, detection
+- [x] `AgentRegistry` with five built-ins (Claude Code, Codex, Kimi Code, Grok Build, OpenCode), custom entries, detection
 - [x] `AgentProcess` with PATH handling, stderr capture, restart
 - [x] `AcpSession` with client handlers and capability negotiation
 - [x] `UpdateNormalizer` and persisted event log
@@ -388,7 +390,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - [x] Agent panel UI (threads, transcript, tool cards, plan, slash commands, mode/model, composer) in `panels/agent/`, mountable outside the dock
 - [x] ACP log viewer with redaction
 - [x] Fake-agent integration test (unit + e2e)
-- [ ] Manual matrix recorded for all four agents (Kimi and Grok `ok`; Claude Code and Codex blocked on login, see Appendix B)
+- [ ] Manual matrix recorded for all five agents (Kimi, Grok and OpenCode `ok`; Claude Code and Codex blocked on login, see Appendix B)
 - [ ] `arch-ok` on Omarchy/Hyprland for the per-stage checks (tiling, scaling, packaged build) with the agent panel
 
 ---
@@ -809,16 +811,16 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 
 ## Appendix B: Manual test matrix (record results in Progress notes)
 
-| Scenario | Claude Code | Codex | Kimi Code | Grok Build |
-| --- | --- | --- | --- | --- |
-| Stage 3: edit a file with permission | blocked (not logged in on the Omarchy machine on 29 Oct 2026; `claude -p` says "Not logged in". The adapter `@zed-industries/claude-code-acp@0.16.2` accepts `session/new` and returns auth-required from `session/prompt`; Arbora shows the auth card with "Log in with Claude Code" and keeps the prompt) | blocked (not logged in; `codex login status` says "Not logged in". `@agentclientprotocol/codex-acp@2.5.0` returns auth-required from `session/new`; Arbora shows the auth card with the "API Key" and "ChatGPT" methods) | ok (Kimi Code CLI 2.3.1, 29 Oct 2026: permission card for the edit, write through `fs/write_text_file`, file changed on disk, `node -e` ran as an agent tab via `terminal/create` and the output was quoted back, session restored with `session/load` after an app restart; model, thinking and mode pickers from `configOptions`) | ok (Grok 1.0.70, 29 Oct 2026: edit shown as a diff and applied (Grok approves in-cwd edits itself, no card), shell command line run as an agent tab, output quoted back with exit 0, `session/load` restored context; model picker from the legacy `models` field) |
-| Stage 4: `Mod+K` prompt with image | | | | |
-| Stage 4: `Mod+K` prompt with path fallback | | | | |
-| Stage 5: MCP tools over http | | | | |
-| Stage 5: MCP tools over stdio shim | | | | |
-| Stage 5: verify loop completes unaided | | | | |
-| Stage 6: design save applied correctly | | | | |
-| Stage 8: generate commit message | | | | |
-| Stage 10: Grove session, status, switch away and back | | | | |
+| Scenario | Claude Code | Codex | Kimi Code | Grok Build | OpenCode |
+| --- | --- | --- | --- | --- | --- |
+| Stage 3: edit a file with permission | blocked (not logged in on the Omarchy machine on 29 Oct 2026; `claude -p` says "Not logged in". The adapter `@zed-industries/claude-code-acp@0.16.2` accepts `session/new` and returns auth-required from `session/prompt`; Arbora shows the auth card with "Log in with Claude Code" and keeps the prompt) | blocked (not logged in; `codex login status` says "Not logged in". `@agentclientprotocol/codex-acp@2.5.0` returns auth-required from `session/new`; Arbora shows the auth card with the "API Key" and "ChatGPT" methods) | ok (Kimi Code CLI 2.3.1, 29 Oct 2026: permission card for the edit, write through `fs/write_text_file`, file changed on disk, `node -e` ran as an agent tab via `terminal/create` and the output was quoted back, session restored with `session/load` after an app restart; model, thinking and mode pickers from `configOptions`) | ok (Grok 1.0.70, 29 Oct 2026: edit shown as a diff and applied (Grok approves in-cwd edits itself, no card), shell command line run as an agent tab, output quoted back with exit 0, `session/load` restored context; model picker from the legacy `models` field) | ok (OpenCode 2.1.4 via `opencode acp`, 29 Oct 2026: edit shown as a diff and applied on disk, shell command ran and its output came back, `session/load` restored the transcript after a restart. OpenCode does its own file and shell I/O, so Arbora never saw `fs/*` or `terminal/*` requests and there is no agent terminal tab; with its default `permission` config it did not ask before the edit or the command either. The default model `opencode-go/iceman-contributor-free` was refused by the OpenCode workspace privacy setting; switching the model picker to `kimi-code-plan-global/kimi-for-coding` through `session/set_config_option` fixed it) |
+| Stage 4: `Mod+K` prompt with image | | | | |  |
+| Stage 4: `Mod+K` prompt with path fallback | | | | |  |
+| Stage 5: MCP tools over http | | | | |  |
+| Stage 5: MCP tools over stdio shim | | | | |  |
+| Stage 5: verify loop completes unaided | | | | |  |
+| Stage 6: design save applied correctly | | | | |  |
+| Stage 8: generate commit message | | | | |  |
+| Stage 10: Grove session, status, switch away and back | | | | |  |
 
 Fill cells with `ok`, `partial (note)` or `fail (issue link)` and the agent/adapter version tested.

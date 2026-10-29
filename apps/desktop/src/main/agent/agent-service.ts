@@ -143,9 +143,7 @@ export class AgentService {
   }
 
   listThreads(): ThreadSummary[] {
-    return [...this.records.values()]
-      .map((r) => this.summary(r))
-      .sort((a, b) => b.updatedAt - a.updatedAt);
+    return [...this.records.values()].map((r) => this.summary(r)).sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
   getThread(threadId: string): Thread | null {
@@ -501,9 +499,11 @@ export class AgentService {
       const capabilities = runtime.session.capabilities;
       this.setState(record, {
         capabilities,
-        authMethods: (initialized.authMethods ?? []).map(
-          (m): AuthMethod => ({ id: m.id, name: m.name, ...(m.description != null ? { description: m.description } : {}) }),
-        ),
+        authMethods: (initialized.authMethods ?? []).map((m): AuthMethod => ({
+          id: m.id,
+          name: m.name,
+          ...(m.description != null ? { description: m.description } : {}),
+        })),
       });
       this.info(
         record,
@@ -517,7 +517,10 @@ export class AgentService {
         const hint = agent.installHint ? ` ${agent.installHint}` : '';
         this.setState(record, {
           status: 'auth_required',
-          error: authMethods.length > 0 ? `${agent.name} needs you to log in.${hint}` : `${agent.name} rejected the session: not authenticated.${hint}`,
+          error:
+            authMethods.length > 0
+              ? `${agent.name} needs you to log in.${hint}`
+              : `${agent.name} rejected the session: not authenticated.${hint}`,
         });
         throw error;
       }
@@ -570,7 +573,12 @@ export class AgentService {
     this.scheduleSave(record);
   }
 
-  private async tryRestore(record: ThreadRecord, runtime: Runtime, how: 'load' | 'resume', sessionId: string): Promise<boolean> {
+  private async tryRestore(
+    record: ThreadRecord,
+    runtime: Runtime,
+    how: 'load' | 'resume',
+    sessionId: string,
+  ): Promise<boolean> {
     record.replaying = true;
     try {
       const response =
@@ -746,8 +754,10 @@ export class AgentService {
       return { outcome: { outcome: 'cancelled' } };
     }
     const option = options.find((o) => o.optionId === chosen);
-    if (option?.kind === 'allow_always') this.options.permissions.remember(permissionMemoryKey(record.thread.agentId, toolKind), 'allow');
-    if (option?.kind === 'reject_always') this.options.permissions.remember(permissionMemoryKey(record.thread.agentId, toolKind), 'reject');
+    if (option?.kind === 'allow_always')
+      this.options.permissions.remember(permissionMemoryKey(record.thread.agentId, toolKind), 'allow');
+    if (option?.kind === 'reject_always')
+      this.options.permissions.remember(permissionMemoryKey(record.thread.agentId, toolKind), 'reject');
     this.emitChanges(record, record.normalizer.permissionResolved(requestId, { optionId: chosen, auto: false }));
     return { outcome: { outcome: 'selected', optionId: chosen } };
   }

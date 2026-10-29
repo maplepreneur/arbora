@@ -19,8 +19,24 @@ describe('redact', () => {
       env: { PATH: REDACTED, OPENAI_API_KEY: REDACTED },
     });
     expect(
-      redact({ params: { command: 'node', env: [{ name: 'HOME', value: '/me' }, { name: 'SECRET', value: 's' }] } }),
-    ).toEqual({ params: { command: 'node', env: [{ name: 'HOME', value: REDACTED }, { name: 'SECRET', value: REDACTED }] } });
+      redact({
+        params: {
+          command: 'node',
+          env: [
+            { name: 'HOME', value: '/me' },
+            { name: 'SECRET', value: 's' },
+          ],
+        },
+      }),
+    ).toEqual({
+      params: {
+        command: 'node',
+        env: [
+          { name: 'HOME', value: REDACTED },
+          { name: 'SECRET', value: REDACTED },
+        ],
+      },
+    });
   });
 
   it('redacts HTTP header values', () => {
@@ -37,7 +53,10 @@ describe('redact', () => {
     const message = {
       jsonrpc: '2.0',
       method: 'session/update',
-      params: { sessionId: 's', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'hi' } } },
+      params: {
+        sessionId: 's',
+        update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'hi' } },
+      },
     };
     expect(redact(message)).toEqual(message);
   });

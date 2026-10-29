@@ -104,12 +104,17 @@ function Blocks({ blocks, projectPath }: { blocks: readonly ContentBlock[]; proj
                 title={block.uri}
               >
                 {block.mimeType?.startsWith('image/') ? <ImageIcon size={11} /> : <Paperclip size={11} />}
-                <span className="truncate">{relativePath(block.uri.replace(/^file:\/\//, ''), projectPath) || block.name}</span>
+                <span className="truncate">
+                  {relativePath(block.uri.replace(/^file:\/\//, ''), projectPath) || block.name}
+                </span>
               </span>
             );
           case 'resource':
             return (
-              <pre key={index} className="my-1 max-h-48 overflow-auto rounded bg-bg-muted p-2 font-mono text-[11px] select-text">
+              <pre
+                key={index}
+                className="my-1 max-h-48 overflow-auto rounded bg-bg-muted p-2 font-mono text-[11px] select-text"
+              >
                 {'text' in block.resource ? block.resource.text : `[binary ${block.resource.uri}]`}
               </pre>
             );
@@ -137,7 +142,9 @@ function Thought({ text }: { text: string }) {
         <Brain size={12} />
         Thinking{open ? '' : `… ${text.replace(/\s+/g, ' ').slice(0, 80)}`}
       </button>
-      {open && <div className="mt-1 border-l-2 border-border pl-2 text-[12px] whitespace-pre-wrap select-text">{text}</div>}
+      {open && (
+        <div className="mt-1 border-l-2 border-border pl-2 text-[12px] whitespace-pre-wrap select-text">{text}</div>
+      )}
     </div>
   );
 }
@@ -172,12 +179,18 @@ function ToolCard({ event, projectPath }: { event: ToolCallEvent; projectPath: s
             {event.locations[0]?.line != null ? `:${event.locations[0].line}` : ''}
           </span>
         )}
-        {hasBody && (open ? <ChevronDown size={12} className="shrink-0" /> : <ChevronRight size={12} className="shrink-0" />)}
+        {hasBody &&
+          (open ? <ChevronDown size={12} className="shrink-0" /> : <ChevronRight size={12} className="shrink-0" />)}
       </button>
       {open && hasBody && (
         <div className="flex flex-col gap-1.5 border-t border-border px-2 py-1.5">
           {diffs.map((diff, index) => (
-            <UnifiedDiff key={index} oldText={diff.oldText} newText={diff.newText} path={relativePath(diff.path, projectPath)} />
+            <UnifiedDiff
+              key={index}
+              oldText={diff.oldText}
+              newText={diff.newText}
+              path={relativePath(diff.path, projectPath)}
+            />
           ))}
           {texts.map((item, index) => (
             <div key={index} className="text-[12px]">
@@ -340,7 +353,11 @@ function EventView({
       return <ToolCard event={event} projectPath={projectPath} />;
     case 'permission':
       return (
-        <PermissionCard event={event} projectPath={projectPath} onRespond={(optionId) => onRespond(event.requestId, optionId)} />
+        <PermissionCard
+          event={event}
+          projectPath={projectPath}
+          onRespond={(optionId) => onRespond(event.requestId, optionId)}
+        />
       );
     case 'plan':
       return <PlanCard entries={event.entries} />;
@@ -363,7 +380,11 @@ function EventView({
           )}
           data-testid="notice"
         >
-          {event.severity === 'info' ? <Info size={13} className="mt-0.5 shrink-0" /> : <TriangleAlert size={13} className="mt-0.5 shrink-0" />}
+          {event.severity === 'info' ? (
+            <Info size={13} className="mt-0.5 shrink-0" />
+          ) : (
+            <TriangleAlert size={13} className="mt-0.5 shrink-0" />
+          )}
           <div>
             <div className="font-medium">{event.title}</div>
             {event.description && <div className="text-[11px] opacity-80">{event.description}</div>}
@@ -372,7 +393,10 @@ function EventView({
       );
     case 'error':
       return (
-        <div className="flex items-start gap-2 rounded border border-danger/50 px-2 py-1.5 text-[12px] text-danger" data-testid="thread-error">
+        <div
+          className="flex items-start gap-2 rounded border border-danger/50 px-2 py-1.5 text-[12px] text-danger"
+          data-testid="thread-error"
+        >
           <CircleX size={13} className="mt-0.5 shrink-0" />
           <span className="whitespace-pre-wrap select-text">{event.message}</span>
         </div>

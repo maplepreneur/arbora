@@ -67,10 +67,15 @@ export function AgentPicker() {
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5 text-[12.5px] font-medium">
                     {agent.name}
-                    {!agent.builtIn && <span className="rounded bg-bg-muted px-1 text-[10px] text-fg-subtle">custom</span>}
+                    {!agent.builtIn && (
+                      <span className="rounded bg-bg-muted px-1 text-[10px] text-fg-subtle">custom</span>
+                    )}
                     {!available && <CircleAlert size={12} className="text-amber-500" />}
                   </span>
-                  <span className="block truncate font-mono text-[11px] text-fg-subtle" title={detected?.resolvedCommand ?? agent.command}>
+                  <span
+                    className="block truncate font-mono text-[11px] text-fg-subtle"
+                    title={detected?.resolvedCommand ?? agent.command}
+                  >
                     {agent.command} {agent.args.join(' ')}
                   </span>
                   {!available && agent.installHint && (
