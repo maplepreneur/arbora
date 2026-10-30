@@ -81,7 +81,7 @@ describe('ProjectWatcher', () => {
     expect(watchers[0]?.closed).toBe(true);
     expect(warnings).toEqual([INOTIFY_HINT]);
     const polling = watchers[1];
-    expect(polling?.paths).toEqual([root, join(root, 'src')]);
+    expect(polling?.paths).toEqual([join(root, ''), join(root, 'src')]);
     expect(polling?.options).toMatchObject({ backend: 'polling', depth: 0 });
     // Folders opened later are polled too.
     watcher.noteOpenedDir('src/components');

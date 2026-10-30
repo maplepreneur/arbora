@@ -297,8 +297,7 @@ test.describe('Stage 7 files and editor', () => {
         .toBeGreaterThan(0);
       const [terminal] = await page.evaluate<TerminalInfo[]>(() => window.arbora.invoke('terminal.list'));
       await page.evaluate(
-        (id) =>
-          window.arbora.invoke('terminal.write', { id, data: "clear; printf 'src/components/Card.tsx:4:3\\n'\r" }),
+        (id) => window.arbora.invoke('terminal.write', { id, data: 'clear; echo src/components/Card.tsx:4:3\r' }),
         terminal?.id ?? '',
       );
       await expect

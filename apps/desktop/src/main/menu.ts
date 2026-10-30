@@ -30,7 +30,14 @@ export function buildMacMenu(dispatch: (commandId: string) => void): Menu {
         { label: 'Open Project…', click: () => dispatch(CommandId.openProject) },
         { label: 'Close Project', click: () => dispatch(CommandId.closeProject) },
         { type: 'separator' },
-        { role: 'close' },
+        // Cmd+W closes the editor tab (the renderer's keybinding); the label only shows the chord.
+        {
+          label: 'Close Tab',
+          accelerator: 'Cmd+W',
+          registerAccelerator: false,
+          click: () => dispatch(CommandId.editorCloseTab),
+        },
+        { role: 'close', accelerator: 'Shift+Cmd+W' },
       ],
     },
     { role: 'editMenu' },

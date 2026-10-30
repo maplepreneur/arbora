@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -127,13 +127,14 @@ describe('WorkspaceService', () => {
     await expect(ws.rename('src/new.ts', 'src/lib/a.ts')).rejects.toThrow(/already exists/);
     await expect(ws.rename('src', 'src/lib/src')).rejects.toThrow(/into itself/);
     await ws.delete('src/new.ts');
-    expect(trash).toHaveBeenCalledWith(join(root, 'src/new.ts'));
+    // Paths are resolved through symlinks (macOS temp folders live under /private/var).
+    expect(trash).toHaveBeenCalledWith(join(realpathSync(root), 'src/new.ts'));
   });
 
   it('refuses paths that escape the project, including through symlinks', async () => {
     const outside = project({ 'secret.txt': 'secret' });
     const root = project({});
-    symlinkSync(outside, join(root, 'link'));
+    symlinkSync(outside, join(root, 'link'), 'junction');
     const { ws } = service(root);
     await expect(ws.read('../secret.txt')).rejects.toThrow();
     await expect(ws.read('link/secret.txt')).rejects.toThrow(/not inside the project/);

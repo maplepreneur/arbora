@@ -642,6 +642,8 @@ async function runCommand(id: CommandId): Promise<void> {
     case CommandId.editorCloseTab: {
       const active = useFiles.getState().active;
       if (active) closeTab(active);
+      // macOS convention: Cmd+W with nothing left to close closes the window.
+      else if (useApp.getState().info.platform === 'darwin') await arbora.invoke('window.control', { action: 'close' });
       return;
     }
     case CommandId.editorFormat: {
