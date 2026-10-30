@@ -61,8 +61,8 @@ test.describe('Stage 3 agent panel', () => {
       await expect(page.getByTestId('thread-view')).toBeVisible();
       await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', { timeout: 20_000 });
       // Session controls come from the agent: a mode and a model config option.
-      await expect(page.getByTestId('mode-select')).toHaveValue('ask');
-      await expect(page.getByTestId('model-select')).toHaveValue('fast');
+      await expect(page.getByTestId('mode-select')).toHaveAttribute('data-value', 'ask');
+      await expect(page.getByTestId('model-select')).toHaveAttribute('data-value', 'fast');
 
       // Slash-command autocomplete lists the agent's commands.
       const input = page.getByTestId('composer-input');
@@ -99,10 +99,17 @@ test.describe('Stage 3 agent panel', () => {
       await expect(page.getByTestId('terminal-tab').filter({ hasText: 'agent' })).toBeVisible();
 
       // Mode and model changes round-trip through the agent.
-      await page.getByTestId('mode-select').selectOption('code');
-      await expect(page.getByTestId('mode-select')).toHaveValue('code');
-      await page.getByTestId('model-select').selectOption('smart');
-      await expect(page.getByTestId('model-select')).toHaveValue('smart');
+      await page.getByTestId('mode-select').click();
+      await page.locator('[data-testid="mode-select-option"][data-value="code"]').click();
+      await expect(page.getByTestId('mode-select')).toHaveAttribute('data-value', 'code');
+      // Keyboard: open, move down, Enter.
+      await page.getByTestId('model-select').focus();
+      await page.keyboard.press('ArrowDown');
+      await expect(page.getByTestId('model-select-menu')).toBeVisible();
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.press('Enter');
+      await expect(page.getByTestId('model-select')).toHaveAttribute('data-value', 'smart');
+      await expect(page.getByTestId('model-select-menu')).toHaveCount(0);
 
       // Cancel stops a slow turn.
       await send(page, 'slow');

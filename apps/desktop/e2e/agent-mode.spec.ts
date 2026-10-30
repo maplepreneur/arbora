@@ -122,6 +122,13 @@ async function waitForHydration(app: ElectronApplication, selector: string): Pro
     .toBe(true);
 }
 
+/** Picks `value` in a themed `Picker` (they are buttons with a listbox, not native selects). */
+async function choose(page: Page, testId: string, value: string): Promise<void> {
+  await page.getByTestId(testId).click();
+  await page.locator(`[data-testid="${testId}-option"][data-value="${value}"]`).click();
+  await expect(page.getByTestId(testId)).toHaveAttribute('data-value', value);
+}
+
 async function enterAgentMode(app: ElectronApplication, page: Page): Promise<void> {
   await page.getByTestId('browser-toolbar').click({ position: { x: 2, y: 2 } });
   await page.keyboard.press('ControlOrMeta+K');
@@ -206,7 +213,7 @@ test.describe('Stage 4 agent mode on Vite + React 18', () => {
       await page.getByTestId('agent-mode-crumb').nth(0).click();
       await expect(page.getByTestId('agent-mode-source')).toHaveText('src/components/Card.tsx:19');
 
-      await page.getByTestId('agent-mode-target').selectOption(`new:${FAKE_ID}`);
+      await choose(page, 'agent-mode-target', `new:${FAKE_ID}`);
       const input = page.getByTestId('agent-mode-input');
       await input.fill('make this button red');
       await input.press('Enter');
@@ -285,7 +292,7 @@ test.describe('Stage 4 agent mode on Vite + React 18', () => {
       await clickInPage(app, BUTTON);
       await expect(page.getByTestId('agent-mode-popover')).toBeVisible({ timeout: 20_000 });
 
-      await page.getByTestId('agent-mode-target').selectOption(`new:${FAKE_NO_IMAGE_ID}`);
+      await choose(page, 'agent-mode-target', `new:${FAKE_NO_IMAGE_ID}`);
       await page.getByTestId('agent-mode-input').fill('make this button red');
       await page.getByTestId('agent-mode-send').click();
 
@@ -371,7 +378,7 @@ test.describe('Stage 4 agent mode on Next.js (React 19)', () => {
       await expect(sources).toHaveText(/\d+ candidate files?/);
       await expect(sources).toHaveAttribute('title', /app\/components\/Button\.tsx/);
 
-      await page.getByTestId('agent-mode-target').selectOption(`new:${FAKE_ID}`);
+      await choose(page, 'agent-mode-target', `new:${FAKE_ID}`);
       await page.getByTestId('agent-mode-input').fill('make this button red');
       await page.getByTestId('agent-mode-input').press('Enter');
       const message = page.getByTestId('user-message').first();

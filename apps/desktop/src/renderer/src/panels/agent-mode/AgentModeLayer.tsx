@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import clsx from 'clsx';
-import { Camera, Code2, Crosshair, FileCode2, LoaderCircle, Send } from 'lucide-react';
+import { Bot, Camera, Code2, Crosshair, FileCode2, LoaderCircle, MessagesSquare, Send } from 'lucide-react';
 import {
   clipRect,
   fitViewport,
@@ -17,6 +17,7 @@ import {
   type ViewportPresetId,
 } from '@arbora/shared';
 import { useAgents } from '../../agent-store';
+import { Picker } from '../../components/Picker';
 import { showAgentThread } from '../../commands';
 import { dispatchMode, useApp } from '../../store';
 
@@ -70,33 +71,34 @@ function TargetPicker({ value, onChange }: { value: string; onChange: (value: st
   const agents = useAgents((s) => s.agents);
   const threads = useAgents((s) => s.threads);
   const availability = useAgents((s) => s.availability);
-  const agentName = (id: string): string => agents.find((a) => a.id === id)?.name ?? id;
+  const options = useMemo(() => {
+    const agentName = (id: string): string => agents.find((a) => a.id === id)?.name ?? id;
+    return [
+      ...threads.map((thread) => ({
+        value: `thread:${thread.id}`,
+        name: thread.title,
+        description: agentName(thread.agentId),
+        group: 'Threads',
+      })),
+      ...agents.map((agent) => ({
+        value: `new:${agent.id}`,
+        name: agent.name,
+        description: availability.find((a) => a.id === agent.id)?.available === false ? 'Not found on PATH' : null,
+        group: 'New thread',
+      })),
+    ];
+  }, [agents, threads, availability]);
   return (
-    <select
-      aria-label="Send to"
-      data-testid="agent-mode-target"
+    <Picker
+      label="Send to"
+      icon={value.startsWith('thread:') ? MessagesSquare : Bot}
+      testId="agent-mode-target"
+      menuWidth={300}
+      className="flex-1"
       value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className="h-7 min-w-0 flex-1 truncate rounded border border-border bg-bg-subtle px-1 text-[11px] text-fg-muted outline-none focus:border-accent"
-    >
-      {threads.length > 0 && (
-        <optgroup label="Threads">
-          {threads.map((thread) => (
-            <option key={thread.id} value={`thread:${thread.id}`}>
-              {thread.title} · {agentName(thread.agentId)}
-            </option>
-          ))}
-        </optgroup>
-      )}
-      <optgroup label="New thread">
-        {agents.map((agent) => (
-          <option key={agent.id} value={`new:${agent.id}`}>
-            New: {agent.name}
-            {availability.find((a) => a.id === agent.id)?.available === false ? ' (not found)' : ''}
-          </option>
-        ))}
-      </optgroup>
-    </select>
+      options={options}
+      onChange={onChange}
+    />
   );
 }
 
@@ -289,7 +291,10 @@ function AgentModePopover({ selection, targetIndex, onTargetIndex }: PopoverProp
         </div>
       )}
       <div className="flex items-center gap-1.5">
+        <span className="shrink-0 text-[11px] text-fg-subtle">Send to</span>
         <TargetPicker value={target ?? ''} onChange={setChosenTarget} />
+      </div>
+      <div className="flex items-center justify-end gap-1.5">
         <button
           type="button"
           data-testid="agent-mode-repick"
@@ -349,7 +354,7 @@ export function AgentModeLayer({ selection, preset }: { selection: AgentModeSele
   }, []);
 
   return (
-    <div ref={layerRef} className="absolute inset-0 overflow-hidden" data-testid="agent-mode-layer">
+    <div ref={layerRef} className="absolute inset-0 overflow-hidden" data-testid="agent-mode-layer" data-picker-bounds>
       <img
         data-testid="agent-mode-frame"
         src={selection.screenshot.dataUrl}
