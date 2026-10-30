@@ -265,6 +265,39 @@ test.describe('Stage 4 agent mode on Vite + React 18', () => {
     }
   });
 
+  test('sends to the thread open in the agent panel, or a new thread when none is open', async () => {
+    const before = screenshotsIn(VITE_REACT);
+    const { app, page } = await launch(userDataWithFakeAgents(), [VITE_REACT]);
+    try {
+      await openAndWait(page, vite.url);
+      await waitForHydration(app, BUTTON);
+      // No thread open: a new thread (with the first detected agent, as no default is set).
+      await enterAgentMode(app, page);
+      await clickInPage(app, BUTTON);
+      await expect(page.getByTestId('agent-mode-popover')).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByTestId('agent-mode-target')).toHaveAttribute('data-value', /^new:/);
+      await page.keyboard.press('Escape');
+
+      // Open a fake-agent thread in the panel; agent mode now sends there.
+      await page.getByTestId('new-thread').click();
+      await page.getByTestId(`pick-agent-${FAKE_ID}`).click();
+      await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', { timeout: 20_000 });
+      const [open] = await page.evaluate(() => window.arbora.invoke('agent.listThreads'));
+      await enterAgentMode(app, page);
+      await clickInPage(app, BUTTON);
+      await expect(page.getByTestId('agent-mode-popover')).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByTestId('agent-mode-target')).toHaveAttribute('data-value', `thread:${open?.id ?? ''}`);
+      await page.getByTestId('agent-mode-input').fill('make this button red');
+      await page.getByTestId('agent-mode-input').press('Enter');
+      await expect(page.getByTestId('user-message').first()).toContainText('make this button red', { timeout: 30_000 });
+      expect(await page.evaluate(() => window.arbora.invoke('agent.listThreads'))).toHaveLength(1);
+    } finally {
+      await deleteThreads(page).catch(() => undefined);
+      await app.close();
+      removeAgentModeScreenshots(VITE_REACT, before);
+    }
+  });
+
   test('page chords toggle and exit the mode; agents without image support get the screenshot path', async () => {
     const before = screenshotsIn(VITE_REACT);
     const { app, page } = await launch(userDataWithFakeAgents(), [VITE_REACT]);

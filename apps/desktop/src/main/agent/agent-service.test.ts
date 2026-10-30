@@ -12,7 +12,7 @@ import {
   type ThreadSummary,
 } from '@arbora/shared';
 import { TerminalService } from '../terminal/terminal-service.js';
-import { AgentService } from './agent-service.js';
+import { AgentService, STOP_GRACE_MS } from './agent-service.js';
 import { threadsDir } from './thread-store.js';
 
 const platform = toPlatform(process.platform);
@@ -53,7 +53,9 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
     rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   });
 
-  function setup(options: { env?: Record<string, string>; permissions?: RememberedPermissions } = {}): Harness {
+  function setup(
+    options: { env?: Record<string, string>; permissions?: RememberedPermissions; defaultModel?: string } = {},
+  ): Harness {
     const h: Harness = {
       service: null as unknown as AgentService,
       terminals: null as unknown as TerminalService,
@@ -83,6 +85,7 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
       lookup: () => (command) => (existsSync(command) ? command : undefined),
       terminals: h.terminals,
       devUrl: () => 'http://localhost:5173/',
+      defaultModel: () => options.defaultModel,
       permissions: {
         get: () => h.permissions,
         remember: (key, decision) => {
@@ -269,6 +272,57 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
     await h.service.cancel(thread.id);
     expect((await turn).stopReason).toBe('cancelled');
     expect(h.service.getThread(thread.id)?.events.at(-1)).toMatchObject({ kind: 'turn_end', stopReason: 'cancelled' });
+  });
+
+  it('stops a turn the agent will not cancel by stopping its process, and the thread keeps working', async () => {
+    root = makeRoot();
+    const h = setup();
+    const thread = h.service.createThread(FAKE);
+    const turn = h.service.prompt(thread.id, [{ type: 'text', text: 'stubborn' }]);
+    await expect.poll(() => latestState(h, thread.id)?.status, { timeout: 15_000 }).toBe('prompting');
+    const started = Date.now();
+    await h.service.stop(thread.id);
+    expect(Date.now() - started).toBeLessThan(STOP_GRACE_MS + 4000);
+    expect((await turn).stopReason).toBe('cancelled');
+    expect(latestState(h, thread.id)?.status).toBe('idle');
+    const events = h.service.getThread(thread.id)?.events ?? [];
+    expect(events.at(-1)).toMatchObject({ kind: 'turn_end', stopReason: 'cancelled' });
+    expect(events.some((e) => e.kind === 'error')).toBe(false);
+    // The next prompt starts the agent again.
+    const next = await h.service.prompt(thread.id, [{ type: 'text', text: 'hello' }]);
+    expect(next.stopReason).toBe('end_turn');
+  });
+
+  it('stops an agent that is still starting; a waiting prompt ends as cancelled', async () => {
+    root = makeRoot();
+    const h = setup({ env: { FAKE_AGENT_SLOW_START: '20000' } });
+    const thread = h.service.createThread(FAKE);
+    const turn = h.service.prompt(thread.id, [{ type: 'text', text: 'hello' }]);
+    await expect.poll(() => latestState(h, thread.id)?.status, { timeout: 15_000 }).toBe('starting');
+    await h.service.stop(thread.id);
+    expect(await turn).toEqual({ stopReason: 'cancelled' });
+    expect(latestState(h, thread.id)?.status).toBe('idle');
+    expect(h.service.getThread(thread.id)?.events.some((e) => e.kind === 'user_message')).toBe(false);
+  });
+
+  it('applies the default model to new threads', async () => {
+    root = makeRoot();
+    const h = setup({ defaultModel: 'smart' });
+    const thread = h.service.createThread(FAKE);
+    await expect
+      .poll(() => latestState(h, thread.id)?.configOptions[0], { timeout: 15_000 })
+      .toMatchObject({ id: 'model', currentValue: 'smart' });
+    expect(
+      h.logs.some((e) => e.direction === 'info' && String(e.message).includes('default model smart applied')),
+    ).toBe(true);
+  });
+
+  it('keeps the agent model when the default is not offered', async () => {
+    root = makeRoot();
+    const h = setup({ defaultModel: 'other-agent-model' });
+    const thread = h.service.createThread(FAKE);
+    await expect.poll(() => latestState(h, thread.id)?.status, { timeout: 15_000 }).toBe('ready');
+    expect(latestState(h, thread.id)?.configOptions[0]).toMatchObject({ currentValue: 'fast' });
   });
 
   it('restores persisted threads on construction and loads the session where advertised', async () => {

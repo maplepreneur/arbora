@@ -16,10 +16,11 @@ import {
   type ResolvedComponent,
   type ViewportPresetId,
 } from '@arbora/shared';
-import { useAgents } from '../../agent-store';
+import { defaultAgentModeTarget, useAgents } from '../../agent-store';
+import { useDefaultAgentId } from '../../agent-defaults';
 import { Picker } from '../../components/Picker';
 import { showAgentThread } from '../../commands';
-import { dispatchMode, useApp } from '../../store';
+import { dispatchMode } from '../../store';
 
 const POPOVER_WIDTH = 380;
 const POPOVER_HEIGHT_ESTIMATE = 300;
@@ -53,18 +54,10 @@ function parseTarget(key: string): AgentModeTarget | null {
   return null;
 }
 
-/** Last thread agent mode used, else the active thread, else a new thread with the project's default agent. */
+/** The thread open in the agent panel, else a new thread with the default agent. */
 function useDefaultTarget(): string | null {
-  const defaultAgent = useApp((s) => s.project?.settings.defaultAgent);
-  return useAgents((s) => {
-    for (const id of [s.lastAgentModeThreadId, s.activeThreadId]) {
-      if (id && s.threads.some((t) => t.id === id)) return `thread:${id}`;
-    }
-    const available = new Set(s.availability.filter((a) => a.available).map((a) => a.id));
-    const agent =
-      s.agents.find((a) => a.id === defaultAgent) ?? s.agents.find((a) => available.has(a.id)) ?? s.agents[0];
-    return agent ? `new:${agent.id}` : null;
-  });
+  const defaultAgent = useDefaultAgentId();
+  return useAgents((s) => defaultAgentModeTarget(s, defaultAgent));
 }
 
 function TargetPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
@@ -180,7 +173,6 @@ function AgentModePopover({ selection, targetIndex, onTargetIndex }: PopoverProp
         include,
         target: parsed,
       });
-      useAgents.setState({ lastAgentModeThreadId: threadId });
       dispatchMode({ type: 'submitted' });
       await showAgentThread(threadId);
     } catch (caught) {

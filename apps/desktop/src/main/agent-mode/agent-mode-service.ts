@@ -140,6 +140,11 @@ export class AgentModeService {
     const browser = this.options.browser();
     if (!agents || !browser) throw new Error('Open a project first');
 
+    if (request.target.type === 'thread') {
+      const status = agents.getThread(request.target.threadId)?.state.status;
+      if (status === 'prompting')
+        throw new Error('That thread is still working. Stop it first, or send to a new thread.');
+    }
     const threadId =
       request.target.type === 'thread' ? request.target.threadId : agents.createThread(request.target.agentId).id;
     const target = targetComponent({ components: stored.components, targetIndex: request.targetIndex });

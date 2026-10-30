@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import clsx from 'clsx';
-import { Check, ChevronDown, Search, type LucideIcon } from 'lucide-react';
-import { filterOptions, groupOptions, withProviderGroups, type PickerOption } from './picker-options';
+import { Check, ChevronDown, Pin, Search, Star, type LucideIcon } from 'lucide-react';
+import { filterOptions, groupOptions, withFavorites, withProviderGroups, type PickerOption } from './picker-options';
 
 export type { PickerOption } from './picker-options';
 
@@ -54,6 +54,58 @@ export interface PickerProps {
   /** Width of the open list in px (it never gets narrower than the trigger). */
   readonly menuWidth?: number;
   readonly className?: string;
+  /** Values shown first under "Favourites"; each row gets a star when `onToggleFavorite` is set. */
+  readonly favorites?: readonly string[];
+  readonly onToggleFavorite?: (value: string) => void;
+  /** The value new threads start with; each row gets a pin when `onSetDefault` is set. */
+  readonly defaultValue?: string | undefined;
+  readonly onSetDefault?: (value: string) => void;
+  /** Tooltip for the pin, e.g. "Use for new OpenCode threads". */
+  readonly defaultHint?: string;
+}
+
+const NO_FAVORITES: readonly string[] = [];
+
+function RowAction({
+  on,
+  icon: Icon,
+  title,
+  testId,
+  onPress,
+  showAlways,
+}: {
+  on: boolean;
+  icon: LucideIcon;
+  title: string;
+  testId: string;
+  onPress: () => void;
+  showAlways: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      title={title}
+      aria-label={title}
+      aria-pressed={on}
+      data-testid={testId}
+      onMouseDown={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
+        onPress();
+      }}
+      className={clsx(
+        'flex h-5 w-5 shrink-0 items-center justify-center rounded hover:bg-bg-muted',
+        on ? 'text-accent' : 'text-fg-subtle hover:text-fg',
+        !on && !showAlways && 'invisible group-hover:visible',
+      )}
+    >
+      <Icon size={12} fill={on ? 'currentColor' : 'none'} />
+    </button>
+  );
 }
 
 /**
@@ -73,6 +125,11 @@ export function Picker({
   disabled = false,
   menuWidth = 280,
   className,
+  favorites = NO_FAVORITES,
+  onToggleFavorite,
+  defaultValue,
+  onSetDefault,
+  defaultHint = 'Use for new threads',
 }: PickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -83,7 +140,7 @@ export function Picker({
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const prepared = useMemo(() => withProviderGroups(options), [options]);
+  const prepared = useMemo(() => withFavorites(withProviderGroups(options), favorites), [options, favorites]);
   const selected = prepared.find((o) => o.value === value);
   const searchable = prepared.length > SEARCH_THRESHOLD;
   const filtered = useMemo(() => filterOptions(prepared, query), [prepared, query]);
@@ -104,7 +161,9 @@ export function Picker({
     setActive(
       Math.max(
         0,
-        withProviderGroups(options).findIndex((o) => o.value === value),
+        groupOptions(prepared)
+          .flatMap((g) => g.options)
+          .findIndex((o) => o.value === value),
       ),
     );
   };
@@ -287,7 +346,7 @@ export function Picker({
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => choose(option)}
                         className={clsx(
-                          'mx-1 flex cursor-default items-start gap-1.5 rounded px-1.5 py-1',
+                          'group mx-1 flex cursor-default items-start gap-1.5 rounded px-1.5 py-1',
                           i === active && 'bg-accent-soft',
                         )}
                       >
@@ -298,6 +357,31 @@ export function Picker({
                             <span className="block truncate text-[11px] text-fg-subtle">{option.description}</span>
                           )}
                         </span>
+                        {option.value === defaultValue && (
+                          <span className="mt-0.5 shrink-0 rounded bg-accent-soft px-1 text-[10px] text-accent">
+                            default
+                          </span>
+                        )}
+                        {onSetDefault && (
+                          <RowAction
+                            on={option.value === defaultValue}
+                            icon={Pin}
+                            title={option.value === defaultValue ? `${defaultHint} (current)` : defaultHint}
+                            testId={`${testId}-default`}
+                            showAlways={i === active}
+                            onPress={() => onSetDefault(option.value)}
+                          />
+                        )}
+                        {onToggleFavorite && (
+                          <RowAction
+                            on={favorites.includes(option.value)}
+                            icon={Star}
+                            title={favorites.includes(option.value) ? 'Remove from favourites' : 'Add to favourites'}
+                            testId={`${testId}-favorite`}
+                            showAlways={i === active}
+                            onPress={() => onToggleFavorite(option.value)}
+                          />
+                        )}
                       </div>
                     );
                   })}

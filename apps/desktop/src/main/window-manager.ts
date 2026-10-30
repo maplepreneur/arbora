@@ -341,6 +341,7 @@ export class ProjectWindow {
         const url = this.browser?.getState().url;
         return url && /^https?:\/\//.test(url) ? url : null;
       },
+      defaultModel: (agentId) => settings.get().agents.defaultModels[agentId],
       permissions: {
         get: () => settings.get().agents.permissions,
         remember: (key, decision) =>

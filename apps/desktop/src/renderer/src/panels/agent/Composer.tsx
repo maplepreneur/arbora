@@ -3,7 +3,15 @@ import clsx from 'clsx';
 import { Image as ImageIcon, Paperclip, Send, Square, X } from 'lucide-react';
 import type { Attachment, AvailableCommand, ThreadSummary } from '@arbora/shared';
 import { showToast } from '../../store';
-import { addAttachments, cancelTurn, removeAttachment, sendPrompt, setDraft, useAgents } from '../../agent-store';
+import {
+  addAttachments,
+  isStoppable,
+  removeAttachment,
+  sendPrompt,
+  setDraft,
+  stopAgent,
+  useAgents,
+} from '../../agent-store';
 
 /** The slash command being typed at the start of the composer, if any. */
 export function slashQuery(text: string, caret: number): string | null {
@@ -19,6 +27,7 @@ export function matchCommands(commands: readonly AvailableCommand[], query: stri
 
 /** Stable fallback: a fresh `[]` per render would make the store selector loop forever. */
 const NO_ATTACHMENTS: readonly Attachment[] = [];
+const MAX_COMPOSER_HEIGHT = 200;
 
 export function Composer({ thread, projectPath }: { thread: ThreadSummary; projectPath: string }) {
   const draft = useAgents((s) => s.drafts[thread.id] ?? '');
@@ -32,6 +41,7 @@ export function Composer({ thread, projectPath }: { thread: ThreadSummary; proje
 
   const status = thread.state.status;
   const busy = status === 'prompting';
+  const stoppable = isStoppable(status);
   const canSend = (draft.trim().length > 0 || attachments.length > 0) && !busy && status !== 'starting';
   const query = slashQuery(draft, caret);
   const suggestions = useMemo(
@@ -48,8 +58,13 @@ export function Composer({ thread, projectPath }: { thread: ThreadSummary; proje
   useEffect(() => {
     const element = textarea.current;
     if (!element) return;
+    // `scrollHeight` excludes the border, while the height (border-box) includes it; without the
+    // border the box is always a few pixels short and shows a scrollbar.
+    const border = element.offsetHeight - element.clientHeight;
     element.style.height = '0px';
-    element.style.height = `${Math.min(element.scrollHeight, 200)}px`;
+    const wanted = element.scrollHeight + border;
+    element.style.height = `${Math.min(wanted, MAX_COMPOSER_HEIGHT)}px`;
+    element.style.overflowY = wanted > MAX_COMPOSER_HEIGHT ? 'auto' : 'hidden';
   }, [draft]);
 
   const accept = (command: AvailableCommand): void => {
@@ -153,7 +168,7 @@ export function Composer({ thread, projectPath }: { thread: ThreadSummary; proje
                   ? 'Message the agent… ( / for commands)'
                   : 'Message the agent…'
           }
-          className="max-h-[200px] w-full resize-none rounded border border-border bg-bg px-2 py-1.5 pr-16 text-[12.5px] outline-none select-text focus:border-accent"
+          className="block max-h-[200px] w-full resize-none overflow-y-hidden rounded border border-border bg-bg px-2 py-1.5 pr-16 text-[12.5px] outline-none select-text focus:border-accent"
           onChange={(event) => {
             setDraft(thread.id, event.target.value);
             setCaret(event.target.selectionStart);
@@ -185,6 +200,11 @@ export function Composer({ thread, projectPath }: { thread: ThreadSummary; proje
                 return;
               }
             }
+            if (event.key === 'Escape' && stoppable) {
+              event.preventDefault();
+              void stopAgent(thread.id);
+              return;
+            }
             if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
               event.preventDefault();
               void submit();
@@ -202,13 +222,13 @@ export function Composer({ thread, projectPath }: { thread: ThreadSummary; proje
           >
             <Paperclip size={13} />
           </button>
-          {busy ? (
+          {stoppable ? (
             <button
               type="button"
-              title="Stop"
+              title={busy ? 'Stop (Esc)' : 'Stop starting the agent (Esc)'}
               aria-label="Stop the agent"
               data-testid="composer-cancel"
-              onClick={() => void cancelTurn(thread.id)}
+              onClick={() => void stopAgent(thread.id)}
               className="flex h-6 w-6 items-center justify-center rounded bg-danger/90 text-white hover:bg-danger"
             >
               <Square size={11} fill="currentColor" />

@@ -12,14 +12,17 @@ import {
 } from '@arbora/shared';
 import {
   activeThread,
-  cancelTurn,
+  createThread,
+  isStoppable,
   focusComposer,
   openThread,
   showPicker,
   showThreads,
+  stopAgent,
   toggleLog,
   useAgents,
 } from './agent-store';
+import { defaultAgentId } from './agent-defaults';
 import { dispatchMode, resetLayout, showToast, useApp } from './store';
 import {
   activePane,
@@ -364,7 +367,11 @@ async function runCommand(id: CommandId): Promise<void> {
       openFileAtLocation();
       return;
     case CommandId.agentNewThread:
-      withAgentPanel(() => showPicker());
+      withAgentPanel(() => {
+        const agentId = defaultAgentId();
+        if (agentId) createThread(agentId).catch((error: unknown) => showToast((error as Error).message));
+        else showPicker();
+      });
       return;
     case CommandId.agentFocusComposer:
       withAgentPanel(() => {
@@ -381,7 +388,7 @@ async function runCommand(id: CommandId): Promise<void> {
       return;
     case CommandId.agentCancel: {
       const thread = activeThread();
-      if (thread?.state.status === 'prompting') await cancelTurn(thread.id);
+      if (thread && isStoppable(thread.state.status)) await stopAgent(thread.id);
       else if (hasProject()) showToast('The agent is not working on anything');
       return;
     }

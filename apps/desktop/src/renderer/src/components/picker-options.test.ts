@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filterOptions, groupOptions, withProviderGroups, type PickerOption } from './picker-options';
+import { filterOptions, groupOptions, withFavorites, withProviderGroups, type PickerOption } from './picker-options';
 
 const opencode: PickerOption[] = [
   { value: 'opencode/qwen3.5-plus', name: 'opencode/Qwen3.5 Plus' },
@@ -51,5 +51,21 @@ describe('groupOptions', () => {
       ['opencode', 2],
       ['opencode-go', 2],
     ]);
+  });
+});
+
+describe('withFavorites', () => {
+  it('puts favourites first in starred order, with their provider as the description', () => {
+    const options = withFavorites(withProviderGroups(opencode), ['opencode-go/grok-4.7', 'opencode/beam-free', 'gone']);
+    expect(options.slice(0, 2).map((o) => [o.value, o.group, o.description])).toEqual([
+      ['opencode-go/grok-4.7', 'Favourites', 'opencode-go'],
+      ['opencode/beam-free', 'Favourites', 'opencode'],
+    ]);
+    expect(options).toHaveLength(4);
+    expect(groupOptions(options)[0]?.group).toBe('Favourites');
+  });
+
+  it('is a no-op without favourites', () => {
+    expect(withFavorites(opencode, [])).toEqual(opencode);
   });
 });

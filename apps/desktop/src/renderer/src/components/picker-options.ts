@@ -28,6 +28,25 @@ export function withProviderGroups(options: readonly PickerOption[]): PickerOpti
   });
 }
 
+export const FAVORITES_GROUP = 'Favourites';
+
+/**
+ * Moves favourites (in the order they were starred) into a first "Favourites" group. Their
+ * original group becomes the description, so `opencode/Beam Free` still says which provider.
+ */
+export function withFavorites(options: readonly PickerOption[], favorites: readonly string[]): PickerOption[] {
+  if (favorites.length === 0) return [...options];
+  const byValue = new Map(options.map((o) => [o.value, o]));
+  const starred = favorites.flatMap((value) => {
+    const option = byValue.get(value);
+    return option
+      ? [{ ...option, group: FAVORITES_GROUP, description: option.description ?? option.group ?? null }]
+      : [];
+  });
+  const starredValues = new Set(starred.map((o) => o.value));
+  return [...starred, ...options.filter((o) => !starredValues.has(o.value))];
+}
+
 /** Options matching every whitespace-separated term (name, group, value or description), in order. */
 export function filterOptions(options: readonly PickerOption[], query: string): PickerOption[] {
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);

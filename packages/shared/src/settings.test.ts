@@ -4,7 +4,9 @@ import {
   defaultSettings,
   loadSettings,
   MAX_RECENT_PROJECTS,
+  mergeAgentSettings,
   migrateSettings,
+  resolveDefaultAgent,
   SETTINGS_VERSION,
   SettingsMigrationError,
   type Migration,
@@ -84,7 +86,7 @@ describe('loadSettings', () => {
     const { settings, warnings } = loadSettings({ version: 2, theme: 'light' });
     expect(warnings).toEqual([]);
     expect(settings.version).toBe(3);
-    expect(settings.agents).toEqual({ custom: [], permissions: {} });
+    expect(settings.agents).toEqual({ custom: [], permissions: {}, defaultModels: {}, favoriteModels: {} });
   });
 
   it('keeps custom agents and remembered permissions', () => {
@@ -92,7 +94,32 @@ describe('loadSettings', () => {
       custom: [{ id: 'my-agent', name: 'Mine', command: 'my-agent', args: ['acp'], env: { FOO: 'bar' } }],
       permissions: { 'claude-code:execute': 'allow' },
     };
-    expect(loadSettings({ version: 3, agents }).settings.agents).toEqual(agents);
+    expect(loadSettings({ version: 3, agents }).settings.agents).toEqual({
+      ...agents,
+      defaultModels: {},
+      favoriteModels: {},
+    });
+  });
+
+  it('merges agent patches: omitted fields stay, null clears the default agent', () => {
+    const current = loadSettings({
+      version: 3,
+      agents: { defaultAgent: 'kimi', defaultModels: { opencode: 'opencode/beam-free' }, favoriteModels: {} },
+    }).settings.agents;
+    const starred = mergeAgentSettings(current, { favoriteModels: { opencode: ['opencode/beam-free'] } });
+    expect(starred.defaultAgent).toBe('kimi');
+    expect(starred.defaultModels).toEqual({ opencode: 'opencode/beam-free' });
+    expect(starred.favoriteModels).toEqual({ opencode: ['opencode/beam-free'] });
+    expect(mergeAgentSettings(starred, { defaultAgent: 'grok' }).defaultAgent).toBe('grok');
+    expect('defaultAgent' in mergeAgentSettings(starred, { defaultAgent: null })).toBe(false);
+  });
+
+  it('resolves the default agent: project first, then the app setting, ignoring unknown ids', () => {
+    const known = ['kimi', 'grok', 'opencode'];
+    expect(resolveDefaultAgent(known, 'grok', 'kimi')).toBe('grok');
+    expect(resolveDefaultAgent(known, undefined, 'kimi')).toBe('kimi');
+    expect(resolveDefaultAgent(known, 'gone', 'kimi')).toBe('kimi');
+    expect(resolveDefaultAgent(known, undefined, undefined)).toBeUndefined();
   });
 
   it('defaults per-project browser state fields', () => {

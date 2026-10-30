@@ -69,6 +69,8 @@ export interface AgentServiceOptions {
   readonly lookup: () => CommandLookup;
   readonly terminals: TerminalService;
   readonly devUrl: () => string | null;
+  /** Model (a `model` config option value) to apply to a brand-new session of `agentId`. */
+  readonly defaultModel?: (agentId: string) => string | undefined;
   readonly permissions: {
     get(): RememberedPermissions;
     remember(key: string, decision: 'allow' | 'reject'): void;
@@ -108,14 +110,25 @@ interface ThreadRecord {
   pendingPrompt: { blocks: ContentBlock[]; attachments: Attachment[]; title: string | undefined } | null;
   crashes: number;
   saveTimer: NodeJS.Timeout | undefined;
+  /** The user pressed Stop: a start in flight ends quietly and a killed turn ends as cancelled. */
+  stopRequested: boolean;
 }
 
 const SAVE_DELAY_MS = 300;
 const MAX_AUTO_RESTARTS = 3;
+/** How long Stop waits for the agent to honour `session/cancel` before it stops the process. */
+export const STOP_GRACE_MS = 3000;
 const DEFAULT_TITLE = 'New thread';
 const TITLE_LENGTH = 60;
 
 export class AgentServiceError extends Error {}
+
+/** A start or turn ended because the user pressed Stop. */
+class AgentStoppedError extends AgentServiceError {
+  constructor() {
+    super('Stopped');
+  }
+}
 
 /**
  * Agent threads for one project: one ACP session (and process) per thread, started on the first
@@ -219,6 +232,7 @@ export class AgentService {
     try {
       runtime = await this.ensureRuntime(record);
     } catch (error) {
+      if (error instanceof AgentStoppedError) return { stopReason: 'cancelled' };
       if (record.thread.state.status === 'auth_required') {
         record.pendingPrompt = { blocks, attachments, title: options.title };
         return { stopReason: null, error: 'auth_required' };
@@ -249,6 +263,28 @@ export class AgentService {
     const runtime = record.runtime;
     if (!runtime?.sessionId || record.thread.state.status !== 'prompting') return;
     await runtime.session.cancel(runtime.sessionId);
+  }
+
+  /**
+   * Always stops the agent's current work. A turn gets `session/cancel` first; if the agent does
+   * not end it within `STOP_GRACE_MS`, or the agent is still starting or waiting for a login, the
+   * process is stopped (the next prompt starts it again and restores the session when it can).
+   */
+  async stop(threadId: string): Promise<void> {
+    const record = this.require(threadId);
+    record.pendingPrompt = null;
+    const status = record.thread.state.status;
+    const runtime = record.runtime;
+    if (status === 'prompting' && runtime?.sessionId) {
+      await runtime.session.cancel(runtime.sessionId).catch(() => undefined);
+      if (await this.settles(record, STOP_GRACE_MS)) return;
+      this.info(record, `no reply to session/cancel after ${STOP_GRACE_MS} ms; stopping the agent`);
+    } else if (status !== 'starting' && status !== 'auth_required' && status !== 'prompting') {
+      return;
+    }
+    record.stopRequested = true;
+    await this.stopRuntime(record);
+    this.setState(record, { status: 'idle', error: null });
   }
 
   respondPermission(threadId: string, requestId: string, optionId: string): void {
@@ -357,8 +393,19 @@ export class AgentService {
       pendingPermissions: new Map(),
       pendingPrompt: null,
       crashes: 0,
+      stopRequested: false,
       saveTimer: undefined,
     };
+  }
+
+  /** Resolves true once the thread is no longer prompting, false after `timeoutMs`. */
+  private async settles(record: ThreadRecord, timeoutMs: number): Promise<boolean> {
+    const deadline = this.now() + timeoutMs;
+    while (record.thread.state.status === 'prompting') {
+      if (this.now() >= deadline) return false;
+      await new Promise((resolveTick) => setTimeout(resolveTick, 50));
+    }
+    return true;
   }
 
   private require(threadId: string): ThreadRecord {
@@ -459,6 +506,7 @@ export class AgentService {
       // The process is up and waiting for `authenticate`; spawning another would leak this one.
       return Promise.reject(new AgentServiceError(record.thread.state.error ?? 'The agent needs you to log in'));
     }
+    record.stopRequested = false;
     const starting = this.start(record).finally(() => {
       record.starting = null;
     });
@@ -487,6 +535,7 @@ export class AgentService {
     if (record.runtime) await this.stopRuntime(record);
 
     const env = await this.options.environment();
+    if (record.stopRequested) throw this.stopped(record);
     Object.assign(env, agent.env);
     const lookup = this.options.lookup();
     const resolved = lookup(agent.command);
@@ -540,6 +589,7 @@ export class AgentService {
       await this.openSession(record, runtime);
       return runtime;
     } catch (error) {
+      if (this.wasStopped(record)) throw this.stopped(record);
       if (AcpSession.isAuthRequired(error)) {
         const authMethods = record.thread.state.authMethods;
         const hint = agent.installHint ? ` ${agent.installHint}` : '';
@@ -557,6 +607,16 @@ export class AgentService {
       await this.stopRuntime(record);
       throw error;
     }
+  }
+
+  /** Read through a call: `stop()` sets the flag while an `await` is pending, which narrowing cannot see. */
+  private wasStopped(record: ThreadRecord): boolean {
+    return record.stopRequested;
+  }
+
+  private stopped(record: ThreadRecord): AgentStoppedError {
+    this.setState(record, { status: 'idle', error: null });
+    return new AgentStoppedError();
   }
 
   /** `session/load` or `session/resume` when advertised and we have a session id; else `session/new`. */
@@ -596,9 +656,31 @@ export class AgentService {
         );
       }
       this.info(record, `session/new -> ${response.sessionId}`);
+      if (previous === null) await this.applyDefaultModel(record);
     }
     record.crashes = 0;
     this.scheduleSave(record);
+  }
+
+  /** Switches a brand-new session to the user's default model for this agent, when it offers it. */
+  private async applyDefaultModel(record: ThreadRecord): Promise<void> {
+    const wanted = this.options.defaultModel?.(record.thread.agentId);
+    if (!wanted) return;
+    const option = record.thread.state.configOptions.find(
+      (o): o is Extract<typeof o, { type: 'select' }> => o.type === 'select' && o.category === 'model',
+    );
+    if (!option || option.currentValue === wanted) return;
+    const values = option.options.flatMap((entry) => ('group' in entry ? entry.options : [entry])).map((o) => o.value);
+    if (!values.includes(wanted)) {
+      this.info(record, `default model ${wanted} is not offered by this agent; keeping ${option.currentValue}`);
+      return;
+    }
+    try {
+      await this.setConfigOption(record.thread.id, option.id, wanted);
+      this.info(record, `default model ${wanted} applied`);
+    } catch (error) {
+      this.info(record, `could not apply default model ${wanted}: ${messageOf(error)}`);
+    }
   }
 
   private async tryRestore(
@@ -664,6 +746,7 @@ export class AgentService {
       }
     }
     this.emitChanges(record, record.normalizer.userMessage(shown));
+    record.stopRequested = false;
     this.setState(record, { status: 'prompting', error: null });
     try {
       const response = await runtime.session.prompt(sessionId, sent);
@@ -672,6 +755,10 @@ export class AgentService {
       if (record.runtime === runtime) this.setState(record, { status: 'ready' });
       return { stopReason: response.stopReason };
     } catch (error) {
+      if (this.wasStopped(record)) {
+        this.emitChanges(record, record.normalizer.turnEnded('cancelled'));
+        return { stopReason: 'cancelled' };
+      }
       const message = messageOf(error);
       if (AcpSession.isAuthRequired(error) && record.runtime === runtime) {
         // Claude Code's adapter accepts `session/new` and only refuses the first prompt; keep the

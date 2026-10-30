@@ -242,6 +242,11 @@ export const channels = {
     z.object({ stopReason: z.string().nullable(), error: z.string().optional() }),
   ),
   'agent.cancel': defineChannel('agent.cancel', threadId, none),
+  /**
+   * Stops whatever the agent is doing: cancels the turn, and stops the agent process if it does
+   * not end the turn within a few seconds or is still starting.
+   */
+  'agent.stop': defineChannel('agent.stop', threadId, none),
   /** Answers a pending permission card with one of the agent's own option ids. */
   'agent.respondPermission': defineChannel(
     'agent.respondPermission',

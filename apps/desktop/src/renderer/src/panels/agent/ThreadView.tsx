@@ -10,15 +10,19 @@ import {
   ScrollText,
   ShieldCheck,
   SlidersHorizontal,
+  Square,
 } from 'lucide-react';
 import type { SessionConfigOption, ThreadSummary } from '@arbora/shared';
 import { Picker, type PickerOption } from '../../components/Picker';
-import { showToast } from '../../store';
-import { showThreads, toggleLog, useAgents } from '../../agent-store';
+import { showToast, useApp } from '../../store';
+import { isStoppable, showThreads, stopAgent, toggleLog, useAgents } from '../../agent-store';
+import { toggleDefaultModel, toggleFavoriteModel } from '../../agent-defaults';
 import { Composer } from './Composer';
 import { LogViewer } from './LogViewer';
 import { statusDot } from './ThreadList';
 import { Transcript } from './Transcript';
+
+const NO_MODELS: readonly string[] = [];
 
 function selectOptions(option: Extract<SessionConfigOption, { type: 'select' }>): PickerOption[] {
   return option.options.flatMap((entry) =>
@@ -80,6 +84,8 @@ export function ThreadView({ thread, projectPath }: { thread: ThreadSummary; pro
     (o): o is Extract<SessionConfigOption, { type: 'select' }> => o.type === 'select' && o.category === 'model',
   );
   const otherOptions = state.configOptions.filter((o) => o !== modelOption);
+  const favoriteModels = useApp((s) => s.settings.agents.favoriteModels[thread.agentId]) ?? NO_MODELS;
+  const defaultModel = useApp((s) => s.settings.agents.defaultModels[thread.agentId]);
 
   const invoke = async (action: () => Promise<unknown>): Promise<void> => {
     try {
@@ -107,6 +113,18 @@ export function ThreadView({ thread, projectPath }: { thread: ThreadSummary; pro
           <span className="font-medium">{thread.title}</span>
           <span className="text-fg-subtle"> · {agentName}</span>
         </span>
+        {isStoppable(state.status) && (
+          <button
+            type="button"
+            title={state.status === 'prompting' ? 'Stop the agent (Esc in the composer)' : 'Stop starting the agent'}
+            aria-label="Stop the agent"
+            data-testid="thread-stop"
+            onClick={() => void invoke(() => stopAgent(thread.id))}
+            className="flex h-6 shrink-0 items-center gap-1 rounded bg-danger/90 px-1.5 text-[11px] text-white hover:bg-danger"
+          >
+            <Square size={9} fill="currentColor" /> Stop
+          </button>
+        )}
         <button
           type="button"
           title={
@@ -182,6 +200,11 @@ export function ThreadView({ thread, projectPath }: { thread: ThreadSummary; pro
               label="Model"
               icon={Cpu}
               testId="model-select"
+              favorites={favoriteModels}
+              onToggleFavorite={(value) => toggleFavoriteModel(thread.agentId, value)}
+              defaultValue={defaultModel}
+              onSetDefault={(value) => toggleDefaultModel(thread.agentId, value)}
+              defaultHint={`Use for new ${agentName} threads`}
               menuWidth={320}
               className="max-w-[60%]"
               value={modelOption.currentValue}

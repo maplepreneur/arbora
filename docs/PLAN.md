@@ -249,6 +249,11 @@ Feature IDs (`F-AREA-NN`) are referenced from [BUILD_STAGES.md](./BUILD_STAGES.m
 - `F-AGENT-07` Multiple threads per project, persisted locally, with titles and pinned context. The docked panel and Grove (`F-GROVE-07`) are two views of this same list. Creating or archiving a thread in either place updates the other. Each workspace remembers its own selected thread.
 - `F-AGENT-08` ACP log viewer (raw JSON-RPC both directions) for debugging.
 - `F-AGENT-09` Image and embedded-context prompt blocks when the agent's `promptCapabilities` allow; otherwise fall back per `F-INSPECT-06`.
+- `F-AGENT-10` Stop is always available while an agent works or starts: in the composer (also `Esc` there), in the thread header, on the thread's row, and as **Stop Agent** (`Mod+.`). Stop sends `session/cancel`. If the agent has not ended the turn after 3 s, or it is still starting or waiting for a login, Arbora stops the agent process. The next prompt starts it again and restores the session where it can.
+- `F-AGENT-11` Default agent and model for new threads, plus favourite models:
+  - Default agent: pin an agent in the agent picker. The project's `defaultAgent` wins over the app setting `agents.defaultAgent`. "New thread" (and `Mod+Shift+N`) then starts that agent directly, and the chevron still opens the picker.
+  - Default model: pin a model in the model picker (`agents.defaultModels[agentId]`). It is applied right after `session/new` for brand-new threads. Restored sessions keep their model.
+  - Favourite models: star models in the model picker (`agents.favoriteModels[agentId]`). They are listed first under "Favourites".
 
 ### 4.5 Browser control for agents (`F-MCP`)
 
@@ -397,7 +402,7 @@ The attention count is Needs you + Failed + unread Finished. A desktop notificat
 
 #### Default agent
 
-`defaultAgent` in `.arbora/project.json` is the registry id. It already exists in the schema; Grove is the UI that sets it. The project value wins, then `settings.grove.fallbackAgent` (this machine only, for a repo that does not commit a default), then none. An id that is not in the registry is treated as none, with the same warning path as a bad `project.json`.
+`defaultAgent` in `.arbora/project.json` is the registry id. It already exists in the schema; Grove is the UI that sets it. The project value wins, then `settings.agents.defaultAgent` (the app-wide default agent, set from the agent picker's pin) (this machine only, for a repo that does not commit a default), then none. An id that is not in the registry is treated as none, with the same warning path as a bad `project.json`.
 
 The sidebar footer shows "Default", the resolved name or "Not set", **Change**, and a checkbox "Open when Grove is empty" (`startDefaultOnOpen`, default `true`, stored in `project.json`). The checkbox is disabled until a default exists.
 
@@ -432,7 +437,7 @@ All of these are `intercept: true` and configurable. `when: 'grove'` chords matc
 
 #### Persistence
 
-Per project, in the machine-local project state (not committed): `workspace` (`browser` or `grove`, default `browser`), the `grove` panel-group sizes, and `grove.selectedThreadId`. Per project, committed in `project.json`: `defaultAgent`, `startDefaultOnOpen` (default `true`). Per machine, in `settings.json`: `grove.notify` (default `true`), `grove.fallbackAgent` (optional). Adding `grove` to app settings bumps `SETTINGS_VERSION` to 3 with a migration that only advances the version. `startDefaultOnOpen` is a defaulted field on the existing project schema and does not bump `PROJECT_SETTINGS_VERSION`.
+Per project, in the machine-local project state (not committed): `workspace` (`browser` or `grove`, default `browser`), the `grove` panel-group sizes, and `grove.selectedThreadId`. Per project, committed in `project.json`: `defaultAgent`, `startDefaultOnOpen` (default `true`). Per machine, in `settings.json`: `grove.notify` (default `true`), `agents.defaultAgent` (optional; already used by the docked panel and agent mode). Adding `grove` to app settings bumps `SETTINGS_VERSION` to 3 with a migration that only advances the version. `startDefaultOnOpen` is a defaulted field on the existing project schema and does not bump `PROJECT_SETTINGS_VERSION`.
 
 #### Out of scope
 
