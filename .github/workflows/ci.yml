@@ -1,9 +1,21 @@
 name: CI
 
+# The repo is private, so Actions minutes are billed: macOS at 10x and Windows at 2x Linux.
+# Every run checks Linux only. macOS and Windows run when a PR has the `ci:all-os` label, or
+# from "Run workflow" with "all_os" ticked. Docs-only changes and draft PRs skip CI.
 on:
   push:
     branches: [main]
+    paths-ignore: ['**/*.md', 'docs/**', '.cursor/**', 'LICENSE']
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    paths-ignore: ['**/*.md', 'docs/**', '.cursor/**', 'LICENSE']
+  workflow_dispatch:
+    inputs:
+      all_os:
+        description: Also run on macOS and Windows
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -13,13 +25,23 @@ permissions:
   contents: read
 
 jobs:
-  check:
-    name: Check (${{ matrix.os }})
+  ci:
+    name: CI (${{ matrix.os }})
+    # Skip drafts, and labels other than `ci:all-os` (adding one must not rerun everything).
+    if: >-
+      github.event.pull_request.draft != true &&
+      (github.event.action != 'labeled' || github.event.label.name == 'ci:all-os')
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: >-
+          ${{ fromJSON(
+            ((github.event_name == 'workflow_dispatch' && inputs.all_os) ||
+              contains(github.event.pull_request.labels.*.name, 'ci:all-os'))
+            && '["ubuntu-latest","macos-latest","windows-latest"]'
+            || '["ubuntu-latest"]') }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -27,26 +49,19 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      # `install-electron` downloads the Electron binary on every install otherwise.
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/electron
+            ~/Library/Caches/electron
+            ~/AppData/Local/electron/Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: electron-${{ runner.os }}-
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
-
-  e2e:
-    name: E2E smoke (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
       - name: Fetch DevTools extensions
         run: pnpm --filter @arbora/desktop extensions --optional
       - run: pnpm build:test
