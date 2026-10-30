@@ -16,6 +16,23 @@
   --accent-soft: #e3f2ea;
   --danger: #c93c3c;
   --ring: #2f7d5b66;
+  /* Editor syntax and diff colours (CodeMirror). */
+  --syn-keyword: #8b3fbf;
+  --syn-string: #2f7d5b;
+  --syn-number: #b5591e;
+  --syn-comment: #8a909c;
+  --syn-function: #2a5fb0;
+  --syn-type: #a0631a;
+  --syn-tag: #c0392b;
+  --syn-property: #2a6f8f;
+  --syn-selection: #2f7d5b33;
+  --syn-selection-match: #2f7d5b1f;
+  --syn-active-line: #16181d08;
+  --syn-search: #f5c54266;
+  --syn-search-outline: #d9a40f;
+  --syn-diff-line: #2f7d5b14;
+  --syn-diff-deleted: #c93c3c1f;
+  --syn-diff-word: #2f7d5b40;
   color-scheme: light;
 }
 
@@ -33,6 +50,22 @@
   --accent-soft: #15291f;
   --danger: #ef6b6b;
   --ring: #4fb38566;
+  --syn-keyword: #c792ea;
+  --syn-string: #8fd4a8;
+  --syn-number: #f0a36b;
+  --syn-comment: #6c7380;
+  --syn-function: #82aaff;
+  --syn-type: #e5c07b;
+  --syn-tag: #f07178;
+  --syn-property: #89ddff;
+  --syn-selection: #4fb38540;
+  --syn-selection-match: #4fb38526;
+  --syn-active-line: #ffffff08;
+  --syn-search: #e5c07b40;
+  --syn-search-outline: #b8902f;
+  --syn-diff-line: #4fb3851a;
+  --syn-diff-deleted: #ef6b6b26;
+  --syn-diff-word: #4fb3854d;
   color-scheme: dark;
 }
 
@@ -91,4 +124,19 @@ body {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Diff viewer: the merge view scrolls as one; the unified editor fills the pane. */
+.arbora-diff .cm-mergeView {
+  height: 100%;
+  overflow-y: auto;
+}
+
+.arbora-diff > .cm-editor {
+  height: 100%;
+}
+
+/* CodeMirror text must stay selectable inside the otherwise non-selectable app chrome. */
+.cm-editor {
+  user-select: text;
 }

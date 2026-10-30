@@ -4,8 +4,10 @@ import { Files, GitBranch, Search, type LucideIcon } from 'lucide-react';
 import clsx from 'clsx';
 import { CommandId, type BottomTab, type SidebarView } from '@arbora/shared';
 import { executeCommand, setWorkspaceController } from '../commands';
+import { allDiagnostics, useFiles } from '../files-store';
 import { useChordLabel } from '../keybindings';
 import { setGroupLayout, updateLayout, useApp } from '../store';
+import { EditorTabs } from './EditorTabs';
 
 const BrowserPanel = lazy(() => import('../panels/BrowserPanel'));
 const AgentPanel = lazy(() => import('../panels/AgentPanel'));
@@ -16,6 +18,7 @@ const GitPanel = lazy(() => import('../panels/GitPanel'));
 const ProblemsPanel = lazy(() => import('../panels/ProblemsPanel'));
 const FilesPanel = lazy(() => import('../panels/FilesPanel'));
 const SearchPanel = lazy(() => import('../panels/SearchPanel'));
+const EditorPanel = lazy(() => import('../panels/editor/EditorPanel'));
 
 export const MAIN_GROUP = 'arbora.main';
 export const CENTER_GROUP = 'arbora.center';
@@ -37,7 +40,9 @@ const BOTTOM_TABS: readonly { id: BottomTab; label: string }[] = [
 ];
 
 function ProblemCount() {
-  const errors = useApp((s) => s.problems.filter((p) => p.level === 'error').length);
+  const page = useApp((s) => s.problems.filter((p) => p.level === 'error').length);
+  const code = useFiles((s) => allDiagnostics(s).filter((d) => d.severity === 'error').length);
+  const errors = page + code;
   if (errors === 0) return null;
   return (
     <span
@@ -93,6 +98,14 @@ function BottomContent({ tab }: { tab: BottomTab }) {
       return unreachable;
     }
   }
+}
+
+/** Settings, the browser, or the active editor or diff tab. */
+function CenterContent() {
+  const settingsOpen = useApp((s) => s.settingsOpen);
+  const editorActive = useFiles((s) => s.active !== null);
+  if (settingsOpen) return <SettingsPage />;
+  return editorActive ? <EditorPanel /> : <BrowserPanel />;
 }
 
 function ActivityRail({
@@ -246,8 +259,13 @@ export function Workspace() {
             onLayoutChanged={(next, meta) => setGroupLayout(CENTER_GROUP, meta.requestedLayout ?? next)}
           >
             <Panel id="browser" minSize="160px" defaultSize={DEFAULT_CENTER['browser']}>
-              <section data-testid="panel-browser" className="h-full">
-                <Suspense fallback={<PanelFallback />}>{settingsOpen ? <SettingsPage /> : <BrowserPanel />}</Suspense>
+              <section data-testid="panel-browser" className="flex h-full flex-col">
+                {!settingsOpen && <EditorTabs />}
+                <div className="min-h-0 flex-1">
+                  <Suspense fallback={<PanelFallback />}>
+                    <CenterContent />
+                  </Suspense>
+                </div>
               </section>
             </Panel>
             <ResizeHandle id="sep-bottom" orientation="vertical" />

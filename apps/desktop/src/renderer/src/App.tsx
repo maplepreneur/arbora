@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { CommandPalette } from './components/CommandPalette';
+import { QuickOpen } from './components/QuickOpen';
 import { TitleBar } from './components/TitleBar';
 import { Toasts } from './components/Toasts';
 import { Welcome } from './components/Welcome';
@@ -14,11 +15,15 @@ import {
   resetAgents,
 } from './agent-store';
 import { executeCommand, navigateBrowser, registerBuiltinCommands } from './commands';
+import { onFilesChanged, resetFiles, setDiagnostics } from './files-store';
 import { useKeybindingContextSync, useKeybindingDispatch } from './keybindings';
 import { addProblems, applyDesignState, dispatchMode, setProblems, setProject, showToast, useApp } from './store';
 import { applyTerminalList, resetTerminals } from './terminal-store';
 
 const SettingsPage = lazy(() => import('./panels/settings/SettingsPage'));
+
+/** Tool failures repeat on every save; say each one once per session. */
+const shownToolErrors = new Set<string>();
 
 function useMainEvents(): void {
   useEffect(() => {
@@ -56,6 +61,15 @@ function useMainEvents(): void {
       arbora.on('design.failed', ({ error }) => {
         showToast(`Design mode: ${error}`);
         dispatchMode({ type: 'designLeave' });
+      }),
+      arbora.on('files.changed', ({ changes }) => onFilesChanged(changes)),
+      arbora.on('files.watchWarning', ({ message }) => showToast(message)),
+      arbora.on('editor.diagnostics', ({ path, source, diagnostics }) => setDiagnostics(path, source, diagnostics)),
+      arbora.on('editor.toolError', ({ source, message }) => {
+        const text = `${source}: ${message}`;
+        if (shownToolErrors.has(text)) return;
+        shownToolErrors.add(text);
+        showToast(text);
       }),
     ];
     return () => {
@@ -103,6 +117,15 @@ function useTerminalSnapshot(): void {
   }, [projectPath]);
 }
 
+/** Open files, the tree and diagnostics belong to the project. */
+function useFilesReset(): void {
+  const projectPath = useApp((s) => s.project?.path);
+  useEffect(() => {
+    resetFiles();
+    shownToolErrors.clear();
+  }, [projectPath]);
+}
+
 /** Agents and threads belong to the project; reload them when it changes (and after a renderer reload). */
 function useAgentSnapshot(): void {
   const projectPath = useApp((s) => s.project?.path);
@@ -142,6 +165,7 @@ export function App() {
   useBrowserSnapshot();
   useTerminalSnapshot();
   useAgentSnapshot();
+  useFilesReset();
   useThemeClass();
   usePreventFileNavigation();
   useKeybindingDispatch();
@@ -160,6 +184,7 @@ export function App() {
         <Welcome />
       )}
       <CommandPalette />
+      {project && <QuickOpen />}
       <Toasts />
     </div>
   );

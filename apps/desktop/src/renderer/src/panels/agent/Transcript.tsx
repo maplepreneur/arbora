@@ -32,6 +32,8 @@ import type {
   ToolCallStatus,
   ToolKind,
 } from '@arbora/shared';
+import { openFileAtLocation } from '../../commands';
+import { openDiff } from '../../files-store';
 import { Markdown } from './Markdown';
 import { UnifiedDiff } from './UnifiedDiff';
 
@@ -157,6 +159,28 @@ function Thought({ text }: { text: string }) {
   );
 }
 
+/** `path:line` from a tool call; opens the file in the editor at that line. */
+function LocationLink({
+  location,
+  projectPath,
+}: {
+  location: { readonly path: string; readonly line?: number | null | undefined };
+  projectPath: string;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid="tool-location"
+      title={`Open ${location.path}`}
+      onClick={() => openFileAtLocation({ path: location.path, line: location.line ?? 1 })}
+      className="max-w-[45%] shrink-0 truncate font-mono text-[11px] text-fg-subtle hover:text-accent hover:underline"
+    >
+      {relativePath(location.path, projectPath)}
+      {location.line != null ? `:${location.line}` : ''}
+    </button>
+  );
+}
+
 function ToolCard({ event, projectPath }: { event: ToolCallEvent; projectPath: string }) {
   const [open, setOpen] = useState(true);
   const diffs = event.content.filter((c) => c.type === 'diff');
@@ -170,26 +194,26 @@ function ToolCard({ event, projectPath }: { event: ToolCallEvent; projectPath: s
       data-tool-kind={event.toolKind}
       data-tool-status={event.status}
     >
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-[12px]"
-        aria-expanded={open}
-      >
-        <StatusIcon status={event.status} />
-        <ToolKindIcon kind={event.toolKind} />
-        <span className="min-w-0 flex-1 truncate" title={event.title}>
-          {event.title}
-        </span>
-        {event.locations.length > 0 && (
-          <span className="max-w-[45%] truncate font-mono text-[11px] text-fg-subtle" title={event.locations[0]?.path}>
-            {relativePath(event.locations[0]?.path ?? '', projectPath)}
-            {event.locations[0]?.line != null ? `:${event.locations[0].line}` : ''}
+      <div className="flex items-center gap-2 px-2 py-1.5 text-[12px]">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          aria-expanded={open}
+        >
+          <StatusIcon status={event.status} />
+          <ToolKindIcon kind={event.toolKind} />
+          <span className="min-w-0 flex-1 truncate" title={event.title}>
+            {event.title}
           </span>
+        </button>
+        {event.locations[0] && <LocationLink location={event.locations[0]} projectPath={projectPath} />}
+        {hasBody && (
+          <button type="button" onClick={() => setOpen((o) => !o)} aria-label={open ? 'Collapse' : 'Expand'}>
+            {open ? <ChevronDown size={12} className="shrink-0" /> : <ChevronRight size={12} className="shrink-0" />}
+          </button>
         )}
-        {hasBody &&
-          (open ? <ChevronDown size={12} className="shrink-0" /> : <ChevronRight size={12} className="shrink-0" />)}
-      </button>
+      </div>
       {open && hasBody && (
         <div className="flex flex-col gap-1.5 border-t border-border px-2 py-1.5">
           {diffs.map((diff, index) => (
@@ -198,6 +222,18 @@ function ToolCard({ event, projectPath }: { event: ToolCallEvent; projectPath: s
               oldText={diff.oldText}
               newText={diff.newText}
               path={relativePath(diff.path, projectPath)}
+              onOpen={() => {
+                const path = relativePath(diff.path, projectPath);
+                const name = path.slice(path.lastIndexOf('/') + 1);
+                openDiff({
+                  path,
+                  title: `${name} (agent edit)`,
+                  left: diff.oldText ?? '',
+                  right: diff.newText,
+                  leftLabel: diff.oldText == null ? 'New file' : `${name} (before)`,
+                  rightLabel: `${name} (after)`,
+                });
+              }}
             />
           ))}
           {texts.map((item, index) => (
@@ -252,9 +288,8 @@ function PermissionCard({
       {event.locations.length > 0 && (
         <ul className="mt-1 font-mono text-[11px] text-fg-muted">
           {event.locations.map((location, index) => (
-            <li key={index} className="truncate" title={location.path}>
-              {relativePath(location.path, projectPath)}
-              {location.line != null ? `:${location.line}` : ''}
+            <li key={index} className="truncate">
+              <LocationLink location={location} projectPath={projectPath} />
             </li>
           ))}
         </ul>

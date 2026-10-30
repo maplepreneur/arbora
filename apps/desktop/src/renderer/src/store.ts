@@ -67,7 +67,7 @@ export interface InitialState {
   windowState: WindowState;
 }
 
-export type SettingsSection = 'agents' | 'general' | 'browser' | 'keyboard';
+export type SettingsSection = 'agents' | 'general' | 'editor' | 'browser' | 'keyboard';
 
 /**
  * Shows Settings on `section`. Unlike `Mod+,`, this never closes it: buttons that say "settings"

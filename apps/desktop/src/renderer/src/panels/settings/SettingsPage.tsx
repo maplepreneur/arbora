@@ -39,6 +39,7 @@ type Section = SettingsSection;
 const SECTIONS: readonly { id: Section; label: string }[] = [
   { id: 'agents', label: 'Agents' },
   { id: 'general', label: 'General' },
+  { id: 'editor', label: 'Editor' },
   { id: 'browser', label: 'Browser' },
   { id: 'keyboard', label: 'Keyboard' },
 ];
@@ -546,6 +547,58 @@ function GeneralSection() {
   );
 }
 
+function EditorSection() {
+  const editor = useApp((s) => s.settings.editor);
+  return (
+    <div>
+      <SettingRow
+        title="Format on save"
+        detail="Run the project's own Prettier (from its node_modules) when saving. Skipped without Prettier."
+      >
+        <Toggle
+          on={editor.formatOnSave}
+          label="Format on save"
+          testId="setting-format-on-save"
+          onChange={(on) => void updateSettings({ editor: { formatOnSave: on } })}
+        />
+      </SettingRow>
+      <SettingRow title="ESLint on save" detail="Lint the saved file with the project's ESLint and config.">
+        <Toggle
+          on={editor.eslintOnSave}
+          label="ESLint on save"
+          testId="setting-eslint-on-save"
+          onChange={(on) => void updateSettings({ editor: { eslintOnSave: on } })}
+        />
+      </SettingRow>
+      <SettingRow
+        title="Type-check on save"
+        detail="Run tsc --noEmit after saving a TypeScript file. Slow on large projects, so off by default."
+      >
+        <Toggle
+          on={editor.tscOnSave}
+          label="Type-check on save"
+          testId="setting-tsc-on-save"
+          onChange={(on) => void updateSettings({ editor: { tscOnSave: on } })}
+        />
+      </SettingRow>
+      <SettingRow title="Editor font size">
+        <input
+          type="number"
+          min={8}
+          max={32}
+          value={editor.fontSize}
+          onChange={(event) => {
+            const value = Number(event.target.value);
+            if (Number.isInteger(value) && value >= 8 && value <= 32)
+              void updateSettings({ editor: { fontSize: value } });
+          }}
+          className="h-7 w-16 rounded border border-border bg-bg px-2 text-xs"
+        />
+      </SettingRow>
+    </div>
+  );
+}
+
 function BrowserSection() {
   const browser = useApp((s) => s.settings.browser);
   return (
@@ -648,6 +701,7 @@ export default function SettingsPage() {
         <div className="mx-auto max-w-3xl px-6 py-5">
           {section === 'agents' && <AgentsSection />}
           {section === 'general' && <GeneralSection />}
+          {section === 'editor' && <EditorSection />}
           {section === 'browser' && <BrowserSection />}
           {section === 'keyboard' && <KeyboardSection />}
         </div>
