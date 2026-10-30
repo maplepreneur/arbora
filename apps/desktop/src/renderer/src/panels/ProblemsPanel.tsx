@@ -1,9 +1,12 @@
 import { useMemo, useState } from 'react';
 import { CircleX, Info, Trash2, TriangleAlert, type LucideIcon } from 'lucide-react';
 import clsx from 'clsx';
-import { CommandId, type ProblemEntry, type ProblemLevel } from '@arbora/shared';
+import { CommandId, type Diagnostic, type ProblemEntry, type ProblemLevel } from '@arbora/shared';
 import { executeCommand } from '../commands';
+import { allDiagnostics, openFile, useFiles } from '../files-store';
 import { useApp } from '../store';
+
+type Scope = 'page' | 'code';
 
 type Filter = 'errors' | 'warnings' | 'all';
 
@@ -93,17 +96,71 @@ function ProblemRow({ entry, pageUrl }: { entry: ProblemEntry; pageUrl: string }
   );
 }
 
+function DiagnosticRow({ diagnostic }: { diagnostic: Diagnostic }) {
+  const { icon: Icon, className } = levelIcon(diagnostic.severity);
+  return (
+    <li>
+      <button
+        type="button"
+        data-testid="diagnostic-row"
+        data-source={diagnostic.source}
+        data-level={diagnostic.severity}
+        onClick={() =>
+          openFile(diagnostic.path, { pinned: true, at: { line: diagnostic.line, column: diagnostic.column } })
+        }
+        className="flex w-full items-start gap-2 border-b border-border/60 px-3 py-1 text-left font-mono text-[11px] leading-5 hover:bg-bg-muted"
+      >
+        <Icon size={13} className={clsx('mt-1 shrink-0', className)} />
+        <span className="min-w-0 flex-1 break-words whitespace-pre-wrap text-fg">{diagnostic.message}</span>
+        <span className="shrink-0 text-fg-subtle">
+          {diagnostic.source}
+          {diagnostic.code ? `(${diagnostic.code})` : ''}
+        </span>
+        <span className="max-w-[40%] shrink-0 truncate text-fg-subtle" data-testid="diagnostic-location">
+          {diagnostic.path}:{diagnostic.line}:{diagnostic.column}
+        </span>
+      </button>
+    </li>
+  );
+}
+
 export default function ProblemsPanel() {
   const problems = useApp((s) => s.problems);
   const pageUrl = useApp((s) => s.browser?.url ?? '');
+  const diagnosticsByPath = useFiles((s) => s.diagnostics);
+  const diagnostics = useMemo(() => allDiagnostics({ diagnostics: diagnosticsByPath }), [diagnosticsByPath]);
+  const [scope, setScope] = useState<Scope>('page');
   const [filter, setFilter] = useState<Filter>('warnings');
   const visible = useMemo(() => problems.filter((p) => matches(filter, p.level)), [problems, filter]);
-  const errors = problems.filter((p) => p.level === 'error').length;
-  const warnings = problems.filter((p) => p.level === 'warning').length;
+  const visibleDiagnostics = useMemo(
+    () => diagnostics.filter((d) => matches(filter, d.severity)),
+    [diagnostics, filter],
+  );
+  const source = scope === 'page' ? problems.map((p) => p.level) : diagnostics.map((d) => d.severity);
+  const errors = source.filter((level) => level === 'error').length;
+  const warnings = source.filter((level) => level === 'warning').length;
+  const codeErrors = diagnostics.filter((d) => d.severity === 'error').length;
 
   return (
-    <div className="flex h-full flex-col" data-testid="problems-panel">
+    <div className="flex h-full flex-col" data-testid="problems-panel" data-scope={scope}>
       <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border px-2 text-xs">
+        {(['page', 'code'] as const).map((id) => (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={scope === id}
+            data-testid={`problems-scope-${id}`}
+            onClick={() => setScope(id)}
+            className={clsx(
+              'h-6 shrink-0 rounded px-2 whitespace-nowrap',
+              scope === id ? 'bg-bg-muted font-medium text-fg' : 'text-fg-subtle hover:text-fg',
+            )}
+          >
+            {id === 'page' ? 'Page' : 'Code'}
+            {id === 'code' && codeErrors > 0 && <span className="ml-1 text-danger tabular-nums">{codeErrors}</span>}
+          </button>
+        ))}
+        <span className="mx-1 h-4 w-px bg-border" />
         {FILTERS.map(({ id, label }) => (
           <button
             key={id}
@@ -122,18 +179,35 @@ export default function ProblemsPanel() {
         <span className="ml-2 truncate whitespace-nowrap text-fg-subtle" data-testid="problems-counts">
           {errors} errors · {warnings} warnings
         </span>
-        <button
-          type="button"
-          title="Clear"
-          aria-label="Clear problems"
-          data-testid="problems-clear"
-          onClick={() => executeCommand(CommandId.browserClearProblems)}
-          className="ml-auto flex h-6 w-6 items-center justify-center rounded text-fg-subtle hover:bg-bg-muted hover:text-fg"
-        >
-          <Trash2 size={13} />
-        </button>
+        {scope === 'page' && (
+          <button
+            type="button"
+            title="Clear"
+            aria-label="Clear problems"
+            data-testid="problems-clear"
+            onClick={() => executeCommand(CommandId.browserClearProblems)}
+            className="ml-auto flex h-6 w-6 items-center justify-center rounded text-fg-subtle hover:bg-bg-muted hover:text-fg"
+          >
+            <Trash2 size={13} />
+          </button>
+        )}
       </div>
-      {visible.length === 0 ? (
+      {scope === 'code' ? (
+        visibleDiagnostics.length === 0 ? (
+          <div className="flex flex-1 items-center justify-center text-xs text-fg-subtle" data-testid="problems-empty">
+            {diagnostics.length === 0 ? 'No ESLint or tsc problems in saved files' : 'Nothing matches this filter'}
+          </div>
+        ) : (
+          <ul className="min-h-0 flex-1 overflow-auto">
+            {visibleDiagnostics.map((diagnostic, index) => (
+              <DiagnosticRow
+                key={`${diagnostic.path}:${diagnostic.line}:${diagnostic.column}:${index}`}
+                diagnostic={diagnostic}
+              />
+            ))}
+          </ul>
+        )
+      ) : visible.length === 0 ? (
         <div className="flex flex-1 items-center justify-center text-xs text-fg-subtle" data-testid="problems-empty">
           {problems.length === 0 ? 'No problems from the page yet' : 'Nothing matches this filter'}
         </div>

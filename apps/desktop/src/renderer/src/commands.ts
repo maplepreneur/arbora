@@ -1,9 +1,12 @@
 import {
+  baseName,
   CommandId,
   CommandRegistry,
   commandIdSchema,
   DEFAULT_COMMANDS,
   isPickableAgent,
+  parentPath,
+  toProjectPath,
   visibleModels,
   type AgentModeTarget,
   type BottomTab,
@@ -26,6 +29,16 @@ import {
   useAgents,
 } from './agent-store';
 import { defaultAgentId } from './agent-defaults';
+import {
+  activeTab,
+  closeTab,
+  editorController,
+  openDiff,
+  openFile,
+  refreshTree,
+  showBrowserTab,
+  useFiles,
+} from './files-store';
 import { dispatchMode, resetLayout, showToast, useApp } from './store';
 import { modeControl, nextValue, selectValues, thinkingControl } from './thread-controls';
 import {
@@ -71,10 +84,61 @@ export interface FileLocation {
   readonly column?: number;
 }
 
-/** Terminal `path:line:col` links land here; the editor that opens them arrives in Stage 7. */
+/**
+ * Terminal `path:line:col` links and agent tool-call locations land here. Paths may be absolute or
+ * relative to the project; files outside the project are not opened.
+ */
 export function openFileAtLocation(location?: FileLocation): void {
-  const where = location ? `${location.path}:${location.line}${location.column ? `:${location.column}` : ''}` : 'files';
-  showToast(`Opening ${where} arrives with the editor (Stage 7)`);
+  const project = useApp.getState().project;
+  if (!project) return;
+  if (!location) {
+    useFiles.setState({ quickOpen: true });
+    return;
+  }
+  const path = toProjectPath(location.path, project.path);
+  if (path === null || path === '') {
+    showToast(`${location.path} is outside the project`);
+    return;
+  }
+  useApp.setState({ settingsOpen: false });
+  openFile(path, {
+    pinned: true,
+    at: { line: location.line, ...(location.column !== undefined ? { column: location.column } : {}) },
+  });
+}
+
+/** The active file tab's path, or null with a toast. */
+function activeFilePath(): string | null {
+  const tab = activeTab();
+  if (tab?.kind === 'file') return tab.path;
+  showToast('Open a file first');
+  return null;
+}
+
+/** Folder that "New File" targets: the selected folder, or the selected file's folder. */
+function newEntryFolder(): string {
+  const { selected, children } = useFiles.getState();
+  if (selected === null) return '';
+  const entry = children[parentPath(selected)]?.find((e) => e.path === selected);
+  return entry?.kind === 'directory' ? selected : parentPath(selected);
+}
+
+function compareWithSaved(): void {
+  const path = activeFilePath();
+  if (!path) return;
+  const texts = editorController()?.texts(path);
+  if (!texts) {
+    showToast('Only text files can be compared');
+    return;
+  }
+  openDiff({
+    path,
+    title: `${baseName(path)} (saved ↔ editor)`,
+    left: texts.saved,
+    right: texts.current,
+    leftLabel: `${baseName(path)} (on disk)`,
+    rightLabel: `${baseName(path)} (editor)`,
+  });
 }
 
 async function newTerminal(split?: SplitDirection): Promise<void> {
@@ -146,6 +210,8 @@ function toggleMode(mode: 'agent' | 'design'): void {
     showToast('Open a project first');
     return;
   }
+  // Both modes act on the page, so it has to be on screen.
+  showBrowserTab();
   dispatchMode({ type: mode === 'agent' ? 'toggleAgent' : 'toggleDesign' });
 }
 
@@ -392,7 +458,7 @@ async function runCommand(id: CommandId): Promise<void> {
       dispatchMode({ type: 'exit' });
       return;
     case CommandId.quickOpen:
-      showToast('Quick open arrives with the file explorer (Stage 7)');
+      if (hasProject()) useFiles.setState((s) => ({ quickOpen: !s.quickOpen }));
       return;
     case CommandId.openProject: {
       const result = await arbora.invoke('project.open', {});
@@ -458,10 +524,14 @@ async function runCommand(id: CommandId): Promise<void> {
       await arbora.invoke('window.control', { action: 'toggleDevTools' });
       return;
     case CommandId.browserFocusUrl:
-      if (hasProject()) useApp.setState((s) => ({ urlFocusRequest: s.urlFocusRequest + 1 }));
+      if (hasProject()) {
+        showBrowserTab();
+        useApp.setState((s) => ({ urlFocusRequest: s.urlFocusRequest + 1 }));
+      }
       return;
     case CommandId.browserOpenDevUrl: {
       const project = useApp.getState().project;
+      if (project) showBrowserTab();
       if (project) await navigateBrowser(project.settings.devUrl ?? DEFAULT_DEV_URL);
       else showToast('Open a project first');
       return;
@@ -557,6 +627,49 @@ async function runCommand(id: CommandId): Promise<void> {
       return;
     case CommandId.openFileAtLocation:
       openFileAtLocation();
+      return;
+    case CommandId.showBrowser:
+      if (hasProject()) {
+        useApp.setState({ settingsOpen: false });
+        showBrowserTab();
+      }
+      return;
+    case CommandId.editorSave: {
+      const tab = activeTab();
+      if (tab?.kind === 'file') await editorController()?.save(tab.path);
+      return;
+    }
+    case CommandId.editorCloseTab: {
+      const active = useFiles.getState().active;
+      if (active) closeTab(active);
+      // macOS convention: Cmd+W with nothing left to close closes the window.
+      else if (useApp.getState().info.platform === 'darwin') await arbora.invoke('window.control', { action: 'close' });
+      return;
+    }
+    case CommandId.editorFormat: {
+      const path = activeFilePath();
+      if (path) await editorController()?.format(path);
+      return;
+    }
+    case CommandId.editorCompareWithSaved:
+      compareWithSaved();
+      return;
+    case CommandId.filesNewFile:
+    case CommandId.filesNewFolder:
+      withProject((w) => {
+        w.showSidebarView('files');
+        useFiles.setState({
+          creating: { dir: newEntryFolder(), kind: id === CommandId.filesNewFile ? 'file' : 'directory' },
+        });
+      });
+      return;
+    case CommandId.filesRevealInOS: {
+      const path = activeFilePath();
+      if (path) await arbora.invoke('files.reveal', { path });
+      return;
+    }
+    case CommandId.filesRefresh:
+      if (hasProject()) await refreshTree();
       return;
     case CommandId.agentNewThread:
       // The picker opens on the default agent, so the shortcut then Enter starts it.

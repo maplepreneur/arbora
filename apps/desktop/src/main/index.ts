@@ -2,7 +2,13 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, Menu, shell, type WebContents } from 'electron';
 import { AgentRegistry } from '@arbora/acp-client';
-import { mergeAgentSettings, toPlatform, type AgentVerification, type AppSettingsPatch } from '@arbora/shared';
+import {
+  mergeAgentSettings,
+  mergeEditorSettings,
+  toPlatform,
+  type AgentVerification,
+  type AppSettingsPatch,
+} from '@arbora/shared';
 import { probeAgent } from './agent/agent-probe.js';
 import type { AgentService } from './agent/agent-service.js';
 import { describeAttachment } from './agent/attachments.js';
@@ -17,6 +23,7 @@ import { detectTilingCompositor, parseProjectArg, startupSwitches } from './star
 import type { DevServer } from './terminal/dev-server.js';
 import { findExecutable, ShellEnvironment } from './terminal/shell-env.js';
 import type { TerminalService } from './terminal/terminal-service.js';
+import type { WorkspaceService } from './workspace/workspace-service.js';
 import { ThemeService } from './theme-service.js';
 import { ProjectWindowError, WindowManager, type ProjectWindow } from './window-manager.js';
 
@@ -106,6 +113,7 @@ function main(): void {
       userDataPath: app.getPath('userData'),
       // Arbora's own executable runs the shim as Node; inside a packaged build the script is in app.asar.
       mcpShim: { command: process.execPath, script: join(import.meta.dirname, 'mcp-shim.js') },
+      toolingWorkerPath: join(import.meta.dirname, 'tooling-worker.js'),
       appVersion: app.getVersion(),
       renderer:
         !app.isPackaged && rendererUrl
@@ -207,6 +215,7 @@ function main(): void {
               },
             }
           : {}),
+        ...(patch.editor !== undefined ? { editor: mergeEditorSettings(s.editor, patch.editor) } : {}),
         ...(patch.agents !== undefined ? { agents: mergeAgentSettings(s.agents, patch.agents) } : {}),
       })),
     );
@@ -579,6 +588,44 @@ function main(): void {
       if (!design) throw new Error('Open a project first');
       return design.resend(request.id, request.target);
     });
+
+    const requireWorkspace = (sender: WebContents): WorkspaceService => {
+      const workspace = windowFor(sender).workspace;
+      if (!workspace) throw new Error('Open a project first');
+      return workspace;
+    };
+    defineHandler('files.readDir', isTrusted, ({ path }, event) => requireWorkspace(event.sender).readDir(path));
+    defineHandler('files.read', isTrusted, ({ path }, event) => requireWorkspace(event.sender).read(path));
+    defineHandler('files.write', isTrusted, ({ path, content, eol, format }, event) =>
+      requireWorkspace(event.sender).save(path, content, eol, format),
+    );
+    defineHandler('files.create', isTrusted, async ({ path, kind }, event) => {
+      await requireWorkspace(event.sender).create(path, kind);
+      return undefined;
+    });
+    defineHandler('files.rename', isTrusted, async ({ from, to }, event) => {
+      await requireWorkspace(event.sender).rename(from, to);
+      return undefined;
+    });
+    defineHandler('files.delete', isTrusted, async ({ path }, event) => {
+      await requireWorkspace(event.sender).delete(path);
+      return undefined;
+    });
+    defineHandler('files.reveal', isTrusted, ({ path }, event) => {
+      requireWorkspace(event.sender).reveal(path);
+      return undefined;
+    });
+    defineHandler('files.list', isTrusted, (_req, event) => requireWorkspace(event.sender).listFiles());
+    defineHandler('search.start', isTrusted, async (query, event) => ({
+      searchId: await requireWorkspace(event.sender).search(query),
+    }));
+    defineHandler('search.cancel', isTrusted, ({ searchId }, event) => {
+      windowFor(event.sender).workspace?.cancelSearch(searchId);
+      return undefined;
+    });
+    defineHandler('editor.format', isTrusted, ({ path, content }, event) =>
+      requireWorkspace(event.sender).format(path, content),
+    );
 
     const queued = pendingPaths.splice(0);
     const first = initialProject ?? queued.shift() ?? null;

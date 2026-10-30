@@ -13,15 +13,17 @@ const LINE_CLASS: Readonly<Record<DiffLineKind, string>> = {
 
 const MARKER: Readonly<Record<DiffLineKind, string>> = { context: ' ', add: '+', remove: '-', hunk: '' };
 
-/** A simple unified diff; CodeMirror's merge view replaces this in a later stage. */
+/** A compact inline diff for transcript cards; `onOpen` shows it in the full diff viewer. */
 export function UnifiedDiff({
   oldText,
   newText,
   path,
+  onOpen,
 }: {
   oldText: string | null | undefined;
   newText: string;
   path: string;
+  onOpen?: () => void;
 }) {
   const diff = useMemo(() => unifiedDiff(oldText, newText), [oldText, newText]);
   const [expanded, setExpanded] = useState(false);
@@ -35,6 +37,16 @@ export function UnifiedDiff({
         </span>
         <span className="ml-auto shrink-0 text-emerald-600 dark:text-emerald-400">+{diff.additions}</span>
         <span className="shrink-0 text-red-600 dark:text-red-400">−{diff.deletions}</span>
+        {onOpen && (
+          <button
+            type="button"
+            data-testid="diff-open"
+            onClick={onOpen}
+            className="shrink-0 rounded px-1 font-sans text-fg-subtle hover:bg-bg hover:text-fg"
+          >
+            Open diff
+          </button>
+        )}
       </div>
       {diff.lines.length === 0 ? (
         <div className="px-2 py-1 text-fg-subtle">No changes</div>

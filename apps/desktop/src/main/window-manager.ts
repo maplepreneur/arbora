@@ -39,6 +39,9 @@ import { DevServer } from './terminal/dev-server.js';
 import { findExecutable, type ShellEnvironment } from './terminal/shell-env.js';
 import { TerminalService } from './terminal/terminal-service.js';
 import type { ThemeService } from './theme-service.js';
+import { ToolingService } from './workspace/tooling/tooling-service.js';
+import { forkUtility } from './workspace/tooling/utility-fork.js';
+import { WorkspaceService } from './workspace/workspace-service.js';
 
 export interface WindowManagerOptions {
   readonly platform: Platform;
@@ -53,6 +56,8 @@ export interface WindowManagerOptions {
   readonly userDataPath: string;
   /** Starts the browser-tools stdio shim for agents without HTTP MCP. */
   readonly mcpShim: ShimCommand;
+  /** Built `tooling-worker.js` (Prettier and ESLint in a utility process). */
+  readonly toolingWorkerPath: string;
   readonly appVersion: string;
   /** Dev server URL in development, otherwise the built `index.html` path. */
   readonly renderer: { readonly url: string } | { readonly file: string };
@@ -109,6 +114,7 @@ export class ProjectWindow {
   agents: AgentService | null = null;
   agentMode: AgentModeService | null = null;
   designMode: DesignModeService | null = null;
+  workspace: WorkspaceService | null = null;
 
   constructor(
     private readonly manager: WindowManager,
@@ -215,6 +221,7 @@ export class ProjectWindow {
     this.startTerminals(path);
     this.startAgentMode(path);
     this.startDesignMode(path);
+    this.startWorkspace(path);
     this.options.settings.update((s) => ({
       ...s,
       recentProjects: addRecentProject(s.recentProjects, { path, name: basename(path), openedAt: Date.now() }),
@@ -229,6 +236,7 @@ export class ProjectWindow {
     this.agentMode = null;
     this.stopBrowser();
     this.stopTerminals();
+    this.stopWorkspace();
     this.project = null;
     this.context = { modeActive: false, terminalFocused: false };
     this.window.setTitle('Arbora');
@@ -485,6 +493,49 @@ export class ProjectWindow {
     });
   }
 
+  private startWorkspace(projectPath: string): void {
+    this.stopWorkspace();
+    const app = this.contents;
+    const { platform, settings, shellEnvironment } = this.options;
+    const environment = async (): Promise<NodeJS.ProcessEnv> => {
+      await shellEnvironment.ready;
+      return shellEnvironment.env();
+    };
+    const tooling = new ToolingService({
+      root: projectPath,
+      workerPath: this.options.toolingWorkerPath,
+      fork: forkUtility,
+      environment,
+      settings: () => settings.get().editor,
+      events: {
+        diagnostics: (path, source, diagnostics) => sendEvent(app, 'editor.diagnostics', { path, source, diagnostics }),
+        toolError: (source, message) => sendEvent(app, 'editor.toolError', { source, message }),
+      },
+    });
+    this.workspace = new WorkspaceService({
+      root: projectPath,
+      rg: async () => findExecutable('rg', await environment(), platform) ?? null,
+      trash: (path) => shell.trashItem(path),
+      reveal: (path) => shell.showItemInFolder(path),
+      tooling,
+      formatOnSave: () => settings.get().editor.formatOnSave,
+      events: {
+        changed: (changes) => sendEvent(app, 'files.changed', { changes }),
+        watchWarning: (message) => sendEvent(app, 'files.watchWarning', { message }),
+        searchResults: (searchId, matches) => sendEvent(app, 'search.results', { searchId, matches }),
+        searchDone: (searchId, result) => sendEvent(app, 'search.done', { searchId, ...result }),
+      },
+    });
+  }
+
+  private stopWorkspace(): void {
+    const workspace = this.workspace;
+    this.workspace = null;
+    void workspace
+      ?.dispose()
+      .catch((error: unknown) => console.warn(`[workspace] dispose: ${(error as Error).message}`));
+  }
+
   private stopTerminals(): void {
     const agents = this.agents;
     this.agents = null;
@@ -583,6 +634,7 @@ export class ProjectWindow {
     clearTimeout(this.boundsTimer);
     this.stopBrowser();
     this.stopTerminals();
+    this.stopWorkspace();
     for (const dispose of this.disposers.splice(0)) dispose();
   }
 }

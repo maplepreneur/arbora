@@ -3,6 +3,8 @@ export * from './browser.js';
 export * from './channels.js';
 export * from './commands.js';
 export * from './design.js';
+export * from './files.js';
+export * from './fuzzy.js';
 export * from './inspector.js';
 export * from './ipc.js';
 export * from './keybindings.js';
