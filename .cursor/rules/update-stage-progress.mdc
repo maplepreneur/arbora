@@ -5,7 +5,9 @@ alwaysApply: true
 
 # Update stage progress at the end of work
 
-A task is not finished until the phase docs match what you just did. Do this in the **same PR** as the work. Do not leave it for a follow-up PR. This applies to features, fixes, docs, CI, and verification — not only new stages.
+Ship on `main`. Commit and push `origin main`. Do not open a branch or a pull request. This holds until told otherwise (set 30 Oct 2026): GitHub Actions minutes are used up for the month, and review PRs are paused while development is fast. A code push to `main` still starts the Linux CI job. Docs and `.cursor/**` do not. Do not add `ci:all-os`.
+
+A task is not finished until the phase docs match what you just did. Do this in the **same commit** as the work. Do not leave it for a follow-up commit. This applies to features, fixes, docs, CI, and verification — not only new stages.
 
 The human-readable copy of this rule lives in [AGENTS.md](../../AGENTS.md#end-of-work-update-progress).
 
@@ -22,14 +24,14 @@ The human-readable copy of this rule lives in [AGENTS.md](../../AGENTS.md#end-of
 ## Status values
 
 - `Not started`
-- `In progress (PR #N)` or `In progress (PR #N, merged)`
+- `In progress`, or `In progress (PR #N)` / `In progress (PR #N, merged)` for stages that already used a PR
 - `Blocked (reason)`
-- `Done (PR #N)` — only after the stage checklist and Omarchy/Hyprland `arch-ok`. Never from CI alone.
+- `Done` or `Done (PR #N)` — only after the stage checklist and Omarchy/Hyprland `arch-ok`. Never from CI alone. During direct-to-main, name the commit on `main`.
 
 ## Notes column
 
-Write what is true now: merged or not, CI result (name red jobs and link the run), what is left, what the next stage is. Do not leave "then merge" after a PR is merged. When you finish a stage's code, mark the next unstarted stage's Notes as "Next stage" and name any hand-off that is already in place.
+Write what is true now: on `main` or not, CI result (name red jobs and link the run), what is left, what the next stage is. Do not leave "then merge" after the work is on `main`. When you finish a stage's code, mark the next unstarted stage's Notes as "Next stage" and name any hand-off that is already in place.
 
-## Before you push or open the PR
+## Before you push to main
 
 If `docs/BUILD_STAGES.md` and `docs/PLAN.md` are unchanged, the progress update is missing. Go back and write it.
