@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 import {
   baseName,
+  decorationFor,
   parentPath,
   type Diagnostic,
   type DiagnosticSource,
   type FileChange,
   type FileEntry,
+  type GitFile,
 } from '@arbora/shared';
 
 /** A file open in the centre area. A preview tab (single click) is replaced by the next preview. */
@@ -54,7 +56,7 @@ export interface FilesState {
   /** Most recently opened files first, for quick open's empty query. */
   recent: string[];
   quickOpen: boolean;
-  /** Git decorations by path (`M`, `A`, `U`, ...). Empty until Stage 8 fills it. */
+  /** Git decorations by path (`M`, `A`, `U`, ...), including parent folders. */
   decorations: Record<string, { readonly letter: string; readonly tone: 'added' | 'modified' | 'deleted' | 'ignored' }>;
   /** Bumped to move focus to the explorer (after reveal, new file). */
   revealRequest: number;
@@ -341,6 +343,21 @@ export async function refreshTree(): Promise<void> {
 }
 
 /** Watcher batch: refresh affected folders, tell the editor, and invalidate quick open. */
+/** Replaces explorer git letters from a status snapshot. */
+export function setGitDecorations(files: readonly GitFile[]): void {
+  const decorations: FilesState['decorations'] = {};
+  for (const file of files) {
+    const decoration = decorationFor(file);
+    decorations[file.path] = decoration;
+    let parent = parentPath(file.path);
+    while (parent !== '') {
+      decorations[parent] ??= decoration;
+      parent = parentPath(parent);
+    }
+  }
+  useFiles.setState({ decorations });
+}
+
 export function onFilesChanged(changes: readonly FileChange[]): void {
   for (const dir of staleFolders(changes, useFiles.getState().children)) void loadDir(dir);
   controller?.onDiskChanges(changes);

@@ -39,6 +39,7 @@ import { DevServer } from './terminal/dev-server.js';
 import { findExecutable, type ShellEnvironment } from './terminal/shell-env.js';
 import { TerminalService } from './terminal/terminal-service.js';
 import type { ThemeService } from './theme-service.js';
+import { GitService } from './git/git-service.js';
 import { ToolingService } from './workspace/tooling/tooling-service.js';
 import { forkUtility } from './workspace/tooling/utility-fork.js';
 import { WorkspaceService } from './workspace/workspace-service.js';
@@ -115,6 +116,7 @@ export class ProjectWindow {
   agentMode: AgentModeService | null = null;
   designMode: DesignModeService | null = null;
   workspace: WorkspaceService | null = null;
+  git: GitService | null = null;
 
   constructor(
     private readonly manager: WindowManager,
@@ -512,6 +514,7 @@ export class ProjectWindow {
         toolError: (source, message) => sendEvent(app, 'editor.toolError', { source, message }),
       },
     });
+    this.git = new GitService({ root: projectPath, env: environment });
     this.workspace = new WorkspaceService({
       root: projectPath,
       rg: async () => findExecutable('rg', await environment(), platform) ?? null,
@@ -529,6 +532,7 @@ export class ProjectWindow {
   }
 
   private stopWorkspace(): void {
+    this.git = null;
     const workspace = this.workspace;
     this.workspace = null;
     void workspace

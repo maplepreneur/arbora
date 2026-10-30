@@ -3,19 +3,31 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirro
 import { bracketMatching, foldGutter, foldKeymap, indentOnInput } from '@codemirror/language';
 import { lintGutter, lintKeymap, setDiagnostics } from '@codemirror/lint';
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
-import { Compartment, EditorSelection, EditorState, type Extension, type Text } from '@codemirror/state';
+import {
+  Compartment,
+  EditorSelection,
+  EditorState,
+  RangeSet,
+  RangeSetBuilder,
+  StateEffect,
+  StateField,
+  type Extension,
+  type Text,
+} from '@codemirror/state';
 import {
   crosshairCursor,
   drawSelection,
   dropCursor,
   EditorView,
+  GutterMarker,
+  gutter,
   highlightActiveLine,
   highlightActiveLineGutter,
   keymap,
   lineNumbers,
   rectangularSelection,
 } from '@codemirror/view';
-import type { Eol, FileChange, FileContent } from '@arbora/shared';
+import type { Eol, FileChange, FileContent, GitLine } from '@arbora/shared';
 import {
   fileStatus,
   renamedPath,
@@ -71,6 +83,8 @@ function extensions(session: TextSession): Extension[] {
     highlightSelectionMatches(),
     history(),
     lintGutter(),
+    gitMarkField,
+    gitGutterExt,
     keymap.of([
       ...closeBracketsKeymap,
       ...defaultKeymap,
@@ -169,6 +183,7 @@ export function attach(parent: HTMLElement, path: string): EditorView | null {
   }
   viewPath = path;
   applyDiagnostics(path);
+  applyGitLines(path, gitLines.get(path) ?? []);
   const reveal = takePendingReveal(path);
   if (reveal) revealIn(view, reveal);
   return view;
@@ -195,6 +210,53 @@ function revealIn(target: EditorView, reveal: RevealTarget): void {
     effects: EditorView.scrollIntoView(from, { y: 'center' }),
   });
   target.focus();
+}
+
+const setGitMarks = StateEffect.define<readonly GitLine[]>();
+
+class GitMark extends GutterMarker {
+  constructor(private readonly kind: GitLine['kind']) {
+    super();
+  }
+
+  override toDOM(): HTMLElement {
+    const mark = document.createElement('span');
+    mark.dataset.git = this.kind;
+    mark.style.cssText = `display:block;width:3px;height:100%;margin-left:2px;background:${
+      this.kind === 'added' ? 'var(--accent)' : 'var(--syn-number)'
+    }`;
+    return mark;
+  }
+}
+
+const gitMarkField = StateField.define<RangeSet<GitMark>>({
+  create: () => RangeSet.empty,
+  update(value, transaction) {
+    value = value.map(transaction.changes);
+    for (const effect of transaction.effects) {
+      if (!effect.is(setGitMarks)) continue;
+      const builder = new RangeSetBuilder<GitMark>();
+      const sorted = [...effect.value].sort((a, b) => a.line - b.line);
+      for (const mark of sorted) {
+        if (mark.line < 1 || mark.line > transaction.state.doc.lines) continue;
+        const pos = transaction.state.doc.line(mark.line).from;
+        builder.add(pos, pos, new GitMark(mark.kind));
+      }
+      return builder.finish();
+    }
+    return value;
+  },
+});
+
+const gitGutterExt = gutter({ class: 'cm-git-gutter', markers: (view) => view.state.field(gitMarkField) });
+
+const gitLines = new Map<string, readonly GitLine[]>();
+
+/** Shows added and changed lines for `path` in the editor gutter. */
+export function applyGitLines(path: string, lines: readonly GitLine[]): void {
+  gitLines.set(path, lines);
+  if (!view || viewPath !== path) return;
+  view.dispatch({ effects: setGitMarks.of(lines) });
 }
 
 /** Pushes the store's diagnostics for `path` into the view, if it is on screen. */

@@ -24,6 +24,19 @@ import {
 import { designCommandSchema, designSessionSummarySchema, designStateSchema } from './design.js';
 import { agentModeIncludeSchema, agentModeSelectionSchema, agentModeTargetSchema } from './inspector.js';
 import {
+  gitBranchSchema,
+  gitCommitSchema,
+  gitHunkSchema,
+  gitLineSchema,
+  gitRemoteSchema,
+  gitResultSchema,
+  gitStashSchema,
+  gitStatusSchema,
+  githubAuthSchema,
+  githubCheckSchema,
+  githubPrSchema,
+} from './git.js';
+import {
   diagnosticSchema,
   diagnosticSourceSchema,
   eolSchema,
@@ -383,6 +396,64 @@ export const channels = {
     'editor.format',
     filePath.extend({ content: z.string().max(100_000_000) }),
     z.object({ content: z.string().nullable(), error: z.string().optional() }),
+  ),
+
+  'git.status': defineChannel('git.status', none, gitStatusSchema),
+  'git.diff': defineChannel(
+    'git.diff',
+    z.object({ path: relativePathSchema.optional(), staged: z.boolean() }),
+    z.object({ text: z.string() }),
+  ),
+  'git.hunks': defineChannel('git.hunks', filePath.extend({ staged: z.boolean() }), z.array(gitHunkSchema)),
+  'git.lines': defineChannel('git.lines', filePath, z.array(gitLineSchema)),
+  'git.sides': defineChannel(
+    'git.sides',
+    filePath.extend({ staged: z.boolean() }),
+    z.object({ left: z.string(), right: z.string() }),
+  ),
+  'git.stage': defineChannel('git.stage', z.object({ paths: z.array(relativePathSchema) }), none),
+  'git.unstage': defineChannel('git.unstage', z.object({ paths: z.array(relativePathSchema) }), none),
+  'git.stageHunk': defineChannel(
+    'git.stageHunk',
+    filePath.extend({ index: z.number().int().nonnegative(), staged: z.boolean() }),
+    none,
+  ),
+  'git.discard': defineChannel('git.discard', z.object({ paths: z.array(relativePathSchema) }), none),
+  'git.commit': defineChannel(
+    'git.commit',
+    z.object({ message: z.string().min(1).max(100_000), amend: z.boolean().default(false) }),
+    gitResultSchema,
+  ),
+  'git.branches': defineChannel('git.branches', none, z.array(gitBranchSchema)),
+  'git.checkout': defineChannel('git.checkout', z.object({ name: z.string().min(1).max(255) }), gitResultSchema),
+  'git.createBranch': defineChannel(
+    'git.createBranch',
+    z.object({ name: z.string().min(1).max(255) }),
+    gitResultSchema,
+  ),
+  'git.log': defineChannel('git.log', none, z.array(gitCommitSchema)),
+  'git.push': defineChannel('git.push', none, gitResultSchema),
+  'git.pull': defineChannel('git.pull', none, gitResultSchema),
+  'git.fetch': defineChannel('git.fetch', none, gitResultSchema),
+  'git.stash': defineChannel('git.stash', none, z.array(gitStashSchema)),
+  'git.stashApply': defineChannel(
+    'git.stashApply',
+    z.object({ index: z.number().int().nonnegative(), pop: z.boolean() }),
+    gitResultSchema,
+  ),
+  'git.stashDrop': defineChannel('git.stashDrop', z.object({ index: z.number().int().nonnegative() }), gitResultSchema),
+  'git.remotes': defineChannel('git.remotes', none, z.array(gitRemoteSchema)),
+  'git.github': defineChannel('git.github', none, githubAuthSchema),
+  'git.pullRequests': defineChannel('git.pullRequests', none, z.array(githubPrSchema)),
+  'git.createPullRequest': defineChannel(
+    'git.createPullRequest',
+    z.object({ title: z.string().min(1).max(300), body: z.string().max(100_000) }),
+    z.object({ url: z.string() }),
+  ),
+  'git.checks': defineChannel(
+    'git.checks',
+    z.object({ number: z.number().int().positive() }),
+    z.array(githubCheckSchema),
   ),
 } as const;
 

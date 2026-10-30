@@ -16,6 +16,7 @@ import {
 } from './agent-store';
 import { executeCommand, navigateBrowser, registerBuiltinCommands } from './commands';
 import { onFilesChanged, resetFiles, setDiagnostics } from './files-store';
+import { noteAgentWatcherChanges, refreshGit, scheduleGitRefresh } from './git-client';
 import { useKeybindingContextSync, useKeybindingDispatch } from './keybindings';
 import { addProblems, applyDesignState, dispatchMode, setProblems, setProject, showToast, useApp } from './store';
 import { applyTerminalList, resetTerminals } from './terminal-store';
@@ -62,7 +63,11 @@ function useMainEvents(): void {
         showToast(`Design mode: ${error}`);
         dispatchMode({ type: 'designLeave' });
       }),
-      arbora.on('files.changed', ({ changes }) => onFilesChanged(changes)),
+      arbora.on('files.changed', ({ changes }) => {
+        onFilesChanged(changes);
+        noteAgentWatcherChanges(changes);
+        scheduleGitRefresh();
+      }),
       arbora.on('files.watchWarning', ({ message }) => showToast(message)),
       arbora.on('editor.diagnostics', ({ path, source, diagnostics }) => setDiagnostics(path, source, diagnostics)),
       arbora.on('editor.toolError', ({ source, message }) => {
@@ -123,6 +128,7 @@ function useFilesReset(): void {
   useEffect(() => {
     resetFiles();
     shownToolErrors.clear();
+    if (projectPath) void refreshGit();
   }, [projectPath]);
 }
 

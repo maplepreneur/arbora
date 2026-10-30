@@ -23,6 +23,8 @@ import { detectTilingCompositor, parseProjectArg, startupSwitches } from './star
 import type { DevServer } from './terminal/dev-server.js';
 import { findExecutable, ShellEnvironment } from './terminal/shell-env.js';
 import type { TerminalService } from './terminal/terminal-service.js';
+import { createPullRequest, githubAuth, listPullRequests, pullRequestChecks } from './git/github.js';
+import type { GitService } from './git/git-service.js';
 import type { WorkspaceService } from './workspace/workspace-service.js';
 import { ThemeService } from './theme-service.js';
 import { ProjectWindowError, WindowManager, type ProjectWindow } from './window-manager.js';
@@ -626,6 +628,73 @@ function main(): void {
     defineHandler('editor.format', isTrusted, ({ path, content }, event) =>
       requireWorkspace(event.sender).format(path, content),
     );
+
+    const requireGit = (sender: WebContents): GitService => {
+      const git = windowFor(sender).git;
+      if (!git) throw new Error('Open a project first');
+      return git;
+    };
+    const gitEnv = async (): Promise<NodeJS.ProcessEnv> => {
+      await shellEnvironment.ready;
+      return shellEnvironment.env();
+    };
+    defineHandler('git.status', isTrusted, (_req, event) => requireGit(event.sender).status());
+    defineHandler('git.diff', isTrusted, ({ path, staged }, event) =>
+      requireGit(event.sender)
+        .diff(path, staged)
+        .then((text) => ({ text })),
+    );
+    defineHandler('git.hunks', isTrusted, ({ path, staged }, event) => requireGit(event.sender).hunks(path, staged));
+    defineHandler('git.lines', isTrusted, ({ path }, event) => requireGit(event.sender).lines(path));
+    defineHandler('git.sides', isTrusted, ({ path, staged }, event) => requireGit(event.sender).sides(path, staged));
+    defineHandler('git.stage', isTrusted, async ({ paths }, event) => {
+      await requireGit(event.sender).stage(paths);
+      return undefined;
+    });
+    defineHandler('git.unstage', isTrusted, async ({ paths }, event) => {
+      await requireGit(event.sender).unstage(paths);
+      return undefined;
+    });
+    defineHandler('git.stageHunk', isTrusted, async ({ path, index, staged }, event) => {
+      await requireGit(event.sender).stageHunk(path, index, staged);
+      return undefined;
+    });
+    defineHandler('git.discard', isTrusted, async ({ paths }, event) => {
+      await requireGit(event.sender).discard(paths);
+      return undefined;
+    });
+    defineHandler('git.commit', isTrusted, ({ message, amend }, event) =>
+      requireGit(event.sender).commit(message, amend),
+    );
+    defineHandler('git.branches', isTrusted, (_req, event) => requireGit(event.sender).branches());
+    defineHandler('git.checkout', isTrusted, ({ name }, event) => requireGit(event.sender).checkout(name));
+    defineHandler('git.createBranch', isTrusted, ({ name }, event) => requireGit(event.sender).createBranch(name));
+    defineHandler('git.log', isTrusted, (_req, event) => requireGit(event.sender).log());
+    defineHandler('git.push', isTrusted, (_req, event) => requireGit(event.sender).push());
+    defineHandler('git.pull', isTrusted, (_req, event) => requireGit(event.sender).pull());
+    defineHandler('git.fetch', isTrusted, (_req, event) => requireGit(event.sender).fetch());
+    defineHandler('git.stash', isTrusted, (_req, event) => requireGit(event.sender).stash());
+    defineHandler('git.stashApply', isTrusted, ({ index, pop }, event) =>
+      requireGit(event.sender).stashApply(index, pop),
+    );
+    defineHandler('git.stashDrop', isTrusted, ({ index }, event) => requireGit(event.sender).stashDrop(index));
+    defineHandler('git.remotes', isTrusted, (_req, event) => requireGit(event.sender).remotes());
+    defineHandler('git.github', isTrusted, async () => githubAuth(await gitEnv()));
+    defineHandler('git.pullRequests', isTrusted, async (_req, event) => {
+      const project = windowFor(event.sender).project;
+      if (!project) throw new Error('Open a project first');
+      return listPullRequests(project.path, await gitEnv());
+    });
+    defineHandler('git.createPullRequest', isTrusted, async ({ title, body }, event) => {
+      const project = windowFor(event.sender).project;
+      if (!project) throw new Error('Open a project first');
+      return { url: await createPullRequest(project.path, await gitEnv(), title, body) };
+    });
+    defineHandler('git.checks', isTrusted, async ({ number }, event) => {
+      const project = windowFor(event.sender).project;
+      if (!project) throw new Error('Open a project first');
+      return pullRequestChecks(project.path, await gitEnv(), number);
+    });
 
     const queued = pendingPaths.splice(0);
     const first = initialProject ?? queued.shift() ?? null;
