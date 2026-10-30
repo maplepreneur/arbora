@@ -236,10 +236,24 @@ createServer((req, res) => res.end('<title>dev ' + port + '</title><h1>port ' + 
         .toBe(`http://127.0.0.1:${first}/`);
       await newThread(page, HTTP_ID);
       await send(page, 'restart dev');
+      // terminal_run asks; "Always allow in this project" is written to .arbora/project.json.
+      const card = page.getByTestId('permission-card').last();
+      await expect(card).toContainText('Run terminal commands', { timeout: 60_000 });
+      await card.getByTestId('permission-allow_always').click();
       const reply = page.getByTestId('agent-message').last();
-      await expect(reply).toContainText(`Page URL: http://127.0.0.1:${second}/`, { timeout: 60_000 });
+      await expect(reply).toContainText('restart-ok', { timeout: 60_000 });
+      await expect(reply).toContainText(`Page URL: http://127.0.0.1:${second}/`);
       await expect(reply).toContainText('"running": true');
+      await expect(reply).toContainText(`Local:   http://127.0.0.1:${second}/`);
       expect((await browserState(page))?.title).toBe(`dev ${second}`);
+      const settings = JSON.parse(readFileSync(join(project, '.arbora/project.json'), 'utf8')) as unknown;
+      expect(settings).toMatchObject({ devCommand: 'node server.mjs', browserTools: { terminalRun: 'allow' } });
+      // A new thread (a new agent session) runs commands without asking again.
+      await page.getByTestId('show-threads').click();
+      await newThread(page, HTTP_ID);
+      await send(page, 'restart dev');
+      await expect(page.getByTestId('agent-message').last()).toContainText('restart-ok', { timeout: 60_000 });
+      await expect(page.getByTestId('permission-card')).toHaveCount(0);
       await deleteThreads(page);
     } finally {
       await app.close();

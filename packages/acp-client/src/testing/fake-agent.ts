@@ -20,7 +20,7 @@
  *   -> screenshot, reported back (the e2e for Stage 5)
  * - "evaluate": `browser_evaluate` of `document.title` (needs the user's permission)
  * - "tool sweep": every other tool once against the vite-react fixture, one result line each
- * - "restart dev": `devserver_restart`, then `browser_get_url`
+ * - "restart dev": `devserver_restart`, `browser_get_url`, `devserver_logs` and `terminal_run`
  */
 import { Readable, Writable } from 'node:stream';
 import { basename, isAbsolute, join } from 'node:path';
@@ -424,7 +424,14 @@ async function handlePrompt(cx: AgentContext, params: PromptRequest): Promise<Pr
   if (restart) {
     const result = await callBrowserTool(cx, sessionId, state, 'devserver_restart', {});
     const url = await callBrowserTool(cx, sessionId, state, 'browser_get_url', {});
-    await say(cx, sessionId, `Restarted: ${result.isError ? `ERROR ${result.text}` : result.text}\n${url.text}`, state);
+    const logs = await callBrowserTool(cx, sessionId, state, 'devserver_logs', { lines: 20 });
+    const run = await callBrowserTool(cx, sessionId, state, 'terminal_run', { command: 'echo restart-ok' });
+    await say(
+      cx,
+      sessionId,
+      `Restarted: ${result.isError ? `ERROR ${result.text}` : result.text}\n${url.text}\nLogs: ${logs.text}\nRun: ${run.text}`,
+      state,
+    );
   }
   const evaluate = /\bevaluate\b/i.test(text);
   if (evaluate) {
