@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   addRecentProject,
   defaultSettings,
+  isPickableAgent,
   loadSettings,
   MAX_RECENT_PROJECTS,
   mergeAgentSettings,
   migrateSettings,
   resolveDefaultAgent,
+  visibleModels,
   SETTINGS_VERSION,
   SettingsMigrationError,
   type Migration,
@@ -86,7 +88,16 @@ describe('loadSettings', () => {
     const { settings, warnings } = loadSettings({ version: 2, theme: 'light' });
     expect(warnings).toEqual([]);
     expect(settings.version).toBe(3);
-    expect(settings.agents).toEqual({ custom: [], permissions: {}, defaultModels: {}, favoriteModels: {} });
+    expect(settings.agents).toEqual({
+      custom: [],
+      permissions: {},
+      defaultModels: {},
+      favoriteModels: {},
+      hidden: [],
+      hiddenModels: {},
+      verified: {},
+      autoVerify: true,
+    });
   });
 
   it('keeps custom agents and remembered permissions', () => {
@@ -98,7 +109,53 @@ describe('loadSettings', () => {
       ...agents,
       defaultModels: {},
       favoriteModels: {},
+      hidden: [],
+      hiddenModels: {},
+      verified: {},
+      autoVerify: true,
     });
+  });
+
+  it('offers only signed-in, visible agents and their visible models, default model first', () => {
+    const agents = loadSettings({
+      version: 3,
+      agents: {
+        hidden: ['grok'],
+        defaultModels: { opencode: 'b' },
+        hiddenModels: { opencode: ['c'] },
+        verified: {
+          opencode: {
+            status: 'ready',
+            checkedAt: 1,
+            models: [
+              { value: 'a', name: 'A' },
+              { value: 'b', name: 'B' },
+              { value: 'c', name: 'C' },
+            ],
+          },
+          grok: { status: 'ready', checkedAt: 1 },
+          codex: { status: 'auth_required', checkedAt: 1 },
+        },
+      },
+    }).settings.agents;
+    expect(isPickableAgent(agents, 'opencode')).toBe(true);
+    expect(isPickableAgent(agents, 'grok')).toBe(false);
+    expect(isPickableAgent(agents, 'codex')).toBe(false);
+    expect(isPickableAgent(agents, 'claude-code')).toBe(false);
+    expect(visibleModels(agents, 'opencode').map((m) => m.value)).toEqual(['b', 'a']);
+  });
+
+  it('orders models: default, then favourites as starred, then the rest', () => {
+    const models = ['a', 'b', 'c', 'd', 'e'].map((value) => ({ value, name: value.toUpperCase() }));
+    const agents = loadSettings({
+      version: 3,
+      agents: {
+        defaultModels: { x: 'd' },
+        favoriteModels: { x: ['e', 'b', 'd'] },
+        verified: { x: { status: 'ready', checkedAt: 1, models } },
+      },
+    }).settings.agents;
+    expect(visibleModels(agents, 'x').map((m) => m.value)).toEqual(['d', 'e', 'b', 'a', 'c']);
   });
 
   it('merges agent patches: omitted fields stay, null clears the default agent', () => {

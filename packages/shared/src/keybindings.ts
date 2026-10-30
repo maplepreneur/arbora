@@ -212,10 +212,36 @@ export interface KeybindingContext {
   readonly modeActive: boolean;
   readonly terminalFocused: boolean;
   readonly terminalPassthrough: boolean;
+  /** Design mode is showing. Optional so callers that predate it still match. */
+  readonly designActive?: boolean;
+  /** Inline text editing is active; the page must receive keys other than Escape. */
+  readonly textEditing?: boolean;
+  /** Focus is inside the agent panel (renderer only, so main never intercepts these chords). */
+  readonly agentFocused?: boolean;
 }
 
-/** `always`: any context. `modeActive`: only while agent/design mode is active (e.g. Esc). */
-export type KeybindingWhen = 'always' | 'modeActive';
+/**
+ * `always`: any context. `modeActive`: agent or design mode. `design`: design mode only.
+ * `agentPanel`: focus is in the agent panel (CLI-style thread keys such as Shift+Tab).
+ */
+export type KeybindingWhen = 'always' | 'modeActive' | 'design' | 'agentPanel';
+
+function bindingApplies(when: KeybindingWhen, context: KeybindingContext): boolean {
+  switch (when) {
+    case 'always':
+      return true;
+    case 'modeActive':
+      return context.modeActive;
+    case 'design':
+      return context.designActive === true;
+    case 'agentPanel':
+      return context.agentFocused === true;
+    default: {
+      const unreachable: never = when;
+      return unreachable;
+    }
+  }
+}
 
 export interface ResolvedKeybinding {
   readonly commandId: string;
@@ -278,7 +304,7 @@ export class KeybindingTable {
     if (context.terminalFocused && context.terminalPassthrough && isTerminalPassthroughChord(chord)) {
       return undefined;
     }
-    return candidates.find((b) => b.when === 'always' || context.modeActive);
+    return candidates.find((binding) => bindingApplies(binding.when, context));
   }
 
   forCommand(commandId: string): ResolvedKeybinding | undefined {

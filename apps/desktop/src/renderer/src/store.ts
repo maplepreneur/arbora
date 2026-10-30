@@ -4,6 +4,10 @@ import {
   layoutStateSchema,
   type AppInfo,
   type AppSettings,
+  type DesignSelection,
+  type DesignSessionSummary,
+  type DesignState,
+  type FrameworkInfo,
   type LayoutState,
   type NavigationState,
   type PanelGroupLayout,
@@ -12,7 +16,7 @@ import {
   type ThemeState,
   type WindowState,
 } from '@arbora/shared';
-import { IDLE, inspectorEffect, transition, type ModeEvent, type ModeState } from './mode';
+import { designEffect, IDLE, inspectorEffect, transition, type ModeEvent, type ModeState } from './mode';
 
 export interface ToastAction {
   readonly label: string;
@@ -35,7 +39,14 @@ export interface AppState {
   /** Bumped to remount panel groups with their default sizes. */
   layoutEpoch: number;
   mode: ModeState;
+  /** Live design-mode op list. Sessions are the saved ones, loaded with the panel. */
+  design: DesignUiState;
   paletteOpen: boolean;
+  /** The Settings page is showing in place of the browser pane. */
+  settingsOpen: boolean;
+  settingsSection: SettingsSection;
+  /** Agent ids whose sign-in check is running. */
+  checkingAgents: string[];
   terminalFocused: boolean;
   toasts: Toast[];
   /** Browser panel state from main; null until the project's browser view exists. */
@@ -56,6 +67,48 @@ export interface InitialState {
   windowState: WindowState;
 }
 
+export type SettingsSection = 'agents' | 'general' | 'browser' | 'keyboard';
+
+/**
+ * Shows Settings on `section`. Unlike `Mod+,`, this never closes it: buttons that say "settings"
+ * must not hide the page when it is already open beside them.
+ */
+export function openSettings(section: SettingsSection = 'agents'): void {
+  useApp.setState({ settingsOpen: true, settingsSection: section, paletteOpen: false });
+}
+
+export interface DesignUiState {
+  readonly ops: DesignState['ops'];
+  readonly cursor: number;
+  readonly textEditing: boolean;
+  readonly selectionCount: number;
+  readonly selection: DesignSelection | null;
+  readonly structureWarning: boolean;
+  readonly framework: FrameworkInfo;
+  readonly showingOriginal: boolean;
+  readonly sessions: readonly DesignSessionSummary[];
+  /** `thread:<id>` or `new:<agentId>` the user picked last; null follows the default agent. */
+  readonly target: string | null;
+  /** Model picked for a new thread; null follows the agent's default model. */
+  readonly model: string | null;
+}
+
+const HTML_FRAMEWORK: FrameworkInfo = { id: 'html', react: false, vue: false, reactVersion: null };
+
+export const EMPTY_DESIGN: DesignUiState = {
+  ops: [],
+  cursor: 0,
+  textEditing: false,
+  selectionCount: 0,
+  selection: null,
+  structureWarning: false,
+  framework: HTML_FRAMEWORK,
+  showingOriginal: false,
+  sessions: [],
+  target: null,
+  model: null,
+};
+
 export const DEFAULT_LAYOUT: LayoutState = layoutStateSchema.parse({});
 
 let nextToastId = 1;
@@ -70,7 +123,11 @@ export const useApp = create<AppState>()(() => ({
   layout: DEFAULT_LAYOUT,
   layoutEpoch: 0,
   mode: IDLE,
+  design: EMPTY_DESIGN,
   paletteOpen: false,
+  settingsOpen: false,
+  settingsSection: 'agents',
+  checkingAgents: [],
   terminalFocused: false,
   toasts: [],
   browser: null,
@@ -96,6 +153,7 @@ export function setProject(project: ProjectInfo | null): void {
           layout: project?.layout ?? DEFAULT_LAYOUT,
           layoutEpoch: s.layoutEpoch + 1,
           mode: IDLE,
+          design: EMPTY_DESIGN,
           paletteOpen: false,
           browser: null,
           problems: [],
@@ -129,14 +187,47 @@ export function resetLayout(): void {
   persistLayout();
 }
 
-/** Applies a mode event and starts or stops the page inspector in main when agent mode begins or ends. */
+/** Applies a mode event and starts or stops the page inspector and the design overlay. */
 export function dispatchMode(event: ModeEvent): void {
   const previous = useApp.getState().mode;
-  const next = transition(previous, event);
+  const design = useApp.getState().design;
+  let actual = event;
+  const dirty = design.cursor > 0;
+  if (previous.kind === 'design' && previous.phase === 'editing') {
+    if (event.type === 'toggleAgent' && dirty) {
+      actual = { type: 'designConfirm', pending: 'agent' };
+    } else if (event.type === 'toggleDesign' && dirty) {
+      actual = { type: 'designConfirm', pending: 'idle' };
+    } else if (event.type === 'exit' && design.textEditing) {
+      void window.arbora.invoke('design.command', { type: 'endText' });
+      return;
+    } else if (event.type === 'exit' && design.selectionCount > 0) {
+      void window.arbora.invoke('design.command', { type: 'deselect' });
+      return;
+    } else if (event.type === 'exit' && dirty) {
+      actual = { type: 'designConfirm', pending: 'idle' };
+    }
+  }
+  const next = transition(previous, actual);
   if (next === previous) return;
   useApp.setState({ mode: next });
   const effect = inspectorEffect(previous, next);
   if (effect) void window.arbora.invoke('agentMode.setInspecting', { active: effect === 'start' });
+  const designing = designEffect(previous, next);
+  if (designing === 'stop') {
+    useApp.setState((s) => ({
+      design: { ...EMPTY_DESIGN, sessions: s.design.sessions, target: s.design.target, model: s.design.model },
+    }));
+  }
+  if (designing) void window.arbora.invoke('design.setActive', { active: designing === 'start' });
+}
+
+export function applyDesignState(state: DesignState): void {
+  useApp.setState((current) => ({ design: { ...current.design, ...state } }));
+}
+
+export function setDesignTarget(target: string, model: string | null): void {
+  useApp.setState((current) => ({ design: { ...current.design, target, model } }));
 }
 
 export function dismissToast(id: number): void {

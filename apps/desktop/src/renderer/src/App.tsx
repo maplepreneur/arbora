@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { CommandPalette } from './components/CommandPalette';
 import { TitleBar } from './components/TitleBar';
 import { Toasts } from './components/Toasts';
@@ -15,8 +15,10 @@ import {
 } from './agent-store';
 import { executeCommand, navigateBrowser, registerBuiltinCommands } from './commands';
 import { useKeybindingContextSync, useKeybindingDispatch } from './keybindings';
-import { addProblems, dispatchMode, setProblems, setProject, showToast, useApp } from './store';
+import { addProblems, applyDesignState, dispatchMode, setProblems, setProject, showToast, useApp } from './store';
 import { applyTerminalList, resetTerminals } from './terminal-store';
+
+const SettingsPage = lazy(() => import('./panels/settings/SettingsPage'));
 
 function useMainEvents(): void {
   useEffect(() => {
@@ -46,6 +48,14 @@ function useMainEvents(): void {
       arbora.on('agentMode.ended', ({ error }) => {
         if (error) showToast(`Agent mode: ${error}`);
         dispatchMode({ type: error ? 'failed' : 'exit' });
+      }),
+      arbora.on('design.state', (state) => applyDesignState(state)),
+      arbora.on('design.navigationBlocked', ({ url }) => {
+        showToast(`Save or discard design edits before leaving ${url}`);
+      }),
+      arbora.on('design.failed', ({ error }) => {
+        showToast(`Design mode: ${error}`);
+        dispatchMode({ type: 'designLeave' });
       }),
     ];
     return () => {
@@ -126,6 +136,7 @@ function usePreventFileNavigation(): void {
 
 export function App() {
   const project = useApp((s) => s.project);
+  const settingsOpen = useApp((s) => s.settingsOpen);
   useEffect(() => registerBuiltinCommands(), []);
   useMainEvents();
   useBrowserSnapshot();
@@ -139,7 +150,15 @@ export function App() {
   return (
     <div className="flex h-full flex-col" data-testid="app">
       <TitleBar />
-      {project ? <Workspace /> : <Welcome />}
+      {project ? (
+        <Workspace />
+      ) : settingsOpen ? (
+        <Suspense fallback={null}>
+          <SettingsPage />
+        </Suspense>
+      ) : (
+        <Welcome />
+      )}
       <CommandPalette />
       <Toasts />
     </div>

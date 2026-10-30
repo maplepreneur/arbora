@@ -16,6 +16,9 @@ import {
   RingBuffer,
   stepZoom,
   type BrowserAction,
+  type DesignCommand,
+  type DesignOp,
+  type DesignState,
   type InspectorSelection,
   type LoadError,
   type NavigationState,
@@ -63,6 +66,14 @@ export interface BrowserServiceEvents {
   inspectorSelected(selection: InspectorSelection): void;
   /** Agent mode: `Esc` reached the page's inspector. */
   inspectorCancelled(): void;
+  /** Design mode mirrored its op list. */
+  designState(state: DesignState): void;
+  /** Design mode: Escape with nothing selected. */
+  designExitRequested(): void;
+  /** A navigation was refused because design edits are unsaved. */
+  designNavigationBlocked(url: string): void;
+  /** The document changed while design mode had nothing to keep. */
+  designDocumentNavigated(): void;
 }
 
 export interface BrowserServiceOptions {
@@ -105,6 +116,10 @@ export class BrowserService {
   private readonly pings = new Map<string, () => void>();
   private readonly overlayAcks = new Map<string, () => void>();
   private inspecting = false;
+  private designing = false;
+  /** Block document navigations while design edits are unsaved. */
+  private designGuard = false;
+  private designDraft: { ops: DesignOp[]; cursor: number } = { ops: [], cursor: 0 };
   /** When the main frame last committed a new document (console errors after this are "current"). */
   private navigatedAt = 0;
   private readonly disposers: (() => void)[] = [];
@@ -410,6 +425,57 @@ export class BrowserService {
       this.contents.send(pageIpcName(active ? 'inspector.start' : 'inspector.stop'), {});
   }
 
+  /** Design mode: show the overlay, re-applying `saved` when it is a crash draft. */
+  beginDesign(saved: { ops: DesignOp[]; cursor: number }): void {
+    this.designing = true;
+    this.designGuard = saved.cursor > 0;
+    this.designDraft = { ops: [...saved.ops], cursor: saved.cursor };
+    this.sendDesign('design.start', saved);
+  }
+
+  /** Design mode: remove the overlay. `revert` restores the DOM. */
+  endDesign(revert: boolean): void {
+    this.designing = false;
+    this.designGuard = false;
+    this.designDraft = { ops: [], cursor: 0 };
+    this.sendDesign('design.stop', { revert });
+  }
+
+  /** The latest op list, replayed if the document reloads while design mode is still on. */
+  rememberDesign(saved: { ops: DesignOp[]; cursor: number }): void {
+    this.designDraft = { ops: [...saved.ops], cursor: saved.cursor };
+  }
+
+  setDesignGuard(active: boolean): void {
+    this.designGuard = active;
+  }
+
+  sendDesignCommand(command: DesignCommand): void {
+    this.sendDesign('design.command', command);
+  }
+
+  /** Shows or hides the design overlay; resolves once the page has painted. */
+  setDesignOverlayVisible(visible: boolean): Promise<void> {
+    const nonce = randomUUID();
+    return new Promise((resolve) => {
+      const done = (): void => {
+        clearTimeout(timer);
+        this.overlayAcks.delete(nonce);
+        resolve();
+      };
+      const timer = setTimeout(done, OVERLAY_ACK_TIMEOUT_MS);
+      this.overlayAcks.set(nonce, done);
+      this.sendDesign('design.setOverlay', { visible, nonce });
+    });
+  }
+
+  private sendDesign(
+    name: 'design.start' | 'design.stop' | 'design.command' | 'design.setOverlay',
+    payload: unknown,
+  ): void {
+    if (!this.contents.isDestroyed()) this.contents.send(pageIpcName(name), payload);
+  }
+
   /** Shows or hides the inspector overlay; resolves once the page has painted without it. */
   setOverlayVisible(visible: boolean): Promise<void> {
     const nonce = randomUUID();
@@ -448,7 +514,8 @@ export class BrowserService {
     switch (message.name) {
       case 'ready':
         this.update({ pageReady: true });
-        if (this.inspecting) this.contents.send(pageIpcName('inspector.start'), {});
+        if (this.designing) this.sendDesign('design.start', this.designDraft);
+        else if (this.inspecting) this.contents.send(pageIpcName('inspector.start'), {});
         break;
       case 'pong':
         this.pings.get(message.payload.nonce)?.();
@@ -461,6 +528,15 @@ export class BrowserService {
         if (this.inspecting) this.options.events.inspectorCancelled();
         break;
       case 'inspector.overlayApplied':
+        this.overlayAcks.get(message.payload.nonce)?.();
+        break;
+      case 'design.state':
+        if (this.designing) this.options.events.designState(message.payload);
+        break;
+      case 'design.exitRequested':
+        if (this.designing) this.options.events.designExitRequested();
+        break;
+      case 'design.overlayApplied':
         this.overlayAcks.get(message.payload.nonce)?.();
         break;
       default: {
@@ -505,7 +581,14 @@ export class BrowserService {
       return { action: 'deny' };
     });
     contents.on('will-navigate', (event, url) => {
-      if (!/^https?:/.test(url)) event.preventDefault();
+      if (!/^https?:/.test(url)) {
+        event.preventDefault();
+        return;
+      }
+      if (this.designGuard && url !== this.state.url) {
+        event.preventDefault();
+        this.options.events.designNavigationBlocked(url);
+      }
     });
     contents.on('will-attach-webview', (event) => event.preventDefault());
 
@@ -523,12 +606,15 @@ export class BrowserService {
       this.options.history.record(url, contents.getTitle());
       this.update({ url, title: contents.getTitle() });
       this.scheduleSave();
+      if (this.designing && !this.designGuard) this.options.events.designDocumentNavigated();
     });
     contents.on('did-navigate-in-page', (_event, url, isMainFrame) => {
       if (!isMainFrame) return;
+      const previous = this.state.url;
       this.options.history.record(url, contents.getTitle());
       this.update({ url });
       this.scheduleSave();
+      if (this.designing && this.designGuard && url !== previous) this.options.events.designNavigationBlocked(url);
     });
     contents.on('did-finish-load', () => {
       // Chromium keeps zoom per origin; re-apply the panel's zoom after cross-origin loads.

@@ -54,9 +54,13 @@ describe('mode state machine', () => {
 
   it('switches to design mode directly from agent mode', () => {
     const design = run({ type: 'toggleAgent' }, { type: 'picked' }, { type: 'toggleDesign' });
-    expect(design).toEqual({ kind: 'design' });
+    expect(design).toEqual({ kind: 'design', phase: 'editing' });
     expect(transition(design, { type: 'toggleDesign' })).toEqual(IDLE);
     expect(transition(design, { type: 'toggleAgent' })).toEqual({ kind: 'agent', phase: 'inspecting' });
+    const confirm = transition(design, { type: 'designConfirm', pending: 'agent' });
+    expect(confirm).toEqual({ kind: 'design', phase: 'confirm', pending: 'agent' });
+    expect(transition(confirm, { type: 'exit' })).toEqual({ kind: 'design', phase: 'editing' });
+    expect(transition(confirm, { type: 'designLeave' })).toEqual(IDLE);
   });
 
   it('starts and stops the page inspector at the right edges', () => {
@@ -68,8 +72,8 @@ describe('mode state machine', () => {
     expect(inspectorEffect(selected, prompting)).toBeNull();
     expect(inspectorEffect(prompting, transition(prompting, { type: 'repick' }))).toBe('start');
     expect(inspectorEffect(prompting, IDLE)).toBe('stop');
-    expect(inspectorEffect(selected, { kind: 'design' })).toBe('stop');
-    expect(inspectorEffect(IDLE, { kind: 'design' })).toBeNull();
+    expect(inspectorEffect(selected, { kind: 'design', phase: 'editing' })).toBe('stop');
+    expect(inspectorEffect(IDLE, { kind: 'design', phase: 'editing' })).toBeNull();
     expect(modeActive(IDLE)).toBe(false);
     expect(modeActive(prompting)).toBe(true);
   });

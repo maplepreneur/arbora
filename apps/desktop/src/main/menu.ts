@@ -13,7 +13,7 @@ export function buildMacMenu(dispatch: (commandId: string) => void): Menu {
       submenu: [
         { role: 'about' },
         { type: 'separator' },
-        { label: 'Settings…', click: () => dispatch(CommandId.openSettingsFile) },
+        { label: 'Settings…', click: () => dispatch(CommandId.openSettings) },
         { type: 'separator' },
         { role: 'services' },
         { type: 'separator' },
