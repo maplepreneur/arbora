@@ -6,3 +6,7 @@ playwright-report
 pnpm-lock.yaml
 *.md
 apps/desktop/resources/extensions/*/
+.next
+.nuxt
+.output
+fixtures/next/next-env.d.ts

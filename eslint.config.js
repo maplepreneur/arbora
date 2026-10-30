@@ -26,6 +26,12 @@ export default defineConfig(
       '**/test-results/**',
       '**/playwright-report/**',
       'fixtures/plain-html/app.js',
+      // Framework fixtures type-check only against types `next dev` / `nuxt dev` generate.
+      'fixtures/next/**',
+      'fixtures/nuxt/**',
+      '**/.next/**',
+      '**/.nuxt/**',
+      '**/.output/**',
       'apps/desktop/resources/extensions/*/**',
     ],
   },

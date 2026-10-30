@@ -29,8 +29,10 @@ import {
   type ViewportPresetId,
 } from '@arbora/shared';
 import { executeCommand, navigateBrowser } from '../commands';
+import type { ModeState } from '../mode';
 import { useChordLabel } from '../keybindings';
 import { useApp } from '../store';
+import { AgentModeLayer } from './agent-mode/AgentModeLayer';
 
 const DEFAULT_DEV_URL = 'http://localhost:5173';
 
@@ -383,6 +385,33 @@ function ErrorState({ error }: { error: LoadError }) {
   );
 }
 
+function modeBannerText(mode: ModeState, hasPage: boolean): string {
+  switch (mode.kind) {
+    case 'idle':
+      return '';
+    case 'agent':
+      switch (mode.phase) {
+        case 'inspecting':
+          // The inspector starts as soon as a page reports in.
+          return hasPage ? 'Agent mode: click a component' : 'Agent mode: load your page, then click a component';
+        case 'selected':
+          return 'Agent mode: capturing…';
+        case 'prompting':
+          return 'Agent mode: describe the change';
+        default: {
+          const unreachable: never = mode;
+          return unreachable;
+        }
+      }
+    case 'design':
+      return 'Design mode: edit visually (Stage 6)';
+    default: {
+      const unreachable: never = mode;
+      return unreachable;
+    }
+  }
+}
+
 export default function BrowserPanel() {
   const mode = useApp((s) => s.mode);
   const state = useApp((s) => s.browser);
@@ -394,22 +423,23 @@ export default function BrowserPanel() {
 
   const empty = !state || (!state.url && !state.loading);
   const error = state?.error ?? null;
+  const prompting = mode.kind === 'agent' && mode.phase === 'prompting' ? mode.selection : null;
   // Anything rendered in the viewport area (or over it, like the palette) needs the view hidden.
-  const hidden = empty || error !== null || paletteOpen;
+  const hidden = empty || error !== null || paletteOpen || prompting !== null;
   const preset = state?.preset ?? 'responsive';
   useViewBounds(viewportRef, hidden, preset);
 
   return (
     <div className="flex h-full flex-col bg-bg" data-testid="browser-panel">
       <Toolbar state={state} />
-      {mode !== 'idle' && (
+      {mode.kind !== 'idle' && (
         <div
           data-testid="mode-banner"
-          data-mode={mode}
+          data-mode={mode.kind}
+          data-phase={mode.kind === 'agent' ? mode.phase : undefined}
           className="flex h-7 shrink-0 items-center justify-center bg-accent text-xs font-medium text-accent-fg"
         >
-          {mode === 'agent' ? 'Agent mode: point at a component (Stage 4)' : 'Design mode: edit visually (Stage 6)'} ·{' '}
-          {exitLabel} to exit
+          {modeBannerText(mode, !empty && error === null)} · {exitLabel} to exit
         </div>
       )}
       {suggestedUrl && (
@@ -429,7 +459,13 @@ export default function BrowserPanel() {
         data-preset={preset}
         className={clsx('relative min-h-0 flex-1', preset !== 'responsive' && 'bg-bg-muted')}
       >
-        {error ? <ErrorState error={error} /> : empty ? <EmptyState devUrl={devUrl} /> : null}
+        {error ? (
+          <ErrorState error={error} />
+        ) : empty ? (
+          <EmptyState devUrl={devUrl} />
+        ) : prompting ? (
+          <AgentModeLayer key={prompting.id} selection={prompting} preset={preset} />
+        ) : null}
       </div>
     </div>
   );

@@ -1,0 +1,33 @@
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  color: #0f172a;
+  background: #f8fafc;
+}
+
+.page {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 3rem 1.5rem;
+}
+
+.grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.card {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  background: #fff;
+  padding: 1.5rem;
+}
+
+.fixture-button {
+  border: 0;
+  border-radius: 0.375rem;
+  background: #059669;
+  color: #fff;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+}

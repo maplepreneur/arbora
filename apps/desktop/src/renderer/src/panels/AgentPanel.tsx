@@ -35,7 +35,7 @@ export default function AgentPanel() {
   };
 
   return (
-    <div className="flex h-full flex-col" data-testid="agent-panel" data-view={view}>
+    <div className="flex h-full flex-col" data-testid="agent-panel" data-view={view} data-picker-bounds>
       {body()}
     </div>
   );

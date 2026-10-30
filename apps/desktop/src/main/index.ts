@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, Menu, shell, type WebContents } from 'electron';
 import { AgentRegistry } from '@arbora/acp-client';
-import { toPlatform, type AppSettingsPatch } from '@arbora/shared';
+import { mergeAgentSettings, toPlatform, type AppSettingsPatch } from '@arbora/shared';
 import type { AgentService } from './agent/agent-service.js';
 import { describeAttachment } from './agent/attachments.js';
 import { BrowserSessions } from './browser/browser-sessions.js';
@@ -202,14 +202,7 @@ function main(): void {
               },
             }
           : {}),
-        ...(patch.agents !== undefined
-          ? {
-              agents: {
-                custom: patch.agents.custom ?? s.agents.custom,
-                permissions: patch.agents.permissions ?? s.agents.permissions,
-              },
-            }
-          : {}),
+        ...(patch.agents !== undefined ? { agents: mergeAgentSettings(s.agents, patch.agents) } : {}),
       })),
     );
     defineHandler('settings.openFile', isTrusted, async () => {
@@ -441,6 +434,10 @@ function main(): void {
       await requireAgents(event.sender).cancel(threadId);
       return undefined;
     });
+    defineHandler('agent.stop', isTrusted, async ({ threadId }, event) => {
+      await requireAgents(event.sender).stop(threadId);
+      return undefined;
+    });
     defineHandler('agent.respondPermission', isTrusted, ({ threadId, requestId, optionId }, event) => {
       requireAgents(event.sender).respondPermission(threadId, requestId, optionId);
       return undefined;
@@ -511,6 +508,16 @@ function main(): void {
         },
       }));
       return undefined;
+    });
+
+    defineHandler('agentMode.setInspecting', isTrusted, ({ active }, event) => {
+      windowFor(event.sender).agentMode?.setInspecting(active);
+      return undefined;
+    });
+    defineHandler('agentMode.submit', isTrusted, (request, event) => {
+      const agentMode = windowFor(event.sender).agentMode;
+      if (!agentMode) throw new Error('Open a project first');
+      return agentMode.submit(request);
     });
 
     const queued = pendingPaths.splice(0);

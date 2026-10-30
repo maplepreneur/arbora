@@ -12,9 +12,7 @@ import {
   type ThemeState,
   type WindowState,
 } from '@arbora/shared';
-
-/** Placeholder mode machine; Stage 4 expands agent mode to idle -> inspecting -> selected -> prompting. */
-export type Mode = 'idle' | 'agent' | 'design';
+import { IDLE, inspectorEffect, transition, type ModeEvent, type ModeState } from './mode';
 
 export interface ToastAction {
   readonly label: string;
@@ -36,7 +34,7 @@ export interface AppState {
   layout: LayoutState;
   /** Bumped to remount panel groups with their default sizes. */
   layoutEpoch: number;
-  mode: Mode;
+  mode: ModeState;
   paletteOpen: boolean;
   terminalFocused: boolean;
   toasts: Toast[];
@@ -71,7 +69,7 @@ export const useApp = create<AppState>()(() => ({
   windowState: { maximized: false, fullScreen: false, focused: true },
   layout: DEFAULT_LAYOUT,
   layoutEpoch: 0,
-  mode: 'idle',
+  mode: IDLE,
   paletteOpen: false,
   terminalFocused: false,
   toasts: [],
@@ -97,7 +95,7 @@ export function setProject(project: ProjectInfo | null): void {
       ? {
           layout: project?.layout ?? DEFAULT_LAYOUT,
           layoutEpoch: s.layoutEpoch + 1,
-          mode: 'idle' as const,
+          mode: IDLE,
           paletteOpen: false,
           browser: null,
           problems: [],
@@ -131,8 +129,14 @@ export function resetLayout(): void {
   persistLayout();
 }
 
-export function setMode(mode: Mode): void {
-  useApp.setState({ mode });
+/** Applies a mode event and starts or stops the page inspector in main when agent mode begins or ends. */
+export function dispatchMode(event: ModeEvent): void {
+  const previous = useApp.getState().mode;
+  const next = transition(previous, event);
+  if (next === previous) return;
+  useApp.setState({ mode: next });
+  const effect = inspectorEffect(previous, next);
+  if (effect) void window.arbora.invoke('agentMode.setInspecting', { active: effect === 'start' });
 }
 
 export function dismissToast(id: number): void {

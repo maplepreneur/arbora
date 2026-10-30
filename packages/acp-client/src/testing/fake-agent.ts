@@ -7,9 +7,12 @@
  * - "run ...": client terminal running `echo hello from fake agent`, output read back
  * - "plan": a three-entry plan that completes step by step
  * - "slow": a turn that takes ~10 s unless cancelled
+ * - "stubborn": a turn that ignores `session/cancel` for ~30 s (clients must stop the process)
  * - "crash": the process exits with code 3 mid-turn
  * - an `image` block in the prompt is acknowledged with its MIME type and size
  * - FAKE_AGENT_AUTH=1 advertises an auth method and rejects session/new until `authenticate`
+ * - FAKE_AGENT_SLOW_START=<ms> delays the `initialize` answer
+ * - FAKE_AGENT_NO_IMAGE=1 advertises `promptCapabilities.image: false` (clients must send file links)
  */
 import { Readable, Writable } from 'node:stream';
 import { basename, isAbsolute, join } from 'node:path';
@@ -231,6 +234,9 @@ async function handlePrompt(cx: AgentContext, params: PromptRequest): Promise<Pr
     process.stderr.write('fake agent crashing on purpose\n');
     process.exit(3);
   }
+  if (/stubborn/i.test(text)) {
+    for (let i = 0; i < 300; i++) await sleep(100);
+  }
   if (/slow/i.test(text)) {
     for (let i = 0; i < 100; i++) {
       if (isCancelled(state)) return { stopReason: 'cancelled' };
@@ -259,16 +265,19 @@ async function handlePrompt(cx: AgentContext, params: PromptRequest): Promise<Pr
 }
 
 const app = agent({ name: 'arbora-fake-agent' })
-  .onRequest(methods.agent.initialize, () => ({
-    protocolVersion: 1,
-    agentInfo: { name: 'arbora-fake-agent', version: '0.0.1' },
-    agentCapabilities: {
-      loadSession: true,
-      promptCapabilities: { image: true, embeddedContext: true },
-      mcpCapabilities: { http: true },
-    },
-    authMethods: authenticated ? [] : [{ id: 'fake-login', name: 'Fake login', description: 'Pretend to log in' }],
-  }))
+  .onRequest(methods.agent.initialize, async () => {
+    await sleep(Number(process.env['FAKE_AGENT_SLOW_START'] ?? 0));
+    return {
+      protocolVersion: 1,
+      agentInfo: { name: 'arbora-fake-agent', version: '0.0.1' },
+      agentCapabilities: {
+        loadSession: true,
+        promptCapabilities: { image: process.env['FAKE_AGENT_NO_IMAGE'] !== '1', embeddedContext: true },
+        mcpCapabilities: { http: true },
+      },
+      authMethods: authenticated ? [] : [{ id: 'fake-login', name: 'Fake login', description: 'Pretend to log in' }],
+    };
+  })
   .onRequest(methods.agent.authenticate, ({ params }) => {
     if (params.methodId !== 'fake-login') throw RequestError.invalidParams({ methodId: params.methodId });
     authenticated = true;

@@ -10,8 +10,20 @@ import {
   type ThemeMode,
   type ViewportPresetId,
 } from '@arbora/shared';
-import { activeThread, cancelTurn, focusComposer, showPicker, showThreads, toggleLog, useAgents } from './agent-store';
-import { resetLayout, setMode, showToast, useApp } from './store';
+import {
+  activeThread,
+  createThread,
+  isStoppable,
+  focusComposer,
+  openThread,
+  showPicker,
+  showThreads,
+  stopAgent,
+  toggleLog,
+  useAgents,
+} from './agent-store';
+import { defaultAgentId } from './agent-defaults';
+import { dispatchMode, resetLayout, showToast, useApp } from './store';
 import {
   activePane,
   createTerminal,
@@ -130,8 +142,13 @@ function toggleMode(mode: 'agent' | 'design'): void {
     showToast('Open a project first');
     return;
   }
-  const next = useApp.getState().mode === mode ? 'idle' : mode;
-  setMode(next);
+  dispatchMode({ type: mode === 'agent' ? 'toggleAgent' : 'toggleDesign' });
+}
+
+/** Shows the agent panel on `threadId` (agent mode hands its prompt over to the thread). */
+export async function showAgentThread(threadId: string): Promise<void> {
+  workspace?.showAgentPanel();
+  await openThread(threadId);
 }
 
 const DEFAULT_DEV_URL = 'http://localhost:5173';
@@ -183,7 +200,7 @@ async function runCommand(id: CommandId): Promise<void> {
       toggleMode('design');
       return;
     case CommandId.exitMode:
-      setMode('idle');
+      dispatchMode({ type: 'exit' });
       return;
     case CommandId.quickOpen:
       showToast('Quick open arrives with the file explorer (Stage 7)');
@@ -350,7 +367,11 @@ async function runCommand(id: CommandId): Promise<void> {
       openFileAtLocation();
       return;
     case CommandId.agentNewThread:
-      withAgentPanel(() => showPicker());
+      withAgentPanel(() => {
+        const agentId = defaultAgentId();
+        if (agentId) createThread(agentId).catch((error: unknown) => showToast((error as Error).message));
+        else showPicker();
+      });
       return;
     case CommandId.agentFocusComposer:
       withAgentPanel(() => {
@@ -367,7 +388,7 @@ async function runCommand(id: CommandId): Promise<void> {
       return;
     case CommandId.agentCancel: {
       const thread = activeThread();
-      if (thread?.state.status === 'prompting') await cancelTurn(thread.id);
+      if (thread && isStoppable(thread.state.status)) await stopAgent(thread.id);
       else if (hasProject()) showToast('The agent is not working on anything');
       return;
     }

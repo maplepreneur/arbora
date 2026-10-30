@@ -165,7 +165,7 @@ export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
   { id: CommandId.openFileAtLocation, title: 'Open File at Location', category: 'Files', hidden: true },
   { id: CommandId.agentNewThread, title: 'New Agent Thread', category: 'Agent', keybinding: 'mod+shift+n' },
   { id: CommandId.agentFocusComposer, title: 'Focus Agent Composer', category: 'Agent', keybinding: 'mod+shift+a' },
-  { id: CommandId.agentCancel, title: 'Cancel Agent Turn', category: 'Agent' },
+  { id: CommandId.agentCancel, title: 'Stop Agent', category: 'Agent', keybinding: 'mod+.' },
   { id: CommandId.agentToggleLog, title: 'Toggle ACP Log', category: 'Agent' },
   { id: CommandId.agentShowThreads, title: 'Show Agent Threads', category: 'Agent' },
 ];

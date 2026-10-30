@@ -4,6 +4,13 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./page": "./src/page.ts"
+  },
+  "dependencies": {
+    "@arbora/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "happy-dom": "21.0.4"
   }
 }

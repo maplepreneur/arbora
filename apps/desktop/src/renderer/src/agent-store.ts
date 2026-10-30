@@ -220,6 +220,34 @@ export async function cancelTurn(threadId: string): Promise<void> {
   await window.arbora.invoke('agent.cancel', { threadId });
 }
 
+/** Stops the agent's work whatever it is doing (turn, start-up, login wait). */
+export async function stopAgent(threadId: string): Promise<void> {
+  await window.arbora.invoke('agent.stop', { threadId });
+}
+
+/** Whether Stop has something to stop. */
+export function isStoppable(status: ThreadSummary['state']['status']): boolean {
+  return status === 'prompting' || status === 'starting';
+}
+
+/**
+ * Where agent mode (`Mod+K`) sends by default: the thread open in the agent panel, else a new
+ * thread with the default agent (or the first detected agent, or the first listed one).
+ */
+export function defaultAgentModeTarget(
+  state: Pick<AgentPanelState, 'view' | 'activeThreadId' | 'threads' | 'agents' | 'availability'>,
+  defaultAgentId: string | undefined,
+): string | null {
+  const open = state.view === 'thread' ? state.threads.find((t) => t.id === state.activeThreadId) : undefined;
+  if (open) return `thread:${open.id}`;
+  const detected = new Set(state.availability.filter((a) => a.available).map((a) => a.id));
+  const agent =
+    state.agents.find((a) => a.id === defaultAgentId) ??
+    state.agents.find((a) => detected.has(a.id)) ??
+    state.agents[0];
+  return agent ? `new:${agent.id}` : null;
+}
+
 export async function deleteThread(threadId: string): Promise<void> {
   await window.arbora.invoke('agent.deleteThread', { threadId });
   useAgents.setState((s) => ({

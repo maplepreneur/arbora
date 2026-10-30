@@ -15,7 +15,7 @@ import {
 } from './agent-store';
 import { executeCommand, navigateBrowser, registerBuiltinCommands } from './commands';
 import { useKeybindingContextSync, useKeybindingDispatch } from './keybindings';
-import { addProblems, setProblems, setProject, showToast, useApp } from './store';
+import { addProblems, dispatchMode, setProblems, setProject, showToast, useApp } from './store';
 import { applyTerminalList, resetTerminals } from './terminal-store';
 
 function useMainEvents(): void {
@@ -41,6 +41,12 @@ function useMainEvents(): void {
       arbora.on('agent.threadState', ({ threadId, state }) => applyThreadState(threadId, state)),
       arbora.on('agent.log', ({ threadId, entry }) => appendLog(threadId, entry)),
       arbora.on('agent.fileChanged', ({ threadId, path }) => noteFileChanged(threadId, path)),
+      arbora.on('agentMode.picked', () => dispatchMode({ type: 'picked' })),
+      arbora.on('agentMode.selected', (selection) => dispatchMode({ type: 'resolved', selection })),
+      arbora.on('agentMode.ended', ({ error }) => {
+        if (error) showToast(`Agent mode: ${error}`);
+        dispatchMode({ type: error ? 'failed' : 'exit' });
+      }),
     ];
     return () => {
       for (const off of offs) off();

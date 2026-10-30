@@ -26,8 +26,8 @@ export function freePort(): Promise<number> {
   });
 }
 
-async function waitForHttp(url: string, child: ChildProcess, output: () => string): Promise<void> {
-  const deadline = Date.now() + 30_000;
+async function waitForHttp(url: string, child: ChildProcess, output: () => string, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) throw new Error(`Server exited (${child.exitCode}):\n${output()}`);
     try {
@@ -45,7 +45,12 @@ function stop(child: ChildProcess): Promise<void> {
   if (child.exitCode !== null) return Promise.resolve();
   return new Promise((resolveStop) => {
     child.once('exit', () => resolveStop());
-    child.kill();
+    // Next and Nuxt run their server in a child process; Windows does not kill descendants.
+    if (process.platform === 'win32' && child.pid !== undefined) {
+      spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    } else {
+      child.kill();
+    }
   });
 }
 
@@ -54,13 +59,14 @@ async function startProcess(
   cwd: string,
   url: string,
   env: Record<string, string> = {},
+  timeoutMs = 30_000,
 ): Promise<RunningServer> {
   const child = spawn(process.execPath, args, { cwd, env: { ...process.env, ...env }, stdio: 'pipe' });
   let log = '';
   child.stdout.on('data', (chunk: Buffer) => (log += chunk.toString()));
   child.stderr.on('data', (chunk: Buffer) => (log += chunk.toString()));
   try {
-    await waitForHttp(url, child, () => log);
+    await waitForHttp(url, child, () => log, timeoutMs);
   } catch (error) {
     await stop(child);
     throw error;
@@ -76,6 +82,33 @@ export async function startViteFixture(): Promise<RunningServer> {
     [vite, '--port', String(port), '--strictPort', '--host', '127.0.0.1'],
     join(FIXTURES, 'vite-react'),
     `http://127.0.0.1:${port}/`,
+  );
+}
+
+/** Framework dev servers compile on the first request, which takes a while on CI runners. */
+const FRAMEWORK_START_TIMEOUT_MS = 120_000;
+
+/** Runs the `fixtures/next` dev server (Next.js App Router, React 19, Turbopack) on a free port. */
+export async function startNextFixture(): Promise<RunningServer> {
+  const port = await freePort();
+  return startProcess(
+    [join(REPO_ROOT, 'node_modules/next/dist/bin/next'), 'dev', '--port', String(port), '--hostname', '127.0.0.1'],
+    join(FIXTURES, 'next'),
+    `http://127.0.0.1:${port}/`,
+    { NEXT_TELEMETRY_DISABLED: '1' },
+    FRAMEWORK_START_TIMEOUT_MS,
+  );
+}
+
+/** Runs the `fixtures/nuxt` dev server (Nuxt 4, Vue 3) on a free port. */
+export async function startNuxtFixture(): Promise<RunningServer> {
+  const port = await freePort();
+  return startProcess(
+    [join(REPO_ROOT, 'node_modules/@nuxt/cli/bin/nuxi.mjs'), 'dev', '--port', String(port), '--host', '127.0.0.1'],
+    join(FIXTURES, 'nuxt'),
+    `http://127.0.0.1:${port}/`,
+    { NUXT_TELEMETRY_DISABLED: '1' },
+    FRAMEWORK_START_TIMEOUT_MS,
   );
 }
 

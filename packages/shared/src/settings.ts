@@ -80,8 +80,47 @@ export const agentSettingsSchema = z.object({
   custom: z.array(customAgentSchema).default([]),
   /** "Always allow/reject" answers to permission requests, keyed by `agentId:toolKind`. */
   permissions: rememberedPermissionsSchema.default({}),
+  /** Agent for new threads when the project's `defaultAgent` is not set. */
+  defaultAgent: z.string().min(1).optional(),
+  /** Model applied to new threads, per agent id (a value of the agent's `model` config option). */
+  defaultModels: z.record(z.string(), z.string()).default({}),
+  /** Models pinned to the top of the model picker, per agent id. */
+  favoriteModels: z.record(z.string(), z.array(z.string()).max(50)).default({}),
 });
 export type AgentSettings = z.infer<typeof agentSettingsSchema>;
+
+/** What `settings.update` may change under `agents`; `defaultAgent: null` clears it. */
+export const agentSettingsPatchSchema = z
+  .object({
+    custom: z.array(customAgentSchema),
+    permissions: rememberedPermissionsSchema,
+    defaultAgent: z.string().min(1).nullable(),
+    defaultModels: z.record(z.string(), z.string()),
+    favoriteModels: z.record(z.string(), z.array(z.string()).max(50)),
+  })
+  .partial();
+export type AgentSettingsPatch = z.infer<typeof agentSettingsPatchSchema>;
+
+/** Applies an `agents` patch; omitted fields keep their value and `defaultAgent: null` clears it. */
+export function mergeAgentSettings(current: AgentSettings, patch: AgentSettingsPatch): AgentSettings {
+  const defaultAgent = patch.defaultAgent === null ? undefined : (patch.defaultAgent ?? current.defaultAgent);
+  return {
+    custom: patch.custom ?? current.custom,
+    permissions: patch.permissions ?? current.permissions,
+    defaultModels: patch.defaultModels ?? current.defaultModels,
+    favoriteModels: patch.favoriteModels ?? current.favoriteModels,
+    ...(defaultAgent !== undefined ? { defaultAgent } : {}),
+  };
+}
+
+/** Project `defaultAgent`, then the app-wide default, if either names a known agent. */
+export function resolveDefaultAgent(
+  knownAgentIds: readonly string[],
+  projectDefault: string | undefined,
+  appDefault: string | undefined,
+): string | undefined {
+  return [projectDefault, appDefault].find((id) => id !== undefined && knownAgentIds.includes(id));
+}
 
 /**
  * User settings stored in `<userData>/settings.json`. Every field has a default so a partially
@@ -110,7 +149,7 @@ export const appSettingsPatchSchema = z
     terminalPassthrough: z.boolean(),
     browser: browserSettingsSchema.partial(),
     terminal: terminalSettingsSchema.partial(),
-    agents: agentSettingsSchema.partial(),
+    agents: agentSettingsPatchSchema,
   })
   .partial();
 export type AppSettingsPatch = z.infer<typeof appSettingsPatchSchema>;

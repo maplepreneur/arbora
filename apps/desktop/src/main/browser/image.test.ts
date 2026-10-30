@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { drawOutline, pngSize, scaleRect } from './image.js';
+import { drawOutline, fitWithin, pngSize, scaleRect } from './image.js';
 
 const RED = { r: 255, g: 0, b: 0 };
 
@@ -48,5 +48,14 @@ describe('scaleRect / pngSize', () => {
     view.setUint32(20, 480);
     expect(pngSize(header)).toEqual({ width: 640, height: 480 });
     expect(() => pngSize(new Uint8Array(24))).toThrow(/Not a PNG/);
+  });
+});
+
+describe('fitWithin', () => {
+  it('keeps small images and scales the long edge down to the limit', () => {
+    expect(fitWithin(1200, 800, 1568)).toEqual({ width: 1200, height: 800 });
+    expect(fitWithin(3136, 1960, 1568)).toEqual({ width: 1568, height: 980 });
+    expect(fitWithin(1000, 4000, 1568)).toEqual({ width: 392, height: 1568 });
+    expect(fitWithin(5000, 1, 1568)).toEqual({ width: 1568, height: 1 });
   });
 });

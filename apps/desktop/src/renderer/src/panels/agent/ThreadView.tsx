@@ -1,49 +1,35 @@
 import clsx from 'clsx';
-import { ArrowLeft, ChevronDown, KeyRound, List, Loader2, RotateCcw, ScrollText, ShieldCheck } from 'lucide-react';
+import {
+  ArrowLeft,
+  Bot,
+  Cpu,
+  KeyRound,
+  List,
+  Loader2,
+  RotateCcw,
+  ScrollText,
+  ShieldCheck,
+  SlidersHorizontal,
+  Square,
+} from 'lucide-react';
 import type { SessionConfigOption, ThreadSummary } from '@arbora/shared';
-import { showToast } from '../../store';
-import { showThreads, toggleLog, useAgents } from '../../agent-store';
+import { Picker, type PickerOption } from '../../components/Picker';
+import { showToast, useApp } from '../../store';
+import { isStoppable, showThreads, stopAgent, toggleLog, useAgents } from '../../agent-store';
+import { toggleDefaultModel, toggleFavoriteModel } from '../../agent-defaults';
 import { Composer } from './Composer';
 import { LogViewer } from './LogViewer';
 import { statusDot } from './ThreadList';
 import { Transcript } from './Transcript';
 
-function Select({
-  label,
-  value,
-  options,
-  onChange,
-  testId,
-}: {
-  label: string;
-  value: string;
-  options: readonly { value: string; name: string }[];
-  onChange: (value: string) => void;
-  testId: string;
-}) {
-  return (
-    <label className="relative flex h-6 max-w-[45%] items-center gap-1 rounded border border-border bg-bg px-1.5 text-[11px] hover:bg-bg-muted">
-      <span className="sr-only">{label}</span>
-      <select
-        value={value}
-        data-testid={testId}
-        aria-label={label}
-        onChange={(event) => onChange(event.target.value)}
-        className="min-w-0 appearance-none bg-transparent pr-3 outline-none"
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.name}
-          </option>
-        ))}
-      </select>
-      <ChevronDown size={11} className="pointer-events-none absolute right-1 text-fg-subtle" />
-    </label>
-  );
-}
+const NO_MODELS: readonly string[] = [];
 
-function selectOptions(option: Extract<SessionConfigOption, { type: 'select' }>): { value: string; name: string }[] {
-  return option.options.flatMap((entry) => ('group' in entry ? entry.options : [entry]));
+function selectOptions(option: Extract<SessionConfigOption, { type: 'select' }>): PickerOption[] {
+  return option.options.flatMap((entry) =>
+    'group' in entry
+      ? entry.options.map((o) => ({ value: o.value, name: o.name, description: o.description, group: entry.group }))
+      : [{ value: entry.value, name: entry.name, description: entry.description }],
+  );
 }
 
 function AuthCard({ thread }: { thread: ThreadSummary }) {
@@ -98,6 +84,8 @@ export function ThreadView({ thread, projectPath }: { thread: ThreadSummary; pro
     (o): o is Extract<SessionConfigOption, { type: 'select' }> => o.type === 'select' && o.category === 'model',
   );
   const otherOptions = state.configOptions.filter((o) => o !== modelOption);
+  const favoriteModels = useApp((s) => s.settings.agents.favoriteModels[thread.agentId]) ?? NO_MODELS;
+  const defaultModel = useApp((s) => s.settings.agents.defaultModels[thread.agentId]);
 
   const invoke = async (action: () => Promise<unknown>): Promise<void> => {
     try {
@@ -125,6 +113,18 @@ export function ThreadView({ thread, projectPath }: { thread: ThreadSummary; pro
           <span className="font-medium">{thread.title}</span>
           <span className="text-fg-subtle"> · {agentName}</span>
         </span>
+        {isStoppable(state.status) && (
+          <button
+            type="button"
+            title={state.status === 'prompting' ? 'Stop the agent (Esc in the composer)' : 'Stop starting the agent'}
+            aria-label="Stop the agent"
+            data-testid="thread-stop"
+            onClick={() => void invoke(() => stopAgent(thread.id))}
+            className="flex h-6 shrink-0 items-center gap-1 rounded bg-danger/90 px-1.5 text-[11px] text-white hover:bg-danger"
+          >
+            <Square size={9} fill="currentColor" /> Stop
+          </button>
+        )}
         <button
           type="button"
           title={
@@ -178,20 +178,35 @@ export function ThreadView({ thread, projectPath }: { thread: ThreadSummary; pro
           data-testid="session-controls"
         >
           {state.modes && state.modes.availableModes.length > 0 && (
-            <Select
+            <Picker
               label="Mode"
+              icon={Bot}
               testId="mode-select"
+              menuWidth={240}
+              className="max-w-[40%]"
               value={state.modes.currentModeId}
-              options={state.modes.availableModes.map((m) => ({ value: m.id, name: m.name }))}
+              options={state.modes.availableModes.map((m) => ({
+                value: m.id,
+                name: m.name,
+                description: m.description,
+              }))}
               onChange={(modeId) =>
                 void invoke(() => window.arbora.invoke('agent.setMode', { threadId: thread.id, modeId }))
               }
             />
           )}
           {modelOption && (
-            <Select
+            <Picker
               label="Model"
+              icon={Cpu}
               testId="model-select"
+              favorites={favoriteModels}
+              onToggleFavorite={(value) => toggleFavoriteModel(thread.agentId, value)}
+              defaultValue={defaultModel}
+              onSetDefault={(value) => toggleDefaultModel(thread.agentId, value)}
+              defaultHint={`Use for new ${agentName} threads`}
+              menuWidth={320}
+              className="max-w-[60%]"
               value={modelOption.currentValue}
               options={selectOptions(modelOption)}
               onChange={(value) =>
@@ -207,9 +222,11 @@ export function ThreadView({ thread, projectPath }: { thread: ThreadSummary; pro
           )}
           {otherOptions.map((option) =>
             option.type === 'select' ? (
-              <Select
+              <Picker
                 key={option.id}
                 label={option.name}
+                icon={SlidersHorizontal}
+                className="max-w-[45%]"
                 testId={`config-${option.id}`}
                 value={option.currentValue}
                 options={selectOptions(option)}
