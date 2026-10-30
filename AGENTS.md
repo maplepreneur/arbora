@@ -24,6 +24,7 @@ When you finish a stage's code, point the next unstarted stage's Notes at "Next 
 
 - `pnpm install` (postinstall runs `install-electron`; Electron 45 no longer downloads its binary on install)
 - `pnpm typecheck && pnpm lint && pnpm test` before every push; `pnpm e2e` for the Electron smoke tests (needs a display; use `xvfb-run -a` on headless Linux)
+- CI minutes are billed: CI runs Linux only. Add the `ci:all-os` label to a PR (or "Run workflow" with "all_os") to also run macOS (10x minutes) and Windows (2x) before merging platform-specific changes. Open work-in-progress PRs as drafts, which skip CI, and push in batches.
 - `pnpm dev -- /absolute/path/to/project` to launch with a project open
 
 ## Where things go

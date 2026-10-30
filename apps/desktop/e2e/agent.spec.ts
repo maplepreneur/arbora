@@ -244,7 +244,11 @@ test.describe('Stage 3 agent panel', () => {
       await page.getByTestId('new-thread-choose').click();
       await page.getByTestId(`pick-agent-${FAKE_ID}`).click();
       await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', { timeout: 20_000 });
-      await expect(page.getByTestId('thread-key-hints')).toHaveText('Shift+Tab mode · Alt+P model · Alt+T thinking');
+      await expect(page.getByTestId('thread-key-hints')).toHaveText(
+        process.platform === 'darwin'
+          ? '⇧Tab mode · ⌥P model · ⌥T thinking'
+          : 'Shift+Tab mode · Alt+P model · Alt+T thinking',
+      );
       const input = page.getByTestId('composer-input');
       await input.click();
       await input.fill('half a sentence');
