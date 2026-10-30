@@ -36,8 +36,9 @@ entry="$desktop/out/main/index.js"
 needs_build=0
 if [[ ! -f "$entry" || ! -f "$stamp" || "$(stat -c %Y "$entry")" != "$(cat "$stamp")" ]]; then
   needs_build=1
-elif [[ -n "$(find "$desktop/src" "$repo/packages/shared/src" "$desktop/electron.vite.config.ts" \
-  "$desktop/package.json" "$repo/packages/shared/package.json" -newer "$entry" -print -quit)" ]]; then
+# Every workspace package is bundled into main or the preloads, so all of their sources count.
+elif [[ -n "$(find "$desktop/src" "$repo"/packages/*/src "$desktop/electron.vite.config.ts" \
+  "$desktop/package.json" "$repo"/packages/*/package.json -newer "$entry" -print -quit)" ]]; then
   needs_build=1
 fi
 if ((needs_build)); then
