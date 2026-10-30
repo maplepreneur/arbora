@@ -55,7 +55,10 @@ export interface SearchTerm {
  * Grep terms for a selection: the nearest (non-minified, non-server) component names, then the
  * first two class names unique to the element (any two when none are unique).
  */
-export function searchTerms(selection: Pick<InspectorSelection, 'components' | 'element'>): SearchTerm[] {
+export function searchTerms(selection: {
+  readonly components: InspectorSelection['components'];
+  readonly element: Pick<InspectorSelection['element'], 'classes' | 'uniqueClasses'>;
+}): SearchTerm[] {
   const terms: SearchTerm[] = [];
   const seen = new Set<string>();
   const add = (text: string, word: boolean): void => {

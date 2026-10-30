@@ -224,6 +224,11 @@ export class AcpSession {
     };
   }
 
+  /** `mcpCapabilities.http` from `initialize`; agents without it get the stdio shim. */
+  get supportsHttpMcp(): boolean {
+    return this.initializeResponse?.agentCapabilities?.mcpCapabilities?.http ?? false;
+  }
+
   async initialize(): Promise<InitializeResponse> {
     const response = await this.connection.agent.request(methods.agent.initialize, {
       protocolVersion: PROTOCOL_VERSION,

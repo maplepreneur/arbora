@@ -83,6 +83,7 @@ export function truncateEventForPersistence(event: ThreadEvent): ThreadEvent {
     case 'turn_end':
     case 'notice':
     case 'error':
+    case 'browser_preview':
       return event;
     default: {
       const unreachable: never = event;

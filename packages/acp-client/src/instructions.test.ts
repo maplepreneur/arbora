@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { firstPromptPreface, isPrefaceTitle } from './instructions.js';
+import { browserSkill, firstPromptPreface, isPrefaceTitle } from './instructions.js';
 
 describe('isPrefaceTitle', () => {
   it('recognises the preface read back as a thread title', () => {
@@ -27,5 +27,26 @@ describe('firstPromptPreface', () => {
 
   it('uses forward slashes for Windows paths', () => {
     expect(firstPromptPreface({ projectPath: 'C:\\work\\app', devUrl: null })).toContain('C:/work/app');
+  });
+
+  it('adds the verify loop only when the browser tools are attached', () => {
+    const without = firstPromptPreface({ projectPath: '/p', devUrl: 'http://localhost:5173/' });
+    expect(without).not.toContain('browser_screenshot');
+    const withTools = firstPromptPreface({ projectPath: '/p', devUrl: 'http://localhost:5173/', browserTools: true });
+    expect(withTools).toContain('arbora-browser');
+    expect(withTools).toContain('browser_wait_for');
+    expect(withTools).toContain('devserver_restart');
+    expect(withTools).toContain('/p/.arbora/SKILL.md');
+    expect(withTools.split(/\s+/).length).toBeLessThan(300);
+  });
+});
+
+describe('browserSkill', () => {
+  it('stays under 400 words and never mentions a token', () => {
+    const skill = browserSkill({ projectPath: '/p', devUrl: 'http://localhost:5173/' });
+    expect(skill.split(/\s+/).filter(Boolean).length).toBeLessThan(400);
+    expect(skill).toContain('http://localhost:5173/');
+    expect(skill).toContain('browser_snapshot');
+    expect(skill).not.toMatch(/token|bearer/i);
   });
 });

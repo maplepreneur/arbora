@@ -102,6 +102,9 @@ function main(): void {
       browserSessions,
       shellEnvironment,
       userDataPath: app.getPath('userData'),
+      // Arbora's own executable runs the shim as Node; inside a packaged build the script is in app.asar.
+      mcpShim: { command: process.execPath, script: join(import.meta.dirname, 'mcp-shim.js') },
+      appVersion: app.getVersion(),
       renderer:
         !app.isPackaged && rendererUrl
           ? { url: rendererUrl }

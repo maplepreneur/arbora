@@ -241,6 +241,18 @@ export const threadEventSchema = z.discriminatedUnion('kind', [
     description: z.string().nullable().optional(),
   }),
   z.object({ ...eventBase, kind: z.literal('error'), message: z.string() }),
+  /**
+   * A screenshot the agent took with Arbora's browser tools, shown as a thumbnail. The agent's own
+   * `tool_call` card stays the record of the call; this only adds what the agent saw.
+   */
+  z.object({
+    ...eventBase,
+    kind: z.literal('browser_preview'),
+    title: z.string(),
+    image: z.object({ data: z.string(), mimeType: z.string(), width: z.number(), height: z.number() }),
+    /** The full-size capture under `.arbora/screenshots/`, when saved. */
+    path: z.string().nullable(),
+  }),
 ]);
 export type ThreadEvent = z.infer<typeof threadEventSchema>;
 export type ThreadEventKind = ThreadEvent['kind'];

@@ -110,6 +110,10 @@ export class BrowserService {
   private readonly disposers: (() => void)[] = [];
   private disposed = false;
   private releaseFocusGuard: (() => void) | undefined;
+  private readonly cdpListeners = new Set<(method: string, params: unknown) => void>();
+  /** An agent's `browser_set_viewport` size; cleared when a preset is chosen. */
+  private viewportOverride: { width: number; height: number; dpr: number } | null = null;
+  private viewRect: Rect | null = null;
 
   constructor(private readonly options: BrowserServiceOptions) {
     this.view = new WebContentsView({
@@ -277,15 +281,87 @@ export class BrowserService {
   }
 
   setPreset(preset: ViewportPresetId): void {
+    const hadOverride = this.viewportOverride !== null;
+    this.viewportOverride = null;
+    if (hadOverride) void this.applyEmulation();
     if (preset === this.state.preset) return;
     this.update({ preset });
     this.scheduleSave();
+  }
+
+  /**
+   * Emulates a custom CSS viewport (agent tools), scaled down to fit the panel like the presets.
+   * The renderer keeps the view rect; choosing a preset ends the override.
+   */
+  setViewportOverride(size: { width: number; height: number; dpr: number }): void {
+    this.viewportOverride = size;
+    void this.applyEmulation();
+  }
+
+  /** When the current document committed; console entries from before belong to the previous page. */
+  get navigatedAtTime(): number {
+    return this.navigatedAt;
+  }
+
+  /**
+   * The page's CDP connection for the agent browser tools. Shares Arbora's debugger session (the
+   * Problems tab keeps working); unavailable while DevTools holds the debugger.
+   */
+  async cdp(): Promise<{
+    send(method: string, params?: Record<string, unknown>): Promise<unknown>;
+    on(listener: (method: string, params: unknown) => void): () => void;
+  }> {
+    if (this.contents.isDestroyed()) throw new Error('The browser panel is closed');
+    if (!this.debuggerAttached) await this.attachDebugger();
+    if (!this.debuggerAttached) {
+      throw new Error(
+        this.contents.isDevToolsOpened()
+          ? 'DevTools is open on the page and holds the debugger; ask the user to close DevTools.'
+          : 'The browser debugger is not available (is a page loaded?)',
+      );
+    }
+    const dbg = this.contents.debugger;
+    return {
+      send: (method, params) => dbg.sendCommand(method, params) as Promise<unknown>,
+      on: (listener) => {
+        this.cdpListeners.add(listener);
+        return () => this.cdpListeners.delete(listener);
+      },
+    };
+  }
+
+  /** Resolves once the page stops loading (or fails), or after `timeoutMs`. */
+  waitForLoad(timeoutMs: number): Promise<void> {
+    const contents = this.contents;
+    return new Promise((resolveLoad) => {
+      const done = (): void => {
+        clearTimeout(timer);
+        if (!contents.isDestroyed()) {
+          contents.off('did-stop-loading', done);
+          contents.off('did-fail-load', onFail);
+        }
+        resolveLoad();
+      };
+      const onFail = (
+        _event: unknown,
+        code: number,
+        _description: string,
+        _url: string,
+        isMainFrame: boolean,
+      ): void => {
+        if (isMainFrame && code !== ERR_ABORTED) done();
+      };
+      const timer = setTimeout(done, timeoutMs);
+      contents.on('did-stop-loading', done);
+      contents.on('did-fail-load', onFail);
+    });
   }
 
   /** Positions the view (window CSS px == DIP) and applies the preset's device emulation. */
   setBounds(rect: Rect | null, emulation: ViewportEmulation | null): void {
     const show = rect !== null && rect.width > 0 && rect.height > 0;
     if (show) {
+      this.viewRect = rect;
       this.view.setBounds({
         x: Math.round(rect.x),
         y: Math.round(rect.y),
@@ -556,12 +632,27 @@ export class BrowserService {
     }
   }
 
+  /** The renderer's preset emulation, or the agent's custom size fitted into the view. */
+  private effectiveEmulation(): ViewportEmulation | null {
+    const override = this.viewportOverride;
+    if (!override) return this.emulation;
+    const rect = this.viewRect;
+    const scale = rect ? Math.min(1, rect.width / override.width, rect.height / override.height) : 1;
+    return {
+      width: override.width,
+      height: override.height,
+      deviceScaleFactor: override.dpr,
+      mobile: false,
+      scale: Math.max(0.05, scale),
+    };
+  }
+
   private async applyEmulation(): Promise<void> {
-    const key = JSON.stringify(this.emulation);
+    const emulation = this.effectiveEmulation();
+    const key = JSON.stringify(emulation);
     if (!this.debuggerAttached || key === this.appliedEmulation) return;
     this.appliedEmulation = key;
     const dbg = this.contents.debugger;
-    const emulation = this.emulation;
     try {
       if (emulation) {
         await dbg.sendCommand('Emulation.setDeviceMetricsOverride', {
@@ -589,6 +680,7 @@ export class BrowserService {
   }
 
   private onCdpMessage(method: string, params: unknown): void {
+    for (const listener of this.cdpListeners) listener(method, params);
     switch (method) {
       case 'Runtime.consoleAPICalled':
         this.addProblem(this.consoleEntries, fromConsoleApiCalled(params));

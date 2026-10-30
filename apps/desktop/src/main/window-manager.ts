@@ -28,6 +28,9 @@ import { BrowserService } from './browser/browser-service.js';
 import { browserPartition, type BrowserSessions } from './browser/browser-sessions.js';
 import { sendEvent } from './ipc.js';
 import { attachKeybindingInterceptor, type InterceptorSource } from './keybinding-interceptor.js';
+import { ArboraToolHost, type PermissionAnswer } from './mcp/browser-tool-host.js';
+import { openBrowserTools, type ShimCommand } from './mcp/browser-tools.js';
+import { writeSkillFile } from './mcp/skill-file.js';
 import { readProjectSettings, updateProjectSettingsFile } from './project-settings.js';
 import type { SettingsStore } from './settings-store.js';
 import { shouldRestoreBounds } from './startup.js';
@@ -47,6 +50,9 @@ export interface WindowManagerOptions {
   readonly browserSessions: BrowserSessions;
   readonly shellEnvironment: ShellEnvironment;
   readonly userDataPath: string;
+  /** Starts the browser-tools stdio shim for agents without HTTP MCP. */
+  readonly mcpShim: ShimCommand;
+  readonly appVersion: string;
   /** Dev server URL in development, otherwise the built `index.html` path. */
   readonly renderer: { readonly url: string } | { readonly file: string };
 }
@@ -350,6 +356,8 @@ export class ProjectWindow {
             agents: { ...s.agents, permissions: { ...s.agents.permissions, [key]: decision } },
           })),
       },
+      mcp: (threadId) => this.openBrowserTools(projectPath, threadId),
+      mcpTransport: process.env['ARBORA_MCP_TRANSPORT'] === 'stdio' ? 'stdio' : 'auto',
       events: {
         threadsChanged: (threads) => sendEvent(app, 'agent.threadsChanged', { threads }),
         threadEvents: (threadId, changes) => sendEvent(app, 'agent.threadEvents', { threadId, changes }),
@@ -358,6 +366,60 @@ export class ProjectWindow {
         fileChanged: (threadId, path) => sendEvent(app, 'agent.fileChanged', { threadId, path }),
       },
     });
+  }
+
+  /** The Stage 5 browser tools for one agent thread: an MCP server over this window's services. */
+  private openBrowserTools(projectPath: string, threadId: string): ReturnType<typeof openBrowserTools> {
+    writeSkillFile(projectPath);
+    const { platform, shellEnvironment } = this.options;
+    const host = new ArboraToolHost({
+      projectPath,
+      browser: () => this.browser,
+      devServer: () => this.devServer,
+      terminals: () => this.terminals,
+      projectSettings: () => this.project?.settings ?? { version: 1 },
+      saveToolPolicy: (tool, policy) => {
+        const current = this.project?.settings.browserTools ?? {};
+        try {
+          updateProjectSettingsFile(projectPath, { browserTools: { ...current, [tool]: policy } });
+        } catch (error) {
+          console.warn(`[browser-tools] could not save ${tool}: ${(error as Error).message}`);
+        }
+        this.reloadProjectSettings();
+      },
+      findCandidates: async (terms) => {
+        await shellEnvironment.ready;
+        const rg = findExecutable('rg', shellEnvironment.env(), platform) ?? null;
+        return findCandidates(projectPath, terms, { rg });
+      },
+      askPermission: async (request): Promise<PermissionAnswer | null> => {
+        const kind = await this.agents?.requestToolPermission(threadId, {
+          title: request.title,
+          detail: request.detail,
+          toolKind: request.tool === 'navigate' ? 'fetch' : 'execute',
+          persistent: request.tool !== 'navigate',
+        });
+        switch (kind) {
+          case 'allow_once':
+            return 'once';
+          case 'allow_always':
+            return 'always';
+          case 'reject_once':
+            return 'reject';
+          case 'reject_always':
+            return 'never';
+          case null:
+          case undefined:
+            return null;
+          default: {
+            const unreachable: never = kind;
+            throw new Error(`Unhandled permission kind ${String(unreachable)}`);
+          }
+        }
+      },
+      preview: (preview) => this.agents?.addBrowserPreview(threadId, preview),
+    });
+    return openBrowserTools(host, this.options.mcpShim, this.options.appVersion);
   }
 
   private startAgentMode(projectPath: string): void {

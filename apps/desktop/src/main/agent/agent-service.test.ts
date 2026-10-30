@@ -11,8 +11,10 @@ import {
   type ThreadState,
   type ThreadSummary,
 } from '@arbora/shared';
+import type { BrowserToolHost, Cdp } from '@arbora/mcp-browser-server';
+import { openBrowserTools } from '../mcp/browser-tools.js';
 import { TerminalService } from '../terminal/terminal-service.js';
-import { AgentService, STOP_GRACE_MS } from './agent-service.js';
+import { AgentService, STOP_GRACE_MS, type McpAttachment } from './agent-service.js';
 import { threadsDir } from './thread-store.js';
 
 const platform = toPlatform(process.platform);
@@ -54,7 +56,12 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
   });
 
   function setup(
-    options: { env?: Record<string, string>; permissions?: RememberedPermissions; defaultModel?: string } = {},
+    options: {
+      env?: Record<string, string>;
+      permissions?: RememberedPermissions;
+      defaultModel?: string;
+      mcp?: (threadId: string) => Promise<McpAttachment>;
+    } = {},
   ): Harness {
     const h: Harness = {
       service: null as unknown as AgentService,
@@ -86,6 +93,7 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
       terminals: h.terminals,
       devUrl: () => 'http://localhost:5173/',
       defaultModel: () => options.defaultModel,
+      ...(options.mcp ? { mcp: options.mcp } : {}),
       permissions: {
         get: () => h.permissions,
         remember: (key, decision) => {
@@ -312,9 +320,12 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
     await expect
       .poll(() => latestState(h, thread.id)?.configOptions[0], { timeout: 15_000 })
       .toMatchObject({ id: 'model', currentValue: 'smart' });
-    expect(
-      h.logs.some((e) => e.direction === 'info' && String(e.message).includes('default model smart applied')),
-    ).toBe(true);
+    // The agent's `config_option_update` can land before the `set_config_option` reply is logged.
+    await expect
+      .poll(() =>
+        h.logs.some((e) => e.direction === 'info' && String(e.message).includes('default model smart applied')),
+      )
+      .toBe(true);
   });
 
   it('keeps the agent model when the default is not offered', async () => {
@@ -403,4 +414,124 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
     await h.service.exportLog(thread.id, target);
     expect(JSON.parse(readFileSync(target, 'utf8'))).toMatchObject({ thread: { id: thread.id } });
   });
+
+  it('attaches the browser tools to the session and asks before browser_evaluate', async () => {
+    root = makeRoot();
+    const confirms: string[] = [];
+    let threadId = '';
+    let service: AgentService | null = null;
+    const h = setup({
+      mcp: () =>
+        openBrowserTools(
+          stubToolHost({
+            confirm: async (request) => {
+              confirms.push(request.title);
+              const answer = await service?.requestToolPermission(threadId, {
+                title: request.title,
+                detail: request.detail,
+                toolKind: 'execute',
+                persistent: true,
+              });
+              return answer === 'allow_once';
+            },
+          }),
+          { command: process.execPath, script: 'unused.js' },
+          '0.0.0',
+        ),
+    });
+    service = h.service;
+    const thread = h.service.createThread(FAKE);
+    threadId = thread.id;
+    const turn = h.service.prompt(thread.id, [{ type: 'text', text: 'evaluate the title' }]);
+    await expect
+      .poll(() => h.service.getThread(thread.id)?.events.find((e) => e.kind === 'permission'), { timeout: 15_000 })
+      .toBeDefined();
+    const permission = h.service.getThread(thread.id)?.events.find((e) => e.kind === 'permission');
+    if (permission?.kind !== 'permission') throw new Error('no permission');
+    expect(permission.title).toBe('Run JavaScript in the page');
+    expect(permission.options.map((o) => o.kind)).toEqual([
+      'allow_once',
+      'allow_always',
+      'reject_once',
+      'reject_always',
+    ]);
+    h.service.respondPermission(thread.id, permission.requestId, 'allow');
+    expect(await turn).toEqual({ stopReason: 'end_turn' });
+    expect(confirms).toEqual(['Run JavaScript in the page']);
+    const messages = h.service
+      .getThread(thread.id)
+      ?.events.flatMap((e) => (e.kind === 'agent_message' ? e.blocks : []))
+      .map((b) => (b.type === 'text' ? b.text : ''))
+      .join('');
+    expect(messages).toContain('Page title: "Stub page"');
+    // No "tools not loaded" warning: the agent listed them at session/new.
+    expect(h.service.getThread(thread.id)?.events.some((e) => e.kind === 'notice')).toBe(false);
+
+    const log = h.service.getLog(thread.id);
+    expect(log.some((e) => e.direction === 'info' && String(e.message) === 'browser tools attached over http')).toBe(
+      true,
+    );
+    const sessionNew = log.find(
+      (e) => e.direction === 'out' && (e.message as { method?: string }).method === 'session/new',
+    );
+    expect(sessionNew?.message).toMatchObject({
+      params: {
+        mcpServers: [
+          { type: 'http', name: 'arbora-browser', headers: [{ name: 'Authorization', value: '[redacted]' }] },
+        ],
+      },
+    });
+    const prompt = log.find(
+      (e) => e.direction === 'out' && (e.message as { method?: string }).method === 'session/prompt',
+    );
+    expect(JSON.stringify(prompt?.message)).toContain('arbora-browser');
+    expect(JSON.stringify(log)).not.toMatch(/Bearer [A-Za-z0-9_-]{20,}/);
+  });
+
+  it('warns once when the agent never lists the browser tools', async () => {
+    root = makeRoot();
+    const h = setup({
+      mcp: () => Promise.resolve({ servers: () => [], toolsListed: false, close: () => Promise.resolve() }),
+    });
+    const thread = h.service.createThread(FAKE);
+    await h.service.prompt(thread.id, [{ type: 'text', text: 'hello' }]);
+    await h.service.prompt(thread.id, [{ type: 'text', text: 'hello again' }]);
+    const notices = h.service.getThread(thread.id)?.events.filter((e) => e.kind === 'notice') ?? [];
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({ severity: 'warning', title: expect.stringMatching(/browser tools/) as unknown });
+  });
 });
+
+/** A browser-tools host with a page titled "Stub page" whose CDP only answers `Runtime.evaluate`. */
+function stubToolHost(overrides: Partial<BrowserToolHost>): BrowserToolHost {
+  const page = { url: 'http://localhost:5173/', title: 'Stub page', loading: false, error: null };
+  const cdp: Cdp = {
+    send: (method) =>
+      Promise.resolve(method === 'Runtime.evaluate' ? { result: { type: 'string', value: 'Stub page' } } : {}),
+    on: () => () => undefined,
+  };
+  const fail = (): never => {
+    throw new Error('not in this test');
+  };
+  return {
+    cdp: () => Promise.resolve(cdp),
+    page: () => page,
+    devUrl: () => page.url,
+    navigate: fail,
+    reload: fail,
+    history: fail,
+    screenshot: fail,
+    consoleLogs: () => [],
+    networkErrors: () => [],
+    navigatedAt: () => 0,
+    elementSource: fail,
+    setViewport: fail,
+    devServerStatus: () => ({ running: false, command: null, url: null }),
+    devServerLogs: () => [],
+    devServerRestart: fail,
+    terminalRun: fail,
+    policy: () => 'ask',
+    confirm: () => Promise.resolve(false),
+    ...overrides,
+  };
+}

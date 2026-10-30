@@ -20,7 +20,11 @@ export default defineConfig(({ mode }) => {
         minify: false,
         sourcemap: testBuild,
         rolldownOptions: {
-          input: { index: resolve(import.meta.dirname, 'src/main/index.ts') },
+          input: {
+            index: resolve(import.meta.dirname, 'src/main/index.ts'),
+            // Run by agents without HTTP MCP as `<arbora> mcp-shim.js <url>` (ELECTRON_RUN_AS_NODE=1).
+            'mcp-shim': resolve(import.meta.dirname, '../../packages/mcp-browser-server/src/shim-main.ts'),
+          },
         },
       },
     },
