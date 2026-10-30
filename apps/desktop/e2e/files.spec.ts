@@ -306,23 +306,28 @@ test.describe('Stage 7 files and editor', () => {
           page.evaluate((id) => window.arbora.invoke('terminal.lines', { id, count: 20 }), terminal?.id ?? ''),
         )
         .toContainEqual('src/components/Card.tsx:4:3');
-      // The printed line is the second screen row after `clear` (the command line is the first).
+      // Which screen row the output lands on depends on the shell and prompt, so try the first rows
+      // after `clear` at the start of the line until the link opens the file.
       const screen = page.locator('.xterm-screen').first();
       const box = await screen.boundingBox();
-      const rows = await page.evaluate(() => {
-        const el = document.querySelector('.xterm-rows');
-        return el ? el.children.length : 24;
-      });
+      const rows = await page.evaluate(() => document.querySelector('.xterm-rows')?.children.length ?? 24);
       if (!box) throw new Error('No terminal screen');
       const rowHeight = box.height / rows;
       const x = box.x + 20;
-      const y = box.y + rowHeight * 1.5;
-      await page.mouse.move(x, y);
-      await page.mouse.move(x + 2, y);
-      await page.mouse.click(x + 2, y);
-      await expect(page.getByTestId('editor')).toHaveAttribute('data-path', 'src/components/Card.tsx', {
-        timeout: 10_000,
-      });
+      let opened = false;
+      for (let row = 0; row < Math.min(rows, 8) && !opened; row++) {
+        const y = box.y + rowHeight * (row + 0.5);
+        await page.mouse.move(x, y);
+        await page.mouse.move(x + 2, y);
+        await page.mouse.click(x + 2, y);
+        opened = await expect(page.getByTestId('editor'))
+          .toHaveAttribute('data-path', 'src/components/Card.tsx', { timeout: 1000 })
+          .then(
+            () => true,
+            () => false,
+          );
+      }
+      expect(opened).toBe(true);
       await expect(page.getByTestId('editor').locator('.cm-lineNumbers .cm-activeLineGutter')).toHaveText('4');
     } finally {
       await app.close();
