@@ -145,7 +145,8 @@ export type AgentModeInclude = z.infer<typeof agentModeIncludeSchema>;
 
 export const agentModeTargetSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('thread'), threadId: z.string() }),
-  z.object({ type: z.literal('new'), agentId: z.string() }),
+  /** `model` is a value of the agent's `model` config option, applied to the new session. */
+  z.object({ type: z.literal('new'), agentId: z.string(), model: z.string().max(300).optional() }),
 ]);
 export type AgentModeTarget = z.infer<typeof agentModeTargetSchema>;
 

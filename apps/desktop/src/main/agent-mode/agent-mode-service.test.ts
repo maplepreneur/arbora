@@ -170,7 +170,7 @@ describe('AgentModeService', () => {
       target: { type: 'new', agentId: 'fake' },
     });
     expect(result).toEqual({ threadId: 'new-thread' });
-    expect(agents.createThread).toHaveBeenCalledWith('fake');
+    expect(agents.createThread).toHaveBeenCalledWith('fake', undefined);
     await prompted;
     const sent = prompts[0];
     expect(sent?.title).toBe('make this button red');

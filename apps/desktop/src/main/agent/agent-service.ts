@@ -140,6 +140,8 @@ interface ThreadRecord {
   saveTimer: NodeJS.Timeout | undefined;
   /** The user pressed Stop: a start in flight ends quietly and a killed turn ends as cancelled. */
   stopRequested: boolean;
+  /** Model picked for this thread when it was created; wins over the agent's default model. */
+  initialModel: string | undefined;
 }
 
 const SAVE_DELAY_MS = 300;
@@ -192,7 +194,8 @@ export class AgentService {
     return record ? { ...record.thread, state: record.thread.state, events: [...record.normalizer.events] } : null;
   }
 
-  createThread(agentId: string): ThreadSummary {
+  /** `model` overrides the user's default model for this agent in the new session. */
+  createThread(agentId: string, model?: string): ThreadSummary {
     const agent = this.options.registry.get(agentId);
     if (!agent) throw new AgentServiceError(`Unknown agent ${agentId}`);
     const now = this.now();
@@ -208,6 +211,7 @@ export class AgentService {
       events: [],
     };
     const record = this.record(thread);
+    record.initialModel = model;
     this.records.set(thread.id, record);
     this.store.save(this.getThread(thread.id) ?? thread);
     this.emitThreads();
@@ -470,6 +474,7 @@ export class AgentService {
       crashes: 0,
       stopRequested: false,
       saveTimer: undefined,
+      initialModel: undefined,
     };
   }
 
@@ -759,7 +764,7 @@ export class AgentService {
 
   /** Switches a brand-new session to the user's default model for this agent, when it offers it. */
   private async applyDefaultModel(record: ThreadRecord): Promise<void> {
-    const wanted = this.options.defaultModel?.(record.thread.agentId);
+    const wanted = record.initialModel ?? this.options.defaultModel?.(record.thread.agentId);
     if (!wanted) return;
     const option = record.thread.state.configOptions.find(
       (o): o is Extract<typeof o, { type: 'select' }> => o.type === 'select' && o.category === 'model',

@@ -1,7 +1,9 @@
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, Menu, shell, type WebContents } from 'electron';
 import { AgentRegistry } from '@arbora/acp-client';
-import { mergeAgentSettings, toPlatform, type AppSettingsPatch } from '@arbora/shared';
+import { mergeAgentSettings, toPlatform, type AgentVerification, type AppSettingsPatch } from '@arbora/shared';
+import { probeAgent } from './agent/agent-probe.js';
 import type { AgentService } from './agent/agent-service.js';
 import { describeAttachment } from './agent/attachments.js';
 import { BrowserSessions } from './browser/browser-sessions.js';
@@ -13,7 +15,7 @@ import { ensureProjectSettingsFile } from './project-settings.js';
 import { SettingsStore } from './settings-store.js';
 import { detectTilingCompositor, parseProjectArg, startupSwitches } from './startup.js';
 import type { DevServer } from './terminal/dev-server.js';
-import { ShellEnvironment } from './terminal/shell-env.js';
+import { findExecutable, ShellEnvironment } from './terminal/shell-env.js';
 import type { TerminalService } from './terminal/terminal-service.js';
 import { ThemeService } from './theme-service.js';
 import { ProjectWindowError, WindowManager, type ProjectWindow } from './window-manager.js';
@@ -415,9 +417,36 @@ function main(): void {
       await shellEnvironment.ready;
       return requireAgents(event.sender).listAgents();
     });
+    const probes = new Map<string, Promise<AgentVerification>>();
+    defineHandler('agent.verify', isTrusted, ({ agentId }, event) => {
+      const running = probes.get(agentId);
+      if (running) return running;
+      const agent = agentRegistry.get(agentId);
+      if (!agent) throw new Error(`Unknown agent ${agentId}`);
+      const cwd = windowFor(event.sender).project?.path ?? homedir();
+      const probe = (async () => {
+        await shellEnvironment.ready;
+        const env = shellEnvironment.env();
+        const result = await probeAgent({
+          agent,
+          platform,
+          cwd,
+          env,
+          lookup: (command) => findExecutable(command, env, platform),
+          now: () => Date.now(),
+        });
+        settings.update((s) => ({
+          ...s,
+          agents: { ...s.agents, verified: { ...s.agents.verified, [agentId]: result } },
+        }));
+        return result;
+      })().finally(() => probes.delete(agentId));
+      probes.set(agentId, probe);
+      return probe;
+    });
     defineHandler('agent.listThreads', isTrusted, (_req, event) => windowFor(event.sender).agents?.listThreads() ?? []);
-    defineHandler('agent.createThread', isTrusted, ({ agentId }, event) =>
-      requireAgents(event.sender).createThread(agentId),
+    defineHandler('agent.createThread', isTrusted, ({ agentId, model }, event) =>
+      requireAgents(event.sender).createThread(agentId, model),
     );
     defineHandler('agent.getThread', isTrusted, ({ threadId }, event) =>
       requireAgents(event.sender).getThread(threadId),
@@ -521,6 +550,34 @@ function main(): void {
       const agentMode = windowFor(event.sender).agentMode;
       if (!agentMode) throw new Error('Open a project first');
       return agentMode.submit(request);
+    });
+
+    defineHandler('design.setActive', isTrusted, ({ active }, event) => {
+      windowFor(event.sender).designMode?.setActive(active);
+      return undefined;
+    });
+    defineHandler('design.command', isTrusted, (command, event) => {
+      const design = windowFor(event.sender).designMode;
+      if (!design) throw new Error('Open a project first');
+      design.command(command);
+      return undefined;
+    });
+    defineHandler('design.save', isTrusted, (request, event) => {
+      const design = windowFor(event.sender).designMode;
+      if (!design) throw new Error('Open a project first');
+      return design.save(request.target);
+    });
+    defineHandler('design.discard', isTrusted, (_request, event) => {
+      windowFor(event.sender).designMode?.discard();
+      return undefined;
+    });
+    defineHandler('design.listSessions', isTrusted, (_request, event) => {
+      return windowFor(event.sender).designMode?.listSessions() ?? [];
+    });
+    defineHandler('design.resend', isTrusted, (request, event) => {
+      const design = windowFor(event.sender).designMode;
+      if (!design) throw new Error('Open a project first');
+      return design.resend(request.id, request.target);
     });
 
     const queued = pendingPaths.splice(0);

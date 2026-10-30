@@ -10,7 +10,7 @@ import {
   stopAgent,
   useAgents,
 } from '../../agent-store';
-import { useDefaultAgentId } from '../../agent-defaults';
+import { shortModelName, useAutoVerify, usePickableAgents } from '../../agent-pickers';
 import { showToast } from '../../store';
 
 export function statusDot(status: ThreadStatus): string {
@@ -48,14 +48,18 @@ export function ThreadList() {
   const agents = useAgents((s) => s.agents);
   const activeThreadId = useAgents((s) => s.activeThreadId);
   const byId = new Map<string, AgentDefinition>(agents.map((a) => [a.id, a]));
-  const defaultAgentId = useDefaultAgentId();
-  const defaultAgent = defaultAgentId ? byId.get(defaultAgentId) : undefined;
+  // The global default: the starred agent when it is signed in and shown, else the first that is,
+  // on its default model (or its first favourite, or its first model).
+  useAutoVerify();
+  const fallback = usePickableAgents()[0];
+  const defaultAgent = fallback?.agent;
+  const defaultModel = fallback?.models[0];
   const startDefault = (): void => {
     if (!defaultAgent) {
       showPicker();
       return;
     }
-    createThread(defaultAgent.id).catch((error: unknown) => showToast((error as Error).message));
+    createThread(defaultAgent.id, defaultModel?.value).catch((error: unknown) => showToast((error as Error).message));
   };
 
   return (
@@ -65,20 +69,33 @@ export function ThreadList() {
           type="button"
           data-testid="new-thread"
           data-agent={defaultAgent?.id}
-          title={defaultAgent ? `New ${defaultAgent.name} thread (default agent)` : 'New thread: choose an agent'}
+          data-model={defaultModel?.value}
+          title={
+            defaultAgent
+              ? `New thread with the default: ${defaultAgent.name}${defaultModel ? ` on ${defaultModel.name}` : ''}`
+              : 'New thread: choose an agent'
+          }
           onClick={startDefault}
-          className="flex h-7 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-l bg-accent text-[12px] text-accent-fg hover:opacity-90"
+          className="flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-l bg-accent px-2.5 py-1 text-left text-accent-fg hover:opacity-90"
         >
-          <MessageSquarePlus size={13} className="shrink-0" />
-          <span className="truncate">{defaultAgent ? `New ${defaultAgent.name} thread` : 'New thread'}</span>
+          <MessageSquarePlus size={14} className="shrink-0" />
+          <span className="flex min-w-0 flex-col leading-tight">
+            <span className="text-[12px] font-medium">New thread</span>
+            {defaultAgent && (
+              <span className="truncate text-[11px] opacity-80" data-testid="new-thread-default">
+                {defaultAgent.name}
+                {defaultModel && ` · ${shortModelName(defaultModel.name)}`}
+              </span>
+            )}
+          </span>
         </button>
         <button
           type="button"
           data-testid="new-thread-choose"
-          title="Choose an agent for the new thread"
-          aria-label="Choose an agent for the new thread"
+          title="Choose an agent and model for the new thread"
+          aria-label="Choose an agent and model for the new thread"
           onClick={showPicker}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-r border-l border-accent-fg/25 bg-accent text-accent-fg hover:opacity-90"
+          className="flex w-8 shrink-0 items-center justify-center rounded-r border-l border-accent-fg/25 bg-accent text-accent-fg hover:opacity-90"
         >
           <ChevronDown size={13} />
         </button>

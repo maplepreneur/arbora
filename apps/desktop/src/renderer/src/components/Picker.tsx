@@ -62,6 +62,10 @@ export interface PickerProps {
   readonly onSetDefault?: (value: string) => void;
   /** Tooltip for the pin, e.g. "Use for new OpenCode threads". */
   readonly defaultHint?: string;
+  /** Bump to open the menu from outside (a keyboard shortcut). */
+  readonly openRequest?: number;
+  /** Shown in the trigger's tooltip, e.g. `Alt+P`. */
+  readonly shortcut?: string | undefined;
 }
 
 const NO_FAVORITES: readonly string[] = [];
@@ -130,10 +134,13 @@ export function Picker({
   defaultValue,
   onSetDefault,
   defaultHint = 'Use for new threads',
+  openRequest = 0,
+  shortcut,
 }: PickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
+  const [seenOpenRequest, setSeenOpenRequest] = useState(openRequest);
   const [placement, setPlacement] = useState<Placement | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -147,6 +154,21 @@ export function Picker({
   const groups = useMemo(() => groupOptions(filtered), [filtered]);
   const flat = useMemo(() => groups.flatMap((g) => g.options), [groups]);
   const indexOf = useMemo(() => new Map(flat.map((o, i) => [o.value, i])), [flat]);
+
+  // A keyboard shortcut elsewhere asked for the menu (Alt+P opens the model picker).
+  if (seenOpenRequest !== openRequest) {
+    setSeenOpenRequest(openRequest);
+    if (!disabled) {
+      setOpen(true);
+      setQuery('');
+      setActive(
+        Math.max(
+          0,
+          flat.findIndex((o) => o.value === value),
+        ),
+      );
+    }
+  }
 
   const close = (refocus: boolean): void => {
     setOpen(false);
@@ -264,7 +286,7 @@ export function Picker({
         aria-haspopup="listbox"
         aria-expanded={open}
         disabled={disabled}
-        title={selected ? `${label}: ${selected.group ? `${selected.group}/` : ''}${selected.name}` : label}
+        title={`${selected ? `${label}: ${selected.group ? `${selected.group}/` : ''}${selected.name}` : label}${shortcut ? ` (${shortcut})` : ''}`}
         onClick={() => (open ? close(false) : openMenu())}
         onKeyDown={(event) => {
           if (open) onKeyDown(event);

@@ -28,6 +28,11 @@ export interface AgentPanelState {
   attachments: Record<string, Attachment[]>;
   /** Bumped to move focus to the composer. */
   composerFocusRequest: number;
+  /** Bumped to focus the new-thread picker with the default agent highlighted. */
+  pickerFocusRequest: number;
+  /** Bumped by Alt+P / Alt+M to open the open thread's model or mode menu. */
+  modelMenuRequest: number;
+  modeMenuRequest: number;
   /** Files written by agents this session (Stage 8 turns these into the "Agent changes" group). */
   changedFiles: { threadId: string; path: string; at: number }[];
   loaded: boolean;
@@ -45,6 +50,9 @@ const INITIAL: AgentPanelState = {
   drafts: {},
   attachments: {},
   composerFocusRequest: 0,
+  pickerFocusRequest: 0,
+  modelMenuRequest: 0,
+  modeMenuRequest: 0,
   changedFiles: [],
   loaded: false,
 };
@@ -145,8 +153,9 @@ export async function openThread(threadId: string): Promise<void> {
   }));
 }
 
-export async function createThread(agentId: string): Promise<void> {
-  const summary = await window.arbora.invoke('agent.createThread', { agentId });
+/** `model` overrides the agent's default model for this thread. */
+export async function createThread(agentId: string, model?: string): Promise<void> {
+  const summary = await window.arbora.invoke('agent.createThread', { agentId, ...(model ? { model } : {}) });
   useAgents.setState((s) => ({
     threads: s.threads.some((t) => t.id === summary.id) ? s.threads : [summary, ...s.threads],
     events: { ...s.events, [summary.id]: [] },
@@ -161,7 +170,7 @@ export function showThreads(): void {
 }
 
 export function showPicker(): void {
-  useAgents.setState({ view: 'picker' });
+  useAgents.setState((s) => ({ view: 'picker', pickerFocusRequest: s.pickerFocusRequest + 1 }));
 }
 
 export function focusComposer(): void {

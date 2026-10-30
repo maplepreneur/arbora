@@ -70,19 +70,31 @@ export function bindingForEvent(event: KeyboardEvent): ReturnType<KeybindingTabl
     alt: event.altKey,
     shift: event.shiftKey,
   });
-  const { mode, terminalFocused, settings } = useApp.getState();
-  return activeTable.match(chord, {
+  const { mode, terminalFocused, settings, design } = useApp.getState();
+  const binding = activeTable.match(chord, {
     modeActive: modeActive(mode),
     terminalFocused,
     terminalPassthrough: settings.terminalPassthrough,
+    designActive: mode.kind === 'design',
+    textEditing: design.textEditing,
+    agentFocused: event.target instanceof Element && event.target.closest('[data-testid="agent-panel"]') !== null,
   });
+  if (binding && design.textEditing && binding.commandId !== 'arbora.exitMode') return undefined;
+  return binding;
 }
 
 /** Keeps main's interception context in sync with the renderer's mode and focus state. */
 export function useKeybindingContextSync(): void {
   const active = useApp((s) => modeActive(s.mode));
   const terminalFocused = useApp((s) => s.terminalFocused);
+  const designActive = useApp((s) => s.mode.kind === 'design');
+  const textEditing = useApp((s) => s.design.textEditing);
   useEffect(() => {
-    void window.arbora.invoke('keybindings.setContext', { modeActive: active, terminalFocused });
-  }, [active, terminalFocused]);
+    void window.arbora.invoke('keybindings.setContext', {
+      modeActive: active,
+      terminalFocused,
+      designActive,
+      textEditing,
+    });
+  }, [active, terminalFocused, designActive, textEditing]);
 }

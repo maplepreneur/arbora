@@ -1,5 +1,5 @@
 import type { Event, Input, WebContents } from 'electron';
-import { chordFromInput, isModifierKey, type KeybindingContext, type KeybindingTable } from '@arbora/shared';
+import { chordFromInput, CommandId, isModifierKey, type KeybindingContext, type KeybindingTable } from '@arbora/shared';
 
 export interface InterceptorSource {
   table(): KeybindingTable;
@@ -21,8 +21,13 @@ export function interceptCommand(input: Input, source: InterceptorSource): strin
     alt: input.alt,
     shift: input.shift,
   });
-  const binding = source.table().match(chord, source.context());
-  return binding?.intercept ? binding.commandId : undefined;
+  const context = source.context();
+  const binding = source.table().match(chord, context);
+  const commandId = binding?.intercept ? binding.commandId : undefined;
+  if (!commandId) return undefined;
+  // Typed text must reach the page. Escape still leaves the edit.
+  if (context.textEditing && commandId !== CommandId.exitMode) return undefined;
+  return commandId;
 }
 
 /**

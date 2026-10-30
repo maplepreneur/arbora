@@ -2,7 +2,7 @@ import { existsSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import type { NavigationState } from '@arbora/shared';
-import { DESKTOP_ROOT, FIXTURES, launch, tempUserData } from './app';
+import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, tempUserData } from './app';
 import { startNextFixture, startNuxtFixture, startViteFixture, type RunningServer } from './servers';
 
 const FAKE_AGENT = resolve(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
@@ -30,6 +30,7 @@ function userDataWithFakeAgents(): string {
           },
         ],
         permissions: {},
+        ...checkedAgents([FAKE_ID, FAKE_NO_IMAGE_ID]),
       },
     }),
   );
@@ -279,7 +280,7 @@ test.describe('Stage 4 agent mode on Vite + React 18', () => {
       await page.keyboard.press('Escape');
 
       // Open a fake-agent thread in the panel; agent mode now sends there.
-      await page.getByTestId('new-thread').click();
+      await page.getByTestId('new-thread-choose').click();
       await page.getByTestId(`pick-agent-${FAKE_ID}`).click();
       await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', { timeout: 20_000 });
       const [open] = await page.evaluate(() => window.arbora.invoke('agent.listThreads'));

@@ -21,10 +21,12 @@ import {
   viewportEmulationSchema,
   viewportPresetIdSchema,
 } from './browser.js';
+import { designCommandSchema, designSessionSummarySchema, designStateSchema } from './design.js';
 import { agentModeIncludeSchema, agentModeSelectionSchema, agentModeTargetSchema } from './inspector.js';
 import { defineChannel, defineEvent, type IpcClient } from './ipc.js';
 import { platformSchema } from './platform.js';
 import {
+  agentVerificationSchema,
   appSettingsPatchSchema,
   appSettingsSchema,
   layoutStateSchema,
@@ -90,6 +92,8 @@ export type ProjectInfo = z.infer<typeof projectInfoSchema>;
 export const keybindingContextSchema = z.object({
   modeActive: z.boolean(),
   terminalFocused: z.boolean(),
+  designActive: z.boolean().default(false),
+  textEditing: z.boolean().default(false),
 });
 
 /** Request/response channels. Keep this the single registry of IPC surface. */
@@ -219,8 +223,18 @@ export const channels = {
     none,
     z.object({ agents: z.array(agentDefinitionSchema), availability: z.array(agentAvailabilitySchema) }),
   ),
+  /**
+   * Starts the agent once (`initialize`, `session/new`), records whether it is signed in and which
+   * models it offers under `settings.agents.verified`, and stops it.
+   */
+  'agent.verify': defineChannel('agent.verify', z.object({ agentId: z.string() }), agentVerificationSchema),
   'agent.listThreads': defineChannel('agent.listThreads', none, z.array(threadSummarySchema)),
-  'agent.createThread': defineChannel('agent.createThread', z.object({ agentId: z.string() }), threadSummarySchema),
+  /** `model` is a value of the agent's `model` config option; it wins over the agent's default model. */
+  'agent.createThread': defineChannel(
+    'agent.createThread',
+    z.object({ agentId: z.string(), model: z.string().max(300).optional() }),
+    threadSummarySchema,
+  ),
   'agent.getThread': defineChannel('agent.getThread', threadId, threadSchema.nullable()),
   'agent.deleteThread': defineChannel('agent.deleteThread', threadId, none),
   'agent.renameThread': defineChannel(
@@ -305,6 +319,24 @@ export const channels = {
     }),
     z.object({ threadId: z.string() }),
   ),
+
+  /** Design mode (`Mod+D`): `true` takes the before screenshot and shows the overlay. */
+  'design.setActive': defineChannel('design.setActive', z.object({ active: z.boolean() }), none),
+  /** A properties-panel or chord edit. The page applies it and mirrors the op list back. */
+  'design.command': defineChannel('design.command', designCommandSchema, none),
+  /** After screenshot, change list and sources, sent to a thread. The live DOM is reverted first. */
+  'design.save': defineChannel(
+    'design.save',
+    z.object({ target: agentModeTargetSchema }),
+    z.object({ threadId: z.string() }),
+  ),
+  'design.discard': defineChannel('design.discard', none, none),
+  'design.listSessions': defineChannel('design.listSessions', none, z.array(designSessionSummarySchema)),
+  'design.resend': defineChannel(
+    'design.resend',
+    z.object({ id: z.string(), target: agentModeTargetSchema }),
+    z.object({ threadId: z.string() }),
+  ),
 } as const;
 
 /** Main -> renderer events. */
@@ -348,6 +380,12 @@ export const events = {
   'agentMode.selected': defineEvent('agentMode.selected', agentModeSelectionSchema),
   /** Agent mode ended from the page (`Esc` there, a navigation) or the selection could not be resolved. */
   'agentMode.ended': defineEvent('agentMode.ended', z.object({ error: z.string().optional() })),
+  /** Design mode op list, selection and text-editing flag. */
+  'design.state': defineEvent('design.state', designStateSchema),
+  /** A navigation was blocked because design edits have not been saved. */
+  'design.navigationBlocked': defineEvent('design.navigationBlocked', z.object({ url: z.string() })),
+  /** Entering or leaving design mode failed (usually the before screenshot). */
+  'design.failed': defineEvent('design.failed', z.object({ error: z.string() })),
 } as const;
 
 export type Channels = typeof channels;

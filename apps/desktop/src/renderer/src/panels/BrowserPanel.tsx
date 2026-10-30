@@ -385,7 +385,7 @@ function ErrorState({ error }: { error: LoadError }) {
   );
 }
 
-function modeBannerText(mode: ModeState, hasPage: boolean): string {
+function modeBannerText(mode: ModeState, hasPage: boolean, changes: number, original: boolean): string {
   switch (mode.kind) {
     case 'idle':
       return '';
@@ -404,7 +404,20 @@ function modeBannerText(mode: ModeState, hasPage: boolean): string {
         }
       }
     case 'design':
-      return 'Design mode: edit visually (Stage 6)';
+      switch (mode.phase) {
+        case 'editing':
+          if (!hasPage) return 'Design mode: load your page, then click an element';
+          if (original) return 'Design mode: showing the page before your changes';
+          return changes > 0
+            ? `Design mode: ${changes} unsent change${changes === 1 ? '' : 's'}`
+            : 'Design mode: click an element, then edit it';
+        case 'confirm':
+          return 'Design mode: send or discard your changes?';
+        default: {
+          const unreachable: never = mode;
+          return unreachable;
+        }
+      }
     default: {
       const unreachable: never = mode;
       return unreachable;
@@ -414,6 +427,8 @@ function modeBannerText(mode: ModeState, hasPage: boolean): string {
 
 export default function BrowserPanel() {
   const mode = useApp((s) => s.mode);
+  const designChanges = useApp((s) => s.design.cursor);
+  const showingOriginal = useApp((s) => s.design.showingOriginal);
   const state = useApp((s) => s.browser);
   const paletteOpen = useApp((s) => s.paletteOpen);
   const suggestedUrl = useApp((s) => s.suggestedUrl);
@@ -436,10 +451,10 @@ export default function BrowserPanel() {
         <div
           data-testid="mode-banner"
           data-mode={mode.kind}
-          data-phase={mode.kind === 'agent' ? mode.phase : undefined}
+          data-phase={mode.phase}
           className="flex h-7 shrink-0 items-center justify-center bg-accent text-xs font-medium text-accent-fg"
         >
-          {modeBannerText(mode, !empty && error === null)} · {exitLabel} to exit
+          {modeBannerText(mode, !empty && error === null, designChanges, showingOriginal)} · {exitLabel} to exit
         </div>
       )}
       {suggestedUrl && (

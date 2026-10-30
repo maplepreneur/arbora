@@ -22,6 +22,7 @@ import {
 import type { AgentRegistry } from '@arbora/acp-client';
 import { AgentService } from './agent/agent-service.js';
 import { AgentModeService } from './agent-mode/agent-mode-service.js';
+import { DesignModeService } from './design/design-mode-service.js';
 import { findCandidates } from './agent-mode/source-search.js';
 import { BrowserHistory } from './browser/browser-history.js';
 import { BrowserService } from './browser/browser-service.js';
@@ -66,7 +67,12 @@ interface OpenProject {
 
 const DEFAULT_SIZE = { width: 1440, height: 900 };
 /** Intercepted while the page has focus, these move keyboard focus to the app UI first. */
-const FOCUS_APP_COMMANDS: ReadonlySet<string> = new Set([CommandId.commandPalette, CommandId.browserFocusUrl]);
+const FOCUS_APP_COMMANDS: ReadonlySet<string> = new Set([
+  CommandId.commandPalette,
+  CommandId.browserFocusUrl,
+  CommandId.agentNewThread,
+  CommandId.openSettings,
+]);
 const BOUNDS_SAVE_DELAY_MS = 500;
 
 export class ProjectWindowError extends Error {}
@@ -102,6 +108,7 @@ export class ProjectWindow {
   devServer: DevServer | null = null;
   agents: AgentService | null = null;
   agentMode: AgentModeService | null = null;
+  designMode: DesignModeService | null = null;
 
   constructor(
     private readonly manager: WindowManager,
@@ -171,8 +178,18 @@ export class ProjectWindow {
     };
   }
 
-  setKeybindingContext(context: Omit<KeybindingContext, 'terminalPassthrough'>): void {
-    this.context = context;
+  setKeybindingContext(context: {
+    modeActive: boolean;
+    terminalFocused: boolean;
+    designActive?: boolean | undefined;
+    textEditing?: boolean | undefined;
+  }): void {
+    this.context = {
+      modeActive: context.modeActive,
+      terminalFocused: context.terminalFocused,
+      designActive: context.designActive === true,
+      textEditing: context.textEditing === true,
+    };
   }
 
   browserHistoryEntries(): BrowserHistoryEntry[] {
@@ -197,6 +214,7 @@ export class ProjectWindow {
     void this.startBrowser(path);
     this.startTerminals(path);
     this.startAgentMode(path);
+    this.startDesignMode(path);
     this.options.settings.update((s) => ({
       ...s,
       recentProjects: addRecentProject(s.recentProjects, { path, name: basename(path), openedAt: Date.now() }),
@@ -206,6 +224,8 @@ export class ProjectWindow {
 
   closeProject(): void {
     this.saveBounds();
+    this.designMode?.setActive(false);
+    this.designMode = null;
     this.agentMode = null;
     this.stopBrowser();
     this.stopTerminals();
@@ -274,6 +294,10 @@ export class ProjectWindow {
         urlSuggested: (url) => sendEvent(app, 'browser.urlSuggested', { url }),
         inspectorSelected: (selection) => void this.agentMode?.select(selection),
         inspectorCancelled: () => this.agentMode?.cancelledInPage(),
+        designState: (state) => this.designMode?.onState(state),
+        designExitRequested: () => sendEvent(app, 'command.invoke', { commandId: CommandId.exitMode }),
+        designNavigationBlocked: (url) => sendEvent(app, 'design.navigationBlocked', { url }),
+        designDocumentNavigated: () => void this.designMode?.onDocumentNavigated(),
       },
       attachInterceptor: (page) =>
         attachKeybindingInterceptor(
@@ -438,6 +462,25 @@ export class ProjectWindow {
         picked: () => sendEvent(app, 'agentMode.picked', {}),
         selected: (selection) => sendEvent(app, 'agentMode.selected', selection),
         ended: (error) => sendEvent(app, 'agentMode.ended', error === undefined ? {} : { error }),
+      },
+    });
+  }
+
+  private startDesignMode(projectPath: string): void {
+    const app = this.contents;
+    const { platform, shellEnvironment } = this.options;
+    this.designMode = new DesignModeService({
+      projectPath,
+      browser: () => this.browser,
+      agents: () => this.agents,
+      findCandidates: async (terms) => {
+        await shellEnvironment.ready;
+        const rg = findExecutable('rg', shellEnvironment.env(), platform) ?? null;
+        return findCandidates(projectPath, terms, { rg });
+      },
+      events: {
+        state: (state) => sendEvent(app, 'design.state', state),
+        failed: (error) => sendEvent(app, 'design.failed', { error }),
       },
     });
   }

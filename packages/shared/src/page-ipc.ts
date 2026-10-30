@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { designCommandSchema, designOpSchema, designStateSchema } from './design.js';
 import { inspectorSelectionSchema } from './inspector.js';
 
 /**
@@ -23,6 +24,11 @@ export const pageMessages = {
   'inspector.cancelled': z.object({}),
   /** The overlay finished showing or hiding (two animation frames later), for clean screenshots. */
   'inspector.overlayApplied': z.object({ nonce: z.string() }),
+  /** Design mode: the op list, cursor and selection. Main persists this as it arrives. */
+  'design.state': designStateSchema,
+  /** Design mode: Escape with nothing selected (main normally intercepts Escape first). */
+  'design.exitRequested': z.object({}),
+  'design.overlayApplied': z.object({ nonce: z.string() }),
 } as const;
 
 export type PageMessageName = keyof typeof pageMessages;
@@ -38,6 +44,12 @@ export const pageEvents = {
   /** Agent mode: remove the overlay and release every listener. */
   'inspector.stop': z.object({}),
   'inspector.setOverlay': z.object({ visible: z.boolean(), nonce: z.string() }),
+  /** Design mode: show the overlay. `ops` is a crash draft to re-apply. */
+  'design.start': z.object({ ops: z.array(designOpSchema).max(500), cursor: z.number().int().min(0) }),
+  /** Design mode: remove the overlay. `revert` restores the DOM. */
+  'design.stop': z.object({ revert: z.boolean() }),
+  'design.setOverlay': z.object({ visible: z.boolean(), nonce: z.string() }),
+  'design.command': designCommandSchema,
 } as const;
 
 export type PageEventName = keyof typeof pageEvents;

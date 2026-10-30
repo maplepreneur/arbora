@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import type { NavigationState } from '@arbora/shared';
-import { DESKTOP_ROOT, FIXTURES, launch, tempUserData } from './app';
+import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, tempUserData } from './app';
 import { freePort, startViteFixture, type RunningServer } from './servers';
 
 const FAKE_AGENT = resolve(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
@@ -31,6 +31,7 @@ function userDataWithFakeAgents(): string {
           },
         ],
         permissions: {},
+        ...checkedAgents([HTTP_ID, STDIO_ID]),
       },
     }),
   );
@@ -79,7 +80,7 @@ async function openFixture(app: ElectronApplication, page: Page, url: string): P
 }
 
 async function newThread(page: Page, agentId: string): Promise<void> {
-  await page.getByTestId('new-thread').click();
+  await page.getByTestId('new-thread-choose').click();
   await page.getByTestId(`pick-agent-${agentId}`).click();
   await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', { timeout: 30_000 });
 }

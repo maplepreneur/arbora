@@ -9,6 +9,8 @@ import { setGroupLayout, updateLayout, useApp } from '../store';
 
 const BrowserPanel = lazy(() => import('../panels/BrowserPanel'));
 const AgentPanel = lazy(() => import('../panels/AgentPanel'));
+const DesignPanel = lazy(() => import('../panels/design/DesignPanel'));
+const SettingsPage = lazy(() => import('../panels/settings/SettingsPage'));
 const TerminalPanel = lazy(() => import('../panels/TerminalPanel'));
 const GitPanel = lazy(() => import('../panels/GitPanel'));
 const ProblemsPanel = lazy(() => import('../panels/ProblemsPanel'));
@@ -157,6 +159,8 @@ function RailButton({
  */
 export function Workspace() {
   const layout = useApp((s) => s.layout);
+  const designMode = useApp((s) => s.mode.kind === 'design');
+  const settingsOpen = useApp((s) => s.settingsOpen);
   const epoch = useApp((s) => s.layoutEpoch);
   const sidebarRef = usePanelRef();
   const agentRef = usePanelRef();
@@ -243,9 +247,7 @@ export function Workspace() {
           >
             <Panel id="browser" minSize="160px" defaultSize={DEFAULT_CENTER['browser']}>
               <section data-testid="panel-browser" className="h-full">
-                <Suspense fallback={<PanelFallback />}>
-                  <BrowserPanel />
-                </Suspense>
+                <Suspense fallback={<PanelFallback />}>{settingsOpen ? <SettingsPage /> : <BrowserPanel />}</Suspense>
               </section>
             </Panel>
             <ResizeHandle id="sep-bottom" orientation="vertical" />
@@ -300,9 +302,7 @@ export function Workspace() {
           defaultSize={DEFAULT_MAIN['agent']}
         >
           <aside data-testid="panel-agent" className="h-full overflow-hidden bg-bg-subtle">
-            <Suspense fallback={<PanelFallback />}>
-              <AgentPanel />
-            </Suspense>
+            <Suspense fallback={<PanelFallback />}>{designMode ? <DesignPanel /> : <AgentPanel />}</Suspense>
           </aside>
         </Panel>
       </Group>

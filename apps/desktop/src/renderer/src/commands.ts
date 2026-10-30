@@ -3,8 +3,12 @@ import {
   CommandRegistry,
   commandIdSchema,
   DEFAULT_COMMANDS,
+  isPickableAgent,
+  visibleModels,
+  type AgentModeTarget,
   type BottomTab,
   type BrowserAction,
+  type DesignCommand,
   type ScreenshotRequest,
   type SidebarView,
   type ThemeMode,
@@ -12,7 +16,6 @@ import {
 } from '@arbora/shared';
 import {
   activeThread,
-  createThread,
   isStoppable,
   focusComposer,
   openThread,
@@ -24,6 +27,7 @@ import {
 } from './agent-store';
 import { defaultAgentId } from './agent-defaults';
 import { dispatchMode, resetLayout, showToast, useApp } from './store';
+import { modeControl, nextValue, selectValues, thinkingControl } from './thread-controls';
 import {
   activePane,
   createTerminal,
@@ -145,6 +149,191 @@ function toggleMode(mode: 'agent' | 'design'): void {
   dispatchMode({ type: mode === 'agent' ? 'toggleAgent' : 'toggleDesign' });
 }
 
+function ipcError(error: unknown): string {
+  return (error as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+}
+
+function designPending(): 'idle' | 'agent' {
+  const mode = useApp.getState().mode;
+  return mode.kind === 'design' && mode.phase === 'confirm' ? mode.pending : 'idle';
+}
+
+/** A new thread with the default agent and its default model, if that agent is signed in and shown. */
+export function defaultDesignTarget(): AgentModeTarget | null {
+  const settings = useApp.getState().settings.agents;
+  const pickable = useAgents.getState().agents.filter((agent) => isPickableAgent(settings, agent.id));
+  const preferred = defaultAgentId();
+  const agent = pickable.find((entry) => entry.id === preferred) ?? pickable[0];
+  if (!agent) return null;
+  const model = visibleModels(settings, agent.id)[0]?.value;
+  return { type: 'new', agentId: agent.id, ...(model ? { model } : {}) };
+}
+
+/** Saves the live design edits and opens the thread that received them. */
+export async function saveDesignTo(target: AgentModeTarget | null): Promise<void> {
+  if (!target) {
+    showToast('No signed-in agent. Check your agents in Settings (Mod+,).');
+    return;
+  }
+  const pending = designPending();
+  try {
+    const { threadId } = await window.arbora.invoke('design.save', { target });
+    dispatchMode({ type: 'designLeave' });
+    await showAgentThread(threadId);
+    if (pending === 'agent') dispatchMode({ type: 'toggleAgent' });
+  } catch (error) {
+    showToast(ipcError(error));
+  }
+}
+
+/** Reverts the live DOM and leaves design mode. */
+export async function discardDesign(): Promise<void> {
+  const pending = designPending();
+  try {
+    await window.arbora.invoke('design.discard');
+    dispatchMode({ type: 'designLeave' });
+    if (pending === 'agent') dispatchMode({ type: 'toggleAgent' });
+  } catch (error) {
+    showToast(ipcError(error));
+  }
+}
+
+/** Sends a saved design session to an agent again. The live page is left alone. */
+export async function resendDesignSession(id: string, target: AgentModeTarget | null): Promise<void> {
+  if (!target) {
+    showToast('No signed-in agent. Check your agents in Settings (Mod+,).');
+    return;
+  }
+  try {
+    const { threadId } = await window.arbora.invoke('design.resend', { id, target });
+    if (useApp.getState().mode.kind === 'design') dispatchMode({ type: 'designLeave' });
+    await showAgentThread(threadId);
+  } catch (error) {
+    showToast(ipcError(error));
+  }
+}
+
+async function resendDesign(): Promise<void> {
+  if (!hasProject()) return;
+  let sessions = useApp.getState().design.sessions;
+  if (sessions.length === 0) {
+    sessions = await window.arbora.invoke('design.listSessions');
+    useApp.setState((s) => ({ design: { ...s.design, sessions } }));
+  }
+  const latest = sessions[0];
+  if (!latest) {
+    showToast('No design sessions yet');
+    return;
+  }
+  const target = defaultDesignTarget();
+  if (!target) {
+    showToast('Choose an agent');
+    return;
+  }
+  try {
+    const { threadId } = await window.arbora.invoke('design.resend', { id: latest.id, target });
+    if (useApp.getState().mode.kind === 'design') dispatchMode({ type: 'designLeave' });
+    await showAgentThread(threadId);
+  } catch (error) {
+    showToast(ipcError(error));
+  }
+}
+
+async function runDesignCommand(command: DesignCommand): Promise<void> {
+  if (useApp.getState().mode.kind !== 'design') return;
+  try {
+    await window.arbora.invoke('design.command', command);
+  } catch (error) {
+    showToast(ipcError(error));
+  }
+}
+
+/** The thread on screen in the agent panel, or null with a toast saying why nothing happened. */
+function shownThread(): ReturnType<typeof activeThread> | null {
+  const thread = useAgents.getState().view === 'thread' ? activeThread() : undefined;
+  if (!thread) {
+    showToast('Open a thread first');
+    return null;
+  }
+  return thread;
+}
+
+/** Whether the open thread has the control a menu shortcut asks for. */
+function openThreadControl(kind: 'model' | 'mode'): boolean {
+  const thread = shownThread();
+  if (!thread) return false;
+  const has =
+    kind === 'model'
+      ? thread.state.configOptions.some((o) => o.type === 'select' && o.category === 'model')
+      : modeControl(thread.state) !== null;
+  if (!has) showToast(kind === 'model' ? 'This agent has no model choice' : 'This agent has no modes');
+  return has;
+}
+
+/** Shift+Tab: the next mode, as in the agent CLIs (Ask → Code → …, Build → Plan → …). */
+async function cycleThreadMode(): Promise<void> {
+  const thread = shownThread();
+  if (!thread) return;
+  const control = modeControl(thread.state);
+  try {
+    if (!control) {
+      showToast('This agent has no modes');
+    } else if (control.kind === 'config') {
+      const value = nextValue(
+        selectValues(control.option).map((v) => v.value),
+        control.option.currentValue,
+      );
+      if (value) {
+        await window.arbora.invoke('agent.setConfigOption', {
+          threadId: thread.id,
+          configId: control.option.id,
+          value,
+        });
+      }
+    } else {
+      const modeId = nextValue(
+        control.values.map((m) => m.id),
+        control.current,
+      );
+      if (modeId) await window.arbora.invoke('agent.setMode', { threadId: thread.id, modeId });
+    }
+  } catch (error) {
+    showToast(ipcError(error));
+  }
+}
+
+/** Alt+T: the next thinking level, or thinking on/off for agents with a switch. */
+async function cycleThreadThinking(): Promise<void> {
+  const thread = shownThread();
+  if (!thread) return;
+  const control = thinkingControl(thread.state);
+  try {
+    if (!control) {
+      showToast('This agent has no thinking setting');
+    } else if (control.kind === 'boolean') {
+      await window.arbora.invoke('agent.setConfigOption', {
+        threadId: thread.id,
+        configId: control.option.id,
+        value: !control.option.currentValue,
+      });
+    } else {
+      const value = nextValue(
+        selectValues(control.option).map((v) => v.value),
+        control.option.currentValue,
+      );
+      if (value) {
+        await window.arbora.invoke('agent.setConfigOption', {
+          threadId: thread.id,
+          configId: control.option.id,
+          value,
+        });
+      }
+    }
+  } catch (error) {
+    showToast(ipcError(error));
+  }
+}
+
 /** Shows the agent panel on `threadId` (agent mode hands its prompt over to the thread). */
 export async function showAgentThread(threadId: string): Promise<void> {
   workspace?.showAgentPanel();
@@ -230,6 +419,9 @@ async function runCommand(id: CommandId): Promise<void> {
       return;
     case CommandId.resetLayout:
       withProject(() => resetLayout());
+      return;
+    case CommandId.openSettings:
+      useApp.setState((s) => ({ settingsOpen: !s.settingsOpen, paletteOpen: false }));
       return;
     case CommandId.openSettingsFile:
       await arbora.invoke('settings.openFile');
@@ -367,11 +559,8 @@ async function runCommand(id: CommandId): Promise<void> {
       openFileAtLocation();
       return;
     case CommandId.agentNewThread:
-      withAgentPanel(() => {
-        const agentId = defaultAgentId();
-        if (agentId) createThread(agentId).catch((error: unknown) => showToast((error as Error).message));
-        else showPicker();
-      });
+      // The picker opens on the default agent, so the shortcut then Enter starts it.
+      withAgentPanel(() => showPicker());
       return;
     case CommandId.agentFocusComposer:
       withAgentPanel(() => {
@@ -397,6 +586,36 @@ async function runCommand(id: CommandId): Promise<void> {
       return;
     case CommandId.agentShowThreads:
       withAgentPanel(() => showThreads());
+      return;
+    case CommandId.agentCycleMode:
+      await cycleThreadMode();
+      return;
+    case CommandId.agentPickMode:
+      if (openThreadControl('mode')) useAgents.setState((s) => ({ modeMenuRequest: s.modeMenuRequest + 1 }));
+      return;
+    case CommandId.agentPickModel:
+      if (openThreadControl('model')) useAgents.setState((s) => ({ modelMenuRequest: s.modelMenuRequest + 1 }));
+      return;
+    case CommandId.agentCycleThinking:
+      await cycleThreadThinking();
+      return;
+    case CommandId.designUndo:
+      await runDesignCommand({ type: 'undo' });
+      return;
+    case CommandId.designRedo:
+      await runDesignCommand({ type: 'redo' });
+      return;
+    case CommandId.designDuplicate:
+      await runDesignCommand({ type: 'duplicate' });
+      return;
+    case CommandId.designSave:
+      await saveDesignTo(defaultDesignTarget());
+      return;
+    case CommandId.designDiscard:
+      await discardDesign();
+      return;
+    case CommandId.designResend:
+      await resendDesign();
       return;
     default: {
       const unreachable: never = id;

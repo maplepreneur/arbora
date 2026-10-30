@@ -12,7 +12,9 @@ import {
   SlidersHorizontal,
   Square,
 } from 'lucide-react';
-import type { SessionConfigOption, ThreadSummary } from '@arbora/shared';
+import { CommandId, type SessionConfigOption, type ThreadSummary } from '@arbora/shared';
+import { useChordLabel } from '../../keybindings';
+import { modeControl, thinkingControl } from '../../thread-controls';
 import { Picker, type PickerOption } from '../../components/Picker';
 import { showToast, useApp } from '../../store';
 import { isStoppable, showThreads, stopAgent, toggleLog, useAgents } from '../../agent-store';
@@ -86,6 +88,25 @@ export function ThreadView({ thread, projectPath }: { thread: ThreadSummary; pro
   const otherOptions = state.configOptions.filter((o) => o !== modelOption);
   const favoriteModels = useApp((s) => s.settings.agents.favoriteModels[thread.agentId]) ?? NO_MODELS;
   const defaultModel = useApp((s) => s.settings.agents.defaultModels[thread.agentId]);
+  const modelMenuRequest = useAgents((s) => s.modelMenuRequest);
+  const modeMenuRequest = useAgents((s) => s.modeMenuRequest);
+  const mode = modeControl(state);
+  const thinking = thinkingControl(state);
+  const cycleModeKey = useChordLabel(CommandId.agentCycleMode);
+  const pickModeKey = useChordLabel(CommandId.agentPickMode);
+  const modelKey = useChordLabel(CommandId.agentPickModel);
+  const thinkingKey = useChordLabel(CommandId.agentCycleThinking);
+  const modeShortcut = [cycleModeKey && `${cycleModeKey} next`, pickModeKey && `${pickModeKey} list`]
+    .filter(Boolean)
+    .join(', ');
+  // The mode menu opens on whichever control Shift+Tab rotates: a `mode` config option or the modes.
+  const modeMenuFor = (optionId: string | null): number =>
+    (mode?.kind === 'config' ? mode.option.id : null) === optionId ? modeMenuRequest : 0;
+  const optionShortcut = (optionId: string): string | undefined => {
+    if (mode?.kind === 'config' && mode.option.id === optionId) return modeShortcut || undefined;
+    if (thinking?.option.id === optionId && thinkingKey) return `${thinkingKey} next`;
+    return undefined;
+  };
 
   const invoke = async (action: () => Promise<unknown>): Promise<void> => {
     try {
@@ -184,6 +205,8 @@ export function ThreadView({ thread, projectPath }: { thread: ThreadSummary; pro
               testId="mode-select"
               menuWidth={240}
               className="max-w-[40%]"
+              openRequest={mode?.kind === 'modes' ? modeMenuRequest : 0}
+              shortcut={mode?.kind === 'modes' ? modeShortcut || undefined : undefined}
               value={state.modes.currentModeId}
               options={state.modes.availableModes.map((m) => ({
                 value: m.id,
@@ -207,6 +230,8 @@ export function ThreadView({ thread, projectPath }: { thread: ThreadSummary; pro
               defaultHint={`Use for new ${agentName} threads`}
               menuWidth={320}
               className="max-w-[60%]"
+              openRequest={modelMenuRequest}
+              shortcut={modelKey}
               value={modelOption.currentValue}
               options={selectOptions(modelOption)}
               onChange={(value) =>
@@ -228,6 +253,8 @@ export function ThreadView({ thread, projectPath }: { thread: ThreadSummary; pro
                 icon={SlidersHorizontal}
                 className="max-w-[45%]"
                 testId={`config-${option.id}`}
+                openRequest={modeMenuFor(option.id)}
+                shortcut={optionShortcut(option.id)}
                 value={option.currentValue}
                 options={selectOptions(option)}
                 onChange={(value) =>
@@ -299,6 +326,24 @@ export function ThreadView({ thread, projectPath }: { thread: ThreadSummary; pro
       )}
       {logOpen && <LogViewer threadId={thread.id} />}
       <Composer thread={thread} projectPath={projectPath} />
+      <KeyHints
+        hints={[
+          mode && cycleModeKey ? `${cycleModeKey} mode` : null,
+          modelOption && modelKey ? `${modelKey} model` : null,
+          thinking && thinkingKey ? `${thinkingKey} thinking` : null,
+        ]}
+      />
+    </div>
+  );
+}
+
+/** One quiet line under the composer naming the CLI-style keys this agent supports. */
+function KeyHints({ hints }: { hints: readonly (string | null)[] }) {
+  const shown = hints.filter((hint): hint is string => hint !== null);
+  if (shown.length === 0) return null;
+  return (
+    <div className="shrink-0 truncate px-3 pb-1.5 text-[10.5px] text-fg-subtle" data-testid="thread-key-hints">
+      {shown.join(' · ')}
     </div>
   );
 }

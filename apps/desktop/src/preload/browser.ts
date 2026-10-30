@@ -13,6 +13,7 @@ import {
 import {
   CHAIN_LIMIT,
   describeElement,
+  DesignOverlay,
   ElementRefs,
   Inspector,
   mainWorldCall,
@@ -118,6 +119,31 @@ on('inspector.stop', () => inspector.stop());
 on('inspector.setOverlay', ({ visible, nonce }) => {
   inspector.setVisible(visible);
   requestAnimationFrame(() => requestAnimationFrame(() => send('inspector.overlayApplied', { nonce })));
+});
+
+// --- Design mode --------------------------------------------------------------------------------
+
+const design = new DesignOverlay(window, {
+  chainFor: async (element) => {
+    const ref = refs.assign(element);
+    const chain = (await inMainWorld<ComponentEntry[]>(mainWorldCall('forRef', ref, CHAIN_LIMIT))) ?? [];
+    const source = chain[0]?.renderedAt ?? chain[0]?.definedAt ?? null;
+    return { names: chain.map((entry) => entry.name), file: source?.file ?? null, line: source?.line ?? null };
+  },
+  onState: (state) => send('design.state', state),
+  onExitRequest: () => send('design.exitRequested', {}),
+});
+
+on('design.start', ({ ops, cursor }) => {
+  void inMainWorld<FrameworkInfo>(mainWorldCall('detect')).then((framework) => {
+    design.start({ ops, cursor }, framework ?? NO_FRAMEWORK);
+  });
+});
+on('design.stop', ({ revert }) => design.stop(revert));
+on('design.command', (command) => design.command(command));
+on('design.setOverlay', ({ visible, nonce }) => {
+  design.setVisible(visible);
+  requestAnimationFrame(() => requestAnimationFrame(() => send('design.overlayApplied', { nonce })));
 });
 
 function reportReady(): void {

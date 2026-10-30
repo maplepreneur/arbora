@@ -228,6 +228,17 @@ function configFor(): SessionConfigOption[] {
         { value: 'smart', name: 'Smart' },
       ],
     },
+    {
+      type: 'select',
+      id: 'thinking',
+      name: 'Thinking',
+      category: 'thought_level',
+      currentValue: 'low',
+      options: [
+        { value: 'low', name: 'Thinking Low' },
+        { value: 'high', name: 'Thinking High' },
+      ],
+    },
   ];
 }
 
