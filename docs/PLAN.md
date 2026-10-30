@@ -10,7 +10,7 @@ Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents 
 
 **Now:** Stages 0–6 are `Done` ([PR #2](https://github.com/maplepreneur/arbora/pull/2), [PR #4](https://github.com/maplepreneur/arbora/pull/4), [PR #7](https://github.com/maplepreneur/arbora/pull/7), [PR #10](https://github.com/maplepreneur/arbora/pull/10), [PR #11](https://github.com/maplepreneur/arbora/pull/11), [PR #12](https://github.com/maplepreneur/arbora/pull/12), [PR #13](https://github.com/maplepreneur/arbora/pull/13)); Stage 6 (Design mode) was signed off on Omarchy/Hyprland on 30 Oct 2026, and `main` CI is green. CI runs Linux only by default; add the `ci:all-os` label for macOS and Windows. Stage 7 (Files and editor) is in progress in [PR #15](https://github.com/maplepreneur/arbora/pull/15). It adds the explorer, quick open (`Mod+P`), project search, CodeMirror editor tabs in the centre pane, Prettier and ESLint/`tsc` on save from the project's own `node_modules` in utility processes, the diff viewer, and opening files at a line from terminal links and agent tool calls. PR CI with `ci:all-os` is green on Linux, macOS and Windows.
 
-**Next:** `arch-ok` for Stage 7 on Omarchy/Hyprland, then merge PR #15. Stage 8 (Git and GitHub) is the next stage; the diff viewer, the explorer's decoration slot and the watcher events are ready for it. Stage 10 (Grove) and Stage 12 are specified and not started.
+**Next:** `arch-ok` for Stage 7 on Omarchy/Hyprland, then merge PR #15. Stage 8 (Git and GitHub) is the next stage; the diff viewer, the explorer's decoration slot and the watcher events are ready for it. Stages 10 (Grove), 12, 13 (Themes) and 14 (Extensions) are specified and not started.
 
 **Blockers / open:** Stage 7 is not `Done` until it has an Omarchy/Hyprland `arch-ok` and PR #15 is merged. No real agent is recorded in Appendix B for Stage 6's design save. Stage 5's manual matrix used free OpenCode models only, so Kimi Code and Grok Build have no Stage 5 runs. Claude Code and Codex stay built-in but are not tested. Still open from Stage 2: the flaky macOS e2e clipboard step in the terminal tests. Agent mode's target picker is not filtered by sign-in yet.
 
@@ -32,6 +32,8 @@ Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents 
 | Browser tabs | Several tabs per project: one **app tab** (the dev server) and any number of **reference tabs** (a Figma file, docs, the production site). A good-enough everyday browser, so you do not alt-tab to Chrome to log in or look something up. |
 | Cross-tab agent work | Prompt from any tab and send it to a chosen project and thread. "Implement this design" from a Figma tab gives the agent read access to that tab. It studies the design, edits the project, screenshots the app tab and compares the two until they match. |
 | Passwords (1Password) | The 1Password extension (or the `op` CLI as a fallback) fills and saves logins in every tab. A setup script installs and connects 1Password. Agents can ask Arbora to log in to a site but never see a password. |
+| Themes | Light, dark and system stay. A `theme.json` can override the app's colour variables. Fonts and layout stay as they are. |
+| Extensions | Settings installs from a short approved catalog. Browser entries are Svelte DevTools and Bitwarden. Coding entries are linters and tools, starting with Robocop. |
 
 Design principles:
 
@@ -213,7 +215,7 @@ Feature IDs (`F-AREA-NN`) are referenced from [BUILD_STAGES.md](./BUILD_STAGES.m
 - `F-SHELL-03` Command palette (`Mod+Shift+P`).
 - `F-SHELL-04` Keybinding service with JSON settings and a settings UI. Defaults: `Mod+K` agent mode, `Mod+D` design mode, `Esc` exit mode, `Mod+P` quick open, `Mod+Shift+P` command palette, plus the Grove chords in `F-GROVE-02`.
 - `F-SHELL-05` `Mod` = Cmd on macOS, Ctrl on Linux and Windows. Super is deliberately not used: Omarchy binds `Super+K` to its keybindings viewer, Windows binds `Win+K`/`Win+D`, and GNOME grabs many Super chords, all at a level the app cannot intercept. Mode chords and the Grove workspace chords must also work while the embedded browser has focus (intercepted in main via `before-input-event` before the page sees them). Plain `Ctrl` chords are passed through to the shell when a terminal is focused. Every binding is configurable.
-- `F-SHELL-06` Dark/light theme, system fonts, no telemetry.
+- `F-SHELL-06` Dark/light/system theme, system fonts, no telemetry. Colour overrides live in `F-THEME`.
 
 ### 4.2 Browser panel (`F-BROWSER`)
 
@@ -307,7 +309,7 @@ Feature IDs (`F-AREA-NN`) are referenced from [BUILD_STAGES.md](./BUILD_STAGES.m
 ### 4.10 Onboarding and settings (`F-ONBOARD`)
 
 - `F-ONBOARD-01` First-run: pick project, detect dev command from `package.json` scripts, detect installed agents, test-launch chosen agent, verify keybindings. The Grove step (pick a default agent, press the workspace chord once) is added by Stage 10, not by the first version of this wizard.
-- `F-ONBOARD-02` Settings UI and JSON: agents, keybindings, theme, browser partition reset, MCP tool permissions, dev-server command, screenshot storage. The Grove section (`notify`, fallback agent) is added by Stage 10.
+- `F-ONBOARD-02` Settings UI and JSON: agents, keybindings, the light/dark/system theme, browser partition reset, MCP tool permissions, dev-server command, screenshot storage. The Grove section (`notify`, fallback agent) is added by Stage 10. Colour packs are Stage 13. The extension catalog is Stage 14.
 
 ### 4.11 Non-functional (`F-NFR`)
 
@@ -514,6 +516,23 @@ Arbora's browser fills and saves passwords like a normal browser through 1Passwo
 - `F-VAULT-05` One-time codes. When the item has an OTP and the site asks for a second factor, the same approval fills it (`op item get --otp`). Passkeys are handed to the extension or the user; the agent never answers them.
 - `F-VAULT-06` Settings: `passwords.provider` (`none` | `1password`, default `none` until setup ran), `passwords.mode` (`auto` | `extension` | `cli`), `passwords.agentLogins` (`ask` | `never`, default `ask`), and per-origin "always allow agent login" entries. These are machine settings, never committed.
 
+### 4.16 Themes (`F-THEME`)
+
+Colour packs on top of `F-SHELL-06`. Stage 13. The built-in Arbora colours stay the default.
+
+- `F-THEME-01` A `theme.json` sets colours and nothing else. It has a `name` and a `colors` object with optional `light` and `dark` maps. Keys are the custom properties already declared in `styles.css`, without the leading `--` (chrome colours such as `bg`, `fg`, `accent`, and the `syn-*` editor colours). Values are hex (`#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`). Unknown keys and bad values are dropped with a warning. Missing keys keep the built-in colour for that scheme.
+- `F-THEME-02` Settings lists installed themes under the light/dark/system control, with a swatch, Import, Remove, Edit and Reset to Arbora. User themes are copies under the app's `userData/themes/`. The active id is `colorTheme` (default `arbora`). The existing `theme` field stays the mode.
+- `F-THEME-03` The active scheme's overrides are applied to the app chrome, the editor and the terminal. System mode follows the OS, and a change of OS theme reapplies. The embedded page is not restyled.
+
+### 4.17 Extensions (`F-EXT`)
+
+An approved catalog the user installs from Settings. Stage 14. See [ADR 0007](#adr-0007-approved-extensions-and-colour-themes).
+
+- `F-EXT-01` The catalog is `apps/desktop/resources/extensions/catalog.json`, committed with the app. Each entry is a browser extension or a coding tool. Adding one is a code change. Settings has no field for a URL or a Chrome Web Store id. Bundled React DevTools and Vue DevTools stay on the Stage 1 path and are not rows in this catalog.
+- `F-EXT-02` Browser entries, first two: Svelte DevTools (store id `kfidecgcdjjfpeckbblhmfkhmlgecoff`) and Bitwarden (store id `nngceckbapebfimnlniiiahkandclblb`). Install downloads the pinned CRX, checks the SHA-256, and loads it into the project browser partition the way Stage 1 loads React DevTools. Svelte DevTools is a DevTools panel. Bitwarden is for the user filling their own logins. It is not a `PasswordProvider`, and agents do not log in through it (`F-VAULT` stays 1Password). A spike records what Electron can actually do with Bitwarden's popup and unlock before the settings row claims fill works.
+- `F-EXT-03` Coding entries run a tool the user already has, and put its output in Problems next to ESLint and `tsc`. The first entry is Robocop (`robocop check` on `*.robot` and `*.resource`). If the binary is missing, the row shows `pip install robotframework-robocop` and copies that command. Arbora does not run the installer. Further linters are more rows of the same shape.
+- `F-EXT-04` Settings has an Extensions section with a Browser group and a Coding group. Each row can be enabled and removed. Nothing in the catalog is on until the user turns it on.
+
 ---
 
 ## 5. Phase overview
@@ -535,6 +554,8 @@ Detailed instructions, gotchas and progress live in [BUILD_STAGES.md](./BUILD_ST
 | 10 | Grove | Second workspace: many ACP agents, title-bar switch, default agent, attention |
 | 11 | Stretch | Dev plugin for exact source mapping, worktrees, write-through, Grove orchestration |
 | 12 | Tabs, cross-tab agent work and passwords | Browser tabs with app and reference roles, prompts from any tab to any open project, the design-match loop (Figma → app), and 1Password with a setup script and secret-free agent logins |
+| 13 | Themes | `theme.json` colour packs on the existing light/dark/system switch |
+| 14 | Extensions | Settings installs approved browser extensions (Svelte DevTools, Bitwarden) and coding tools (Robocop) |
 
 ---
 
@@ -596,6 +617,16 @@ Detailed instructions, gotchas and progress live in [BUILD_STAGES.md](./BUILD_ST
 
 **Rejected.** A built-in password store (security liability, sync expectations). Passing credentials to the agent as env or prompt text (leaks into model context and transcripts). Reading the user's Chrome profile passwords (OS-keychain encrypted and explicitly out of scope, like Chrome extensions).
 
+### ADR 0007: Approved extensions, and themes that only set colours
+
+**Context.** People want Svelte DevTools, a password extension such as Bitwarden, and extra linters such as Robocop. They also want to recolour the app. An open Chrome Web Store browser, VS Code extensions, and a theme format that can set fonts, images or remote URLs would each pull in code or assets Arbora does not review.
+
+**Decision.** Extensions come from a catalog committed in the repo. Browser entries are pinned CRX files loaded the way React and Vue DevTools already are. Coding entries are commands the user has installed, and their output goes to Problems. Themes are `theme.json` files whose values are hex colours for the CSS variables the app already has. Light, dark and system stay the way the scheme is chosen.
+
+**Consequences.** A new extension or linter is a pull request, not a settings paste. Bitwarden in the catalog fills for the user. Agent logins stay on 1Password (ADR 0006) because Electron's extension API is incomplete. A theme cannot restyle the embedded page or load a font. Stage 13 and Stage 14 are specified and are not the next stage.
+
+**Rejected.** Loading extensions from the user's Chrome profile. A store UI. Running `pip` or `npm` on enable. A theme engine that accepts arbitrary CSS.
+
 ---
 
 ## 7. Assumptions
@@ -606,8 +637,10 @@ Detailed instructions, gotchas and progress live in [BUILD_STAGES.md](./BUILD_ST
 - Agents own their auth; Arbora only passes optional env overrides.
 - Grove is an ACP session manager in a second workspace. It does not embed agent TUIs, and agents do not keep running after Arbora quits.
 - Design-mode edits go through the agent first; direct write-through is a stretch item.
-- "Linting" means surfacing the project's own ESLint/tsc output; LSP is opt-in.
+- "Linting" means surfacing the project's own ESLint/tsc output; LSP is opt-in. Extra linters (Stage 14) are an approved catalog on top of that, starting with Robocop.
 - Fixture apps in `fixtures/` are the acceptance baseline for every stage; they stay green.
-- Browser tabs, cross-tab prompts and passwords come last (Stage 12), after the single-tab workflow is solid. Reference tabs share one logged-in partition across projects; the app tab stays per project.
+- Browser tabs, cross-tab prompts and passwords (Stage 12) wait until the single-tab workflow is solid. Reference tabs share one logged-in partition across projects; the app tab stays per project. Themes (Stage 13) and the extension catalog (Stage 14) are specified after that and are not the next stage.
 - 1Password is the first password manager. Arbora never stores a password and agents never receive one. Whether the extension's desktop-app unlock works inside Electron is unverified, so Stage 12 starts with a spike and the `op` CLI fallback is planned from the start.
 - Figma and other canvas design tools are read through screenshots, their inspect panels and, optionally, their own MCP servers. Arbora ships no design-tool API keys.
+- Colour themes are hex overrides of the existing CSS variables (`F-THEME`, Stage 13). The light/dark/system control stays.
+- Extra browser extensions and linters come from an approved catalog (`F-EXT`, Stage 14). Svelte DevTools and Bitwarden are the first browser entries. Robocop is the first coding entry. Bitwarden does not replace 1Password for agent logins.

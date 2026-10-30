@@ -14,7 +14,7 @@ This document breaks [PLAN.md](./PLAN.md) into stages a coding agent can execute
 
 ## Progress
 
-**Now:** Stages 0–6 are `Done`. Stage 6 (Design mode) was signed off on Omarchy/Hyprland on 30 Oct 2026; `main` CI is green after [PR #14](https://github.com/maplepreneur/arbora/pull/14) ([run 41083870967](https://github.com/maplepreneur/arbora/actions/runs/41083870967)). Stage 7 (Files and editor) is `In progress` in [PR #15](https://github.com/maplepreneur/arbora/pull/15): explorer, quick open (`Mod+P`), ripgrep search, CodeMirror editor tabs in the centre pane, Prettier and ESLint/tsc on save in utility processes, the merge-view diff viewer, and open-at-line from terminal links and agent tool locations. PR CI with `ci:all-os` is green on Linux, macOS and Windows ([run 41094772508](https://github.com/maplepreneur/arbora/actions/runs/41094772508)). **Next:** `arch-ok` on Omarchy/Hyprland, then merge PR #15. Stage 8 (Git and GitHub) follows. Stage 10 (Grove) and Stage 12 stay specified and not started.
+**Now:** Stages 0–6 are `Done`. Stage 6 (Design mode) was signed off on Omarchy/Hyprland on 30 Oct 2026; `main` CI is green after [PR #14](https://github.com/maplepreneur/arbora/pull/14) ([run 41083870967](https://github.com/maplepreneur/arbora/actions/runs/41083870967)). Stage 7 (Files and editor) is `In progress` in [PR #15](https://github.com/maplepreneur/arbora/pull/15): explorer, quick open (`Mod+P`), ripgrep search, CodeMirror editor tabs in the centre pane, Prettier and ESLint/tsc on save in utility processes, the merge-view diff viewer, and open-at-line from terminal links and agent tool locations. PR CI with `ci:all-os` is green on Linux, macOS and Windows ([run 41094772508](https://github.com/maplepreneur/arbora/actions/runs/41094772508)). **Next:** `arch-ok` on Omarchy/Hyprland, then merge PR #15. Stage 8 (Git and GitHub) follows. Stages 10 (Grove), 12, 13 (Themes) and 14 (Extensions) stay specified and not started.
 
 | Stage | Name | Status | Notes |
 | --- | --- | --- | --- |
@@ -31,6 +31,8 @@ This document breaks [PLAN.md](./PLAN.md) into stages a coding agent can execute
 | 10 | Grove | Not started | Specified. Depends on Stage 3's ACP sessions and on the transcript components living in `panels/agent/`. Not the next stage. It may be pulled forward once Stage 3 is merged; it does not need Stages 4–9 first. |
 | 11 | Stretch | Not started | Renumbered from Stage 10 when Grove was added. The dev plugin, worktrees and Grove orchestration live here. Browser tabs moved to Stage 12. |
 | 12 | Tabs, cross-tab agent work and passwords | Not started | Specified 29 Oct 2026 (PLAN § 4.13–4.15, ADR 0005–0006). Three sub-parts, one PR each: 12a tabs, 12b cross-tab prompts and the design-match loop, 12c 1Password. Starts with a spike on whether the 1Password extension unlocks through the desktop app inside Electron. Depends on Stages 1, 4 and 5; Stage 9 for the settings and onboarding UI. |
+| 13 | Themes | Not started | Specified 30 Oct 2026 (PLAN § 4.16). Colour packs in `theme.json` on top of the existing light/dark/system switch. Not the next stage. It only needs the CSS variables in `styles.css` and the Settings page, so it can be pulled forward. |
+| 14 | Extensions | Not started | Specified 30 Oct 2026 (PLAN § 4.17, ADR 0007). Settings installs from a short approved catalog: Svelte DevTools and Bitwarden for the browser, and coding tools such as Robocop. Not the next stage. Browser entries need Stage 1's `loadExtension` path; coding tools need Stage 7's Problems panel. |
 
 Status values: `Not started`, `In progress (PR #N)` / `In progress (PR #N, merged)`, `Blocked (reason)`, `Done (PR #N)`. Never mark `Done` from CI alone; `arch-ok` on Omarchy/Hyprland is required.
 
@@ -712,7 +714,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 3. Auto-update: `electron-updater` with GitHub Releases provider, channels `latest` and `beta`, "check for updates" command, release notes dialog. AppImage updates in place; `.deb` and AUR users get a notification with instructions instead.
 4. Release workflow: tag `v*` -> matrix build -> sign -> notarize -> upload to a draft release -> publish on approval.
 5. Onboarding wizard: welcome, open project, detect dev command (editable), start dev server, detect agents (with install hints and "test connection" that runs `initialize`), show the mode chords for this OS (`Ctrl+K`/`Ctrl+D` or `Cmd+K`/`Cmd+D`) with a "press it now" check and a link to the keybinding editor, finish with a guided `Mod+K` on the running page. Do not add a Grove step here. Stage 10 adds the default-agent choice and a one-time press of the workspace chord.
-6. Settings UI: agents (add/edit custom, env overrides, adapter versions and "update adapters"), keybindings editor with conflict detection, theme, browser (partition reset, trust localhost certs, DevTools extensions), MCP tool permissions, dev server, screenshots folder, diagnostics toggles, LSP opt-in (Stage 11 ships it). Do not add a Grove page here. Stage 10 adds `notify` and the fallback agent.
+6. Settings UI: agents (add/edit custom, env overrides, adapter versions and "update adapters"), keybindings editor with conflict detection, the light/dark/system theme control, browser (partition reset, trust localhost certs, the bundled React/Vue DevTools toggle), MCP tool permissions, dev server, screenshots folder, diagnostics toggles, LSP opt-in (Stage 11 ships it). Do not add a Grove page here. Stage 10 adds `notify` and the fallback agent. Colour packs (`theme.json`) are Stage 13. The approved extension catalog is Stage 14.
 7. Performance budget in CI: launch the packaged app on Linux, load the fixture, measure RSS after 10 s and screenshot latency; fail if over budget (350 MB, 300 ms). Lazy-load CodeMirror languages and xterm addons.
 8. Accessibility: keyboard navigation across panels, focus rings, ARIA on custom controls, reduced-motion support.
 9. Crash handling: `crashReporter` disabled (no telemetry); local crash dumps and an "Export diagnostics" command that zips logs and settings (redacted).
@@ -873,7 +875,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 
 **Out of scope.**
 - Password sync or storage inside Arbora.
-- Providers other than 1Password: the interface only, no implementation.
+- Providers other than 1Password: the interface only, no implementation. Bitwarden as a browser extension the user installs for themselves is Stage 14. It is not a second `PasswordProvider`, and agents do not log in through it.
 - Figma API tokens stored by Arbora.
 - Design-to-code without an agent.
 - Reading Chrome profile data.
@@ -992,6 +994,114 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - [ ] `browser_login` with permission card and redaction pass
 - [ ] Fixtures `design-reference` and `login`, unit and e2e tests
 - [ ] Manual matrix (Figma flow, agent login) and `arch-ok` on Omarchy/Hyprland
+
+---
+
+## Stage 13: Themes
+
+**Goal.** Let people recolour Arbora with a `theme.json` that sets the colour variables the app already uses. Light, dark and system stay as they are. This stage only changes colours.
+
+**Features.** `F-THEME-01` to `F-THEME-03` ([PLAN § 4.16](./PLAN.md#416-themes-f-theme)).
+
+**Depends on.** The CSS variables in `apps/desktop/src/renderer/src/styles.css`, `theme-service.ts` (light/dark/system), and the Theme control on the Settings page. It does not depend on Stages 8–12. If Stage 10 has landed, `--attention` and `--attention-soft` are optional keys too.
+
+**Out of scope.** Fonts, icons, layout, per-project themes, a theme gallery, and restyling the embedded page. The page keeps its own CSS.
+
+### Instructions
+
+1. `packages/shared/src/theme-file.ts` parses a theme file. Shape:
+
+   ```json
+   {
+     "name": "Moss",
+     "colors": {
+       "light": { "bg": "#f4f7f5", "accent": "#2f7d5b" },
+       "dark": { "bg": "#0b0d10", "accent": "#4fb385" }
+     }
+   }
+   ```
+
+   `name` is a short label. `colors.light` and `colors.dark` are partial maps. A key is one of the custom properties already declared in `styles.css`, without the leading `--`: the chrome set (`bg`, `bg-subtle`, `bg-muted`, `bg-elevated`, `fg`, `fg-muted`, `fg-subtle`, `border`, `accent`, `accent-fg`, `accent-soft`, `danger`, `ring`) and the editor set (`syn-keyword`, `syn-string`, `syn-number`, `syn-comment`, `syn-function`, `syn-type`, `syn-tag`, `syn-property`, `syn-selection`, `syn-selection-match`, `syn-active-line`, `syn-search`, `syn-search-outline`, `syn-diff-line`, `syn-diff-deleted`, `syn-diff-word`). A value is hex only: `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`. Unknown keys and bad values are dropped with a warning, the same way invalid settings are. Missing keys keep the built-in colour for that scheme. Export the key list so the parser and the tests share it.
+2. Built-in colours stay in `styles.css`. They are the `arbora` theme and the fallback under every override. User themes are copies under `userData/themes/<id>.json`. `id` is the file stem, `[a-z0-9-]+`. Import copies a chosen file into that folder. Remove deletes the copy. The active id is `colorTheme` on `appSettingsSchema`, default `arbora`. Bump `SETTINGS_VERSION` and append a migration that only sets the new version, matching the earlier migrations. Leave the existing `theme` field as the light/dark/system mode.
+3. Apply the active scheme by setting the overridden properties on `document.documentElement`. Light and dark each use their own map. System follows `theme.resolved`, and reapplies when the OS theme changes. Clearing a property falls back to `:root` / `.dark`. The editor already reads these variables (`panels/editor/theme.ts`). The terminal's `THEMES` map in `panels/terminal/sessions.ts` is hardcoded today: build it from the computed variables and refresh open xterm instances when the colour theme changes, the same way a light/dark switch already does.
+4. Settings, in the existing General section under the light/dark/system control: the active theme, a swatch of `bg`, `fg` and `accent` for the resolved scheme, Import, Remove, "Edit theme.json" (opens the file; the app reloads it on save, same as settings JSON), and Reset to Arbora. A broken file keeps the previous good colours and shows the warning.
+5. Tests. Unit-test the parser: partial maps, both schemes, unknown keys, bad colours, empty file. One e2e: import a fixture theme that sets `accent`, assert the computed `--accent` on the document, switch light/dark and assert the other scheme, then reset and assert the built-in value.
+
+### Gotchas
+
+- **Inline properties beat `:root` and `.dark`.** Set only the keys the file overrides. Setting the whole map to empty strings, or leaving stale inline values after Reset, pins the old colour.
+- **Hex only.** `var()`, `rgb()`, `url()` and named colours are rejected. A theme file must not be able to point at a remote asset.
+- **xterm does not read CSS variables.** Copy the computed colours into `term.options.theme` or the terminal stays on the built-in palette after Import.
+- **`theme` is the mode.** `colorTheme` is the pack. Overloading `theme` breaks the existing light/dark/system control and its migrations.
+
+### Acceptance
+
+- With the built-in theme, the app looks as it does today in light, dark and system.
+- Importing a `theme.json` that sets `accent` and `bg` recolours the chrome, an open editor tab and an open terminal. The other scheme's colours apply after switching light/dark.
+- A file with one bad key still applies the valid keys, and the warning names the bad key. Reset restores the built-in colours.
+- `arch-ok` on Omarchy/Hyprland: import, switch scheme, reset, in `pnpm dev` and the packaged build.
+
+### Checklist
+
+- [ ] `theme-file.ts` parser, key list, unit tests
+- [ ] `colorTheme` setting, migration, themes folder under userData
+- [ ] Apply overrides on the document; editor and terminal follow
+- [ ] Settings: list, swatches, import, edit, remove, reset
+- [ ] e2e for import and reset
+- [ ] `arch-ok` on Omarchy/Hyprland
+
+---
+
+## Stage 14: Extensions
+
+**Goal.** From Settings, install extensions Arbora has approved. Two kinds. Browser extensions load into the embedded page, the way React DevTools and Vue DevTools already do. Coding tools add diagnostics, the way the project's ESLint already does. The first browser entries are Svelte DevTools and Bitwarden. The first coding entry is Robocop, a linter for Robot Framework. The list is a catalog in the repo, not a store.
+
+**Features.** `F-EXT-01` to `F-EXT-04` ([PLAN § 4.17](./PLAN.md#417-extensions-f-ext), [ADR 0007](./PLAN.md#adr-0007-approved-extensions-and-colour-themes)).
+
+**Depends on.** Stage 1 (`BrowserSessions.loadExtension`, `scripts/fetch-devtools-extensions.mjs`, the pin file `resources/extensions/extensions.json`). Stage 7 for coding tools (`ToolingService`, the Problems panel). The Settings page already exists. Stage 9's fuller settings UI is not required. When Stage 12's `persist:arbora-web` partition exists, load browser extensions there too. Until then, project partitions only.
+
+**Out of scope.** Browsing the Chrome Web Store. Loading anything from the user's Chrome profile. VS Code or Open VSX extensions. Running `pip` or `npm` for the user. Moving the bundled React and Vue DevTools into this catalog (they stay Stage 1, default on, behind the existing toggle). Agent logins through Bitwarden (Stage 12's `PasswordProvider` stays 1Password). Robocop's own MCP server (`robocop-mcp`): this stage runs `robocop check` and shows the issues.
+
+### Instructions
+
+1. **Catalog.** Add `apps/desktop/resources/extensions/catalog.json`, separate from the React/Vue pin file. Each entry is `{ id, name, kind: "browser" | "coding", summary }`. Browser entries also have the Chrome Web Store id. Coding entries also have `{ command, args, globs, installHint }`. Ship three entries:
+   - Svelte DevTools, browser, store id `kfidecgcdjjfpeckbblhmfkhmlgecoff`.
+   - Bitwarden, browser, store id `nngceckbapebfimnlniiiahkandclblb`.
+   - Robocop, coding, command `robocop`, args `["check"]`, globs `*.robot` and `*.resource`, install hint `pip install robotframework-robocop`.
+   Adding an entry is a code change. Settings cannot paste a URL or a store id.
+2. **Browser install.** Reuse `fetch-devtools-extensions.mjs` (an `--only <name>` flag) so an install downloads that one CRX, checks the SHA-256 pin, strips `_metadata/`, and unpacks under the extensions directory. Pin the version at implementation time with `extensions:update`-style pinning. Record the pin in the catalog. Load and unload through `session.extensions.loadExtension` / `removeExtension` on every prepared project partition, following the React/Vue path in `browser-sessions.ts`. Enabled ids live in settings (`extensions.browser: string[]`, default `[]`). Bump `SETTINGS_VERSION` and append a migration. Install is off until the user turns a row on. Turning a row off unloads it and keeps the unpacked copy. Remove deletes the copy.
+3. **Bitwarden spike, before promising fill.** Load the pinned extension into a test partition and record, in this section's Gotchas: whether the service worker starts, whether inline fill appears on a login form, whether the popup can be shown, and whether the vault unlocks. Electron does not draw extension toolbar buttons (Stage 12 gotcha). If fill needs the popup, add a browser-toolbar button that opens the extension popup in a small `WebContentsView`, the same idea as Stage 12's 1Password button. If unlock or fill fails, keep the row installable and say so on the row. Svelte DevTools does not wait on this spike.
+4. **Svelte DevTools.** It is a DevTools panel, like the bundled React and Vue extensions. After install, the panel appears in the page DevTools (`Mod+Alt+I`) on a Svelte dev build. No toolbar button.
+5. **Coding tools.** A coding entry runs the user's own binary. Resolve `command` from the project virtualenv, then the login-shell `PATH` (the same lookup agents use). If it is missing, run nothing and show `installHint` on the settings row, with a button that copies the command. Do not install it. When the binary exists and the entry is enabled, run it on save of a matching file, through a utility process with a timeout, the same bounds as ESLint in `ToolingService`. Parse Robocop's `path:line:col CODE message` lines into the Problems list beside ESLint and `tsc`. A non-zero exit with no parsed lines is one diagnostic on the row, not a crash. Further linters are more catalog rows of this shape. Ship the shape and Robocop only.
+6. **Settings.** An Extensions section, two groups, Browser and Coding. Each row: name, one-line summary, Install / Remove or Enable / Disable, and for a coding tool the install hint when the binary is absent. For Bitwarden, the spike's result (what works) is the row detail.
+7. **Tests.** Unit: catalog schema rejects a browser entry without a store id and a coding entry without a command. Unit: Robocop output parser (a hit, a clean run, garbage on stderr). e2e uses a tiny fixture extension committed under `fixtures/extensions/hello/` (a manifest and an empty background script), not the Web Store: enabling it loads it into the project partition and disabling it removes it. Robocop's parser does not need the real binary in CI.
+
+### Gotchas
+
+- **The store serves the latest CRX.** Pins drift when Svelte DevTools or Bitwarden ship, the same as React/Vue. `pnpm dev` treats a failed fetch as a warning. Install from Settings fails with the pin error and does not load a mismatched unpack. Re-pin with the update script.
+- **Electron's `chrome.*` is partial.** MV3 service workers load. Toolbar actions, popups and native messaging are not provided (Stage 12). Bitwarden may unlock inside its own UI and still fail to fill. Record the spike. Do not describe a broken fill as working.
+- **Bitwarden is not the password manager for agents.** Stage 12 fills through 1Password after a permission card, and redacts secrets. A Bitwarden extension the user installed can fill for the user. `browser_login` does not call it, and its vault contents stay out of prompts, tool results and logs.
+- **Do not run package managers.** A missing `robocop` is an install hint. Writing into the user's virtualenv, or `pip install` on enable, is out of this stage.
+- **Partitions.** `loadExtension` is per session. Enabling a browser extension after partitions already exist has to load it into each one, or only the next project window sees it. Disabling removes it from each one too.
+- **Coding tools are project-local.** Robocop on a project with no `.robot` files stays quiet. It does not run on every save of a TypeScript file.
+
+### Acceptance
+
+- Settings lists Svelte DevTools, Bitwarden and Robocop, and nothing else. There is no URL field.
+- Turning on Svelte DevTools downloads the pinned CRX, loads it, and the Svelte panel is present in DevTools on a Svelte dev page. Turning it off unloads it. A pin mismatch refuses to load.
+- The Bitwarden spike is written into Gotchas, and the settings row matches that result.
+- With Robocop on `PATH`, saving a `.robot` file adds its issues to Problems. With Robocop absent, Problems is unchanged and the row shows `pip install robotframework-robocop`.
+- The fixture extension e2e passes. `arch-ok` on Omarchy/Hyprland covers install and remove for Svelte DevTools, and a Robocop run if `robocop` is installed.
+
+### Checklist
+
+- [ ] `catalog.json` with Svelte DevTools, Bitwarden and Robocop
+- [ ] Pinned fetch and `loadExtension` / unload for browser entries
+- [ ] Bitwarden spike recorded, settings row matches it
+- [ ] Coding-tool runner, Robocop parser, Problems output, install hint
+- [ ] Settings section, both groups
+- [ ] Fixture extension e2e, parser unit tests
+- [ ] `arch-ok` on Omarchy/Hyprland
 
 ---
 
