@@ -31,6 +31,11 @@ class Matcher {
     }
   }
 
+  /** Where matching runs; `inline` after the worker failed to start. */
+  get mode(): 'worker' | 'inline' {
+    return this.worker ? 'worker' : 'inline';
+  }
+
   setFiles(files: readonly string[]): void {
     this.files = files;
     this.post({ type: 'files', files });
@@ -107,7 +112,10 @@ export function QuickOpen() {
   const open = useFiles((s) => s.quickOpen);
   const filesVersion = useFiles((s) => s.filesVersion);
   const [text, setText] = useState('');
-  const [results, setResults] = useState<{ text: string; list: FuzzyResult[] }>({ text: '', list: [] });
+  const [results, setResults] = useState<{ text: string; list: FuzzyResult[]; mode?: 'worker' | 'inline' }>({
+    text: '',
+    list: [],
+  });
   /** cmdk's highlighted item; reset to the best match whenever results arrive. */
   const [selected, setSelected] = useState('');
   const [truncated, setTruncated] = useState(false);
@@ -148,7 +156,7 @@ export function QuickOpen() {
     pending.current = { text, promise };
     void promise.then((next) => {
       if (!active) return;
-      setResults({ text, list: next });
+      setResults({ text, list: next, ...(matcher.current ? { mode: matcher.current.mode } : {}) });
       setSelected(next[0]?.path ?? '');
     });
     return () => {
@@ -182,6 +190,7 @@ export function QuickOpen() {
       <Command
         label="Quick open"
         data-testid="quick-open"
+        data-matcher={results.text === text ? results.mode : undefined}
         shouldFilter={false}
         value={selected}
         onValueChange={setSelected}

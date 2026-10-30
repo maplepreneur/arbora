@@ -86,6 +86,19 @@ export const editorSettingsSchema = z.object({
 });
 export type EditorSettings = z.infer<typeof editorSettingsSchema>;
 
+/** Applies an `editor` patch; omitted (or `undefined`) fields keep their value. */
+export function mergeEditorSettings(
+  current: EditorSettings,
+  patch: Partial<{ [K in keyof EditorSettings]: EditorSettings[K] | undefined }>,
+): EditorSettings {
+  return {
+    formatOnSave: patch.formatOnSave ?? current.formatOnSave,
+    eslintOnSave: patch.eslintOnSave ?? current.eslintOnSave,
+    tscOnSave: patch.tscOnSave ?? current.tscOnSave,
+    fontSize: patch.fontSize ?? current.fontSize,
+  };
+}
+
 export const agentModelSchema = z.object({ value: z.string().max(300), name: z.string().max(300) });
 export type AgentModel = z.infer<typeof agentModelSchema>;
 

@@ -108,7 +108,33 @@ test.describe('Stage 7 files and editor', () => {
       await expect(diagnostic).toContainText('no-debugger');
       await expect(diagnostic.getByTestId('diagnostic-location')).toHaveText('src/util.js:1:1');
 
-      // The browser tab brings the page back.
+      // Format Document (Shift+Alt+F) formats without saving.
+      await editor(page).click();
+      await page.keyboard.press('ControlOrMeta+End');
+      await page.keyboard.type('\nconst   spaced=1');
+      await page.keyboard.press('Shift+Alt+f');
+      await expect(editor(page)).toContainText('const spaced = 1;');
+      const utilTab = page.locator('[data-testid="editor-tab"][data-path="src/util.js"]');
+      await expect(utilTab).toHaveAttribute('data-dirty', 'true');
+
+      // With format on save off, Save writes the text as typed.
+      await page.evaluate(() => window.arbora.invoke('settings.update', { editor: { formatOnSave: false } }));
+      await page.keyboard.type('\nconst   raw=2');
+      await page.keyboard.press('ControlOrMeta+s');
+      await expect(utilTab).toHaveAttribute('data-dirty', 'false');
+      expect(readFileSync(join(dir, 'src/util.js'), 'utf8')).toContain('const   raw=2');
+
+      // Mod+W closes the active tab; App.tsx becomes active.
+      await page.keyboard.press('ControlOrMeta+w');
+      await expect(utilTab).toHaveCount(0);
+      await expect(page.getByTestId('editor')).toHaveAttribute('data-path', 'src/App.tsx');
+
+      // Show Browser (palette) and the browser tab bring the page back.
+      await runCommand(page, 'Show Browser');
+      await expect(page.getByTestId('editor')).toHaveCount(0);
+      await expect(page.getByTestId('browser-panel')).toBeVisible();
+      await page.locator('[data-testid="editor-tab"][data-path="src/App.tsx"]').click();
+      await expect(page.getByTestId('editor')).toBeVisible();
       await page.getByTestId('editor-tab-browser').click();
       await expect(page.getByTestId('editor')).toHaveCount(0);
       await expect(page.getByTestId('browser-panel')).toBeVisible();
@@ -121,6 +147,11 @@ test.describe('Stage 7 files and editor', () => {
     const dir = project();
     const { app, page } = await launch(userData(), [dir]);
     try {
+      await page.keyboard.press('ControlOrMeta+p');
+      await page.getByTestId('quick-open-input').fill('card');
+      // Matching runs in the worker, not on the UI thread.
+      await expect(page.getByTestId('quick-open')).toHaveAttribute('data-matcher', 'worker');
+      await page.keyboard.press('Escape');
       await quickOpen(page, 'card', 'src/components/Card.tsx');
       // `path:line` jumps to the line.
       await page.keyboard.press('ControlOrMeta+p');
@@ -264,7 +295,7 @@ test.describe('Stage 7 files and editor', () => {
           timeout: 20_000,
         })
         .toBeGreaterThan(0);
-      const [terminal] = (await page.evaluate(() => window.arbora.invoke('terminal.list'))) as TerminalInfo[];
+      const [terminal] = await page.evaluate<TerminalInfo[]>(() => window.arbora.invoke('terminal.list'));
       await page.evaluate(
         (id) =>
           window.arbora.invoke('terminal.write', { id, data: "clear; printf 'src/components/Card.tsx:4:3\\n'\r" }),

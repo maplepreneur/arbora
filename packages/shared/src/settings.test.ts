@@ -6,6 +6,7 @@ import {
   loadSettings,
   MAX_RECENT_PROJECTS,
   mergeAgentSettings,
+  mergeEditorSettings,
   migrateSettings,
   resolveDefaultAgent,
   visibleModels,
@@ -188,6 +189,20 @@ describe('loadSettings', () => {
       lastUrl: 'http://localhost:5173/',
       preset: 'responsive',
       zoomFactor: 1,
+    });
+  });
+
+  it('defaults editor settings for files written before Stage 7', () => {
+    const { settings, warnings } = loadSettings({ version: 3, theme: 'dark' });
+    expect(warnings).toEqual([]);
+    expect(settings.editor).toEqual({ formatOnSave: true, eslintOnSave: true, tscOnSave: false, fontSize: 13 });
+  });
+
+  it('merges editor patches, leaving omitted fields alone', () => {
+    const current = defaultSettings().editor;
+    expect(mergeEditorSettings(current, { tscOnSave: true, formatOnSave: undefined })).toEqual({
+      ...current,
+      tscOnSave: true,
     });
   });
 });

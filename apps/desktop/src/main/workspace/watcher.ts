@@ -6,6 +6,8 @@ import type { IgnoreRules } from './ignore-rules.js';
 const COALESCE_MS = 75;
 const POLL_INTERVAL_MS = 1000;
 const LIMIT_CODES = new Set(['ENOSPC', 'EMFILE']);
+/** Folders the user cannot read (other users' files under the project) are skipped quietly. */
+const QUIET_CODES = new Set(['EACCES', 'EPERM']);
 
 export const INOTIFY_HINT =
   'The file watcher hit the system limit, so only folders open in the explorer are watched (polling). ' +
@@ -112,6 +114,7 @@ export class ProjectWatcher {
 
   private onError(error: unknown): void {
     const code = (error as NodeJS.ErrnoException).code;
+    if (code && QUIET_CODES.has(code)) return;
     if (!code || !LIMIT_CODES.has(code) || this.polling || this.disposed) {
       console.warn(`[watcher] ${(error as Error).message}`);
       return;

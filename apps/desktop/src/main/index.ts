@@ -2,7 +2,13 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { app, BrowserWindow, clipboard, dialog, Menu, shell, type WebContents } from 'electron';
 import { AgentRegistry } from '@arbora/acp-client';
-import { mergeAgentSettings, toPlatform, type AgentVerification, type AppSettingsPatch } from '@arbora/shared';
+import {
+  mergeAgentSettings,
+  mergeEditorSettings,
+  toPlatform,
+  type AgentVerification,
+  type AppSettingsPatch,
+} from '@arbora/shared';
 import { probeAgent } from './agent/agent-probe.js';
 import type { AgentService } from './agent/agent-service.js';
 import { describeAttachment } from './agent/attachments.js';
@@ -209,7 +215,7 @@ function main(): void {
               },
             }
           : {}),
-        ...(patch.editor !== undefined ? { editor: { ...s.editor, ...definedFields(patch.editor) } } : {}),
+        ...(patch.editor !== undefined ? { editor: mergeEditorSettings(s.editor, patch.editor) } : {}),
         ...(patch.agents !== undefined ? { agents: mergeAgentSettings(s.agents, patch.agents) } : {}),
       })),
     );
@@ -646,13 +652,6 @@ function main(): void {
   app.on('window-all-closed', () => {
     if (platform !== 'darwin') app.quit();
   });
-}
-
-/** The patch without keys set to `undefined` (zod `.partial()` output), so they do not clear values. */
-function definedFields<T extends object>(patch: T): { [K in keyof T]?: Exclude<T[K], undefined> } {
-  return Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)) as {
-    [K in keyof T]?: Exclude<T[K], undefined>;
-  };
 }
 
 async function openInEditor(file: string): Promise<void> {
