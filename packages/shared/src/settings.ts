@@ -75,6 +75,17 @@ export const terminalSettingsSchema = z.object({
 });
 export type TerminalSettings = z.infer<typeof terminalSettingsSchema>;
 
+export const editorSettingsSchema = z.object({
+  /** Run the project's own Prettier (from its `node_modules`) on save. Skipped when it has none. */
+  formatOnSave: z.boolean().default(true),
+  /** Run the project's ESLint on the saved file. */
+  eslintOnSave: z.boolean().default(true),
+  /** Run `tsc --noEmit` after saving a TypeScript file. Off by default: slow on large projects. */
+  tscOnSave: z.boolean().default(false),
+  fontSize: z.number().int().min(8).max(32).default(13),
+});
+export type EditorSettings = z.infer<typeof editorSettingsSchema>;
+
 export const agentModelSchema = z.object({ value: z.string().max(300), name: z.string().max(300) });
 export type AgentModel = z.infer<typeof agentModelSchema>;
 
@@ -197,6 +208,7 @@ export const appSettingsSchema = z.object({
   terminalPassthrough: z.boolean().default(true),
   browser: browserSettingsSchema.default(browserSettingsSchema.parse({})),
   terminal: terminalSettingsSchema.default(terminalSettingsSchema.parse({})),
+  editor: editorSettingsSchema.default(editorSettingsSchema.parse({})),
   agents: agentSettingsSchema.default(agentSettingsSchema.parse({})),
   recentProjects: z.array(recentProjectSchema).max(MAX_RECENT_PROJECTS).default([]),
   projects: z.record(z.string(), projectStateSchema).default({}),
@@ -211,6 +223,7 @@ export const appSettingsPatchSchema = z
     terminalPassthrough: z.boolean(),
     browser: browserSettingsSchema.partial(),
     terminal: terminalSettingsSchema.partial(),
+    editor: editorSettingsSchema.partial(),
     agents: agentSettingsPatchSchema,
   })
   .partial();

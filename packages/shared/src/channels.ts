@@ -23,6 +23,19 @@ import {
 } from './browser.js';
 import { designCommandSchema, designSessionSummarySchema, designStateSchema } from './design.js';
 import { agentModeIncludeSchema, agentModeSelectionSchema, agentModeTargetSchema } from './inspector.js';
+import {
+  diagnosticSchema,
+  diagnosticSourceSchema,
+  eolSchema,
+  fileChangeSchema,
+  fileContentSchema,
+  fileEntrySchema,
+  fileKindSchema,
+  relativePathSchema,
+  saveResultSchema,
+  searchMatchSchema,
+  searchQuerySchema,
+} from './files.js';
 import { defineChannel, defineEvent, type IpcClient } from './ipc.js';
 import { platformSchema } from './platform.js';
 import {
@@ -37,6 +50,7 @@ import {
 import { devServerStatusSchema, terminalInfoSchema, terminalKindSchema, terminalSizeSchema } from './terminal.js';
 
 const terminalId = z.object({ id: z.string() });
+const filePath = z.object({ path: relativePathSchema });
 const threadId = z.object({ threadId: z.string() });
 
 export const contextMenuItemSchema = z.union([
@@ -337,6 +351,39 @@ export const channels = {
     z.object({ id: z.string(), target: agentModeTargetSchema }),
     z.object({ threadId: z.string() }),
   ),
+
+  /** Children of a project folder, folders first. The watcher covers folders listed here. */
+  'files.readDir': defineChannel('files.readDir', filePath, z.array(fileEntrySchema)),
+  'files.read': defineChannel('files.read', filePath, fileContentSchema),
+  /**
+   * Writes `content` (any line ends) with `eol`, after the project's Prettier when `format` is set
+   * and enabled in settings. Diagnostics follow through `editor.diagnostics`.
+   */
+  'files.write': defineChannel(
+    'files.write',
+    filePath.extend({ content: z.string().max(100_000_000), eol: eolSchema, format: z.boolean().default(true) }),
+    saveResultSchema,
+  ),
+  /** Fails when something already exists at `path`. */
+  'files.create': defineChannel('files.create', filePath.extend({ kind: fileKindSchema }), none),
+  /** Moves or renames; fails when `to` exists. */
+  'files.rename': defineChannel('files.rename', z.object({ from: relativePathSchema, to: relativePathSchema }), none),
+  /** Moves to the OS trash. */
+  'files.delete': defineChannel('files.delete', filePath, none),
+  'files.reveal': defineChannel('files.reveal', filePath, none),
+  /** Every file not ignored, for quick open. Cached in main and refreshed by the watcher. */
+  'files.list': defineChannel('files.list', none, z.object({ files: z.array(z.string()), truncated: z.boolean() })),
+
+  /** Starts a project search; matches stream through `search.results`, then `search.done`. */
+  'search.start': defineChannel('search.start', searchQuerySchema, z.object({ searchId: z.string() })),
+  'search.cancel': defineChannel('search.cancel', z.object({ searchId: z.string() }), none),
+
+  /** Formats text with the project's Prettier without saving; `content` is null when it has none. */
+  'editor.format': defineChannel(
+    'editor.format',
+    filePath.extend({ content: z.string().max(100_000_000) }),
+    z.object({ content: z.string().nullable(), error: z.string().optional() }),
+  ),
 } as const;
 
 /** Main -> renderer events. */
@@ -386,6 +433,25 @@ export const events = {
   'design.navigationBlocked': defineEvent('design.navigationBlocked', z.object({ url: z.string() })),
   /** Entering or leaving design mode failed (usually the before screenshot). */
   'design.failed': defineEvent('design.failed', z.object({ error: z.string() })),
+  /** Files and folders that changed on disk, coalesced. */
+  'files.changed': defineEvent('files.changed', z.object({ changes: z.array(fileChangeSchema) })),
+  /** The watcher hit a limit (inotify) and fell back to polling the folders open in the explorer. */
+  'files.watchWarning': defineEvent('files.watchWarning', z.object({ message: z.string() })),
+  'search.results': defineEvent(
+    'search.results',
+    z.object({ searchId: z.string(), matches: z.array(searchMatchSchema) }),
+  ),
+  'search.done': defineEvent(
+    'search.done',
+    z.object({ searchId: z.string(), total: z.number().int(), truncated: z.boolean(), error: z.string().optional() }),
+  ),
+  /** The latest diagnostics for one file from one tool; an empty list clears them. */
+  'editor.diagnostics': defineEvent(
+    'editor.diagnostics',
+    z.object({ path: z.string(), source: diagnosticSourceSchema, diagnostics: z.array(diagnosticSchema) }),
+  ),
+  /** A tool could not run (crash, timeout, bad config). Shown once per message. */
+  'editor.toolError': defineEvent('editor.toolError', z.object({ source: z.string(), message: z.string() })),
 } as const;
 
 export type Channels = typeof channels;

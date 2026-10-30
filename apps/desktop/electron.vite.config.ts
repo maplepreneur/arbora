@@ -24,6 +24,8 @@ export default defineConfig(({ mode }) => {
             index: resolve(import.meta.dirname, 'src/main/index.ts'),
             // Run by agents without HTTP MCP as `<arbora> mcp-shim.js <url>` (ELECTRON_RUN_AS_NODE=1).
             'mcp-shim': resolve(import.meta.dirname, '../../packages/mcp-browser-server/src/shim-main.ts'),
+            // Runs the project's Prettier and ESLint in a utility process (Stage 7).
+            'tooling-worker': resolve(import.meta.dirname, 'src/main/workspace/tooling/worker.ts'),
           },
         },
       },
