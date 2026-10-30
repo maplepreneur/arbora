@@ -209,7 +209,7 @@ test.describe('Stage 4 agent mode on Vite + React 18', () => {
 
       // The breadcrumb retargets the prompt to an ancestor component.
       await page.getByTestId('agent-mode-crumb').nth(1).click();
-      await expect(page.getByTestId('agent-mode-source')).toHaveText('src/App.tsx:13');
+      await expect(page.getByTestId('agent-mode-source')).toHaveText('src/App.tsx:14');
       await page.getByTestId('agent-mode-crumb').nth(0).click();
       await expect(page.getByTestId('agent-mode-source')).toHaveText('src/components/Card.tsx:19');
 

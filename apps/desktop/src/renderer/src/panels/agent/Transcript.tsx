@@ -409,6 +409,24 @@ function EventView({
           <span className="whitespace-pre-wrap select-text">{event.message}</span>
         </div>
       );
+    case 'browser_preview':
+      return (
+        <figure className="rounded border border-border bg-bg px-2 py-1.5 text-[11px]" data-testid="browser-preview">
+          <figcaption className="mb-1 flex items-center gap-1.5 text-fg-subtle">
+            <ImageIcon size={12} className="shrink-0" />
+            <span className="truncate" title={event.path ?? undefined}>
+              {event.title}
+            </span>
+          </figcaption>
+          <img
+            src={`data:${event.image.mimeType};base64,${event.image.data}`}
+            alt={event.title}
+            width={event.image.width}
+            height={event.image.height}
+            className="h-auto max-h-48 max-w-full rounded border border-border"
+          />
+        </figure>
+      );
     default: {
       const unreachable: never = event;
       return unreachable;

@@ -242,6 +242,9 @@ export function loadSettings(raw: unknown): LoadSettingsResult {
 export const PROJECT_SETTINGS_VERSION = 1;
 
 /** Committed per-project settings in `<project>/.arbora/project.json`. */
+export const browserToolPolicySchema = z.enum(['ask', 'allow', 'deny']);
+export type BrowserToolPolicy = z.infer<typeof browserToolPolicySchema>;
+
 export const projectSettingsSchema = z.object({
   version: z.literal(PROJECT_SETTINGS_VERSION).default(PROJECT_SETTINGS_VERSION),
   /** Shell command for "Run Dev Server"; inferred from `package.json` scripts on first run. */
@@ -251,6 +254,13 @@ export const projectSettingsSchema = z.object({
   autoOpenDevUrl: z.boolean().optional(),
   defaultAgent: z.string().optional(),
   keybindings: keybindingOverridesSchema.optional(),
+  /**
+   * Standing answers for the agent browser tools that can do more than look: `browser_evaluate`
+   * and `terminal_run`. Unset means ask once per agent session.
+   */
+  browserTools: z
+    .object({ evaluate: browserToolPolicySchema.optional(), terminalRun: browserToolPolicySchema.optional() })
+    .optional(),
 });
 export type ProjectSettings = z.infer<typeof projectSettingsSchema>;
 

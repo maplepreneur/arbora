@@ -10,5 +10,8 @@
   "dependencies": {
     "@agentclientprotocol/sdk": "2.1.0",
     "@arbora/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2"
   }
 }

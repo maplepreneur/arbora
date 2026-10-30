@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type {
+  McpServer,
   ReadTextFileRequest,
   ReadTextFileResponse,
   RequestPermissionRequest,
@@ -39,10 +40,12 @@ import {
   type Attachment,
   type AuthMethod,
   type ContentBlock,
+  type PermissionOptionKind,
   type Platform,
   type RememberedPermissions,
   type Thread,
   type ThreadChange,
+  type ThreadEvent,
   type ThreadState,
   type ThreadSummary,
   type ToolKind,
@@ -77,12 +80,37 @@ export interface AgentServiceOptions {
   };
   readonly events: AgentServiceEvents;
   readonly now?: () => number;
+  /** Arbora's MCP servers (the Stage 5 browser tools) for a new agent session of `threadId`. */
+  readonly mcp?: (threadId: string) => Promise<McpAttachment>;
+  /** `stdio` sends every agent through the shim, even with `mcpCapabilities.http` (`ARBORA_MCP_TRANSPORT`). */
+  readonly mcpTransport?: 'auto' | 'stdio';
 }
+
+/** MCP servers Arbora runs for one agent session; closed when the agent process stops. */
+export interface McpAttachment {
+  /** `mcpServers` for `session/new`/`load`/`resume`; `http` is the agent's `mcpCapabilities.http`. */
+  servers(http: boolean): McpServer[];
+  /** Whether the agent has asked for the tool list (agents that cannot reach the server never do). */
+  readonly toolsListed: boolean;
+  close(): Promise<void>;
+}
+
+/** A permission card Arbora raises itself (browser tools), not the agent. */
+export interface ToolPermissionRequest {
+  readonly title: string;
+  readonly detail: string;
+  readonly toolKind: ToolKind;
+  /** Offer "always"/"never" answers, which the caller persists. */
+  readonly persistent: boolean;
+}
+
+export type BrowserPreviewEvent = Omit<Extract<ThreadEvent, { kind: 'browser_preview' }>, 'id' | 'at' | 'kind'>;
 
 /** One agent process plus its ACP connection; `sessionId` is set once `session/new` or load succeeded. */
 class Runtime {
   readonly session: AcpSession;
   sessionId: string | null = null;
+  mcp: McpAttachment | null = null;
 
   constructor(
     readonly process: AgentProcess,
@@ -292,6 +320,53 @@ export class AgentService {
     const pending = record.pendingPermissions.get(requestId);
     if (!pending) throw new AgentServiceError('That permission request is no longer pending');
     pending.resolve(optionId);
+  }
+
+  /**
+   * Shows a permission card for one of Arbora's own tools (the browser tools' navigation,
+   * `browser_evaluate`, `terminal_run`) and waits for the user. Resolves with the kind of option
+   * chosen, or null when the thread, turn or agent went away first.
+   */
+  async requestToolPermission(threadId: string, request: ToolPermissionRequest): Promise<PermissionOptionKind | null> {
+    const record = this.records.get(threadId);
+    if (!record) return null;
+    const options: RequestPermissionRequest['options'] = [
+      { optionId: 'allow', name: request.persistent ? 'Allow this session' : 'Allow', kind: 'allow_once' },
+      ...(request.persistent
+        ? [{ optionId: 'allow-always', name: 'Always allow in this project', kind: 'allow_always' as const }]
+        : []),
+      { optionId: 'reject', name: 'Deny', kind: 'reject_once' },
+      ...(request.persistent
+        ? [{ optionId: 'reject-always', name: 'Never in this project', kind: 'reject_always' as const }]
+        : []),
+    ];
+    const requestId = randomUUID();
+    this.emitChanges(
+      record,
+      record.normalizer.permissionRequested(requestId, {
+        sessionId: record.runtime?.sessionId ?? '',
+        toolCall: {
+          toolCallId: `arbora-${requestId}`,
+          title: request.title,
+          kind: request.toolKind,
+          rawInput: { detail: request.detail },
+        },
+        options,
+      }),
+    );
+    const chosen = await this.waitForPermission(record, requestId);
+    if (chosen === null) {
+      this.emitChanges(record, record.normalizer.permissionResolved(requestId, 'cancelled'));
+      return null;
+    }
+    this.emitChanges(record, record.normalizer.permissionResolved(requestId, { optionId: chosen, auto: false }));
+    return options.find((o) => o.optionId === chosen)?.kind ?? null;
+  }
+
+  /** Mirrors a browser-tools screenshot into the thread as a thumbnail. */
+  addBrowserPreview(threadId: string, preview: BrowserPreviewEvent): void {
+    const record = this.records.get(threadId);
+    if (record) this.emitChanges(record, record.normalizer.browserPreview(preview));
   }
 
   async setMode(threadId: string, modeId: string): Promise<void> {
@@ -586,6 +661,7 @@ export class AgentService {
         record,
         `initialized ${initialized.agentInfo?.name ?? agent.name} ${initialized.agentInfo?.version ?? ''} (protocol ${initialized.protocolVersion})`.trim(),
       );
+      await this.attachMcp(record, runtime);
       await this.openSession(record, runtime);
       return runtime;
     } catch (error) {
@@ -619,6 +695,25 @@ export class AgentService {
     return new AgentStoppedError();
   }
 
+  /** Starts the browser-tools MCP server for this process; the session works without it. */
+  private async attachMcp(record: ThreadRecord, runtime: Runtime): Promise<void> {
+    if (!this.options.mcp) return;
+    try {
+      runtime.mcp = await this.options.mcp(record.thread.id);
+      this.info(record, `browser tools attached over ${this.httpMcp(runtime) ? 'http' : 'stdio shim'}`);
+    } catch (error) {
+      this.info(record, `browser tools unavailable: ${messageOf(error)}`);
+    }
+  }
+
+  private httpMcp(runtime: Runtime): boolean {
+    return runtime.session.supportsHttpMcp && this.options.mcpTransport !== 'stdio';
+  }
+
+  private mcpServers(runtime: Runtime): McpServer[] {
+    return runtime.mcp?.servers(this.httpMcp(runtime)) ?? [];
+  }
+
   /** `session/load` or `session/resume` when advertised and we have a session id; else `session/new`. */
   private async openSession(record: ThreadRecord, runtime: Runtime): Promise<void> {
     const previous = record.thread.sessionId;
@@ -632,7 +727,7 @@ export class AgentService {
       }
     }
     if (!restored) {
-      const response = await runtime.session.newSession(this.options.projectPath, []);
+      const response = await runtime.session.newSession(this.options.projectPath, this.mcpServers(runtime));
       runtime.sessionId = response.sessionId;
       // Some agents number sessions per process, so a fresh session may reuse the old id.
       const contextLost = previous !== null;
@@ -691,10 +786,11 @@ export class AgentService {
   ): Promise<boolean> {
     record.replaying = true;
     try {
+      const servers = this.mcpServers(runtime);
       const response =
         how === 'load'
-          ? await runtime.session.loadSession(sessionId, this.options.projectPath, [])
-          : await runtime.session.resumeSession(sessionId, this.options.projectPath, []);
+          ? await runtime.session.loadSession(sessionId, this.options.projectPath, servers)
+          : await runtime.session.resumeSession(sessionId, this.options.projectPath, servers);
       runtime.sessionId = sessionId;
       this.setState(record, {
         status: 'ready',
@@ -731,7 +827,11 @@ export class AgentService {
       ? [
           {
             type: 'text',
-            text: firstPromptPreface({ projectPath: this.options.projectPath, devUrl: this.options.devUrl() }),
+            text: firstPromptPreface({
+              projectPath: this.options.projectPath,
+              devUrl: this.options.devUrl(),
+              browserTools: runtime.mcp !== null,
+            }),
           },
           ...shown,
         ]
@@ -752,6 +852,7 @@ export class AgentService {
       const response = await runtime.session.prompt(sessionId, sent);
       const stopReason = stopReasonSchema.safeParse(response.stopReason);
       this.emitChanges(record, record.normalizer.turnEnded(stopReason.success ? stopReason.data : 'end_turn'));
+      if (firstPrompt) this.warnIfToolsUnused(record, runtime);
       if (record.runtime === runtime) this.setState(record, { status: 'ready' });
       return { stopReason: response.stopReason };
     } catch (error) {
@@ -773,6 +874,25 @@ export class AgentService {
     } finally {
       this.cancelPendingPermissions(record);
     }
+  }
+
+  /**
+   * An agent that never listed the tools after a whole turn could not reach the server (a strict
+   * network sandbox) or ignores client MCP servers; say so once instead of failing silently.
+   */
+  private warnIfToolsUnused(record: ThreadRecord, runtime: Runtime): void {
+    if (!runtime.mcp || runtime.mcp.toolsListed) return;
+    this.info(record, 'the agent did not list the arbora-browser MCP tools during its first turn');
+    this.emitChanges(
+      record,
+      record.normalizer.apply({
+        sessionUpdate: 'notice',
+        severity: 'warning',
+        title: 'The agent has not loaded Arbora’s browser tools',
+        description:
+          'It cannot see or drive the browser panel, so it cannot check its own changes. Its sandbox may block localhost, or it may not support MCP servers from the client.',
+      }).changes,
+    );
   }
 
   private authHint(record: ThreadRecord, message: string): string {
@@ -805,6 +925,7 @@ export class AgentService {
       record.runtime = null;
       this.cancelPendingPermissions(record);
       void runtime.terminals.dispose();
+      void runtime.mcp?.close().catch(() => undefined);
       const wasPrompting = record.thread.state.status === 'prompting';
       const detail = exit.signal ? `signal ${exit.signal}` : `code ${exit.code ?? 'unknown'}`;
       const message = error ? `${messageOf(error)} (${detail})` : `Agent exited with ${detail}`;
@@ -824,6 +945,7 @@ export class AgentService {
     if (!runtime) return;
     await runtime.terminals.dispose();
     await runtime.session.close();
+    await runtime.mcp?.close().catch(() => undefined);
     runtime.process.kill();
     await Promise.race([runtime.process.exited, new Promise((resolveTimeout) => setTimeout(resolveTimeout, 2000))]);
     runtime.process.kill('SIGKILL');
@@ -854,18 +976,7 @@ export class AgentService {
       return { outcome: { outcome: 'selected', optionId: auto } };
     }
 
-    const chosen = await new Promise<string | null>((resolvePermission) => {
-      const pending: PendingPermission = {
-        resolve: (optionId) => {
-          record.pendingPermissions.delete(requestId);
-          signal.removeEventListener('abort', onAbort);
-          resolvePermission(optionId);
-        },
-      };
-      const onAbort = (): void => pending.resolve(null);
-      signal.addEventListener('abort', onAbort, { once: true });
-      record.pendingPermissions.set(requestId, pending);
-    });
+    const chosen = await this.waitForPermission(record, requestId, signal);
     if (chosen === null) {
       this.emitChanges(record, record.normalizer.permissionResolved(requestId, 'cancelled'));
       return { outcome: { outcome: 'cancelled' } };
@@ -877,6 +988,22 @@ export class AgentService {
       this.options.permissions.remember(permissionMemoryKey(record.thread.agentId, toolKind), 'reject');
     this.emitChanges(record, record.normalizer.permissionResolved(requestId, { optionId: chosen, auto: false }));
     return { outcome: { outcome: 'selected', optionId: chosen } };
+  }
+
+  /** Waits for the renderer's answer to a permission card; null when cancelled or aborted. */
+  private waitForPermission(record: ThreadRecord, requestId: string, signal?: AbortSignal): Promise<string | null> {
+    return new Promise<string | null>((resolvePermission) => {
+      const pending: PendingPermission = {
+        resolve: (optionId) => {
+          record.pendingPermissions.delete(requestId);
+          signal?.removeEventListener('abort', onAbort);
+          resolvePermission(optionId);
+        },
+      };
+      const onAbort = (): void => pending.resolve(null);
+      signal?.addEventListener('abort', onAbort, { once: true });
+      record.pendingPermissions.set(requestId, pending);
+    });
   }
 
   /** The option id to answer without asking, from remembered "always" choices or auto-approve edits. */

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Card } from './components/Card';
+import { NameForm } from './components/NameForm';
 
 export function App() {
   const [count, setCount] = useState(0);
@@ -29,6 +30,7 @@ export function App() {
           onAction={() => void fetch('/api/missing.json', { headers: { accept: 'application/json' } })}
         />
       </div>
+      <NameForm />
     </main>
   );
 }

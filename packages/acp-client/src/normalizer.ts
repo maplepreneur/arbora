@@ -259,6 +259,19 @@ export class UpdateNormalizer {
     return [this.append(event)];
   }
 
+  /** A screenshot the agent took through Arbora's browser tools (shown next to its tool card). */
+  browserPreview(
+    preview: Omit<Extract<ThreadEvent, { kind: 'browser_preview' }>, 'id' | 'at' | 'kind'>,
+  ): ThreadChange[] {
+    const event: ThreadEvent = {
+      id: this.options.nextId(),
+      at: this.options.now(),
+      kind: 'browser_preview',
+      ...preview,
+    };
+    return [this.append(event)];
+  }
+
   /** Tool kind of a known tool call, for permission memory when the request omits it. */
   toolKindOf(toolCallId: string): ToolKind | undefined {
     return this.toolCall(toolCallId)?.toolKind;
