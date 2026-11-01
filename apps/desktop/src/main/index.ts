@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -183,6 +184,7 @@ function main(): void {
 
     const updates = new UpdateService({
       kind: installKind,
+      macSigned: platform === 'darwin' && installKind === 'dmg' && macSignedWithTeam(),
       version: app.getVersion(),
       settings: () => settings.get().updates,
       emit: (state) => {
@@ -296,6 +298,7 @@ function main(): void {
       state: updates.current(),
       installKind,
       version: app.getVersion(),
+      selfUpdates: updates.selfUpdates,
     }));
     defineHandler('updates.check', isTrusted, () => updates.check());
     defineHandler('updates.download', isTrusted, async () => {
@@ -902,6 +905,17 @@ function main(): void {
   app.on('window-all-closed', () => {
     if (platform !== 'darwin') app.quit();
   });
+}
+
+/**
+ * Whether the running macOS app is signed with a Developer ID team. Unsigned and ad-hoc builds
+ * report `TeamIdentifier=not set` (or no signature at all).
+ */
+function macSignedWithTeam(): boolean {
+  const bundle = process.execPath.replace(/\/Contents\/MacOS\/[^/]+$/, '');
+  // codesign prints its report on stderr, also when it succeeds.
+  const result = spawnSync('codesign', ['-dv', '--verbose=2', bundle], { encoding: 'utf8' });
+  return /TeamIdentifier=(?!not set)\S+/.test(`${result.stdout}${result.stderr}`);
 }
 
 /** electron-builder writes `resources/package-type` (`deb`, `rpm`, ...) into Linux packages. */

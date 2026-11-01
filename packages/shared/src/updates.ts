@@ -10,9 +10,15 @@ import type { UpdateChannel } from './settings.js';
 export const installKindSchema = z.enum(['dmg', 'nsis', 'appimage', 'deb', 'aur', 'tarball', 'dev']);
 export type InstallKind = z.infer<typeof installKindSchema>;
 
-export function canSelfUpdate(kind: InstallKind): boolean {
+/**
+ * Whether this install can replace itself. macOS only installs updates for an app signed with a
+ * Developer ID (Squirrel.Mac checks the signature), so an unsigned or ad-hoc signed `.dmg` build
+ * updates by hand like a `.deb`. Unsigned Windows and AppImage builds update in place.
+ */
+export function canSelfUpdate(kind: InstallKind, macSigned = true): boolean {
   switch (kind) {
     case 'dmg':
+      return macSigned;
     case 'nsis':
     case 'appimage':
       return true;
@@ -71,6 +77,7 @@ export function manualUpdateHint(kind: InstallKind, version: string): string {
     case 'dev':
       return 'This is a development build. Pull the latest source instead.';
     case 'dmg':
+      return `Download the Arbora ${version} .dmg from the release page and drag Arbora to Applications, replacing this copy.`;
     case 'nsis':
     case 'appimage':
       return 'Arbora downloads and installs this update itself.';

@@ -12,12 +12,12 @@ Download the build for your OS from the [GitHub releases](https://github.com/map
 | Debian / Ubuntu | `.deb` | `sudo apt install ./arbora-<version>-linux-amd64.deb` | Arbora tells you a new release exists; install the new `.deb` |
 | Any Linux | `.AppImage` | `chmod +x Arbora-*.AppImage && ./Arbora-*.AppImage` | in place, from Arbora |
 | Any Linux | `.tar.gz` | extract, then `./arbora /path/to/project` | Arbora tells you; unpack the new tarball |
-| macOS (Apple silicon or Intel) | `.dmg` | open it and drag Arbora to Applications | in place, from Arbora |
+| macOS (Apple silicon or Intel) | `.dmg` | open it and drag Arbora to Applications; allow it once in System Settings (below) | signed builds in place; unsigned builds tell you to download the new `.dmg` |
 | Windows 10/11 | `.exe` (per-user NSIS) | run the installer; no admin rights needed | in place, from Arbora |
 
 Settings → Updates & diagnostics picks the channel (**Stable** or **Beta**), whether Arbora checks on startup, and whether it downloads updates in the background. **Check for Updates…** in the palette checks now and shows the release notes.
 
-Until the signing certificates are in place, macOS and Windows builds may be unsigned: on macOS right-click the app and choose **Open** the first time; on Windows choose **More info → Run anyway** in SmartScreen. See the [FAQ](docs/FAQ.md) for Linux sandbox, Wayland and PATH questions, and [docs/AGENT_SETUP.md](docs/AGENT_SETUP.md) to install and sign in to each agent.
+Releases are unsigned until Arbora has Apple and Windows signing accounts. On macOS, the first launch is blocked: open System Settings → Privacy & Security and click **Open Anyway** next to the Arbora message (or run `xattr -dr com.apple.quarantine /Applications/Arbora.app`). On Windows, choose **More info → Run anyway** in SmartScreen. Both are once per install. See the [FAQ](docs/FAQ.md) for Linux sandbox, Wayland and PATH questions, and [docs/AGENT_SETUP.md](docs/AGENT_SETUP.md) to install and sign in to each agent.
 
 ## Running Arbora locally
 

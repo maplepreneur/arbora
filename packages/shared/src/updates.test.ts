@@ -49,6 +49,9 @@ describe('detectInstallKind', () => {
   it('only self-updates where electron-updater can replace the app', () => {
     expect(['dmg', 'nsis', 'appimage'].every((k) => canSelfUpdate(k as 'dmg'))).toBe(true);
     expect(canSelfUpdate('deb')).toBe(false);
+    // Unsigned macOS builds cannot update in place; they get the download hint.
+    expect(canSelfUpdate('dmg', false)).toBe(false);
+    expect(manualUpdateHint('dmg', '1.0.0')).toMatch(/drag Arbora to Applications/);
     expect(manualUpdateHint('aur', '1.0.0')).toMatch(/yay/);
     expect(manualUpdateHint('deb', '1.0.0')).toMatch(/apt install/);
   });

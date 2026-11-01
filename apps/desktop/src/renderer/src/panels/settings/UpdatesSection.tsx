@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Download, FolderOpen, RefreshCw, Sparkles } from 'lucide-react';
-import { canSelfUpdate, CommandId, type UpdateChannel } from '@arbora/shared';
+import { CommandId, type UpdateChannel } from '@arbora/shared';
 import { executeCommand } from '../../commands';
 import { updateSettings } from '../../settings-client';
 import { openOverlay, useApp } from '../../store';
@@ -54,7 +54,7 @@ export function UpdatesSection() {
   useEffect(() => {
     void loadUpdateState();
   }, []);
-  const selfUpdating = canSelfUpdate(info.installKind);
+  const selfUpdating = useUpdates((s) => s.selfUpdates);
   return (
     <div data-testid="updates-section">
       <SectionTitle>Version</SectionTitle>
@@ -93,7 +93,7 @@ export function UpdatesSection() {
         detail={
           selfUpdating
             ? 'Downloads a new version as soon as it is found and installs it when you quit.'
-            : 'This install is updated by its package manager, so Arbora only tells you a new version exists.'
+            : 'This install cannot replace itself (a package-manager install, or an unsigned macOS build), so Arbora tells you when a new version exists and what to download.'
         }
       >
         <Toggle

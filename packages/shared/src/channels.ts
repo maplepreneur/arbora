@@ -162,7 +162,13 @@ export const channels = {
   'updates.getState': defineChannel(
     'updates.getState',
     none,
-    z.object({ state: updateStateSchema, installKind: installKindSchema, version: z.string() }),
+    z.object({
+      state: updateStateSchema,
+      installKind: installKindSchema,
+      version: z.string(),
+      /** False for installs that only learn about new versions (deb, AUR, tarball, unsigned macOS). */
+      selfUpdates: z.boolean(),
+    }),
   ),
   'updates.check': defineChannel('updates.check', none, updateStateSchema),
   'updates.download': defineChannel('updates.download', none, none),

@@ -16,6 +16,8 @@ import { loadAutoUpdater } from './lazy/updater.js';
 
 export interface UpdateServiceOptions {
   readonly kind: InstallKind;
+  /** macOS: signed with a Developer ID team. Ignored elsewhere. */
+  readonly macSigned: boolean;
   readonly version: string;
   readonly settings: () => UpdateSettings;
   readonly emit: (state: UpdateState) => void;
@@ -40,6 +42,10 @@ export class UpdateService {
     return this.options.kind;
   }
 
+  get selfUpdates(): boolean {
+    return canSelfUpdate(this.options.kind, this.options.macSigned);
+  }
+
   current(): UpdateState {
     return this.state;
   }
@@ -60,7 +66,7 @@ export class UpdateService {
     if (this.state.status === 'checking' || this.state.status === 'downloading') return this.state;
     this.set({ status: 'checking' });
     try {
-      if (canSelfUpdate(this.options.kind)) await (await this.selfUpdater()).checkForUpdates();
+      if (this.selfUpdates) await (await this.selfUpdater()).checkForUpdates();
       else await this.checkManually();
     } catch (error) {
       this.set({ status: 'error', message: (error as Error).message });
@@ -69,7 +75,7 @@ export class UpdateService {
   }
 
   async download(): Promise<void> {
-    if (!canSelfUpdate(this.options.kind) || this.state.status !== 'available') return;
+    if (!this.selfUpdates || this.state.status !== 'available') return;
     await (await this.selfUpdater()).downloadUpdate();
   }
 

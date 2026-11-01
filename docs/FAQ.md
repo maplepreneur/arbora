@@ -14,9 +14,11 @@ GUI apps on macOS, and on Linux desktop launchers, do not inherit your shell's P
 
 The installer is not signed with a code-signing certificate yet. Click **More info**, then **Run anyway**. The warning goes away once releases are signed (see [RELEASING.md](./RELEASING.md)). The installer is per user and needs no admin rights, which is also what lets Arbora update itself.
 
-## macOS says Arbora "cannot be opened because the developer cannot be verified"
+## macOS says Arbora "cannot be opened" or "Apple could not verify" it
 
-That is an unsigned build. Right-click Arbora in Applications, choose **Open**, then **Open** again. Signed and notarized builds open normally.
+Releases are not signed with an Apple Developer ID yet. After dragging Arbora to Applications and trying to open it once, open System Settings → Privacy & Security, scroll to the message about Arbora and click **Open Anyway**, then confirm. (On macOS 15 and later the old right-click → **Open** shortcut no longer bypasses this.) In a terminal, `xattr -dr com.apple.quarantine /Applications/Arbora.app` does the same.
+
+macOS only installs updates for signed apps, so an unsigned Arbora does not update itself: when a new version is out, Arbora says so and links the release page; download the new `.dmg` and replace the app in Applications.
 
 ## Hyprland, Wayland and blurry text
 

@@ -46,7 +46,7 @@ export function UpdateDialog() {
           )}
           {state.manualHint && (
             <div className="rounded border border-border bg-bg-subtle p-3 text-xs">
-              <p className="font-medium">This install ({installKind}) is updated by its package manager.</p>
+              <p className="font-medium">This install ({installKind}) does not update itself.</p>
               <p className="mt-1 text-fg-muted select-text">{state.manualHint}</p>
             </div>
           )}

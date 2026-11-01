@@ -13,9 +13,19 @@ Releases are GitHub Releases built by [`.github/workflows/release.yml`](../.gith
 
 A full run costs about 60 billed minutes (macOS at 10x, Windows at 2x). While Actions minutes are used up, do not tag.
 
+## Without signing accounts
+
+Arbora can ship with no Apple, Windows or AUR account; that is the current plan. Leave the secrets below unset: the workflow builds unsigned installers, skips notarization and the AUR push, and says so in the log. What users get:
+
+- **Linux:** no difference. The AppImage updates itself; the `.deb` and tarball show what to download. Arch users can use the AppImage or tarball, or build `aur/PKGBUILD` locally with `makepkg -si`.
+- **Windows:** SmartScreen warns once (**More info → Run anyway**). Updates still install in place.
+- **macOS:** Gatekeeper blocks the first launch until the user clicks **Open Anyway** in System Settings → Privacy & Security. The app cannot update itself (Squirrel.Mac requires a Developer ID signature), so Arbora checks the app's own signature at startup (`codesign -dv`) and, without a team id, only tells the user to download the new `.dmg`. Apple silicon needs at least an ad-hoc signature to run; electron-builder applies one when no identity is configured. Check that on the first Mac build.
+
+Updates are read from wherever electron-updater can reach without logging in. For GitHub Releases the repository (or a separate public releases repository) must be public. To serve downloads from a website instead, set `publish` in `electron-builder.yml` to `{ provider: generic, url: https://<site>/arbora/downloads }` and upload each release's installers with its `latest.yml`, `latest-mac.yml`, `latest-linux.yml` (and `beta*.yml`) to that folder; the in-app check for `.deb`, tarball and unsigned macOS installs then also needs that URL instead of the GitHub API.
+
 ## Secrets
 
-All are optional. Without them the build is unsigned and the workflow says so.
+All are optional (see above). Without them the build is unsigned and the workflow says so.
 
 | Secret | Used for |
 | --- | --- |

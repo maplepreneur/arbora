@@ -2,9 +2,10 @@ import { create } from 'zustand';
 import type { UpdateState } from '@arbora/shared';
 import { openOverlay, showToast, useApp } from './store';
 
-export const useUpdates = create<{ state: UpdateState; version: string }>()(() => ({
+export const useUpdates = create<{ state: UpdateState; version: string; selfUpdates: boolean }>()(() => ({
   state: { status: 'idle' },
   version: '',
+  selfUpdates: false,
 }));
 
 let announced: string | null = null;
@@ -39,8 +40,8 @@ export function applyUpdateState(state: UpdateState, fromUser = false): void {
 }
 
 export async function loadUpdateState(): Promise<void> {
-  const { state, version } = await window.arbora.invoke('updates.getState');
-  useUpdates.setState({ state, version });
+  const { state, version, selfUpdates } = await window.arbora.invoke('updates.getState');
+  useUpdates.setState({ state, version, selfUpdates });
 }
 
 /** **Check for Updates…**: checks now and shows the result in the update dialog. */
