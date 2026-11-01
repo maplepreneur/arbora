@@ -745,6 +745,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - **Run electron-builder through pnpm.** `npx electron-builder` detects npm, cannot find the hoisted workspace dependencies ("cannot find path for dependency"), and packs an app whose `app.asar` has only `chokidar`; it then dies at startup. Use `pnpm package` or `pnpm exec electron-builder`.
 - **React DevTools registers its hook from its service worker.** After loading the extensions on demand, wait until each extension's worker is running (`session.serviceWorkers.getAllRunning()`) before reloading the page, or the reload races the hook registration and React DevTools sees no renderer.
 - **electron-builder writes `resources/package-type` (`deb`) into `linux-unpacked`.** The tarball built before the deb does not contain it, which is what `detectInstallKind` relies on to tell a `.deb` from a tarball. Keep `tar.gz` before `deb` in `linux.target`. The AUR package is detected by its `/opt/arbora` path.
+- **The Ubuntu 24.04 `.deb` leaves `chrome-sandbox` without setuid.** electron-builder's postinst relies on unprivileged user namespaces and installs an AppArmor profile instead; the sandboxed app starts that way. Do not add `--no-sandbox` for Debian.
 - **The AUR tarball needs a setuid `chrome-sandbox`.** Unpacked as a normal user, the tarball only starts with `--no-sandbox`. The PKGBUILD sets `chmod 4755`. The repo is private, so AUR downloads of release assets need the repo to go public (or another download host) before `arbora-bin` is useful.
 
 ### Acceptance
@@ -771,7 +772,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - [x] Agent groups and pinned threads (`F-AGENT-12`)
 - [x] Projects page, project groups and **Switch Project…** (`F-SHELL-07`)
 - [x] Unit tests (attention, projects, keybinding editor, updates, settings patches, registry overrides, redaction, agent groups) and `e2e/polish.spec.ts`
-- [ ] Fresh installs on Debian, Arch via AUR (Omarchy/Hyprland), macOS and Windows reach a `Mod+K` prompt through onboarding (`arch-ok`)
+- [ ] Fresh installs on Debian, Arch via AUR (Omarchy/Hyprland), macOS and Windows reach a `Mod+K` prompt through onboarding (`arch-ok`). Debian-family done 1 Nov 2026: the `.deb` from current `main` installed with `apt` on Ubuntu 24.04 (Xvfb, sandbox on, `installKind: deb`), and onboarding detected `npm run dev`, started it, registered `Ctrl+K`, and Finish entered agent mode on `http://localhost:5500/`. Arch/AUR, macOS and Windows are not checked.
 - [ ] A signed and notarized release from a tag
 
 ---
