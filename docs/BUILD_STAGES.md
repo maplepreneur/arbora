@@ -5,7 +5,7 @@ This document breaks [PLAN.md](./PLAN.md) into stages a coding agent can execute
 ## How to use this document
 
 - Work one stage at a time, in order. Each stage ends with a usable app.
-- Land it as commits on `main`. Do not open a branch or a pull request. See [AGENTS.md](../AGENTS.md#shipping). Do not mix stages. A large stage can be several commits; keep each one about one sub-part.
+- Land it through a pull request into `main` (see [AGENTS.md](../AGENTS.md#shipping)): a draft while it changes, ready once it passes locally. Do not mix stages. A large stage can be several PRs, one sub-part each.
 - Before starting a stage, read its gotchas. Most of them cost hours when discovered the hard way.
 - Before pushing code: `pnpm typecheck && pnpm lint && pnpm test`. Keep the `fixtures/` apps green.
 - Record new gotchas you discover in the stage's "Gotchas" list so the next agent benefits.
@@ -14,7 +14,7 @@ This document breaks [PLAN.md](./PLAN.md) into stages a coding agent can execute
 
 ## Progress
 
-**Now:** Stages 0–8 are `Done`. Stages 7 and 8 got `arch-ok` on Omarchy/Hyprland on 1 Nov 2026 (Hyprland 0.56.2), and Stage 8's scratch pull request is [PR #1](https://github.com/maplepreneur/arbora-stage8-scratch/pull/1). Stage 9 (Distribution and polish) is `In progress` on `main` as of 1 Nov 2026: onboarding, the full Settings UI with a shortcut editor, `electron-updater` with channels, signing and notarization config, the AUR package and release script, a tag-driven release workflow, diagnostics export, an accessibility pass and user docs, plus a Projects page with project groups, agent groups, and notifications and sounds when an agent needs you. 495 unit tests and 44 e2e tests pass locally. Left for Stage 9: the idle-memory budget on the packaged build (~374 MB against 350; ~345 MB on `out/`), the `arbora-releases` setup and the first unsigned release from a tag (Actions minutes), fresh-install checks per OS, and `arch-ok`. **Next:** Stage 10 (Grove), which reuses Stage 9's attention state, agent groups, Settings page and onboarding wizard. Stages 12, 13 (Themes), 14 (Extensions) and 15 (Accounts and membership: required sign-in, Arbora Pro at $5/month or $50/year, see [MONETIZATION.md](./MONETIZATION.md)) stay specified and not started. Shipping is commits on `main` (no PRs) until Actions minutes are back; see [AGENTS.md](../AGENTS.md#shipping).
+**Now:** Stages 0–8 are `Done`. Stages 7 and 8 got `arch-ok` on Omarchy/Hyprland on 1 Nov 2026 (Hyprland 0.56.2), and Stage 8's scratch pull request is [PR #1](https://github.com/maplepreneur/arbora-stage8-scratch/pull/1). Stage 9 (Distribution and polish) is `In progress` on `main` as of 1 Nov 2026: onboarding, the full Settings UI with a shortcut editor, `electron-updater` with channels, signing and notarization config, the AUR package and release script, a tag-driven release workflow, diagnostics export, an accessibility pass and user docs, plus a Projects page with project groups, agent groups, and notifications and sounds when an agent needs you. 495 unit tests and 44 e2e tests pass locally. Left for Stage 9: the idle-memory budget on the packaged build (~374 MB against 350; ~345 MB on `out/`), the `arbora-releases` setup and the first unsigned release from a tag (Actions minutes), fresh-install checks per OS, and `arch-ok`. **Next:** Stage 10 (Grove), which reuses Stage 9's attention state, agent groups, Settings page and onboarding wizard. Stages 12, 13 (Themes), 14 (Extensions) and 15 (Accounts and membership: required sign-in, Arbora Pro at $5/month or $50/year, see [MONETIZATION.md](./MONETIZATION.md)) stay specified and not started. Shipping is through pull requests again since 1 Nov 2026, with CI kept small; see [AGENTS.md](../AGENTS.md#shipping).
 
 | Stage | Name | Status | Notes |
 | --- | --- | --- | --- |
@@ -35,7 +35,7 @@ This document breaks [PLAN.md](./PLAN.md) into stages a coding agent can execute
 | 14 | Extensions | Not started | Specified 30 Oct 2026 (PLAN § 4.17, ADR 0007). Settings installs from a short approved catalog: Svelte DevTools and Bitwarden for the browser, and coding tools such as Robocop. Not the next stage. Browser entries need Stage 1's `loadExtension` path; coding tools need Stage 7's Problems panel. |
 | 15 | Accounts and membership | Not started | Specified 1 Nov 2026 (PLAN § 4.18, ADR 0008, [MONETIZATION.md](./MONETIZATION.md)). Required sign-in through the system browser, Arbora Pro at $5/month or $50/year with a 14-day trial (Stripe Billing), signed entitlements verified offline, and the Free/Pro gates per stage. Three sub-parts: 15a sign-in, 15b billing and entitlements, 15c gates. Needs the account server next to the website, and Stage 9's Settings and onboarding. |
 
-Status values: `Not started`, `In progress` or `In progress (PR #N)` / `In progress (PR #N, merged)`, `Blocked (reason)`, `Done` or `Done (PR #N)`. During direct-to-main, new work uses `In progress` or `Done` and names the commit on `main`. Never mark `Done` from CI alone; `arch-ok` on Omarchy/Hyprland is required.
+Status values: `Not started`, `In progress` or `In progress (PR #N)` / `In progress (PR #N, merged)`, `Blocked (reason)`, `Done` or `Done (PR #N)`. Work from the direct-to-main period (30 Oct to 1 Nov 2026) names its commit on `main`; new work names its PR. Never mark `Done` from CI alone; `arch-ok` on Omarchy/Hyprland is required.
 
 ## Code conventions for the builder agent
 
@@ -46,11 +46,11 @@ Status values: `Not started`, `In progress` or `In progress (PR #N)` / `In progr
 - Services in main are plain classes with explicit `dispose()`; no module-level singletons holding process handles.
 - Child processes (agents, terminals, git, tooling) always receive the cached login-shell PATH and the project cwd.
 - Every new tool, command or setting gets a unit test or an e2e step in the stage it lands in.
-- Commit per logical change on `main`. Do not open a pull request (see [AGENTS.md](../AGENTS.md#shipping)). A large stage can be several commits, one sub-part each.
+- One PR per logical change into `main`, opened as a draft until it is ready (see [AGENTS.md](../AGENTS.md#shipping)). A large stage can be several PRs, one sub-part each.
 
 ## Cross-cutting gotchas (read before any stage)
 
-- **Actions minutes are used up (30 Oct 2026).** Commit and push to `main`. Do not open a pull request, and do not request macOS or Windows CI. A push of code to `main` still starts the Linux job; `**/*.md`, `docs/**` and `.cursor/**` do not. Batch commits.
+- **Actions minutes are billed (private repo).** Since 1 Nov 2026 work goes through pull requests again, with CI kept small: Linux only, drafts and docs-only changes skip, a new push cancels the PR's running job, merges do not rerun on `main` (a weekly Monday run and manual dispatch cover it), and `ci:all-os` only for platform-specific changes right before merge. Push when the work is tested locally, not per commit. A release tag costs about 60 minutes.
 - **`paths-ignore` does not skip docs-only pushes to a PR that has code.** For `pull_request` events GitHub compares the whole PR diff with the base, so a docs commit on a code PR runs the full CI again, on every OS if `ci:all-os` is still set. Remove the label once the all-OS run is green. This matters again when PRs resume.
 - **Do not push and mark a PR ready in the same breath.** The draft push's run is skipped, but it is in the same concurrency group, so it cancels the `ready_for_review` run, and no CI runs. Re-run the cancelled run, or mark the PR ready first and push afterwards.
 - **CI minutes are billed (private repo): macOS at 10x and Windows at 2x Linux.** `ci.yml` runs one Linux job (typecheck, lint, unit, e2e) on PRs and on pushes to `main`, skips drafts and docs-only changes, and caches the Electron download. Add the `ci:all-os` label to a PR, or use "Run workflow" with "all_os", to also run macOS and Windows; do that before merging anything platform-specific (paths, shells, keyboard labels, packaging). A full three-OS run was about 60 billed minutes, the Linux job about 4.
@@ -763,7 +763,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - [x] Windows signing (or documented unsigned path): `WIN_CSC_LINK` or Azure Trusted Signing in `docs/RELEASING.md`; unsigned until then, SmartScreen in `docs/FAQ.md`
 - [x] Linux targets: AppImage, deb, tarball, AUR PKGBUILD and release script (`aur/`, `scripts/release-aur.mjs`); all three built locally on 1 Nov 2026
 - [x] `electron-updater` with channels (`main/update-service.ts`; Stable/Beta; manual hints for deb, AUR, tarball)
-- [x] Release workflow from tags (`.github/workflows/release.yml`: draft release, checksums, budget, AUR, publish behind the `release` environment). Never run: no tag while Actions minutes are used up.
+- [x] Release workflow from tags (`.github/workflows/release.yml`: draft release, checksums, budget, AUR, publish behind the `release` environment). Not run yet: no release has been tagged.
 - [x] Onboarding wizard (`panels/onboarding/Onboarding.tsx`)
 - [x] Settings UI (Agents with custom agents, env overrides and adapter versions; General; Notifications & sounds; Editor; Browser with reset; Project; Keyboard editor with conflicts; Updates & diagnostics)
 - [ ] Performance budget job passes: `e2e/perf.spec.ts` (`pnpm perf`) and the release `budget` job run, and screenshots pass (~25 ms against 300). Memory passes on the production `out/` build (~345 MB PSS by Electron's process list) but not on the packaged binary (~374 MB, which also counts the two zygote processes Electron's metrics omit), on Xvfb with software GL. Needs a decision or a real-GPU measurement (gotchas).
@@ -897,7 +897,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - Stage 9: the settings UI and onboarding entry points. Until it lands, use `settings.json` and a palette command.
 - Grove, if present, simply shows cross-tab threads like any other.
 
-**Sub-parts, landed separately, in order.** 12a tabs (`F-TABS`), 12b cross-tab agent work (`F-XTAB`), 12c passwords (`F-VAULT`). While [direct-to-main](../AGENTS.md#shipping) is in effect, each sub-part is commits on `main`. 12c can start in parallel with 12b once the spike is done, because it only needs tabs and partitions from 12a.
+**Sub-parts, landed separately, in order.** 12a tabs (`F-TABS`), 12b cross-tab agent work (`F-XTAB`), 12c passwords (`F-VAULT`). Each sub-part is its own pull request (see [AGENTS.md](../AGENTS.md#shipping)). 12c can start in parallel with 12b once the spike is done, because it only needs tabs and partitions from 12a.
 
 **Out of scope.**
 - Password sync or storage inside Arbora.

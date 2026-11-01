@@ -11,7 +11,7 @@ Releases are GitHub Releases in the public repository `maplepreneur/arbora-relea
 5. The **AUR** job (stable versions only) writes `aur/PKGBUILD` and `.SRCINFO` for the new tarball and pushes them to `arbora-bin` when `AUR_SSH_KEY` is set. Without the key, download the `aur-arbora-bin` artifact and push it by hand.
 6. **Publish** waits for approval on the `release` environment (add required reviewers in the repository settings), then publishes the draft. A version with `-` is marked as a prerelease.
 
-A full run costs about 60 billed minutes (macOS at 10x, Windows at 2x). While Actions minutes are used up, do not tag.
+A full run costs about 60 billed minutes (macOS at 10x, Windows at 2x). Tag only when a release is intended; a failed run still costs most of those minutes.
 
 ## Without signing accounts
 
