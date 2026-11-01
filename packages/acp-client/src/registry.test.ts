@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AgentRegistry, BUILT_IN_AGENTS } from './registry.js';
+import { adapterPackage, AgentRegistry, BUILT_IN_AGENTS, withAdapterVersion } from './registry.js';
 
 describe('BUILT_IN_AGENTS', () => {
   it('defines the five built-in agents with the verified launch commands', () => {
@@ -73,5 +73,34 @@ describe('AgentRegistry', () => {
       available: true,
       resolvedCommand: '/opt/agent/bin/agent',
     });
+  });
+});
+
+describe('agent overrides', () => {
+  it('reads the pinned npm adapter and swaps its version', () => {
+    const claude = BUILT_IN_AGENTS.find((a) => a.id === 'claude-code');
+    const kimi = BUILT_IN_AGENTS.find((a) => a.id === 'kimi');
+    if (!claude || !kimi) throw new Error('missing built-ins');
+    expect(adapterPackage(claude)).toEqual({ name: '@zed-industries/claude-code-acp', version: '0.16.2' });
+    expect(adapterPackage(kimi)).toBeNull();
+    expect(withAdapterVersion(claude, 'latest').args).toEqual(['-y', '@zed-industries/claude-code-acp@latest']);
+    expect(withAdapterVersion(kimi, '1.0.0')).toBe(kimi);
+  });
+
+  it('applies adapter versions to built-ins and merges extra env into any agent', () => {
+    const registry = new AgentRegistry(
+      () => [{ id: 'mine', name: 'Mine', command: 'npx', args: ['-y', 'mine@1.0.0'], env: { A: '1' } }],
+      () => ({
+        env: { mine: { B: '2' }, codex: { OPENAI_BASE_URL: 'http://localhost' } },
+        adapterVersions: { codex: '2.6.0', mine: '9.9.9' },
+      }),
+    );
+    expect(registry.get('codex')).toMatchObject({
+      args: ['-y', '@agentclientprotocol/codex-acp@2.6.0'],
+      env: { OPENAI_BASE_URL: 'http://localhost' },
+    });
+    // Custom agents own their command line; only env is layered over them.
+    expect(registry.get('mine')).toMatchObject({ args: ['-y', 'mine@1.0.0'], env: { A: '1', B: '2' } });
+    expect(registry.builtIn('codex')?.args).toEqual(['-y', '@agentclientprotocol/codex-acp@2.5.0']);
   });
 });

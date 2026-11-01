@@ -1,8 +1,7 @@
 name: Package
 
+# Unsigned artifacts on demand. Tagged releases go through release.yml instead.
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -29,7 +28,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm package
         env:
-          # Unsigned builds until Stage 9.
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - uses: actions/upload-artifact@v7
         with:

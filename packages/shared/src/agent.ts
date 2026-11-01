@@ -325,6 +325,10 @@ export const threadSummarySchema = z.object({
   sessionId: z.string().nullable(),
   /** Skip permission prompts for `edit`/`delete`/`move` tool calls inside the project. */
   autoApproveEdits: z.boolean(),
+  /** Agent group (`.arbora/agent-groups.json`); null or an unknown id is ungrouped. */
+  groupId: z.string().nullable().default(null),
+  /** Pinned threads stay at the top of the list. */
+  pinned: z.boolean().default(false),
   state: threadStateSchema,
 });
 export type ThreadSummary = z.infer<typeof threadSummarySchema>;
@@ -362,6 +366,56 @@ export const THREAD_FILE_BYTE_LIMIT = 2 * 1024 * 1024;
 export const PERSISTED_TOOL_TEXT_LIMIT = 64 * 1024;
 /** Entries kept per thread for the ACP log viewer. */
 export const ACP_LOG_LIMIT = 2000;
+
+export const AGENT_GROUP_COLORS = ['green', 'blue', 'purple', 'pink', 'orange', 'yellow', 'gray'] as const;
+
+/** A named set of threads in one project ("Frontend", "Refactor"), like a Herdr herd or a Solo stack. */
+export const agentGroupSchema = z.object({
+  id: z
+    .string()
+    .regex(/^[\w-]+$/)
+    .max(64),
+  name: z.string().min(1).max(100),
+  color: z.enum(AGENT_GROUP_COLORS).default('gray'),
+  collapsed: z.boolean().default(false),
+});
+export type AgentGroup = z.infer<typeof agentGroupSchema>;
+
+export const agentGroupsFileSchema = z.object({
+  version: z.literal(1).default(1),
+  groups: z.array(agentGroupSchema).max(100).default([]),
+});
+
+/** One section of the thread list: pinned threads, then each group, then the rest. */
+export interface ThreadSection<T extends { groupId: string | null; pinned: boolean }> {
+  readonly id: string;
+  readonly group: AgentGroup | null;
+  readonly title: string;
+  readonly threads: readonly T[];
+}
+
+export function threadSections<T extends { groupId: string | null; pinned: boolean }>(
+  threads: readonly T[],
+  groups: readonly AgentGroup[],
+): ThreadSection<T>[] {
+  const known = new Set(groups.map((g) => g.id));
+  const sections: ThreadSection<T>[] = [];
+  const pinned = threads.filter((t) => t.pinned);
+  if (pinned.length > 0) sections.push({ id: 'pinned', group: null, title: 'Pinned', threads: pinned });
+  for (const group of groups) {
+    sections.push({
+      id: `group:${group.id}`,
+      group,
+      title: group.name,
+      threads: threads.filter((t) => !t.pinned && t.groupId === group.id),
+    });
+  }
+  const rest = threads.filter((t) => !t.pinned && (t.groupId === null || !known.has(t.groupId)));
+  if (rest.length > 0 || sections.length === 0) {
+    sections.push({ id: 'threads', group: null, title: groups.length > 0 ? 'Ungrouped' : 'Threads', threads: rest });
+  }
+  return sections;
+}
 
 export const attachmentSchema = z.object({
   path: z.string(),

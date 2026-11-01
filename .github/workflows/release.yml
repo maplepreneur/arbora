@@ -1,0 +1,198 @@
+name: Release
+
+# Tag v* -> build and sign on every OS -> upload to a draft GitHub release -> budget check ->
+# AUR files -> publish after approval in the `release` environment. Signing steps use secrets when
+# they exist and build unsigned otherwise (docs/RELEASING.md). Costs about 60 billed minutes.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to (re)build, for example v0.1.0
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      HAS_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_BASE64 != '' }}
+      HAS_MAC_CERT: ${{ secrets.MAC_CSC_LINK != '' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Linux packaging tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libarchive-tools rpm fakeroot
+      - run: pnpm install --frozen-lockfile
+      - name: Version matches the tag
+        shell: bash
+        run: |
+          version="$(node -p "require('./apps/desktop/package.json').version")"
+          test "v$version" = "$TAG" || { echo "apps/desktop/package.json is $version, tag is $TAG"; exit 1; }
+      - name: macOS signing material
+        if: runner.os == 'macOS' && env.HAS_APPLE_API_KEY == 'true'
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/apple"
+          echo "$APPLE_API_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/apple/AuthKey.p8"
+          echo "APPLE_API_KEY=$RUNNER_TEMP/apple/AuthKey.p8" >> "$GITHUB_ENV"
+      - name: Build, sign and upload to the draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS: Developer ID Application certificate (.p12, base64) and App Store Connect API key.
+          CSC_LINK: ${{ runner.os == 'macOS' && secrets.MAC_CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ runner.os == 'macOS' && secrets.MAC_CSC_KEY_PASSWORD || '' }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          # Windows: an OV/EV code-signing certificate (.pfx, base64). Azure Trusted Signing: RELEASING.md.
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          if [ -z "$CSC_LINK$WIN_CSC_LINK" ]; then
+            echo "No signing certificate for $RUNNER_OS: building unsigned."
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          fi
+          pnpm --filter @arbora/desktop release
+      - name: Verify the macOS signature
+        if: runner.os == 'macOS' && env.HAS_MAC_CERT == 'true'
+        run: |
+          app="$(ls -d apps/desktop/dist/mac*/Arbora.app | head -n 1)"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          spctl --assess --type execute --verbose "$app"
+      - name: Checksums
+        shell: bash
+        working-directory: apps/desktop/dist
+        run: |
+          shopt -s nullglob
+          files=(*.AppImage *.deb *.tar.gz *.dmg *.zip *.exe)
+          if command -v sha256sum >/dev/null; then sha256sum "${files[@]}" > "SHA256SUMS-${RUNNER_OS}.txt"
+          else shasum -a 256 "${files[@]}" > "SHA256SUMS-${RUNNER_OS}.txt"; fi
+          cat "SHA256SUMS-${RUNNER_OS}.txt"
+          gh release upload "$TAG" "SHA256SUMS-${RUNNER_OS}.txt" --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: arbora-${{ matrix.os }}
+          path: |
+            apps/desktop/dist/*.AppImage
+            apps/desktop/dist/*.deb
+            apps/desktop/dist/*.tar.gz
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.yml
+          if-no-files-found: error
+          retention-days: 14
+
+  budget:
+    name: Performance budget (Linux, packaged)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v7
+        with:
+          name: arbora-ubuntu-latest
+          path: dist
+      - name: Unpack the tarball
+        run: |
+          mkdir -p packaged
+          tar -xzf dist/*.tar.gz -C packaged --strip-components=1
+          sudo chown root packaged/chrome-sandbox && sudo chmod 4755 packaged/chrome-sandbox
+      - name: Idle RSS and screenshot latency
+        run: xvfb-run -a pnpm --filter @arbora/desktop perf
+        env:
+          ARBORA_APP: ${{ github.workspace }}/packaged/arbora
+
+  aur:
+    name: AUR package files
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ !contains(inputs.tag || github.ref_name, '-') }}
+    env:
+      HAS_AUR_KEY: ${{ secrets.AUR_SSH_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v7
+        with:
+          name: arbora-ubuntu-latest
+          path: dist
+      - run: node scripts/release-aur.mjs "$TAG" dist/arbora-*-linux-x64.tar.gz
+      - uses: actions/upload-artifact@v7
+        with:
+          name: aur-arbora-bin
+          path: |
+            aur/PKGBUILD
+            aur/.SRCINFO
+            aur/arbora.sh
+            aur/arbora.desktop
+            aur/arbora.svg
+      - name: Push to the AUR
+        if: env.HAS_AUR_KEY == 'true'
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh && echo "$AUR_SSH_KEY" > ~/.ssh/aur && chmod 600 ~/.ssh/aur
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/aur"
+          git clone ssh://aur@aur.archlinux.org/arbora-bin.git aur-repo
+          cp aur/PKGBUILD aur/.SRCINFO aur/arbora.sh aur/arbora.desktop aur/arbora.svg aur-repo/
+          cd aur-repo
+          git -c user.name='Arbora release' -c user.email='hello@arbora.dev' commit -am "Update to $TAG"
+          git push
+
+  publish:
+    name: Publish the release
+    needs: [build, budget]
+    runs-on: ubuntu-latest
+    # Required reviewers on this environment are the "publish on approval" gate.
+    environment: release
+    steps:
+      - name: Publish the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          prerelease=false
+          case "$TAG" in *-*) prerelease=true ;; esac
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease=$prerelease

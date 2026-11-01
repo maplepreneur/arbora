@@ -22,6 +22,7 @@ export function interceptCommand(input: Input, source: InterceptorSource): strin
     shift: input.shift,
   });
   const context = source.context();
+  if (context.recording) return undefined;
   const binding = source.table().match(chord, context);
   const commandId = binding?.intercept ? binding.commandId : undefined;
   if (!commandId) return undefined;

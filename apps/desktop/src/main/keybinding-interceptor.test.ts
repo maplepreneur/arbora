@@ -56,6 +56,13 @@ describe('interceptCommand', () => {
     expect(interceptCommand(esc, source({ modeActive: true }))).toBe(CommandId.exitMode);
   });
 
+  it('lets every key through while the shortcut editor records', () => {
+    const ctrlK = input({ key: 'k', code: 'KeyK', control: true });
+    expect(interceptCommand(ctrlK, source({ recording: true }))).toBeUndefined();
+    expect(interceptCommand(input({ key: 'F6', code: 'F6' }), source())).toBe(CommandId.focusNextPanel);
+    expect(interceptCommand(input({ key: 'F6', code: 'F6' }), source({ recording: true }))).toBeUndefined();
+  });
+
   it('lets Ctrl+K and Ctrl+D through to a focused terminal when passthrough is on', () => {
     const ctrlK = input({ key: 'k', code: 'KeyK', control: true });
     expect(interceptCommand(ctrlK, source({ terminalFocused: true }))).toBeUndefined();

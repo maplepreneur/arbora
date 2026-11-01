@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Arbora
+Comment=Design mode for coding agents
+GenericName=Agent IDE
+Exec=arbora %U
+Icon=arbora
+Type=Application
+Terminal=false
+Categories=Development;IDE;
+StartupWMClass=arbora
+StartupNotify=true
+MimeType=inode/directory;
+Keywords=agent;design;browser;acp;

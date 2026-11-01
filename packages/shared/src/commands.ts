@@ -96,6 +96,18 @@ export const CommandId = {
   designSave: 'arbora.design.save',
   designDiscard: 'arbora.design.discard',
   designResend: 'arbora.design.resend',
+  switchProject: 'arbora.switchProject',
+  showOnboarding: 'arbora.showOnboarding',
+  checkForUpdates: 'arbora.checkForUpdates',
+  exportDiagnostics: 'arbora.exportDiagnostics',
+  openKeyboardShortcuts: 'arbora.openKeyboardShortcuts',
+  toggleNotifications: 'arbora.toggleNotifications',
+  toggleSounds: 'arbora.toggleSounds',
+  focusNextPanel: 'arbora.focusNextPanel',
+  focusPreviousPanel: 'arbora.focusPreviousPanel',
+  browserResetData: 'arbora.browser.resetData',
+  agentShowAttention: 'arbora.agent.showAttention',
+  agentNewGroup: 'arbora.agent.newGroup',
 } as const;
 
 export type CommandId = (typeof CommandId)[keyof typeof CommandId];
@@ -266,6 +278,37 @@ export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
   { id: CommandId.designSave, title: 'Save Design Changes', category: 'Design' },
   { id: CommandId.designDiscard, title: 'Discard Design Changes', category: 'Design' },
   { id: CommandId.designResend, title: 'Resend Last Design Session', category: 'Design' },
+  {
+    id: CommandId.switchProject,
+    title: 'Switch Project…',
+    category: 'Project',
+    keybinding: 'mod+alt+o',
+    intercept: true,
+  },
+  { id: CommandId.showOnboarding, title: 'Getting Started…', category: 'Help' },
+  { id: CommandId.checkForUpdates, title: 'Check for Updates…', category: 'Help' },
+  { id: CommandId.exportDiagnostics, title: 'Export Diagnostics…', category: 'Help' },
+  { id: CommandId.openKeyboardShortcuts, title: 'Keyboard Shortcuts', category: 'Preferences' },
+  { id: CommandId.toggleNotifications, title: 'Toggle Agent Notifications', category: 'Preferences' },
+  { id: CommandId.toggleSounds, title: 'Toggle Agent Sounds', category: 'Preferences' },
+  // F6 cycles landmarks (title bar, sidebar, centre, agent panel, bottom drawer), as in browsers and VS Code.
+  { id: CommandId.focusNextPanel, title: 'Focus Next Panel', category: 'View', keybinding: 'f6', intercept: true },
+  {
+    id: CommandId.focusPreviousPanel,
+    title: 'Focus Previous Panel',
+    category: 'View',
+    keybinding: 'shift+f6',
+    intercept: true,
+  },
+  { id: CommandId.browserResetData, title: 'Reset Browser Data (Cookies, Storage, Cache)…', category: 'Browser' },
+  {
+    id: CommandId.agentShowAttention,
+    title: 'Show Agent That Needs You',
+    category: 'Agent',
+    keybinding: 'mod+alt+a',
+    intercept: true,
+  },
+  { id: CommandId.agentNewGroup, title: 'New Agent Group…', category: 'Agent' },
 ];
 
 /** Overrides map a command id to a chord string, or `null` to unbind it. */

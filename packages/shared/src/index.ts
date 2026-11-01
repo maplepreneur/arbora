@@ -1,4 +1,5 @@
 export * from './agent.js';
+export * from './attention.js';
 export * from './browser.js';
 export * from './channels.js';
 export * from './commands.js';
@@ -8,8 +9,11 @@ export * from './git.js';
 export * from './fuzzy.js';
 export * from './inspector.js';
 export * from './ipc.js';
+export * from './keybinding-editor.js';
 export * from './keybindings.js';
 export * from './page-ipc.js';
 export * from './platform.js';
+export * from './projects.js';
 export * from './settings.js';
 export * from './terminal.js';
+export * from './updates.js';

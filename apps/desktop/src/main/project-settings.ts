@@ -30,9 +30,10 @@ export function readProjectSettings(projectPath: string): ReadProjectSettingsRes
 
 /**
  * Sets fields in `.arbora/project.json`, keeping everything else in the file (including keys this
- * version does not know). An unreadable file is left alone and reported.
+ * version does not know). An `undefined` value removes the field. An unreadable file is left alone
+ * and reported.
  */
-export function updateProjectSettingsFile(projectPath: string, patch: Partial<ProjectSettings>): void {
+export function updateProjectSettingsFile(projectPath: string, patch: Readonly<Record<string, unknown>>): void {
   const file = projectSettingsPath(projectPath);
   let current: Record<string, unknown> = { version: PROJECT_SETTINGS_VERSION };
   if (existsSync(file)) {

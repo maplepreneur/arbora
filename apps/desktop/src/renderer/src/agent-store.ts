@@ -1,8 +1,10 @@
 import { create } from 'zustand';
+import { newGroupId } from '@arbora/shared';
 import type {
   AcpLogEntry,
   AgentAvailability,
   AgentDefinition,
+  AgentGroup,
   Attachment,
   ContentBlock,
   ThreadChange,
@@ -17,6 +19,8 @@ export interface AgentPanelState {
   agents: AgentDefinition[];
   availability: AgentAvailability[];
   threads: ThreadSummary[];
+  /** The project's agent groups, in display order. */
+  groups: AgentGroup[];
   activeThreadId: string | null;
   view: AgentView;
   /** Transcripts by thread id; present once `agent.getThread` returned. */
@@ -30,6 +34,8 @@ export interface AgentPanelState {
   composerFocusRequest: number;
   /** Bumped to focus the new-thread picker with the default agent highlighted. */
   pickerFocusRequest: number;
+  /** The new-group name field: `''` for an empty group, or the thread to move into it. */
+  newGroupFor: string | null;
   /** Bumped by Alt+P / Alt+M to open the open thread's model or mode menu. */
   modelMenuRequest: number;
   modeMenuRequest: number;
@@ -42,6 +48,7 @@ const INITIAL: AgentPanelState = {
   agents: [],
   availability: [],
   threads: [],
+  groups: [],
   activeThreadId: null,
   view: 'threads',
   events: {},
@@ -51,6 +58,7 @@ const INITIAL: AgentPanelState = {
   attachments: {},
   composerFocusRequest: 0,
   pickerFocusRequest: 0,
+  newGroupFor: null,
   modelMenuRequest: 0,
   modeMenuRequest: 0,
   changedFiles: [],
@@ -132,8 +140,12 @@ export function noteFileChanged(threadId: string, path: string): void {
 
 export async function loadAgentSnapshot(): Promise<void> {
   const { arbora } = window;
-  const [agents, threads] = await Promise.all([arbora.invoke('agent.listAgents'), arbora.invoke('agent.listThreads')]);
-  useAgents.setState({ agents: agents.agents, availability: agents.availability, loaded: true });
+  const [agents, threads, groups] = await Promise.all([
+    arbora.invoke('agent.listAgents'),
+    arbora.invoke('agent.listThreads'),
+    arbora.invoke('agent.listGroups'),
+  ]);
+  useAgents.setState({ agents: agents.agents, availability: agents.availability, groups, loaded: true });
   applyThreadList(threads);
 }
 
@@ -153,9 +165,13 @@ export async function openThread(threadId: string): Promise<void> {
   }));
 }
 
-/** `model` overrides the agent's default model for this thread. */
-export async function createThread(agentId: string, model?: string): Promise<void> {
-  const summary = await window.arbora.invoke('agent.createThread', { agentId, ...(model ? { model } : {}) });
+/** `model` overrides the agent's default model for this thread; `groupId` files it in a group. */
+export async function createThread(agentId: string, model?: string, groupId?: string | null): Promise<void> {
+  const summary = await window.arbora.invoke('agent.createThread', {
+    agentId,
+    ...(model ? { model } : {}),
+    ...(groupId ? { groupId } : {}),
+  });
   useAgents.setState((s) => ({
     threads: s.threads.some((t) => t.id === summary.id) ? s.threads : [summary, ...s.threads],
     events: { ...s.events, [summary.id]: [] },
@@ -167,6 +183,10 @@ export async function createThread(agentId: string, model?: string): Promise<voi
 
 export function showThreads(): void {
   useAgents.setState({ view: 'threads' });
+}
+
+export function requestNewGroup(): void {
+  useAgents.setState({ view: 'threads', newGroupFor: '' });
 }
 
 export function showPicker(): void {
@@ -264,4 +284,65 @@ export async function deleteThread(threadId: string): Promise<void> {
     activeThreadId: s.activeThreadId === threadId ? null : s.activeThreadId,
     view: s.activeThreadId === threadId ? 'threads' : s.view,
   }));
+}
+
+// --- Agent groups ------------------------------------------------------------------------------
+
+export function applyGroups(groups: AgentGroup[]): void {
+  useAgents.setState({ groups });
+}
+
+export async function saveGroups(groups: AgentGroup[]): Promise<void> {
+  useAgents.setState({ groups });
+  applyGroups(await window.arbora.invoke('agent.saveGroups', { groups }));
+}
+
+const GROUP_COLOR_CYCLE: readonly AgentGroup['color'][] = ['blue', 'purple', 'green', 'orange', 'pink', 'yellow'];
+
+export async function createGroup(name: string, threadIds: readonly string[] = []): Promise<string> {
+  const { groups } = useAgents.getState();
+  const id = newGroupId(name, groups);
+  const color = GROUP_COLOR_CYCLE[groups.length % GROUP_COLOR_CYCLE.length] ?? 'gray';
+  await saveGroups([...groups, { id, name: name.trim(), color, collapsed: false }]);
+  for (const threadId of threadIds) await setThreadGroup(threadId, id);
+  return id;
+}
+
+export async function updateGroup(id: string, patch: Partial<Omit<AgentGroup, 'id'>>): Promise<void> {
+  await saveGroups(useAgents.getState().groups.map((g) => (g.id === id ? { ...g, ...patch } : g)));
+}
+
+export async function deleteGroup(id: string): Promise<void> {
+  await saveGroups(useAgents.getState().groups.filter((g) => g.id !== id));
+}
+
+export async function moveGroup(id: string, delta: -1 | 1): Promise<void> {
+  const groups = [...useAgents.getState().groups];
+  const index = groups.findIndex((g) => g.id === id);
+  const target = index + delta;
+  if (index < 0 || target < 0 || target >= groups.length) return;
+  const [group] = groups.splice(index, 1);
+  if (group) groups.splice(target, 0, group);
+  await saveGroups(groups);
+}
+
+export async function setThreadGroup(threadId: string, groupId: string | null): Promise<void> {
+  useAgents.setState((s) => ({ threads: s.threads.map((t) => (t.id === threadId ? { ...t, groupId } : t)) }));
+  await window.arbora.invoke('agent.setThreadGroup', { threadId, groupId });
+}
+
+export async function setThreadPinned(threadId: string, pinned: boolean): Promise<void> {
+  useAgents.setState((s) => ({ threads: s.threads.map((t) => (t.id === threadId ? { ...t, pinned } : t)) }));
+  await window.arbora.invoke('agent.setThreadPinned', { threadId, pinned });
+}
+
+export async function renameThread(threadId: string, title: string): Promise<void> {
+  await window.arbora.invoke('agent.renameThread', { threadId, title });
+}
+
+/** Stops every working thread in a group (Herdr's "stop the herd"). */
+export async function stopGroup(groupId: string): Promise<number> {
+  const working = useAgents.getState().threads.filter((t) => t.groupId === groupId && isStoppable(t.state.status));
+  await Promise.all(working.map((t) => stopAgent(t.id)));
+  return working.length;
 }

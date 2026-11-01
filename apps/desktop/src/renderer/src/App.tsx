@@ -1,27 +1,53 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { CommandPalette } from './components/CommandPalette';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { QuickOpen } from './components/QuickOpen';
 import { TitleBar } from './components/TitleBar';
 import { Toasts } from './components/Toasts';
-import { Welcome } from './components/Welcome';
+import { ProjectsHome } from './components/ProjectsHome';
+import { ProjectSwitcher } from './components/ProjectSwitcher';
+import { UpdateDialog } from './components/UpdateDialog';
 import { Workspace } from './components/Workspace';
 import {
   appendLog,
+  applyGroups,
   applyThreadChanges,
   applyThreadList,
   applyThreadState,
   loadAgentSnapshot,
   noteFileChanged,
+  openThread,
   resetAgents,
 } from './agent-store';
-import { executeCommand, navigateBrowser, registerBuiltinCommands } from './commands';
+import {
+  initAttentionTracking,
+  noteThreadChanges,
+  noteThreadState,
+  pruneAttention,
+  resetAttention,
+  useAttention,
+} from './attention-store';
+import { applyLibrary } from './projects-store';
+import { applyUpdateState } from './update-store';
+import { executeCommand, navigateBrowser, registerBuiltinCommands, setWorkspaceShown } from './commands';
 import { onFilesChanged, resetFiles, setDiagnostics } from './files-store';
 import { noteAgentWatcherChanges, refreshGit, scheduleGitRefresh } from './git-client';
 import { useKeybindingContextSync, useKeybindingDispatch } from './keybindings';
-import { addProblems, applyDesignState, dispatchMode, setProblems, setProject, showToast, useApp } from './store';
+import {
+  addProblems,
+  applyDesignState,
+  dispatchMode,
+  closeOverlay,
+  openOverlay,
+  setProblems,
+  setProject,
+  showToast,
+  useApp,
+} from './store';
 import { applyTerminalList, resetTerminals } from './terminal-store';
 
 const SettingsPage = lazy(() => import('./panels/settings/SettingsPage'));
+const Onboarding = lazy(() => import('./panels/onboarding/Onboarding'));
 
 /** Tool failures repeat on every save; say each one once per session. */
 const shownToolErrors = new Set<string>();
@@ -44,9 +70,27 @@ function useMainEvents(): void {
         if (opened) showToast(`Opened ${url} in the browser`);
         else showToast(`Dev server at ${url}`, { label: 'Open in browser', run: () => void navigateBrowser(url) });
       }),
-      arbora.on('agent.threadsChanged', ({ threads }) => applyThreadList(threads)),
-      arbora.on('agent.threadEvents', ({ threadId, changes }) => applyThreadChanges(threadId, changes)),
-      arbora.on('agent.threadState', ({ threadId, state }) => applyThreadState(threadId, state)),
+      arbora.on('agent.threadsChanged', ({ threads }) => {
+        applyThreadList(threads);
+        pruneAttention(threads.map((t) => t.id));
+      }),
+      arbora.on('agent.groupsChanged', ({ groups }) => applyGroups(groups)),
+      arbora.on('agent.threadEvents', ({ threadId, changes }) => {
+        applyThreadChanges(threadId, changes);
+        noteThreadChanges(threadId, changes);
+      }),
+      arbora.on('agent.threadState', ({ threadId, state }) => {
+        applyThreadState(threadId, state);
+        noteThreadState(threadId, state);
+      }),
+      arbora.on('notification.clicked', ({ threadId }) => {
+        if (!threadId || !useApp.getState().project) return;
+        useApp.setState({ settingsOpen: false, overlay: null });
+        setWorkspaceShown();
+        void openThread(threadId);
+      }),
+      arbora.on('updates.state', (state) => applyUpdateState(state)),
+      arbora.on('projects.changed', (library) => applyLibrary(library)),
       arbora.on('agent.log', ({ threadId, entry }) => appendLog(threadId, entry)),
       arbora.on('agent.fileChanged', ({ threadId, path }) => noteFileChanged(threadId, path)),
       arbora.on('agentMode.picked', () => dispatchMode({ type: 'picked' })),
@@ -77,8 +121,18 @@ function useMainEvents(): void {
         showToast(text);
       }),
     ];
+    // Main's focus event can fire before this listener exists. DOM focus alone is not the window's
+    // (the embedded page takes it while the window stays focused), so ask main.
+    const syncFocus = (): void => {
+      void arbora.invoke('window.getState').then((windowState) => useApp.setState({ windowState }));
+    };
+    window.addEventListener('focus', syncFocus);
+    window.addEventListener('blur', syncFocus);
+    syncFocus();
     return () => {
       for (const off of offs) off();
+      window.removeEventListener('focus', syncFocus);
+      window.removeEventListener('blur', syncFocus);
     };
   }, []);
 }
@@ -137,6 +191,7 @@ function useAgentSnapshot(): void {
   const projectPath = useApp((s) => s.project?.path);
   useEffect(() => {
     resetAgents();
+    resetAttention();
     if (!projectPath) return;
     void loadAgentSnapshot().catch((error: unknown) => showToast(`Could not load agents: ${(error as Error).message}`));
   }, [projectPath]);
@@ -163,10 +218,22 @@ function usePreventFileNavigation(): void {
   }, []);
 }
 
+/** Opens the first-run wizard once settings say it was never finished. */
+function useFirstRun(): void {
+  useEffect(() => {
+    const { settings, info } = useApp.getState();
+    if (!settings.onboarding.completed && !info.skipOnboarding) openOverlay('onboarding');
+  }, []);
+}
+
 export function App() {
   const project = useApp((s) => s.project);
   const settingsOpen = useApp((s) => s.settingsOpen);
+  const overlay = useApp((s) => s.overlay);
+  const lastCue = useAttention((s) => s.lastCue);
   useEffect(() => registerBuiltinCommands(), []);
+  useEffect(() => initAttentionTracking(), []);
+  useFirstRun();
   useMainEvents();
   useBrowserSnapshot();
   useTerminalSnapshot();
@@ -178,18 +245,33 @@ export function App() {
   useKeybindingContextSync();
 
   return (
-    <div className="flex h-full flex-col" data-testid="app">
+    <div
+      className="flex h-full flex-col"
+      data-testid="app"
+      data-last-cue={lastCue ? `${lastCue.kind}:${lastCue.sound ? 'sound' : 'silent'}` : undefined}
+    >
       <TitleBar />
       {project ? (
         <Workspace />
       ) : settingsOpen ? (
-        <Suspense fallback={null}>
-          <SettingsPage />
-        </Suspense>
+        <ErrorBoundary label="Settings">
+          <Suspense fallback={null}>
+            <SettingsPage />
+          </Suspense>
+        </ErrorBoundary>
       ) : (
-        <Welcome />
+        <ProjectsHome />
       )}
       <CommandPalette />
+      <ProjectSwitcher />
+      <UpdateDialog />
+      {overlay === 'onboarding' && (
+        <ErrorBoundary label="Getting started" onClose={() => closeOverlay('onboarding')}>
+          <Suspense fallback={null}>
+            <Onboarding />
+          </Suspense>
+        </ErrorBoundary>
+      )}
       {project && <QuickOpen />}
       <Toasts />
     </div>

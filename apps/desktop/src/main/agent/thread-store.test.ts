@@ -14,6 +14,8 @@ function thread(events: ThreadEvent[] = []): Thread {
     updatedAt: 2,
     sessionId: 'fake-1',
     autoApproveEdits: false,
+    groupId: null,
+    pinned: false,
     state: {
       status: 'ready',
       error: null,

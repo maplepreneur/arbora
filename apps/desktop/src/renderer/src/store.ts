@@ -42,11 +42,15 @@ export interface AppState {
   /** Live design-mode op list. Sessions are the saved ones, loaded with the panel. */
   design: DesignUiState;
   paletteOpen: boolean;
+  /** A dialog over the whole window; the browser view is hidden while one is open. */
+  overlay: Overlay | null;
   /** The Settings page is showing in place of the browser pane. */
   settingsOpen: boolean;
   settingsSection: SettingsSection;
   /** Agent ids whose sign-in check is running. */
   checkingAgents: string[];
+  /** The shortcut editor is waiting for a chord. */
+  recordingShortcut: boolean;
   terminalFocused: boolean;
   toasts: Toast[];
   /** Browser panel state from main; null until the project's browser view exists. */
@@ -67,14 +71,25 @@ export interface InitialState {
   windowState: WindowState;
 }
 
-export type SettingsSection = 'agents' | 'general' | 'editor' | 'browser' | 'keyboard';
+export type SettingsSection =
+  'agents' | 'general' | 'notifications' | 'editor' | 'browser' | 'project' | 'keyboard' | 'updates';
+
+export type Overlay = 'onboarding' | 'switcher' | 'update';
+
+export function openOverlay(overlay: Overlay): void {
+  useApp.setState({ overlay, paletteOpen: false });
+}
+
+export function closeOverlay(overlay?: Overlay): void {
+  useApp.setState((s) => (overlay === undefined || s.overlay === overlay ? { overlay: null } : {}));
+}
 
 /**
  * Shows Settings on `section`. Unlike `Mod+,`, this never closes it: buttons that say "settings"
  * must not hide the page when it is already open beside them.
  */
 export function openSettings(section: SettingsSection = 'agents'): void {
-  useApp.setState({ settingsOpen: true, settingsSection: section, paletteOpen: false });
+  useApp.setState({ settingsOpen: true, settingsSection: section, paletteOpen: false, overlay: null });
 }
 
 export interface DesignUiState {
@@ -115,7 +130,15 @@ let nextToastId = 1;
 
 export const useApp = create<AppState>()(() => ({
   // Placeholders; `initStore` replaces them with values from main before the first render.
-  info: { name: 'arbora', version: '', platform: window.arbora.platform, isPackaged: false, tilingCompositor: null },
+  info: {
+    name: 'arbora',
+    version: '',
+    platform: window.arbora.platform,
+    isPackaged: false,
+    tilingCompositor: null,
+    skipOnboarding: false,
+    installKind: 'dev',
+  },
   settings: defaultSettings(),
   theme: { mode: 'system', resolved: 'light' },
   project: null,
@@ -125,9 +148,11 @@ export const useApp = create<AppState>()(() => ({
   mode: IDLE,
   design: EMPTY_DESIGN,
   paletteOpen: false,
+  overlay: null,
   settingsOpen: false,
   settingsSection: 'agents',
   checkingAgents: [],
+  recordingShortcut: false,
   terminalFocused: false,
   toasts: [],
   browser: null,

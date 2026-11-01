@@ -91,15 +91,21 @@ export default defineConfig(
       '**/*.config.{js,ts}',
       'fixtures/plain-html/server.mjs',
       'apps/desktop/scripts/**',
+      'scripts/*.mjs',
     ],
     languageOptions: { globals: globals.node },
   },
   {
-    files: ['fixtures/plain-html/server.mjs', 'fixtures/plain-html/*.config.js', 'apps/desktop/scripts/**'],
+    files: [
+      'fixtures/plain-html/server.mjs',
+      'fixtures/plain-html/*.config.js',
+      'apps/desktop/scripts/**',
+      'scripts/*.mjs',
+    ],
     ...tseslint.configs.disableTypeChecked,
   },
   {
-    files: ['apps/desktop/scripts/**'],
+    files: ['apps/desktop/scripts/**', 'scripts/*.mjs'],
     rules: { 'no-console': 'off' },
   },
   {

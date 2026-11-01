@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   addRecentProject,
+  applySettingsPatch,
+  appSettingsPatchSchema,
   defaultSettings,
   isPickableAgent,
   loadSettings,
@@ -8,6 +10,7 @@ import {
   mergeAgentSettings,
   mergeEditorSettings,
   migrateSettings,
+  projectSettingsUpdates,
   resolveDefaultAgent,
   visibleModels,
   SETTINGS_VERSION,
@@ -98,6 +101,8 @@ describe('loadSettings', () => {
       hiddenModels: {},
       verified: {},
       autoVerify: true,
+      env: {},
+      adapterVersions: {},
     });
   });
 
@@ -114,6 +119,8 @@ describe('loadSettings', () => {
       hiddenModels: {},
       verified: {},
       autoVerify: true,
+      env: {},
+      adapterVersions: {},
     });
   });
 
@@ -220,5 +227,71 @@ describe('addRecentProject', () => {
     recents = addRecentProject(recents, { path: '/new', name: 'new', openedAt: 101 });
     expect(recents).toHaveLength(MAX_RECENT_PROJECTS);
     expect(recents[0]?.path).toBe('/new');
+  });
+});
+
+describe('Stage 9 settings', () => {
+  it('defaults notifications, sounds, updates, diagnostics, onboarding and groups for older files', () => {
+    const { settings, warnings } = loadSettings({ version: 3, theme: 'dark' });
+    expect(warnings).toEqual([]);
+    expect(settings.notifications).toMatchObject({ enabled: true, whenFocused: false, badge: true });
+    expect(settings.sounds).toMatchObject({ enabled: true, volume: 60, finished: 'chime' });
+    expect(settings.updates).toEqual({ channel: 'latest', autoCheck: true, autoDownload: true });
+    expect(settings.diagnostics).toEqual({ logToFile: true, crashDumps: true });
+    expect(settings.onboarding).toEqual({ completed: false, checkedChords: [] });
+    expect(settings.projectGroups).toEqual([]);
+    expect(settings.agents.env).toEqual({});
+    expect(settings.agents.adapterVersions).toEqual({});
+  });
+
+  it('applies nested patches field by field', () => {
+    const current = defaultSettings();
+    const next = applySettingsPatch(current, {
+      sounds: { volume: 20, enabled: undefined },
+      notifications: { finished: false },
+      updates: { channel: 'beta' },
+      browser: { trustLocalhostCertificates: false },
+      terminal: { fontSize: 15 },
+      agents: { adapterVersions: { codex: 'latest' } },
+      projectGroups: [{ id: 'work', name: 'Work', color: 'blue', collapsed: false }],
+    });
+    expect(next.sounds).toEqual({ ...current.sounds, volume: 20 });
+    expect(next.notifications.finished).toBe(false);
+    expect(next.updates.channel).toBe('beta');
+    expect(next.browser).toEqual({ devToolsExtensions: true, trustLocalhostCertificates: false });
+    expect(next.terminal.fontSize).toBe(15);
+    expect(next.agents.adapterVersions).toEqual({ codex: 'latest' });
+    expect(next.projectGroups).toHaveLength(1);
+    expect(next.theme).toBe(current.theme);
+  });
+
+  it('parses patches without filling in the defaults of the fields left out', () => {
+    expect(appSettingsPatchSchema.parse({ onboarding: { completed: true } })).toEqual({
+      onboarding: { completed: true },
+    });
+    expect(appSettingsPatchSchema.parse({ sounds: { enabled: false } })).toEqual({ sounds: { enabled: false } });
+    expect(appSettingsPatchSchema.parse({ editor: { formatOnSave: false } })).toEqual({
+      editor: { formatOnSave: false },
+    });
+    const current = {
+      ...defaultSettings(),
+      onboarding: { completed: false, checkedChords: ['arbora.agentMode'] },
+    };
+    const next = applySettingsPatch(current, appSettingsPatchSchema.parse({ onboarding: { completed: true } }));
+    expect(next.onboarding).toEqual({ completed: true, checkedChords: ['arbora.agentMode'] });
+    expect(appSettingsPatchSchema.safeParse({ sounds: { volume: 500 } }).success).toBe(false);
+  });
+
+  it('rejects adapter versions that are not latest or semver', () => {
+    expect(appSettingsPatchSchema.safeParse({ agents: { adapterVersions: { codex: '1.0; rm -rf' } } }).success).toBe(
+      false,
+    );
+  });
+
+  it('turns null project patches into removals', () => {
+    expect(projectSettingsUpdates({ devCommand: 'pnpm dev', devUrl: null })).toEqual({
+      devCommand: 'pnpm dev',
+      devUrl: undefined,
+    });
   });
 });

@@ -1,0 +1,46 @@
+# Maintainer: Arbora <hello@arbora.dev>
+#
+# Repackages the Linux tarball from the GitHub release. `scripts/release-aur.mjs` bumps pkgver and
+# sha256sums for each release and regenerates .SRCINFO; do not edit those two by hand.
+pkgname=arbora-bin
+pkgver=0.0.1
+pkgrel=1
+pkgdesc='Design mode for coding agents: point at your running web app and describe the change'
+arch=('x86_64')
+url='https://github.com/maplepreneur/arbora'
+license=('LicenseRef-Arbora')
+depends=('gtk3' 'nss' 'alsa-lib' 'libxss' 'libxtst' 'libnotify' 'xdg-utils' 'at-spi2-core' 'util-linux-libs')
+optdepends=(
+  'git: the Git panel'
+  'github-cli: pull requests from the Git panel'
+  'ripgrep: faster project search and quick open'
+  'nodejs: npx-based agents (Claude Code, Codex)'
+  'libsecret: encrypted storage through the Secret Service'
+  'xdg-desktop-portal-gtk: file dialogs under Hyprland and other Wayland compositors'
+)
+provides=('arbora')
+conflicts=('arbora')
+options=('!strip' '!debug')
+source=(
+  "arbora-${pkgver}-linux-x64.tar.gz::https://github.com/maplepreneur/arbora/releases/download/v${pkgver}/arbora-${pkgver}-linux-x64.tar.gz"
+  'arbora.sh'
+  'arbora.desktop'
+  'arbora.svg'
+)
+sha256sums=('SKIP'
+            'SKIP'
+            'SKIP'
+            'SKIP')
+
+package() {
+  install -d "${pkgdir}/opt/arbora"
+  # electron-builder's tarball has one top-level folder.
+  local top
+  top="$(find "${srcdir}" -mindepth 1 -maxdepth 1 -type d -name 'arbora-*' | head -n 1)"
+  cp -a "${top}/." "${pkgdir}/opt/arbora/"
+  # The Chromium sandbox helper must be setuid root, or Arbora needs --no-sandbox (Stage 9 gotchas).
+  chmod 4755 "${pkgdir}/opt/arbora/chrome-sandbox"
+  install -Dm755 "${srcdir}/arbora.sh" "${pkgdir}/usr/bin/arbora"
+  install -Dm644 "${srcdir}/arbora.desktop" "${pkgdir}/usr/share/applications/arbora.desktop"
+  install -Dm644 "${srcdir}/arbora.svg" "${pkgdir}/usr/share/icons/hicolor/scalable/apps/arbora.svg"
+}

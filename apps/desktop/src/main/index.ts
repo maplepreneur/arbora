@@ -1,15 +1,23 @@
+import { mkdirSync, readFileSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { app, BrowserWindow, clipboard, dialog, Menu, shell, type WebContents } from 'electron';
+import { app, BrowserWindow, clipboard, crashReporter, dialog, Menu, shell, type WebContents } from 'electron';
 import { AgentRegistry } from '@arbora/acp-client';
 import {
-  mergeAgentSettings,
-  mergeEditorSettings,
+  applyProjectMeta,
+  applySettingsPatch,
+  buildProjectLibrary,
+  detectInstallKind,
+  projectSettingsUpdates,
   toPlatform,
   type AgentVerification,
-  type AppSettingsPatch,
+  type ProjectLibrary,
 } from '@arbora/shared';
 import { probeAgent } from './agent/agent-probe.js';
+import { AttentionService } from './attention-service.js';
+import { buildDiagnosticsZip, MainLog } from './diagnostics.js';
+import { UpdateService } from './update-service.js';
 import type { AgentService } from './agent/agent-service.js';
 import { describeAttachment } from './agent/attachments.js';
 import { BrowserSessions } from './browser/browser-sessions.js';
@@ -17,9 +25,10 @@ import type { BrowserService } from './browser/browser-service.js';
 import { registerPageIpc } from './browser/page-ipc.js';
 import { defineHandler, sendEvent } from './ipc.js';
 import { buildMacMenu } from './menu.js';
-import { ensureProjectSettingsFile } from './project-settings.js';
+import { ensureProjectSettingsFile, updateProjectSettingsFile } from './project-settings.js';
 import { SettingsStore } from './settings-store.js';
 import { detectTilingCompositor, parseProjectArg, startupSwitches } from './startup.js';
+import { inferProjectDevCommand } from './terminal/dev-command.js';
 import type { DevServer } from './terminal/dev-server.js';
 import { findExecutable, ShellEnvironment } from './terminal/shell-env.js';
 import type { TerminalService } from './terminal/terminal-service.js';
@@ -90,9 +99,22 @@ function main(): void {
   void app.whenReady().then(() => {
     const shellEnvironment = new ShellEnvironment(platform);
     const settings = new SettingsStore(join(app.getPath('userData'), 'settings.json'));
+    const mainLog = new MainLog(join(app.getPath('userData'), 'logs'));
+    mainLog.setEnabled(settings.get().diagnostics.logToFile);
+    mainLog.install();
+    // Local dumps only: Arbora has no telemetry and never uploads a crash.
+    if (settings.get().diagnostics.crashDumps) crashReporter.start({ uploadToServer: false, compress: true });
     for (const warning of settings.warnings) console.warn(`[settings] ${warning}`);
     settings.watch();
     const theme = new ThemeService(settings.get().theme);
+    const installKind = detectInstallKind({
+      platform,
+      packaged: app.isPackaged,
+      appImage: process.env['APPIMAGE'],
+      packageType: readPackageType(),
+      execPath: process.execPath,
+    });
+    const skipOnboarding = process.env['ARBORA_SKIP_ONBOARDING'] === '1';
     const browserSessions = new BrowserSessions({
       extensionsDir: app.isPackaged
         ? join(process.resourcesPath, 'extensions')
@@ -100,7 +122,10 @@ function main(): void {
       settings: () => settings.get().browser,
     });
 
-    const agentRegistry = new AgentRegistry(() => settings.get().agents.custom);
+    const agentRegistry = new AgentRegistry(
+      () => settings.get().agents.custom,
+      () => settings.get().agents,
+    );
     const rendererUrl = process.env['ELECTRON_RENDERER_URL'];
     windows = new WindowManager({
       platform,
@@ -123,6 +148,48 @@ function main(): void {
           : { file: join(import.meta.dirname, '../renderer/index.html') },
     });
     const manager = windows;
+
+    const projectLibrary = (): ProjectLibrary => {
+      const live = new Map<string, number>();
+      for (const w of manager.all()) {
+        if (w.project) live.set(w.project.path, attention.count(w.window));
+      }
+      return buildProjectLibrary(settings.get(), live);
+    };
+    let libraryTimer: NodeJS.Timeout | undefined;
+    const broadcastLibrary = (): void => {
+      clearTimeout(libraryTimer);
+      libraryTimer = setTimeout(() => {
+        const library = projectLibrary();
+        for (const w of manager.all()) sendEvent(w.contents, 'projects.changed', library);
+      }, 50);
+    };
+    manager.onProjectsChanged(broadcastLibrary);
+    manager.onWindowClosed((w) => attention.forget(w.window));
+
+    const attention = new AttentionService({
+      platform,
+      settings: () => settings.get().notifications,
+      onClick: (target, threadId) => {
+        const w = manager.all().find((candidate) => candidate.window === target.window);
+        if (!w) return;
+        if (w.window.isMinimized()) w.window.restore();
+        w.window.show();
+        w.window.focus();
+        sendEvent(w.contents, 'notification.clicked', { threadId });
+      },
+      onCountsChanged: broadcastLibrary,
+    });
+
+    const updates = new UpdateService({
+      kind: installKind,
+      version: app.getVersion(),
+      settings: () => settings.get().updates,
+      emit: (state) => {
+        for (const w of manager.all()) sendEvent(w.contents, 'updates.state', state);
+      },
+    });
+    updates.start();
 
     Menu.setApplicationMenu(
       platform === 'darwin'
@@ -147,7 +214,10 @@ function main(): void {
       theme.setMode(next.theme);
       void browserSessions.applySettings();
       manager.rebuildKeybindings();
+      mainLog.setEnabled(next.diagnostics.logToFile);
+      attention.applyBadge();
       for (const w of manager.all()) sendEvent(w.contents, 'settings.changed', next);
+      broadcastLibrary();
     });
     theme.onChange((state) => {
       for (const w of manager.all()) {
@@ -162,7 +232,107 @@ function main(): void {
       platform,
       isPackaged: app.isPackaged,
       tilingCompositor,
+      skipOnboarding,
+      installKind,
     }));
+
+    defineHandler('app.notify', isTrusted, (request, event) => {
+      const w = windowFor(event.sender);
+      attention.notify({ window: w.window, projectPath: w.project?.path ?? null }, request);
+      return undefined;
+    });
+    defineHandler('app.setAttention', isTrusted, ({ count }, event) => {
+      attention.setCount(windowFor(event.sender).window, count);
+      return undefined;
+    });
+    defineHandler('app.openExternal', isTrusted, async ({ url }) => {
+      await shell.openExternal(url);
+      return undefined;
+    });
+
+    defineHandler('diagnostics.export', isTrusted, async (_req, event) => {
+      const w = windowFor(event.sender);
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      const result = await dialog.showSaveDialog(w.window, {
+        title: 'Export diagnostics',
+        defaultPath: join(app.getPath('downloads'), `arbora-diagnostics-${stamp}.zip`),
+        filters: [{ name: 'Zip', extensions: ['zip'] }],
+      });
+      if (result.canceled || !result.filePath) return { path: null };
+      const zip = buildDiagnosticsZip({
+        info: {
+          version: app.getVersion(),
+          electron: process.versions.electron,
+          chrome: process.versions.chrome,
+          node: process.versions.node,
+          platform,
+          arch: process.arch,
+          osRelease: process.getSystemVersion(),
+          packaged: app.isPackaged,
+          installKind,
+          tilingCompositor,
+          wayland: process.env['WAYLAND_DISPLAY'] !== undefined,
+          openProjects: manager.all().filter((x) => x.project).length,
+        },
+        settings: settings.get(),
+        logDir: mainLog.dir,
+        crashDir: app.getPath('crashDumps'),
+        projects: manager
+          .all()
+          .flatMap((x) => (x.project ? [{ name: x.project.name, settings: x.project.settings }] : [])),
+        metrics: app
+          .getAppMetrics()
+          .map((m) => ({ type: m.type, memoryKb: m.memory.workingSetSize, cpu: m.cpu.percentCPUUsage })),
+      });
+      await writeFile(result.filePath, zip);
+      return { path: result.filePath };
+    });
+    defineHandler('diagnostics.openCrashFolder', isTrusted, async () => {
+      await shell.openPath(app.getPath('crashDumps'));
+      return undefined;
+    });
+
+    defineHandler('updates.getState', isTrusted, () => ({
+      state: updates.current(),
+      installKind,
+      version: app.getVersion(),
+    }));
+    defineHandler('updates.check', isTrusted, () => updates.check());
+    defineHandler('updates.download', isTrusted, async () => {
+      await updates.download();
+      return undefined;
+    });
+    defineHandler('updates.install', isTrusted, () => {
+      updates.install();
+      return undefined;
+    });
+
+    defineHandler('projects.library', isTrusted, () => projectLibrary());
+    defineHandler('projects.updateMeta', isTrusted, ({ path, patch }) => {
+      if (patch.groupId && !settings.get().projectGroups.some((g) => g.id === patch.groupId)) {
+        throw new Error(`Unknown project group ${patch.groupId}`);
+      }
+      settings.update((s) => {
+        const recent = s.recentProjects.find((r) => r.path === path);
+        const state = applyProjectMeta(s.projects[path], patch);
+        // Keep when it was last opened so a pinned project that leaves the recents still sorts.
+        if (recent && state.openedAt === undefined) state.openedAt = recent.openedAt;
+        return { ...s, projects: { ...s.projects, [path]: state } };
+      });
+      return projectLibrary();
+    });
+    defineHandler('projects.forget', isTrusted, ({ path }) => {
+      settings.update((s) => ({
+        ...s,
+        recentProjects: s.recentProjects.filter((r) => r.path !== path),
+        projects: { ...s.projects, [path]: applyProjectMeta(s.projects[path], { pinned: false, groupId: null }) },
+      }));
+      return projectLibrary();
+    });
+    defineHandler('projects.reveal', isTrusted, ({ path }) => {
+      shell.showItemInFolder(path);
+      return undefined;
+    });
 
     defineHandler('window.getState', isTrusted, (_req, event) => windowFor(event.sender).state());
     defineHandler('window.control', isTrusted, ({ action }, event) => {
@@ -193,34 +363,7 @@ function main(): void {
     });
 
     defineHandler('settings.get', isTrusted, () => settings.get());
-    defineHandler('settings.update', isTrusted, (patch: AppSettingsPatch) =>
-      settings.update((s) => ({
-        ...s,
-        ...(patch.theme !== undefined ? { theme: patch.theme } : {}),
-        ...(patch.keybindings !== undefined ? { keybindings: patch.keybindings } : {}),
-        ...(patch.terminalPassthrough !== undefined ? { terminalPassthrough: patch.terminalPassthrough } : {}),
-        ...(patch.browser !== undefined
-          ? {
-              browser: {
-                devToolsExtensions: patch.browser.devToolsExtensions ?? s.browser.devToolsExtensions,
-                trustLocalhostCertificates:
-                  patch.browser.trustLocalhostCertificates ?? s.browser.trustLocalhostCertificates,
-              },
-            }
-          : {}),
-        ...(patch.terminal !== undefined
-          ? {
-              terminal: {
-                ...s.terminal,
-                ...(patch.terminal.shell !== undefined ? { shell: patch.terminal.shell } : {}),
-                fontSize: patch.terminal.fontSize ?? s.terminal.fontSize,
-              },
-            }
-          : {}),
-        ...(patch.editor !== undefined ? { editor: mergeEditorSettings(s.editor, patch.editor) } : {}),
-        ...(patch.agents !== undefined ? { agents: mergeAgentSettings(s.agents, patch.agents) } : {}),
-      })),
-    );
+    defineHandler('settings.update', isTrusted, (patch) => settings.update((s) => applySettingsPatch(s, patch)));
     defineHandler('settings.openFile', isTrusted, async () => {
       settings.ensureFile();
       await openInEditor(settings.filePath);
@@ -280,6 +423,27 @@ function main(): void {
       await openInEditor(ensureProjectSettingsFile(project.path));
       return undefined;
     });
+    defineHandler('project.updateSettings', isTrusted, (patch, event) => {
+      const w = windowFor(event.sender);
+      if (!w.project) throw new Error('Open a project first');
+      updateProjectSettingsFile(w.project.path, projectSettingsUpdates(patch));
+      w.reloadProjectSettings();
+      const info = w.info();
+      if (!info) throw new Error('Open a project first');
+      return info;
+    });
+    defineHandler('project.detectDevCommand', isTrusted, (_req, event) => {
+      const project = windowFor(event.sender).project;
+      return { command: project ? inferProjectDevCommand(project.path) : null };
+    });
+    defineHandler('project.openScreenshots', isTrusted, async (_req, event) => {
+      const project = windowFor(event.sender).project;
+      if (!project) throw new Error('Open a project first');
+      const dir = join(project.path, '.arbora', 'screenshots');
+      mkdirSync(dir, { recursive: true });
+      await shell.openPath(dir);
+      return undefined;
+    });
 
     const requireBrowser = (sender: WebContents): BrowserService => {
       const browser = windowFor(sender).browser;
@@ -316,6 +480,10 @@ function main(): void {
     );
     defineHandler('browser.clearProblems', isTrusted, (_req, event) => {
       windowFor(event.sender).browser?.clearProblems();
+      return undefined;
+    });
+    defineHandler('browser.resetData', isTrusted, async (_req, event) => {
+      await windowFor(event.sender).resetBrowserData();
       return undefined;
     });
     defineHandler('browser.screenshot', isTrusted, (request, event) =>
@@ -456,9 +624,19 @@ function main(): void {
       return probe;
     });
     defineHandler('agent.listThreads', isTrusted, (_req, event) => windowFor(event.sender).agents?.listThreads() ?? []);
-    defineHandler('agent.createThread', isTrusted, ({ agentId, model }, event) =>
-      requireAgents(event.sender).createThread(agentId, model),
+    defineHandler('agent.createThread', isTrusted, ({ agentId, model, groupId }, event) =>
+      requireAgents(event.sender).createThread(agentId, model, groupId),
     );
+    defineHandler('agent.listGroups', isTrusted, (_req, event) => windowFor(event.sender).agents?.listGroups() ?? []);
+    defineHandler('agent.saveGroups', isTrusted, ({ groups }, event) => requireAgents(event.sender).saveGroups(groups));
+    defineHandler('agent.setThreadGroup', isTrusted, ({ threadId, groupId }, event) => {
+      requireAgents(event.sender).setThreadGroup(threadId, groupId);
+      return undefined;
+    });
+    defineHandler('agent.setThreadPinned', isTrusted, ({ threadId, pinned }, event) => {
+      requireAgents(event.sender).setThreadPinned(threadId, pinned);
+      return undefined;
+    });
     defineHandler('agent.getThread', isTrusted, ({ threadId }, event) =>
       requireAgents(event.sender).getThread(threadId),
     );
@@ -713,14 +891,27 @@ function main(): void {
     app.on('will-quit', () => {
       disposePageIpc();
       browserSessions.dispose();
+      updates.dispose();
+      attention.dispose();
       settings.dispose();
       theme.dispose();
+      mainLog.dispose();
     });
   });
 
   app.on('window-all-closed', () => {
     if (platform !== 'darwin') app.quit();
   });
+}
+
+/** electron-builder writes `resources/package-type` (`deb`, `rpm`, ...) into Linux packages. */
+function readPackageType(): string | undefined {
+  if (!app.isPackaged) return undefined;
+  try {
+    return readFileSync(join(process.resourcesPath, 'package-type'), 'utf8');
+  } catch {
+    return undefined;
+  }
 }
 
 async function openInEditor(file: string): Promise<void> {

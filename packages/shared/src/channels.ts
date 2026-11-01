@@ -3,6 +3,7 @@ import {
   acpLogEntrySchema,
   agentAvailabilitySchema,
   agentDefinitionSchema,
+  agentGroupSchema,
   attachmentSchema,
   contentBlockSchema,
   threadChangeSchema,
@@ -51,16 +52,20 @@ import {
 } from './files.js';
 import { defineChannel, defineEvent, type IpcClient } from './ipc.js';
 import { platformSchema } from './platform.js';
+import { projectLibrarySchema, projectMetaPatchSchema } from './projects.js';
 import {
   agentVerificationSchema,
   appSettingsPatchSchema,
   appSettingsSchema,
+  attentionKindSchema,
   layoutStateSchema,
+  projectSettingsPatchSchema,
   projectSettingsSchema,
   recentProjectSchema,
   themeModeSchema,
 } from './settings.js';
 import { devServerStatusSchema, terminalInfoSchema, terminalKindSchema, terminalSizeSchema } from './terminal.js';
+import { installKindSchema, updateStateSchema } from './updates.js';
 
 const terminalId = z.object({ id: z.string() });
 const filePath = z.object({ path: relativePathSchema });
@@ -96,6 +101,9 @@ export const appInfoSchema = z.object({
   isPackaged: z.boolean(),
   /** Hyprland, Sway and other tiling compositors manage window geometry themselves. */
   tilingCompositor: z.string().nullable(),
+  /** `ARBORA_SKIP_ONBOARDING=1` (e2e runs): never show the first-run wizard. */
+  skipOnboarding: z.boolean().default(false),
+  installKind: installKindSchema.default('dev'),
 });
 export type AppInfo = z.infer<typeof appInfoSchema>;
 
@@ -121,11 +129,56 @@ export const keybindingContextSchema = z.object({
   terminalFocused: z.boolean(),
   designActive: z.boolean().default(false),
   textEditing: z.boolean().default(false),
+  /** The shortcut editor is recording a chord: main must let every key through to it. */
+  recording: z.boolean().default(false),
 });
 
 /** Request/response channels. Keep this the single registry of IPC surface. */
 export const channels = {
   'app.getInfo': defineChannel('app.getInfo', none, appInfoSchema),
+  /**
+   * Shows a desktop notification (skipped without a notification daemon). A click focuses the
+   * window and sends `notification.clicked` with the same `threadId`.
+   */
+  'app.notify': defineChannel(
+    'app.notify',
+    z.object({
+      title: z.string().min(1).max(200),
+      body: z.string().max(500),
+      threadId: z.string().nullable(),
+      kind: attentionKindSchema,
+    }),
+    none,
+  ),
+  /** This window's count of threads that need the user: dock badge, taskbar flash, Projects page. */
+  'app.setAttention': defineChannel('app.setAttention', z.object({ count: z.number().int().min(0) }), none),
+  /** Opens an http(s) URL in the OS browser. */
+  'app.openExternal': defineChannel('app.openExternal', z.object({ url: z.url({ protocol: /^https?$/ }) }), none),
+
+  /** Zips app info, redacted settings, logs and crash-dump names; `path` is null when cancelled. */
+  'diagnostics.export': defineChannel('diagnostics.export', none, z.object({ path: z.string().nullable() })),
+  'diagnostics.openCrashFolder': defineChannel('diagnostics.openCrashFolder', none, none),
+
+  'updates.getState': defineChannel(
+    'updates.getState',
+    none,
+    z.object({ state: updateStateSchema, installKind: installKindSchema, version: z.string() }),
+  ),
+  'updates.check': defineChannel('updates.check', none, updateStateSchema),
+  'updates.download': defineChannel('updates.download', none, none),
+  /** Quits and installs a downloaded update. */
+  'updates.install': defineChannel('updates.install', none, none),
+
+  /** Every project worth listing (recent, pinned, grouped) with live window and attention counts. */
+  'projects.library': defineChannel('projects.library', none, projectLibrarySchema),
+  'projects.updateMeta': defineChannel(
+    'projects.updateMeta',
+    z.object({ path: z.string().min(1), patch: projectMetaPatchSchema }),
+    projectLibrarySchema,
+  ),
+  /** Drops a project from the list: recents, pin and group. Its layout and browser state stay. */
+  'projects.forget': defineChannel('projects.forget', z.object({ path: z.string().min(1) }), projectLibrarySchema),
+  'projects.reveal': defineChannel('projects.reveal', z.object({ path: z.string().min(1) }), none),
 
   'window.getState': defineChannel('window.getState', none, windowStateSchema),
   'window.control': defineChannel(
@@ -159,6 +212,15 @@ export const channels = {
   ),
   'project.saveLayout': defineChannel('project.saveLayout', z.object({ layout: layoutStateSchema }), none),
   'project.openSettingsFile': defineChannel('project.openSettingsFile', none, none),
+  /** Writes fields of `.arbora/project.json` (Settings → Project, onboarding). */
+  'project.updateSettings': defineChannel('project.updateSettings', projectSettingsPatchSchema, projectInfoSchema),
+  /** The dev command `package.json` scripts and the lockfile suggest, without saving it. */
+  'project.detectDevCommand': defineChannel(
+    'project.detectDevCommand',
+    none,
+    z.object({ command: z.string().nullable() }),
+  ),
+  'project.openScreenshots': defineChannel('project.openScreenshots', none, none),
 
   /**
    * Native popup menu at the cursor; resolves with the chosen item id, or null when dismissed.
@@ -195,6 +257,8 @@ export const channels = {
   'browser.getConsole': defineChannel('browser.getConsole', none, z.array(problemEntrySchema)),
   'browser.getNetworkErrors': defineChannel('browser.getNetworkErrors', none, z.array(problemEntrySchema)),
   'browser.clearProblems': defineChannel('browser.clearProblems', none, none),
+  /** Clears cookies, storage and cache of this project's browser partition, then reloads the page. */
+  'browser.resetData': defineChannel('browser.resetData', none, none),
   'browser.screenshot': defineChannel('browser.screenshot', screenshotRequestSchema, screenshotResultSchema),
   /** Round trip over the page's private channel; `ok: false` means the browser preload is not running. */
   'browser.pingPage': defineChannel('browser.pingPage', none, z.object({ ok: z.boolean() })),
@@ -259,7 +323,7 @@ export const channels = {
   /** `model` is a value of the agent's `model` config option; it wins over the agent's default model. */
   'agent.createThread': defineChannel(
     'agent.createThread',
-    z.object({ agentId: z.string(), model: z.string().max(300).optional() }),
+    z.object({ agentId: z.string(), model: z.string().max(300).optional(), groupId: z.string().nullable().optional() }),
     threadSummarySchema,
   ),
   'agent.getThread': defineChannel('agent.getThread', threadId, threadSchema.nullable()),
@@ -319,6 +383,19 @@ export const channels = {
     z.object({ paths: z.array(z.string()).max(50) }),
     z.array(attachmentSchema),
   ),
+  'agent.listGroups': defineChannel('agent.listGroups', none, z.array(agentGroupSchema)),
+  /** Replaces the project's groups (order, names, colours). Threads of a removed group are ungrouped. */
+  'agent.saveGroups': defineChannel(
+    'agent.saveGroups',
+    z.object({ groups: z.array(agentGroupSchema).max(100) }),
+    z.array(agentGroupSchema),
+  ),
+  'agent.setThreadGroup': defineChannel(
+    'agent.setThreadGroup',
+    threadId.extend({ groupId: z.string().nullable() }),
+    none,
+  ),
+  'agent.setThreadPinned': defineChannel('agent.setThreadPinned', threadId.extend({ pinned: z.boolean() }), none),
   /** Removes `agentId:toolKind` entries from remembered permissions (all when omitted). */
   'agent.forgetPermissions': defineChannel(
     'agent.forgetPermissions',
@@ -484,6 +561,12 @@ export const events = {
   ),
   /** The thread list or a thread's metadata/state changed. */
   'agent.threadsChanged': defineEvent('agent.threadsChanged', z.object({ threads: z.array(threadSummarySchema) })),
+  'agent.groupsChanged': defineEvent('agent.groupsChanged', z.object({ groups: z.array(agentGroupSchema) })),
+  /** A desktop notification from `app.notify` was clicked. */
+  'notification.clicked': defineEvent('notification.clicked', z.object({ threadId: z.string().nullable() })),
+  'updates.state': defineEvent('updates.state', updateStateSchema),
+  /** Recent/pinned/grouped projects, open windows or their attention counts changed. */
+  'projects.changed': defineEvent('projects.changed', projectLibrarySchema),
   /** Transcript updates for one thread, in order. */
   'agent.threadEvents': defineEvent(
     'agent.threadEvents',

@@ -22,6 +22,7 @@ import {
   isStoppable,
   focusComposer,
   openThread,
+  requestNewGroup,
   showPicker,
   showThreads,
   stopAgent,
@@ -39,7 +40,10 @@ import {
   showBrowserTab,
   useFiles,
 } from './files-store';
-import { dispatchMode, resetLayout, showToast, useApp } from './store';
+import { nextThreadNeedingYou } from './attention-store';
+import { updateSettings } from './settings-client';
+import { closeOverlay, dispatchMode, openOverlay, openSettings, resetLayout, showToast, useApp } from './store';
+import { checkForUpdates } from './update-store';
 import { modeControl, nextValue, selectValues, thinkingControl } from './thread-controls';
 import {
   activePane,
@@ -191,6 +195,11 @@ export function setWorkspaceController(controller: WorkspaceController | null): 
   workspace = controller;
 }
 
+/** A notification click lands on the agent panel even if it was collapsed. */
+export function setWorkspaceShown(): void {
+  workspace?.showAgentPanel();
+}
+
 /** Runs `action` with the agent panel visible. */
 function withAgentPanel(action: () => void): void {
   if (!hasProject()) return;
@@ -205,7 +214,18 @@ function withProject(action: (controller: WorkspaceController) => void): void {
   else showToast('Open a project first');
 }
 
-function toggleMode(mode: 'agent' | 'design'): void {
+/**
+ * While onboarding asks the user to press the mode chords, it takes them instead of the modes
+ * (main intercepts them before any renderer keydown, so this is the only place to see them).
+ */
+let chordProbe: ((commandId: string) => boolean) | null = null;
+
+export function setChordProbe(probe: ((commandId: string) => boolean) | null): void {
+  chordProbe = probe;
+}
+
+export function toggleMode(mode: 'agent' | 'design'): void {
+  if (chordProbe?.(mode === 'agent' ? CommandId.agentMode : CommandId.designMode)) return;
   if (!useApp.getState().project) {
     showToast('Open a project first');
     return;
@@ -440,6 +460,52 @@ async function takeScreenshot(mode: ScreenshotRequest['mode']): Promise<void> {
       `Screenshot failed: ${(error as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}`,
     );
   }
+}
+
+const LANDMARK_SELECTOR = '[data-landmark]';
+const FOCUSABLE =
+  'input:not([disabled]), textarea:not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
+
+/** F6 / Shift+F6: moves focus to the next visible landmark (title bar, sidebar, centre, agent, bottom). */
+export function focusLandmark(direction: 1 | -1): void {
+  const landmarks = [...document.querySelectorAll<HTMLElement>(LANDMARK_SELECTOR)].filter(
+    (el) => el.offsetWidth > 0 && el.offsetHeight > 0,
+  );
+  if (landmarks.length === 0) return;
+  const current = landmarks.findIndex((el) => el.contains(document.activeElement));
+  const start = current === -1 ? (direction === 1 ? -1 : 0) : current;
+  const target = landmarks[(start + direction + landmarks.length) % landmarks.length];
+  if (!target) return;
+  const inner = [...target.querySelectorAll<HTMLElement>(FOCUSABLE)].find((el) => el.offsetParent !== null);
+  if (inner) inner.focus();
+  else {
+    if (!target.hasAttribute('tabindex')) target.tabIndex = -1;
+    target.focus();
+  }
+}
+
+function showAttentionThread(): void {
+  const threadId = nextThreadNeedingYou();
+  if (!threadId) {
+    showToast('No agent needs you');
+    return;
+  }
+  withAgentPanel(() => void openThread(threadId));
+}
+
+async function exportDiagnostics(): Promise<void> {
+  try {
+    const { path } = await window.arbora.invoke('diagnostics.export');
+    if (path) showToast(`Diagnostics saved to ${path}`);
+  } catch (error) {
+    showToast(`Could not export diagnostics: ${ipcError(error)}`);
+  }
+}
+
+async function toggleSetting(kind: 'notifications' | 'sounds'): Promise<void> {
+  const enabled = !useApp.getState().settings[kind].enabled;
+  await updateSettings(kind === 'notifications' ? { notifications: { enabled } } : { sounds: { enabled } });
+  showToast(`Agent ${kind} ${enabled ? 'on' : 'off'}`);
 }
 
 async function runCommand(id: CommandId): Promise<void> {
@@ -729,6 +795,52 @@ async function runCommand(id: CommandId): Promise<void> {
       return;
     case CommandId.designResend:
       await resendDesign();
+      return;
+    case CommandId.switchProject:
+      if (useApp.getState().overlay === 'switcher') closeOverlay('switcher');
+      else openOverlay('switcher');
+      return;
+    case CommandId.showOnboarding:
+      openOverlay('onboarding');
+      return;
+    case CommandId.checkForUpdates:
+      await checkForUpdates();
+      return;
+    case CommandId.exportDiagnostics:
+      await exportDiagnostics();
+      return;
+    case CommandId.openKeyboardShortcuts:
+      openSettings('keyboard');
+      return;
+    case CommandId.toggleNotifications:
+      await toggleSetting('notifications');
+      return;
+    case CommandId.toggleSounds:
+      await toggleSetting('sounds');
+      return;
+    case CommandId.focusNextPanel:
+      focusLandmark(1);
+      return;
+    case CommandId.focusPreviousPanel:
+      focusLandmark(-1);
+      return;
+    case CommandId.browserResetData:
+      if (!hasProject()) return;
+      showToast('Clear cookies, storage and cache for this project’s browser?', {
+        label: 'Reset',
+        run: () => {
+          void arbora
+            .invoke('browser.resetData')
+            .then(() => showToast('Browser data cleared'))
+            .catch((error: unknown) => showToast(`Could not reset: ${ipcError(error)}`));
+        },
+      });
+      return;
+    case CommandId.agentShowAttention:
+      showAttentionThread();
+      return;
+    case CommandId.agentNewGroup:
+      withAgentPanel(() => requestNewGroup());
       return;
     default: {
       const unreachable: never = id;

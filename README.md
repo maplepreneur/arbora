@@ -2,6 +2,23 @@
 
 Arbora is a cross-platform desktop app (Linux, macOS, Windows) for building web apps by pointing at the running app instead of editing code. An embedded browser shows your dev server; a side panel hosts any ACP-compatible coding agent (Claude Code, Codex, Kimi Code, Grok Build, OpenCode, or your own). Press `Mod+K` to point at a component and describe a change, or `Mod+D` to edit the page visually and hand the agent the diff. A second workspace, Grove, is specified in the plan (Stage 10) for managing several ACP agents at once. It is not built yet.
 
+## Install
+
+Download the build for your OS from the [GitHub releases](https://github.com/maplepreneur/arbora/releases). The first launch opens **Getting started**, which takes you from an empty window to a working `Mod+K` prompt: open a project, start its dev server, connect an agent, check the two mode shortcuts, and choose notifications and sounds. Run it again any time from the command palette (**Getting Started…**) or Settings → Updates & diagnostics.
+
+| OS | File | Install | Updates |
+| --- | --- | --- | --- |
+| Arch / Omarchy | `arbora-bin` (AUR) | `yay -S arbora-bin` (or `paru -S arbora-bin`) | your AUR helper (`yay -Syu`) |
+| Debian / Ubuntu | `.deb` | `sudo apt install ./arbora-<version>-linux-amd64.deb` | Arbora tells you a new release exists; install the new `.deb` |
+| Any Linux | `.AppImage` | `chmod +x Arbora-*.AppImage && ./Arbora-*.AppImage` | in place, from Arbora |
+| Any Linux | `.tar.gz` | extract, then `./arbora /path/to/project` | Arbora tells you; unpack the new tarball |
+| macOS (Apple silicon or Intel) | `.dmg` | open it and drag Arbora to Applications | in place, from Arbora |
+| Windows 10/11 | `.exe` (per-user NSIS) | run the installer; no admin rights needed | in place, from Arbora |
+
+Settings → Updates & diagnostics picks the channel (**Stable** or **Beta**), whether Arbora checks on startup, and whether it downloads updates in the background. **Check for Updates…** in the palette checks now and shows the release notes.
+
+Until the signing certificates are in place, macOS and Windows builds may be unsigned: on macOS right-click the app and choose **Open** the first time; on Windows choose **More info → Run anyway** in SmartScreen. See the [FAQ](docs/FAQ.md) for Linux sandbox, Wayland and PATH questions, and [docs/AGENT_SETUP.md](docs/AGENT_SETUP.md) to install and sign in to each agent.
+
 ## Running Arbora locally
 
 ### 1. Install the prerequisites
@@ -35,7 +52,7 @@ pnpm install
 pnpm dev
 ```
 
-This starts electron-vite with hot reload for the renderer. Changes to the main process or preload need a restart: stop with Ctrl+C and run `pnpm dev` again. The window opens on the Welcome screen, where you can open a folder with **Open project folder…** (or `Mod+O`), drag a folder onto the window, or pick a recent project.
+This starts electron-vite with hot reload for the renderer. Changes to the main process or preload need a restart: stop with Ctrl+C and run `pnpm dev` again. The window opens on the Projects page, where you can open a folder with **Open project folder…** (or `Mod+O`), drag a folder onto the window, or pick a project. Pin projects and sort them into groups (**New group**, then a project's ⋯ menu); open projects show a dot, and a count when their agents need you. `Mod+Alt+O` (**Switch Project…**, or a click on the project name in the title bar) jumps to any of them from anywhere.
 
 To open a project straight away, pass an **absolute** path after `--`:
 
@@ -63,6 +80,12 @@ Agents can see and drive the browser panel themselves (Stage 5). Every agent thr
 
 The browser panel loads React DevTools and Vue DevTools into the page's DevTools (`Mod+Alt+I`). `pnpm dev` and `pnpm e2e` download them from the Chrome Web Store on first run and check them against the SHA-256 pins in `apps/desktop/resources/extensions/extensions.json`; offline, they are skipped with a warning. `pnpm --filter @arbora/desktop extensions:update` re-pins them to the current store versions.
 
+### Agents, groups and notifications
+
+The agent panel lists threads under **Pinned**, your **agent groups**, and the rest. The folder button next to **New thread** creates a group ("Frontend", "Refactor"); a group header shows how many of its agents are working or waiting for you, and its **+** starts a thread in it. Right-click a thread to pin it, rename it or move it to a group; right-click a group to rename, recolour, reorder, stop every agent in it, or delete it (its threads stay). Groups are saved in `.arbora/agent-groups.json`.
+
+When an agent asks for permission, waits for a login, finishes a turn or fails, the bell in the title bar shows a count and `Mod+Alt+A` (**Show Agent That Needs You**) opens the oldest one. In the background Arbora also shows a desktop notification (click it to land on the thread), plays a short sound, sets the dock or launcher badge and flashes the taskbar. Settings → Notifications & sounds turns each of these on or off per event, picks the sound and volume, and decides whether they also fire while Arbora has focus. The thread you are reading never notifies.
+
 ### 5. Check your changes
 
 ```bash
@@ -72,7 +95,7 @@ pnpm test             # Vitest unit tests (pnpm test:watch while developing)
 pnpm e2e              # builds once, then runs the Playwright-for-Electron smoke tests
 ```
 
-CI runs all four on Linux, macOS and Windows. On a headless Linux box, run the e2e tests under a virtual display: `xvfb-run -a pnpm e2e`.
+CI runs all four on Linux, macOS and Windows. On a headless Linux box, run the e2e tests under a virtual display: `xvfb-run -a pnpm e2e`. `pnpm perf` checks the performance budget (idle RSS under 350 MB with the fixture loaded, screenshot under 300 ms) against `out/`, or against a packaged build with `ARBORA_APP=/path/to/arbora`.
 
 ### 6. Build installers (optional)
 
@@ -80,7 +103,7 @@ CI runs all four on Linux, macOS and Windows. On a headless Linux box, run the e
 pnpm package
 ```
 
-This writes unsigned installers for the current OS to `apps/desktop/dist/`: AppImage, deb and tar.gz on Linux, dmg and zip on macOS, and an NSIS installer on Windows. Building the deb needs `fakeroot` and `dpkg` (on Arch: `sudo pacman -S fakeroot dpkg`). The tar.gz is the quickest to test: extract it and run `./arbora /path/to/project`.
+This writes installers for the current OS to `apps/desktop/dist/` (unsigned unless signing variables are set; see [docs/RELEASING.md](docs/RELEASING.md)): AppImage, deb and tar.gz on Linux, dmg and zip on macOS, and an NSIS installer on Windows. Building the deb needs `fakeroot` and `dpkg` (on Arch: `sudo pacman -S fakeroot dpkg`). The tar.gz is the quickest to test: extract it and run `./arbora /path/to/project`.
 
 ### 7. Use your checkout as an installed app (Linux)
 
@@ -98,7 +121,7 @@ User settings are in `settings.json` under Electron's user-data directory:
 - macOS: `~/Library/Application Support/arbora/settings.json`
 - Windows: `%APPDATA%\arbora\settings.json`
 
-`Mod+,` opens the Settings page in place of the browser pane: agents (sign-in check, default agent and model, which agents and models the pickers show), theme, terminal and browser options. "Edit settings.json" there (or "Open Settings (JSON)" in the palette) opens the file. The app picks up hand edits immediately. Set `ARBORA_USER_DATA_DIR=/tmp/arbora-test` to start with a clean profile without touching your real settings.
+`Mod+,` opens the Settings page in place of the browser pane: agents (sign-in check, default agent and model, which agents and models the pickers show, custom agents, per-agent environment overrides and adapter versions), general (theme, terminal), notifications and sounds, editor, browser (DevTools extensions, localhost certificates, reset browser data), project (`.arbora/project.json`: dev command and URL, project default agent, the MCP tool permissions), keyboard (a shortcut editor: click a shortcut and press the new chord; conflicts are flagged with Replace or Keep both), and updates and diagnostics. "Edit settings.json" there (or "Open Settings (JSON)" in the palette) opens the file. The app picks up hand edits immediately. Set `ARBORA_USER_DATA_DIR=/tmp/arbora-test` to start with a clean profile without touching your real settings.
 
 Browser panel settings live under `"browser"`: `devToolsExtensions` (default `true`) loads React/Vue DevTools, and `trustLocalhostCertificates` (default `true`) accepts self-signed certificates for HTTPS dev servers on local hosts only (`localhost`, `*.localhost`, `127.x.x.x`, `[::1]`). Each project's page gets its own persistent browser profile (cookies, storage, history) under the user-data directory's `Partitions/` folder. Screenshots are saved to `<project>/.arbora/screenshots/`, which Arbora git-ignores.
 
@@ -113,6 +136,7 @@ Terminal settings live under `"terminal"`: `shell` (default: `$SHELL` on macOS a
 - **"Could not load the page" in the browser panel:** `ERR_CONNECTION_REFUSED` means the dev server is not running on that port; start it and press Retry. For certificate errors on an HTTPS dev server, check that `browser.trustLocalhostCertificates` is on and that you are using a localhost address.
 - **Prompt icons show as boxes in the terminal:** the terminal asks for `JetBrainsMono Nerd Font` and similar fonts, but fontconfig rules can override that choice. A `<match>` that prepends a font to every `monospace` request (with `binding="strong"`) wins over the Nerd Font, and Chromium then renders tofu. Check with `fc-match "JetBrainsMono Nerd Font"`.
 - **`pnpm install` fails building `node-pty` on Linux:** install the compiler toolchain from step 1, then rerun `pnpm install`.
+- **Something went wrong and you want to report it:** **Export Diagnostics…** in the palette (or Settings → Updates & diagnostics) saves a zip with app and OS versions, settings with agent env values and tokens removed, the main-process log (`logs/main.log` under the user-data directory) and the names of local crash dumps. Arbora uploads nothing on its own.
 - **React DevTools tab missing:** run `pnpm --filter @arbora/desktop extensions` and check its output; a pin mismatch means the store published a new version (`extensions:update`).
 
 ## Development reference
@@ -127,3 +151,6 @@ Repository layout: `apps/desktop` (electron-vite app: `src/main`, `src/preload`,
 
 - [docs/PLAN.md](docs/PLAN.md): product summary, stack decision, architecture, full feature specification, ADRs.
 - [docs/BUILD_STAGES.md](docs/BUILD_STAGES.md): stage-by-stage build instructions, gotchas, acceptance criteria and progress tracking.
+- [docs/FAQ.md](docs/FAQ.md): why Ctrl instead of Super, macOS PATH, Windows SmartScreen, Hyprland and Wayland flags, the Linux sandbox.
+- [docs/AGENT_SETUP.md](docs/AGENT_SETUP.md): installing and signing in to Claude Code, Codex, Kimi Code, Grok Build, OpenCode and custom agents.
+- [docs/RELEASING.md](docs/RELEASING.md): tagging a release, signing and notarization secrets, the AUR package, the performance budget.

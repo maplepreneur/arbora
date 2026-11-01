@@ -7,6 +7,9 @@ export type ThemeMode = z.infer<typeof themeModeSchema>;
 
 export const keybindingOverridesSchema = z.record(z.string(), z.string().nullable());
 
+/** `latest`, or a semver such as `0.17.0` / `1.2.3-beta.1`. */
+export const ADAPTER_VERSION_PATTERN = /^(latest|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
+
 export const windowBoundsSchema = z.object({
   x: z.number().int(),
   y: z.number().int(),
@@ -48,13 +51,96 @@ export const projectBrowserStateSchema = z.object({
 });
 export type ProjectBrowserState = z.infer<typeof projectBrowserStateSchema>;
 
-/** Per-machine state for a project (not committed): window bounds, panel layout, browser state. */
+/**
+ * Per-machine state for a project (not committed): window bounds, panel layout, browser state, and
+ * where it sits on the Projects page.
+ */
 export const projectStateSchema = z.object({
   bounds: windowBoundsSchema.optional(),
   layout: layoutStateSchema.optional(),
   browser: projectBrowserStateSchema.optional(),
+  /** Pinned projects are listed first on the Projects page and in the project switcher. */
+  pinned: z.boolean().optional(),
+  /** Id of a `projectGroups` entry; unknown ids count as ungrouped. */
+  groupId: z.string().optional(),
+  /** Display name instead of the folder name. */
+  alias: z.string().min(1).max(100).optional(),
+  /** Last time the project was opened, kept after it drops out of the recent list. */
+  openedAt: z.number().int().optional(),
 });
 export type ProjectState = z.infer<typeof projectStateSchema>;
+
+export const PROJECT_GROUP_COLORS = ['green', 'blue', 'purple', 'pink', 'orange', 'yellow', 'gray'] as const;
+export const groupColorSchema = z.enum(PROJECT_GROUP_COLORS);
+export type GroupColor = z.infer<typeof groupColorSchema>;
+
+/** A user-made folder on the Projects page ("Work", "Client X"). */
+export const projectGroupSchema = z.object({
+  id: z.string().min(1).max(64),
+  name: z.string().min(1).max(100),
+  color: groupColorSchema.default('gray'),
+  collapsed: z.boolean().default(false),
+});
+export type ProjectGroup = z.infer<typeof projectGroupSchema>;
+
+export const attentionKindSchema = z.enum(['permission', 'auth', 'finished', 'failed']);
+export type AttentionKind = z.infer<typeof attentionKindSchema>;
+
+export const notificationSettingsSchema = z.object({
+  /** Desktop notifications when an agent needs you, finishes or fails. */
+  enabled: z.boolean().default(true),
+  /** Also notify while the Arbora window has focus (the thread is not the one showing). */
+  whenFocused: z.boolean().default(false),
+  permission: z.boolean().default(true),
+  finished: z.boolean().default(true),
+  failed: z.boolean().default(true),
+  /** Flash the taskbar entry and set the dock/launcher badge to the attention count. */
+  badge: z.boolean().default(true),
+});
+export type NotificationSettings = z.infer<typeof notificationSettingsSchema>;
+
+export const SOUND_IDS = ['none', 'chime', 'ping', 'pop', 'knock', 'bell'] as const;
+export const soundIdSchema = z.enum(SOUND_IDS);
+export type SoundId = z.infer<typeof soundIdSchema>;
+
+export const soundSettingsSchema = z.object({
+  enabled: z.boolean().default(true),
+  /** 0..100 */
+  volume: z.number().int().min(0).max(100).default(60),
+  /** Play while the thread is already on screen in a focused window. */
+  whenFocused: z.boolean().default(false),
+  permission: soundIdSchema.default('ping'),
+  finished: soundIdSchema.default('chime'),
+  failed: soundIdSchema.default('knock'),
+});
+export type SoundSettings = z.infer<typeof soundSettingsSchema>;
+
+export const updateChannelSchema = z.enum(['latest', 'beta']);
+export type UpdateChannel = z.infer<typeof updateChannelSchema>;
+
+export const updateSettingsSchema = z.object({
+  channel: updateChannelSchema.default('latest'),
+  /** Check GitHub Releases on startup (packaged builds only). */
+  autoCheck: z.boolean().default(true),
+  /** Download in the background where the install can update itself (macOS, Windows, AppImage). */
+  autoDownload: z.boolean().default(true),
+});
+export type UpdateSettings = z.infer<typeof updateSettingsSchema>;
+
+export const diagnosticsSettingsSchema = z.object({
+  /** Keep a local `main.log` (warnings and errors from the main process) for diagnostics export. */
+  logToFile: z.boolean().default(true),
+  /** Write Chromium crash dumps locally. Nothing is ever uploaded. */
+  crashDumps: z.boolean().default(true),
+});
+export type DiagnosticsSettings = z.infer<typeof diagnosticsSettingsSchema>;
+
+export const onboardingSettingsSchema = z.object({
+  completed: z.boolean().default(false),
+  /** The chords the user pressed during onboarding, as proof the keys reach Arbora. */
+  checkedChords: z.array(z.string()).max(20).default([]),
+});
+export type OnboardingSettings = z.infer<typeof onboardingSettingsSchema>;
 
 export const MAX_RECENT_PROJECTS = 10;
 
@@ -136,6 +222,10 @@ export const agentSettingsSchema = z.object({
   verified: z.record(z.string(), agentVerificationSchema).default({}),
   /** Check installed agents that were never checked when a picker or Settings opens. */
   autoVerify: z.boolean().default(true),
+  /** Extra environment per agent id, merged over the agent's own `env` (values never logged). */
+  env: z.record(z.string(), z.record(z.string(), z.string())).default({}),
+  /** npm adapter version per built-in agent id (`latest` or `x.y.z`), replacing the pinned one. */
+  adapterVersions: z.record(z.string(), z.string().regex(ADAPTER_VERSION_PATTERN)).default({}),
 });
 export type AgentSettings = z.infer<typeof agentSettingsSchema>;
 
@@ -151,6 +241,8 @@ export const agentSettingsPatchSchema = z
     hiddenModels: z.record(z.string(), z.array(z.string()).max(500)),
     verified: z.record(z.string(), agentVerificationSchema),
     autoVerify: z.boolean(),
+    env: z.record(z.string(), z.record(z.string(), z.string())),
+    adapterVersions: z.record(z.string(), z.string().regex(ADAPTER_VERSION_PATTERN)),
   })
   .partial();
 export type AgentSettingsPatch = z.infer<typeof agentSettingsPatchSchema>;
@@ -167,6 +259,8 @@ export function mergeAgentSettings(current: AgentSettings, patch: AgentSettingsP
     hiddenModels: patch.hiddenModels ?? current.hiddenModels,
     verified: patch.verified ?? current.verified,
     autoVerify: patch.autoVerify ?? current.autoVerify,
+    env: patch.env ?? current.env,
+    adapterVersions: patch.adapterVersions ?? current.adapterVersions,
     ...(defaultAgent !== undefined ? { defaultAgent } : {}),
   };
 }
@@ -223,10 +317,34 @@ export const appSettingsSchema = z.object({
   terminal: terminalSettingsSchema.default(terminalSettingsSchema.parse({})),
   editor: editorSettingsSchema.default(editorSettingsSchema.parse({})),
   agents: agentSettingsSchema.default(agentSettingsSchema.parse({})),
+  notifications: notificationSettingsSchema.default(notificationSettingsSchema.parse({})),
+  sounds: soundSettingsSchema.default(soundSettingsSchema.parse({})),
+  updates: updateSettingsSchema.default(updateSettingsSchema.parse({})),
+  diagnostics: diagnosticsSettingsSchema.default(diagnosticsSettingsSchema.parse({})),
+  onboarding: onboardingSettingsSchema.default(onboardingSettingsSchema.parse({})),
   recentProjects: z.array(recentProjectSchema).max(MAX_RECENT_PROJECTS).default([]),
+  projectGroups: z.array(projectGroupSchema).max(100).default([]),
   projects: z.record(z.string(), projectStateSchema).default({}),
 });
 export type AppSettings = z.infer<typeof appSettingsSchema>;
+
+/**
+ * A patch schema for a settings object: every field optional and without its default. Zod 4 fills
+ * defaults even inside `.partial()`, which would reset every field a patch leaves out.
+ */
+export function patchSchema<T extends z.ZodRawShape>(
+  schema: z.ZodObject<T>,
+): z.ZodType<{ [K in keyof z.infer<z.ZodObject<T>>]?: z.infer<z.ZodObject<T>>[K] | undefined }> {
+  const shape = Object.fromEntries(
+    Object.entries(schema.shape).map(([key, field]) => [
+      key,
+      (field instanceof z.ZodDefault ? (field.unwrap() as z.ZodType) : (field as z.ZodType)).optional(),
+    ]),
+  );
+  return z.object(shape) as unknown as z.ZodType<{
+    [K in keyof z.infer<z.ZodObject<T>>]?: z.infer<z.ZodObject<T>>[K] | undefined;
+  }>;
+}
 
 /** Fields a renderer may change through `settings.update`. */
 export const appSettingsPatchSchema = z
@@ -234,13 +352,51 @@ export const appSettingsPatchSchema = z
     theme: themeModeSchema,
     keybindings: keybindingOverridesSchema,
     terminalPassthrough: z.boolean(),
-    browser: browserSettingsSchema.partial(),
-    terminal: terminalSettingsSchema.partial(),
-    editor: editorSettingsSchema.partial(),
+    browser: patchSchema(browserSettingsSchema),
+    terminal: patchSchema(terminalSettingsSchema),
+    editor: patchSchema(editorSettingsSchema),
     agents: agentSettingsPatchSchema,
+    notifications: patchSchema(notificationSettingsSchema),
+    sounds: patchSchema(soundSettingsSchema),
+    updates: patchSchema(updateSettingsSchema),
+    diagnostics: patchSchema(diagnosticsSettingsSchema),
+    onboarding: patchSchema(onboardingSettingsSchema),
+    projectGroups: z.array(projectGroupSchema).max(100),
   })
   .partial();
 export type AppSettingsPatch = z.infer<typeof appSettingsPatchSchema>;
+
+/** Fills `current` with the defined fields of `patch`; `undefined` keeps the current value. */
+export function mergeDefined<T extends object>(current: T, patch: { [K in keyof T]?: T[K] | undefined }): T {
+  const next = { ...current };
+  for (const key of Object.keys(patch) as (keyof T)[]) {
+    const value = patch[key];
+    if (value !== undefined) next[key] = value;
+  }
+  return next;
+}
+
+/** Applies a validated `settings.update` patch. */
+export function applySettingsPatch(current: AppSettings, patch: AppSettingsPatch): AppSettings {
+  return {
+    ...current,
+    ...(patch.theme !== undefined ? { theme: patch.theme } : {}),
+    ...(patch.keybindings !== undefined ? { keybindings: patch.keybindings } : {}),
+    ...(patch.terminalPassthrough !== undefined ? { terminalPassthrough: patch.terminalPassthrough } : {}),
+    ...(patch.browser !== undefined ? { browser: mergeDefined(current.browser, patch.browser) } : {}),
+    ...(patch.terminal !== undefined ? { terminal: mergeDefined(current.terminal, patch.terminal) } : {}),
+    ...(patch.editor !== undefined ? { editor: mergeEditorSettings(current.editor, patch.editor) } : {}),
+    ...(patch.agents !== undefined ? { agents: mergeAgentSettings(current.agents, patch.agents) } : {}),
+    ...(patch.notifications !== undefined
+      ? { notifications: mergeDefined(current.notifications, patch.notifications) }
+      : {}),
+    ...(patch.sounds !== undefined ? { sounds: mergeDefined(current.sounds, patch.sounds) } : {}),
+    ...(patch.updates !== undefined ? { updates: mergeDefined(current.updates, patch.updates) } : {}),
+    ...(patch.diagnostics !== undefined ? { diagnostics: mergeDefined(current.diagnostics, patch.diagnostics) } : {}),
+    ...(patch.onboarding !== undefined ? { onboarding: mergeDefined(current.onboarding, patch.onboarding) } : {}),
+    ...(patch.projectGroups !== undefined ? { projectGroups: patch.projectGroups } : {}),
+  };
+}
 
 export function defaultSettings(): AppSettings {
   return appSettingsSchema.parse({ version: SETTINGS_VERSION });
@@ -351,6 +507,25 @@ export const projectSettingsSchema = z.object({
     .optional(),
 });
 export type ProjectSettings = z.infer<typeof projectSettingsSchema>;
+
+/** What Settings → Project may write to `.arbora/project.json`; `null` removes the field. */
+export const projectSettingsPatchSchema = z
+  .object({
+    devCommand: z.string().min(1).max(1000).nullable(),
+    devUrl: z.string().min(1).max(2000).nullable(),
+    autoOpenDevUrl: z.boolean().nullable(),
+    defaultAgent: z.string().min(1).nullable(),
+    browserTools: z
+      .object({ evaluate: browserToolPolicySchema.optional(), terminalRun: browserToolPolicySchema.optional() })
+      .nullable(),
+  })
+  .partial();
+export type ProjectSettingsPatch = z.infer<typeof projectSettingsPatchSchema>;
+
+/** Patch fields to write (`undefined` for the ones to delete), for `updateProjectSettingsFile`. */
+export function projectSettingsUpdates(patch: ProjectSettingsPatch): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(patch).map(([key, value]) => [key, value === null ? undefined : value]));
+}
 
 export function addRecentProject(recents: readonly RecentProject[], entry: RecentProject): RecentProject[] {
   return [entry, ...recents.filter((r) => r.path !== entry.path)].slice(0, MAX_RECENT_PROJECTS);

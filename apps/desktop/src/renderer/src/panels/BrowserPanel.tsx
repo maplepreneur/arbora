@@ -430,7 +430,7 @@ export default function BrowserPanel() {
   const designChanges = useApp((s) => s.design.cursor);
   const showingOriginal = useApp((s) => s.design.showingOriginal);
   const state = useApp((s) => s.browser);
-  const paletteOpen = useApp((s) => s.paletteOpen);
+  const paletteOpen = useApp((s) => s.paletteOpen || s.overlay !== null);
   const suggestedUrl = useApp((s) => s.suggestedUrl);
   const devUrl = useApp((s) => s.project?.settings.devUrl) ?? DEFAULT_DEV_URL;
   const exitLabel = useChordLabel(CommandId.exitMode);

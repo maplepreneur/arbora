@@ -49,6 +49,8 @@ describe('defaultAgentModeTarget', () => {
     updatedAt: 1,
     sessionId: null,
     autoApproveEdits: false,
+    groupId: null,
+    pinned: false,
     state: idleThreadState(),
   });
   const base = {

@@ -29,7 +29,15 @@ asarUnpack:
   - '**/*.node'
   - '**/node-pty/**/spawn-helper'
 
-publish: null
+# GitHub Releases feeds electron-updater. `pnpm package` passes `--publish never`; the release
+# workflow passes `--publish always`, which uploads to a draft release (published by hand).
+publish:
+  provider: github
+  owner: maplepreneur
+  repo: arbora
+  releaseType: draft
+# `x.y.z-beta.n` builds write beta.yml as well, so the beta channel also sees stable releases.
+generateUpdatesFilesForAllChannels: true
 
 linux:
   target:
@@ -45,19 +53,52 @@ linux:
     entry:
       StartupWMClass: arbora
 
+deb:
+  # Notifications go through libnotify; safeStorage uses the Secret Service when there is one.
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+    - libsecret-1-0
+  recommends:
+    - git
+    - ripgrep
+
 mac:
   target:
-    - dmg
-    - zip
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
   category: public.app-category.developer-tools
-  # Unsigned until Stage 9 (signing and notarization).
-  identity: null
+  # Signed when CSC_LINK / CSC_KEY_PASSWORD hold a Developer ID certificate; unsigned otherwise
+  # (CSC_IDENTITY_AUTO_DISCOVERY=false). See docs/RELEASING.md.
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Uses APPLE_API_KEY, APPLE_API_KEY_ID and APPLE_API_ISSUER (App Store Connect API key) when set;
+  # electron-builder skips notarization without them.
+  notarize: true
+
+dmg:
+  sign: false
 
 win:
   target:
-    - nsis
+    - target: nsis
+      arch: [x64]
+  # Signed when WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD (or Azure Trusted Signing, see docs/RELEASING.md)
+  # are set; until then the installer is unsigned and SmartScreen warns once.
 
 nsis:
   oneClick: false
+  # Per-user install: electron-updater cannot update a per-machine install without admin rights.
   perMachine: false
   allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false

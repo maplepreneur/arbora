@@ -1,5 +1,19 @@
-import { Command as CommandIcon, Copy, Minus, Moon, Monitor, Square, Sun, X } from 'lucide-react';
-import { CommandId } from '@arbora/shared';
+import {
+  Bell,
+  BellOff,
+  ChevronDown,
+  Command as CommandIcon,
+  Copy,
+  Minus,
+  Moon,
+  Monitor,
+  Square,
+  Sun,
+  X,
+} from 'lucide-react';
+import clsx from 'clsx';
+import { badgeLabel, CommandId } from '@arbora/shared';
+import { useAttentionCount } from '../attention-store';
 import { executeCommand } from '../commands';
 import { useChordLabel } from '../keybindings';
 import { useApp } from '../store';
@@ -52,6 +66,40 @@ function WindowControls() {
   );
 }
 
+/** Agents that need you, in every workspace: click jumps to the oldest (`Mod+Alt+A`). */
+function AttentionButton() {
+  const count = useAttentionCount();
+  const muted = useApp((s) => !s.settings.notifications.enabled && !s.settings.sounds.enabled);
+  const label = useChordLabel(CommandId.agentShowAttention);
+  const project = useApp((s) => s.project);
+  if (!project) return null;
+  const title =
+    count > 0
+      ? `${count} agent thread${count === 1 ? '' : 's'} need${count === 1 ? 's' : ''} you${label ? ` (${label})` : ''}`
+      : `No agent needs you${muted ? '. Notifications and sounds are off' : ''}`;
+  return (
+    <button
+      type="button"
+      aria-label={title}
+      title={title}
+      data-testid="attention-button"
+      data-count={count}
+      onClick={() => executeCommand(CommandId.agentShowAttention)}
+      className={clsx(
+        'app-no-drag mr-1 flex h-6 items-center gap-1 rounded px-1.5',
+        count > 0 ? 'bg-attention-soft text-attention' : 'text-fg-subtle hover:bg-bg-muted hover:text-fg',
+      )}
+    >
+      {muted ? <BellOff size={13} /> : <Bell size={13} />}
+      {count > 0 && (
+        <span data-testid="attention-badge" className="text-[11px] font-semibold tabular-nums">
+          {badgeLabel(count)}
+        </span>
+      )}
+    </button>
+  );
+}
+
 /**
  * Custom title bar. macOS uses `hiddenInset` (traffic lights on the left); Linux and Windows are
  * frameless, so this bar is the drag region and hosts the window controls. Interactive elements
@@ -63,11 +111,14 @@ export function TitleBar() {
   const project = useApp((s) => s.project);
   const mode = useApp((s) => s.mode.kind);
   const paletteLabel = useChordLabel(CommandId.commandPalette);
+  const switchLabel = useChordLabel(CommandId.switchProject);
   const isMac = platform === 'darwin';
 
   return (
     <header
       data-testid="title-bar"
+      data-landmark="title-bar"
+      aria-label="Title bar"
       className="app-drag flex h-9 shrink-0 items-center border-b border-border bg-bg-subtle"
       onDoubleClick={(event) => {
         if (!isMac && event.target === event.currentTarget) {
@@ -76,15 +127,24 @@ export function TitleBar() {
       }}
     >
       <div className={isMac && !fullScreen ? 'w-[78px] shrink-0' : 'w-3 shrink-0'} />
-      <div className="pointer-events-none flex items-center gap-2 font-medium">
-        <span className="inline-block h-2.5 w-2.5 rounded-full bg-accent" aria-hidden />
-        <span>Arbora</span>
+      <div className="flex min-w-0 items-center gap-2 font-medium">
+        <span className="pointer-events-none inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-accent" aria-hidden />
+        <span className="pointer-events-none">Arbora</span>
         {project && (
           <>
-            <span className="text-fg-subtle">/</span>
-            <span className="text-fg-muted" data-testid="title-project-name">
-              {project.name}
-            </span>
+            <span className="pointer-events-none text-fg-subtle">/</span>
+            <button
+              type="button"
+              title={switchLabel ? `Switch project (${switchLabel})` : 'Switch project'}
+              aria-label={`${project.name}. Switch project`}
+              onClick={() => executeCommand(CommandId.switchProject)}
+              className="app-no-drag flex min-w-0 items-center gap-1 rounded px-1 text-fg-muted hover:bg-bg-muted hover:text-fg"
+            >
+              <span className="truncate" data-testid="title-project-name">
+                {project.name}
+              </span>
+              <ChevronDown size={11} className="shrink-0 opacity-60" />
+            </button>
           </>
         )}
         {mode !== 'idle' && (
@@ -97,6 +157,7 @@ export function TitleBar() {
         )}
       </div>
       <div className="flex-1" />
+      <AttentionButton />
       <button
         type="button"
         className="app-no-drag mr-1 flex h-6 items-center gap-2 rounded border border-border bg-bg px-2 text-fg-muted hover:text-fg"

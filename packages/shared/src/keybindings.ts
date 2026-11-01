@@ -218,6 +218,8 @@ export interface KeybindingContext {
   readonly textEditing?: boolean;
   /** Focus is inside the agent panel (renderer only, so main never intercepts these chords). */
   readonly agentFocused?: boolean;
+  /** The shortcut editor is recording; nothing is intercepted or dispatched. */
+  readonly recording?: boolean;
 }
 
 /**

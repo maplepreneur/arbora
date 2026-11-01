@@ -40,6 +40,8 @@ export async function launch(
 ): Promise<LaunchedApp> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) if (value !== undefined) env[key] = value;
+  // The first-run wizard would cover every test's window; the onboarding spec turns it back on.
+  env['ARBORA_SKIP_ONBOARDING'] = '1';
   Object.assign(env, extraEnv);
   env['ARBORA_USER_DATA_DIR'] = userData;
   delete env['ELECTRON_RENDERER_URL'];

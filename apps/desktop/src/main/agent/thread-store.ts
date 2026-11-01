@@ -1,7 +1,9 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  agentGroupsFileSchema,
   idleThreadState,
+  type AgentGroup,
   PERSISTED_TOOL_TEXT_LIMIT,
   THREAD_FILE_BYTE_LIMIT,
   THREAD_FILE_VERSION,
@@ -102,6 +104,39 @@ export function capThreadFile(thread: Thread): ThreadFile {
     file = { ...file, events };
   }
   return file;
+}
+
+export function agentGroupsPath(projectPath: string): string {
+  return join(projectPath, ARBORA_DIR, 'agent-groups.json');
+}
+
+/** `.arbora/agent-groups.json`: the project's agent groups, in display order. */
+export class AgentGroupStore {
+  private cache: AgentGroup[] | null = null;
+
+  constructor(private readonly projectPath: string) {}
+
+  list(): AgentGroup[] {
+    if (this.cache) return this.cache;
+    const file = agentGroupsPath(this.projectPath);
+    let groups: AgentGroup[] = [];
+    if (existsSync(file)) {
+      try {
+        const parsed = agentGroupsFileSchema.safeParse(JSON.parse(readFileSync(file, 'utf8')));
+        if (parsed.success) groups = parsed.data.groups;
+      } catch {
+        // An unreadable file means no groups; the next save replaces it.
+      }
+    }
+    this.cache = groups;
+    return groups;
+  }
+
+  save(groups: AgentGroup[]): AgentGroup[] {
+    writeJsonAtomic(agentGroupsPath(this.projectPath), { version: 1, groups });
+    this.cache = groups;
+    return groups;
+  }
 }
 
 /** `.arbora/threads/<id>.json`, one file per thread. */

@@ -8,6 +8,7 @@ import { allDiagnostics, useFiles } from '../files-store';
 import { useChordLabel } from '../keybindings';
 import { setGroupLayout, updateLayout, useApp } from '../store';
 import { EditorTabs } from './EditorTabs';
+import { ErrorBoundary } from './ErrorBoundary';
 
 const BrowserPanel = lazy(() => import('../panels/BrowserPanel'));
 const AgentPanel = lazy(() => import('../panels/AgentPanel'));
@@ -104,7 +105,13 @@ function BottomContent({ tab }: { tab: BottomTab }) {
 function CenterContent() {
   const settingsOpen = useApp((s) => s.settingsOpen);
   const editorActive = useFiles((s) => s.active !== null);
-  if (settingsOpen) return <SettingsPage />;
+  if (settingsOpen) {
+    return (
+      <ErrorBoundary label="Settings">
+        <SettingsPage />
+      </ErrorBoundary>
+    );
+  }
   return editorActive ? <EditorPanel /> : <BrowserPanel />;
 }
 
@@ -243,7 +250,12 @@ export function Workspace() {
           minSize="160px"
           defaultSize={DEFAULT_MAIN['sidebar']}
         >
-          <aside data-testid="panel-sidebar" className="h-full overflow-hidden bg-bg-subtle">
+          <aside
+            data-testid="panel-sidebar"
+            data-landmark="sidebar"
+            aria-label="Sidebar"
+            className="h-full overflow-hidden bg-bg-subtle"
+          >
             <Suspense fallback={<PanelFallback />}>
               <SidebarContent view={layout.sidebarView} />
             </Suspense>
@@ -259,7 +271,12 @@ export function Workspace() {
             onLayoutChanged={(next, meta) => setGroupLayout(CENTER_GROUP, meta.requestedLayout ?? next)}
           >
             <Panel id="browser" minSize="160px" defaultSize={DEFAULT_CENTER['browser']}>
-              <section data-testid="panel-browser" className="flex h-full flex-col">
+              <section
+                data-testid="panel-browser"
+                data-landmark="center"
+                aria-label="Browser and editor"
+                className="flex h-full flex-col"
+              >
                 {!settingsOpen && <EditorTabs />}
                 <div className="min-h-0 flex-1">
                   <Suspense fallback={<PanelFallback />}>
@@ -277,7 +294,12 @@ export function Workspace() {
               minSize="96px"
               defaultSize={DEFAULT_CENTER['bottom']}
             >
-              <section data-testid="panel-bottom" className="flex h-full flex-col bg-bg">
+              <section
+                data-testid="panel-bottom"
+                data-landmark="bottom"
+                aria-label="Terminal, Git and Problems"
+                className="flex h-full flex-col bg-bg"
+              >
                 <div
                   role="tablist"
                   aria-label="Bottom panel"
@@ -319,7 +341,12 @@ export function Workspace() {
           minSize="200px"
           defaultSize={DEFAULT_MAIN['agent']}
         >
-          <aside data-testid="panel-agent" className="h-full overflow-hidden bg-bg-subtle">
+          <aside
+            data-testid="panel-agent"
+            data-landmark="agent"
+            aria-label="Agent"
+            className="h-full overflow-hidden bg-bg-subtle"
+          >
             <Suspense fallback={<PanelFallback />}>{designMode ? <DesignPanel /> : <AgentPanel />}</Suspense>
           </aside>
         </Panel>

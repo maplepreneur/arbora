@@ -21,10 +21,14 @@
     "package": "node scripts/fetch-devtools-extensions.mjs && electron-vite build && electron-builder --publish never",
     "postinstall": "install-electron && electron-builder install-app-deps && node scripts/fix-node-pty.mjs",
     "extensions": "node scripts/fetch-devtools-extensions.mjs",
-    "extensions:update": "node scripts/fetch-devtools-extensions.mjs --update"
+    "extensions:update": "node scripts/fetch-devtools-extensions.mjs --update",
+    "perf": "ARBORA_PERF=1 playwright test e2e/perf.spec.ts",
+    "release": "node scripts/fetch-devtools-extensions.mjs && electron-vite build && electron-builder --publish always"
   },
   "dependencies": {
     "chokidar": "6.0.0",
+    "electron-updater": "6.8.11",
+    "fflate": "0.8.3",
     "ignore": "7.0.14",
     "node-pty": "1.1.0",
     "zod": "4.6.7"
@@ -69,7 +73,6 @@
     "electron": "45.1.0",
     "electron-builder": "26.18.0",
     "electron-vite": "6.0.0",
-    "fflate": "0.8.3",
     "highlight.js": "11.11.2",
     "lucide-react": "1.64.0",
     "react": "19.3.1",

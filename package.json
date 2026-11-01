@@ -17,7 +17,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "pnpm --filter @arbora/desktop e2e",
-    "package": "pnpm --filter @arbora/desktop package"
+    "package": "pnpm --filter @arbora/desktop package",
+    "perf": "pnpm --filter @arbora/desktop perf"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

@@ -60,17 +60,69 @@ export const BUILT_IN_AGENTS: readonly AgentDefinition[] = [
 /** Resolves a command name (or absolute path) to an executable path, or undefined when missing. */
 export type CommandLookup = (command: string) => string | undefined;
 
+/** Settings layered over the definitions: extra env per agent, and npm adapter versions. */
+export interface AgentOverrides {
+  readonly env: Readonly<Record<string, Readonly<Record<string, string>>>>;
+  readonly adapterVersions: Readonly<Record<string, string>>;
+}
+
+const NO_OVERRIDES: AgentOverrides = { env: {}, adapterVersions: {} };
+
+const PINNED_PACKAGE = /^(@?[^@\s]+)@([^@\s]+)$/;
+
+/** The npm package an `npx -y pkg@version` agent runs, with its version; null for other agents. */
+export function adapterPackage(agent: Pick<AgentDefinition, 'command' | 'args'>): {
+  name: string;
+  version: string;
+} | null {
+  if (!/^npx(\.cmd)?$/.test(agent.command)) return null;
+  for (const arg of agent.args) {
+    const match = PINNED_PACKAGE.exec(arg);
+    if (match?.[1] && match[2]) return { name: match[1], version: match[2] };
+  }
+  return null;
+}
+
+/** Replaces the pinned version of an `npx` adapter. Leaves other agents unchanged. */
+export function withAdapterVersion<T extends Pick<AgentDefinition, 'command' | 'args'>>(agent: T, version: string): T {
+  if (!adapterPackage(agent)) return agent;
+  let replaced = false;
+  const args = agent.args.map((arg) => {
+    const match = PINNED_PACKAGE.exec(arg);
+    if (replaced || !match?.[1]) return arg;
+    replaced = true;
+    return `${match[1]}@${version}`;
+  });
+  return { ...agent, args };
+}
+
 /**
  * Built-in agents plus the user's custom entries. Custom agents are read on every access so
  * settings edits apply immediately; a custom entry with a built-in id replaces the built-in.
  */
 export class AgentRegistry {
-  constructor(private readonly custom: () => readonly CustomAgent[]) {}
+  constructor(
+    private readonly custom: () => readonly CustomAgent[],
+    private readonly overrides: () => AgentOverrides = () => NO_OVERRIDES,
+  ) {}
 
   list(): AgentDefinition[] {
     const custom = this.custom().map((agent): AgentDefinition => ({ ...agent, builtIn: false }));
     const overridden = new Set(custom.map((a) => a.id));
-    return [...BUILT_IN_AGENTS.filter((a) => !overridden.has(a.id)), ...custom];
+    const { env, adapterVersions } = this.overrides();
+    return [...BUILT_IN_AGENTS.filter((a) => !overridden.has(a.id)), ...custom].map((agent) => {
+      const version = adapterVersions[agent.id];
+      const extraEnv = env[agent.id];
+      const versioned = agent.builtIn && version ? withAdapterVersion(agent, version) : agent;
+      return extraEnv && Object.keys(extraEnv).length > 0
+        ? { ...versioned, env: { ...versioned.env, ...extraEnv } }
+        : versioned;
+    });
+  }
+
+  /** The built-in definition before any override, for "reset" buttons. */
+  builtIn(id: string): AgentDefinition | undefined {
+    return BUILT_IN_AGENTS.find((a) => a.id === id);
   }
 
   get(id: string): AgentDefinition | undefined {

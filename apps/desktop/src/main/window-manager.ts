@@ -1,6 +1,13 @@
 import { realpathSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { BrowserWindow, screen, shell, type BrowserWindowConstructorOptions, type WebContents } from 'electron';
+import {
+  BrowserWindow,
+  screen,
+  session,
+  shell,
+  type BrowserWindowConstructorOptions,
+  type WebContents,
+} from 'electron';
 import {
   addRecentProject,
   CommandId,
@@ -78,6 +85,10 @@ const FOCUS_APP_COMMANDS: ReadonlySet<string> = new Set([
   CommandId.browserFocusUrl,
   CommandId.agentNewThread,
   CommandId.openSettings,
+  CommandId.switchProject,
+  CommandId.agentShowAttention,
+  CommandId.focusNextPanel,
+  CommandId.focusPreviousPanel,
 ]);
 const BOUNDS_SAVE_DELAY_MS = 500;
 
@@ -191,12 +202,14 @@ export class ProjectWindow {
     terminalFocused: boolean;
     designActive?: boolean | undefined;
     textEditing?: boolean | undefined;
+    recording?: boolean | undefined;
   }): void {
     this.context = {
       modeActive: context.modeActive,
       terminalFocused: context.terminalFocused,
       designActive: context.designActive === true,
       textEditing: context.textEditing === true,
+      recording: context.recording === true,
     };
   }
 
@@ -224,11 +237,24 @@ export class ProjectWindow {
     this.startAgentMode(path);
     this.startDesignMode(path);
     this.startWorkspace(path);
+    const openedAt = Date.now();
     this.options.settings.update((s) => ({
       ...s,
-      recentProjects: addRecentProject(s.recentProjects, { path, name: basename(path), openedAt: Date.now() }),
+      recentProjects: addRecentProject(s.recentProjects, { path, name: basename(path), openedAt }),
+      projects: { ...s.projects, [path]: { ...s.projects[path], openedAt } },
     }));
     this.emitProject();
+    this.manager.projectsChanged();
+  }
+
+  /** Clears cookies, storage and cache of the project partition, then reloads the page. */
+  async resetBrowserData(): Promise<void> {
+    if (!this.project) throw new Error('Open a project first');
+    const partition = session.fromPartition(browserPartition(this.project.path));
+    await partition.clearStorageData();
+    await partition.clearCache();
+    await partition.clearAuthCache();
+    this.browser?.action('reload');
   }
 
   closeProject(): void {
@@ -244,6 +270,7 @@ export class ProjectWindow {
     this.window.setTitle('Arbora');
     this.rebuildKeybindings();
     this.emitProject();
+    this.manager.projectsChanged();
   }
 
   saveLayout(layout: LayoutState): void {
@@ -394,6 +421,7 @@ export class ProjectWindow {
       mcpTransport: process.env['ARBORA_MCP_TRANSPORT'] === 'stdio' ? 'stdio' : 'auto',
       events: {
         threadsChanged: (threads) => sendEvent(app, 'agent.threadsChanged', { threads }),
+        groupsChanged: (groups) => sendEvent(app, 'agent.groupsChanged', { groups }),
         threadEvents: (threadId, changes) => sendEvent(app, 'agent.threadEvents', { threadId, changes }),
         threadState: (threadId, state) => sendEvent(app, 'agent.threadState', { threadId, state }),
         log: (threadId, entry) => sendEvent(app, 'agent.log', { threadId, entry }),
@@ -601,6 +629,8 @@ export class ProjectWindow {
         nodeIntegration: false,
         webSecurity: true,
         spellcheck: false,
+        // Agent sounds play when a turn ends, which is never right after a click.
+        autoplayPolicy: 'no-user-gesture-required',
       },
     };
   }
@@ -635,6 +665,7 @@ export class ProjectWindow {
   private dispose(): void {
     // Forget first: disposing saves settings, and settings listeners walk every live window.
     this.manager.forget(this);
+    this.manager.projectsChanged();
     clearTimeout(this.boundsTimer);
     this.stopBrowser();
     this.stopTerminals();
@@ -709,5 +740,22 @@ export class WindowManager {
 
   forget(projectWindow: ProjectWindow): void {
     this.windows.delete(projectWindow);
+    for (const listener of this.closedListeners) listener(projectWindow);
+  }
+
+  private readonly projectListeners = new Set<() => void>();
+  private readonly closedListeners = new Set<(w: ProjectWindow) => void>();
+
+  /** A window opened or closed a project (the Projects page shows which are open). */
+  onProjectsChanged(listener: () => void): void {
+    this.projectListeners.add(listener);
+  }
+
+  onWindowClosed(listener: (w: ProjectWindow) => void): void {
+    this.closedListeners.add(listener);
+  }
+
+  projectsChanged(): void {
+    for (const listener of this.projectListeners) listener();
   }
 }

@@ -43,7 +43,7 @@ export function useKeybindingDispatch(): void {
   useEffect(() => {
     activeTable = table;
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.defaultPrevented) return;
+      if (event.defaultPrevented || useApp.getState().recordingShortcut) return;
       const binding = bindingForEvent(event);
       if (!binding) return;
       event.preventDefault();
@@ -89,12 +89,14 @@ export function useKeybindingContextSync(): void {
   const terminalFocused = useApp((s) => s.terminalFocused);
   const designActive = useApp((s) => s.mode.kind === 'design');
   const textEditing = useApp((s) => s.design.textEditing);
+  const recording = useApp((s) => s.recordingShortcut);
   useEffect(() => {
     void window.arbora.invoke('keybindings.setContext', {
       modeActive: active,
       terminalFocused,
       designActive,
       textEditing,
+      recording,
     });
-  }, [active, terminalFocused, designActive, textEditing]);
+  }, [active, terminalFocused, designActive, textEditing, recording]);
 }

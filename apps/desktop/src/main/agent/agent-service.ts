@@ -37,6 +37,7 @@ import {
   type AcpLogEntry,
   type AgentAvailability,
   type AgentDefinition,
+  type AgentGroup,
   type Attachment,
   type AuthMethod,
   type ContentBlock,
@@ -53,10 +54,11 @@ import {
 import type { TerminalService } from '../terminal/terminal-service.js';
 import { AgentTerminals } from './agent-terminals.js';
 import { attachmentBlocks } from './attachments.js';
-import { ThreadStore } from './thread-store.js';
+import { AgentGroupStore, ThreadStore } from './thread-store.js';
 
 export interface AgentServiceEvents {
   threadsChanged(threads: ThreadSummary[]): void;
+  groupsChanged(groups: AgentGroup[]): void;
   threadEvents(threadId: string, changes: ThreadChange[]): void;
   threadState(threadId: string, state: ThreadState): void;
   log(threadId: string, entry: AcpLogEntry): void;
@@ -167,11 +169,13 @@ class AgentStoppedError extends AgentServiceError {
 export class AgentService {
   private readonly records = new Map<string, ThreadRecord>();
   private readonly store: ThreadStore;
+  private readonly groups: AgentGroupStore;
   private readonly now: () => number;
   private disposed = false;
 
   constructor(private readonly options: AgentServiceOptions) {
     this.store = new ThreadStore(options.projectPath);
+    this.groups = new AgentGroupStore(options.projectPath);
     this.now = options.now ?? (() => Date.now());
     for (const summary of this.store.list()) {
       const thread = this.store.load(summary.id);
@@ -195,10 +199,11 @@ export class AgentService {
   }
 
   /** `model` overrides the user's default model for this agent in the new session. */
-  createThread(agentId: string, model?: string): ThreadSummary {
+  createThread(agentId: string, model?: string, groupId?: string | null): ThreadSummary {
     const agent = this.options.registry.get(agentId);
     if (!agent) throw new AgentServiceError(`Unknown agent ${agentId}`);
     const now = this.now();
+    const known = groupId != null && this.groups.list().some((g) => g.id === groupId);
     const thread: Thread = {
       id: randomUUID(),
       agentId,
@@ -207,6 +212,8 @@ export class AgentService {
       updatedAt: now,
       sessionId: null,
       autoApproveEdits: false,
+      groupId: known ? groupId : null,
+      pinned: false,
       state: idleThreadState(),
       events: [],
     };
@@ -233,6 +240,47 @@ export class AgentService {
   renameThread(threadId: string, title: string): void {
     const record = this.require(threadId);
     record.thread = { ...record.thread, title, updatedAt: this.now() };
+    this.scheduleSave(record);
+    this.emitThreads();
+  }
+
+  // --- Agent groups --------------------------------------------------------------------------
+
+  listGroups(): AgentGroup[] {
+    return this.groups.list();
+  }
+
+  /** Replaces the groups; threads whose group was removed become ungrouped. */
+  saveGroups(groups: AgentGroup[]): AgentGroup[] {
+    const ids = new Set(groups.map((g) => g.id));
+    if (ids.size !== groups.length) throw new AgentServiceError('Agent group ids must be unique');
+    const saved = this.groups.save(groups);
+    let orphaned = false;
+    for (const record of this.records.values()) {
+      if (record.thread.groupId !== null && !ids.has(record.thread.groupId)) {
+        record.thread = { ...record.thread, groupId: null };
+        this.scheduleSave(record);
+        orphaned = true;
+      }
+    }
+    if (!this.disposed) this.options.events.groupsChanged(saved);
+    if (orphaned) this.emitThreads();
+    return saved;
+  }
+
+  setThreadGroup(threadId: string, groupId: string | null): void {
+    const record = this.require(threadId);
+    if (groupId !== null && !this.groups.list().some((g) => g.id === groupId)) {
+      throw new AgentServiceError(`Unknown agent group ${groupId}`);
+    }
+    record.thread = { ...record.thread, groupId };
+    this.scheduleSave(record);
+    this.emitThreads();
+  }
+
+  setThreadPinned(threadId: string, pinned: boolean): void {
+    const record = this.require(threadId);
+    record.thread = { ...record.thread, pinned };
     this.scheduleSave(record);
     this.emitThreads();
   }

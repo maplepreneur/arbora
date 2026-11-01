@@ -102,6 +102,7 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
       },
       events: {
         threadsChanged: (threads) => (h.threads = threads),
+        groupsChanged: () => undefined,
         threadEvents: (threadId, changes) => h.changes.set(threadId, [...(h.changes.get(threadId) ?? []), ...changes]),
         threadState: (threadId, state) => h.states.set(threadId, [...(h.states.get(threadId) ?? []), state]),
         log: (_threadId, entry) => h.logs.push(entry),
@@ -116,6 +117,38 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
     const states = h.states.get(threadId);
     return states?.[states.length - 1];
   }
+
+  it('groups and pins threads, persists both, and ungroups threads of a removed group', async () => {
+    root = makeRoot();
+    const h = setup();
+    expect(h.service.listGroups()).toEqual([]);
+    h.service.saveGroups([
+      { id: 'ui', name: 'UI', color: 'blue', collapsed: false },
+      { id: 'api', name: 'API', color: 'green', collapsed: false },
+    ]);
+    const a = h.service.createThread(FAKE, undefined, 'ui');
+    const b = h.service.createThread(FAKE, undefined, 'missing');
+    expect(a.groupId).toBe('ui');
+    expect(b.groupId).toBeNull();
+    h.service.setThreadGroup(b.id, 'api');
+    h.service.setThreadPinned(a.id, true);
+    expect(() => h.service.setThreadGroup(a.id, 'nope')).toThrow(/Unknown agent group/);
+    expect(() =>
+      h.service.saveGroups([
+        { id: 'x', name: 'X', color: 'gray', collapsed: false },
+        { id: 'x', name: 'Y', color: 'gray', collapsed: false },
+      ]),
+    ).toThrow(/unique/);
+    h.service.saveGroups([{ id: 'ui', name: 'Frontend', color: 'purple', collapsed: true }]);
+    expect(h.threads.find((t) => t.id === b.id)?.groupId).toBeNull();
+    await h.service.dispose();
+
+    const reopened = setup();
+    expect(reopened.service.listGroups()).toEqual([{ id: 'ui', name: 'Frontend', color: 'purple', collapsed: true }]);
+    const restored = reopened.service.listThreads();
+    expect(restored.find((t) => t.id === a.id)).toMatchObject({ groupId: 'ui', pinned: true });
+    expect(restored.find((t) => t.id === b.id)).toMatchObject({ groupId: null, pinned: false });
+  });
 
   it('creates a thread, edits a file after a permission card is answered, and persists the transcript', async () => {
     root = makeRoot();
