@@ -1,12 +1,12 @@
 # Releasing Arbora
 
-Releases are GitHub Releases built by [`.github/workflows/release.yml`](../.github/workflows/release.yml). electron-updater reads the `latest*.yml` (and `beta*.yml`) files the build uploads next to the installers.
+Releases are GitHub Releases in the public repository `maplepreneur/arbora-releases`, built from this private repository by [`.github/workflows/release.yml`](../.github/workflows/release.yml). electron-updater reads the `latest*.yml` (and `beta*.yml`) files the build uploads next to the installers. One-time setup (the releases repository, the `RELEASES_TOKEN` secret, the `release` environment) and the website download page are in [WEBSITE_DOWNLOADS.md](./WEBSITE_DOWNLOADS.md).
 
 ## Cut a release
 
 1. Set `version` in `apps/desktop/package.json` (`0.2.0`, or `0.2.0-beta.1` for the beta channel) and commit it on `main`.
 2. Tag and push: `git tag v0.2.0 && git push origin v0.2.0`. The tag must match the version; the workflow checks.
-3. The workflow builds on Linux, macOS and Windows, signs what it has secrets for, and uploads everything to a **draft** release with `SHA256SUMS-<os>.txt` files.
+3. The workflow builds on Linux, macOS and Windows, signs what it has secrets for, and uploads everything to a **draft** release in `arbora-releases` with `SHA256SUMS-<os>.txt` files and versionless copies (`Arbora-<os>-<arch>.<ext>`) for stable `releases/latest/download/` links.
 4. The **Performance budget** job runs the packaged Linux build against `fixtures/plain-html`: idle memory (PSS over the whole process tree) 10 s after load under 350 MB, and the median `browser.screenshot` under 300 ms. It fails the release otherwise; today the packaged build measures about 374 MB on Xvfb (see the Stage 9 gotchas).
 5. The **AUR** job (stable versions only) writes `aur/PKGBUILD` and `.SRCINFO` for the new tarball and pushes them to `arbora-bin` when `AUR_SSH_KEY` is set. Without the key, download the `aur-arbora-bin` artifact and push it by hand.
 6. **Publish** waits for approval on the `release` environment (add required reviewers in the repository settings), then publishes the draft. A version with `-` is marked as a prerelease.
@@ -21,7 +21,7 @@ Arbora can ship with no Apple, Windows or AUR account; that is the current plan.
 - **Windows:** SmartScreen warns once (**More info → Run anyway**). Updates still install in place.
 - **macOS:** Gatekeeper blocks the first launch until the user clicks **Open Anyway** in System Settings → Privacy & Security. The app cannot update itself (Squirrel.Mac requires a Developer ID signature), so Arbora checks the app's own signature at startup (`codesign -dv`) and, without a team id, only tells the user to download the new `.dmg`. Apple silicon needs at least an ad-hoc signature to run; electron-builder applies one when no identity is configured. Check that on the first Mac build.
 
-Updates are read from wherever electron-updater can reach without logging in. For GitHub Releases the repository (or a separate public releases repository) must be public. To serve downloads from a website instead, set `publish` in `electron-builder.yml` to `{ provider: generic, url: https://<site>/arbora/downloads }` and upload each release's installers with its `latest.yml`, `latest-mac.yml`, `latest-linux.yml` (and `beta*.yml`) to that folder; the in-app check for `.deb`, tarball and unsigned macOS installs then also needs that URL instead of the GitHub API.
+Updates are read from wherever electron-updater can reach without logging in, which is why the installers go to the public `arbora-releases` repository while this one stays private. The website links to the files there ([WEBSITE_DOWNLOADS.md](./WEBSITE_DOWNLOADS.md)). To host the files on the website itself instead, set `publish` in `electron-builder.yml` to `{ provider: generic, url: https://<site>/arbora/downloads }` and upload each release's installers with its `latest.yml`, `latest-mac.yml`, `latest-linux.yml` (and `beta*.yml`) to that folder; the in-app check for `.deb`, tarball and unsigned macOS installs then also needs that URL instead of the GitHub API.
 
 ## Secrets
 

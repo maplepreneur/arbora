@@ -7,7 +7,7 @@ pkgver=0.0.1
 pkgrel=1
 pkgdesc='Design mode for coding agents: point at your running web app and describe the change'
 arch=('x86_64')
-url='https://github.com/maplepreneur/arbora'
+url='https://github.com/maplepreneur/arbora-releases'
 license=('LicenseRef-Arbora')
 depends=('gtk3' 'nss' 'alsa-lib' 'libxss' 'libxtst' 'libnotify' 'xdg-utils' 'at-spi2-core' 'util-linux-libs')
 optdepends=(
@@ -22,7 +22,7 @@ provides=('arbora')
 conflicts=('arbora')
 options=('!strip' '!debug')
 source=(
-  "arbora-${pkgver}-linux-x64.tar.gz::https://github.com/maplepreneur/arbora/releases/download/v${pkgver}/arbora-${pkgver}-linux-x64.tar.gz"
+  "arbora-${pkgver}-linux-x64.tar.gz::https://github.com/maplepreneur/arbora-releases/releases/download/v${pkgver}/arbora-${pkgver}-linux-x64.tar.gz"
   'arbora.sh'
   'arbora.desktop'
   'arbora.svg'

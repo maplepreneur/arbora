@@ -45,7 +45,7 @@ Electron needs a notification daemon (mako, dunst, swaync; Omarchy ships mako). 
 
 ## Does Arbora send anything anywhere?
 
-No telemetry, no crash upload. Crash dumps and `logs/main.log` stay in the user-data folder. **Export Diagnostics…** writes a zip you can attach to a bug report yourself; it removes agent environment values, tokens and your home folder path. Update checks ask GitHub Releases and can be turned off in Settings → Updates & diagnostics.
+No telemetry, no crash upload. Crash dumps and `logs/main.log` stay in the user-data folder. **Export Diagnostics…** writes a zip you can attach to a bug report yourself; it removes agent environment values, tokens and your home folder path. Update checks ask GitHub Releases (the public `maplepreneur/arbora-releases` repository) and can be turned off in Settings → Updates & diagnostics.
 
 ## Where are settings, threads and screenshots?
 

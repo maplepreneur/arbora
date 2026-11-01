@@ -153,7 +153,12 @@ export const updateStateSchema = z.discriminatedUnion('status', [
 ]);
 export type UpdateState = z.infer<typeof updateStateSchema>;
 
-export const UPDATE_REPOSITORY = { owner: 'maplepreneur', repo: 'arbora' } as const;
+/**
+ * Installers are published to a separate public repository, so the source repository can stay
+ * private while the updater, the website's download page and the AUR package read releases
+ * without a login (docs/WEBSITE_DOWNLOADS.md).
+ */
+export const UPDATE_REPOSITORY = { owner: 'maplepreneur', repo: 'arbora-releases' } as const;
 
 export function releasePageUrl(version: string): string {
   return `https://github.com/${UPDATE_REPOSITORY.owner}/${UPDATE_REPOSITORY.repo}/releases/tag/v${version.replace(/^v/, '')}`;

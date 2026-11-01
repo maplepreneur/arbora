@@ -4,7 +4,7 @@ Arbora is a cross-platform desktop app (Linux, macOS, Windows) for building web 
 
 ## Install
 
-Download the build for your OS from the [GitHub releases](https://github.com/maplepreneur/arbora/releases). The first launch opens **Getting started**, which takes you from an empty window to a working `Mod+K` prompt: open a project, start its dev server, connect an agent, check the two mode shortcuts, and choose notifications and sounds. Run it again any time from the command palette (**Getting Started…**) or Settings → Updates & diagnostics.
+Download the build for your OS from the [releases](https://github.com/maplepreneur/arbora-releases/releases/latest) (installers live in the public `arbora-releases` repository; see [docs/WEBSITE_DOWNLOADS.md](docs/WEBSITE_DOWNLOADS.md) for the setup and the website download page). The first launch opens **Getting started**, which takes you from an empty window to a working `Mod+K` prompt: open a project, start its dev server, connect an agent, check the two mode shortcuts, and choose notifications and sounds. Run it again any time from the command palette (**Getting Started…**) or Settings → Updates & diagnostics.
 
 | OS | File | Install | Updates |
 | --- | --- | --- | --- |

@@ -68,7 +68,7 @@ describe('pickRelease', () => {
     expect(pickRelease(releases, '0.1.0', 'latest')?.tag_name).toBe('v0.2.0');
     expect(pickRelease(releases, '0.1.0', 'beta')?.tag_name).toBe('v0.2.1-beta.1');
     expect(pickRelease(releases, '0.2.0', 'latest')).toBeNull();
-    expect(releasePageUrl('v0.2.0')).toBe('https://github.com/maplepreneur/arbora/releases/tag/v0.2.0');
+    expect(releasePageUrl('v0.2.0')).toBe('https://github.com/maplepreneur/arbora-releases/releases/tag/v0.2.0');
   });
 });
 
