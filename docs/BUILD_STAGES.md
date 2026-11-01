@@ -772,7 +772,7 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - [x] Agent groups and pinned threads (`F-AGENT-12`)
 - [x] Projects page, project groups and **Switch Project…** (`F-SHELL-07`)
 - [x] Unit tests (attention, projects, keybinding editor, updates, settings patches, registry overrides, redaction, agent groups) and `e2e/polish.spec.ts`
-- [ ] Fresh installs on Debian, Arch via AUR (Omarchy/Hyprland), macOS and Windows reach a `Mod+K` prompt through onboarding (`arch-ok`). Debian-family done 1 Nov 2026: the `.deb` from current `main` installed with `apt` on Ubuntu 24.04 (Xvfb, sandbox on, `installKind: deb`), and onboarding detected `npm run dev`, started it, registered `Ctrl+K`, and Finish entered agent mode on `http://localhost:5500/`. Arch/AUR, macOS and Windows are not checked.
+- [ ] Fresh installs on Debian, Arch via AUR (Omarchy/Hyprland), macOS and Windows reach a `Mod+K` prompt through onboarding (`arch-ok`). Debian-family done 1 Nov 2026: the `.deb` from current `main` installed with `apt` on Ubuntu 24.04 (Xvfb, sandbox on, `installKind: deb`), and onboarding detected `npm run dev`, started it, registered `Ctrl+K`, and Finish entered agent mode on `http://localhost:5500/`. The AUR layout was checked without pacman (no Arch container here): `aur/PKGBUILD`'s `package()` run in bash on the current tarball gives `/opt/arbora` with `chrome-sandbox` 4755, `/usr/bin/arbora` and a valid `.desktop` file, and the installed copy started through the wrapper sandboxed with `installKind: aur`. Still not checked: `makepkg` and an AUR helper on Arch/Omarchy, macOS and Windows.
 - [ ] A signed and notarized release from a tag
 
 ---
