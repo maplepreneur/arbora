@@ -7,7 +7,7 @@ Releases are GitHub Releases built by [`.github/workflows/release.yml`](../.gith
 1. Set `version` in `apps/desktop/package.json` (`0.2.0`, or `0.2.0-beta.1` for the beta channel) and commit it on `main`.
 2. Tag and push: `git tag v0.2.0 && git push origin v0.2.0`. The tag must match the version; the workflow checks.
 3. The workflow builds on Linux, macOS and Windows, signs what it has secrets for, and uploads everything to a **draft** release with `SHA256SUMS-<os>.txt` files.
-4. The **Performance budget** job runs the packaged Linux build against `fixtures/plain-html`: idle RSS after 10 s under 350 MB, and the median `browser.screenshot` under 300 ms. It fails the release otherwise.
+4. The **Performance budget** job runs the packaged Linux build against `fixtures/plain-html`: idle memory (PSS over the whole process tree) 10 s after load under 350 MB, and the median `browser.screenshot` under 300 ms. It fails the release otherwise; today the packaged build measures about 374 MB on Xvfb (see the Stage 9 gotchas).
 5. The **AUR** job (stable versions only) writes `aur/PKGBUILD` and `.SRCINFO` for the new tarball and pushes them to `arbora-bin` when `AUR_SSH_KEY` is set. Without the key, download the `aur-arbora-bin` artifact and push it by hand.
 6. **Publish** waits for approval on the `release` environment (add required reviewers in the repository settings), then publishes the draft. A version with `-` is marked as a prerelease.
 

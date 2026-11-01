@@ -1,9 +1,20 @@
+import { lazy, Suspense } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useAgents } from '../agent-store';
 import { useApp } from '../store';
 import { AgentPicker } from './agent/AgentPicker';
 import { ThreadList } from './agent/ThreadList';
-import { ThreadView } from './agent/ThreadView';
+
+// The transcript (Markdown, highlight.js grammars, diffs) loads with the first open thread.
+const ThreadView = lazy(() => import('./agent/ThreadView'));
+
+function ThreadFallback() {
+  return (
+    <div className="flex flex-1 items-center justify-center text-fg-subtle">
+      <Loader2 size={14} className="animate-spin" />
+    </div>
+  );
+}
 
 export default function AgentPanel() {
   const projectPath = useApp((s) => s.project?.path ?? '');
@@ -26,7 +37,13 @@ export default function AgentPanel() {
       case 'picker':
         return <AgentPicker />;
       case 'thread':
-        return thread ? <ThreadView thread={thread} projectPath={projectPath} /> : <ThreadList />;
+        return thread ? (
+          <Suspense fallback={<ThreadFallback />}>
+            <ThreadView thread={thread} projectPath={projectPath} />
+          </Suspense>
+        ) : (
+          <ThreadList />
+        );
       default: {
         const unreachable: never = view;
         return unreachable;

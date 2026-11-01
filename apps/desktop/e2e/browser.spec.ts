@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import type { NavigationState, ScreenshotResult } from '@arbora/shared';
@@ -395,12 +395,51 @@ test.describe('Stage 1 browser panel', () => {
     }
   });
 
-  test('loads the bundled React DevTools into the browser session', async () => {
+  function pageExtensions(app: ElectronApplication): Promise<string[]> {
+    return app.evaluate(({ webContents }) => {
+      const pageContents = webContents
+        .getAllWebContents()
+        .find((wc) => wc.session.storagePath?.includes('arbora-browser-') && !wc.getURL().startsWith('devtools:'));
+      return pageContents?.session.extensions.getAllExtensions().map((e) => e.name) ?? [];
+    });
+  }
+
+  test('loads the DevTools extensions the first time page DevTools opens, then reloads the page', async () => {
     test.skip(
       !existsSync(join(DESKTOP_ROOT, 'resources/extensions/react-devtools/manifest.json')),
       'DevTools extensions not fetched (pnpm --filter @arbora/desktop extensions)',
     );
     const { app, page } = await launchWithFixture();
+    try {
+      await openUrl(page, vite.url, FIXTURE_TITLE);
+      expect(await pageExtensions(app)).toEqual([]);
+      await inPage(app, 'window.__beforeDevTools = 1');
+      await roomForToolbar(page);
+      await page.getByTestId('browser-devtools').click();
+      await expect.poll(async () => (await browserState(page))?.devToolsOpen).toBe(true);
+      await expect.poll(async () => (await pageExtensions(app)).join(' ')).toMatch(/React Developer Tools/);
+      // The reload installs the hook before React boots.
+      await expect.poll(() => inPage(app, 'typeof window.__beforeDevTools')).toBe('undefined');
+      await expect
+        .poll(() => inPage<number>(app, 'window.__REACT_DEVTOOLS_GLOBAL_HOOK__?.renderers?.size ?? 0'))
+        .toBeGreaterThan(0);
+      await page.getByTestId('browser-devtools').click();
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('loads the bundled React DevTools into the browser session at startup when set', async () => {
+    test.skip(
+      !existsSync(join(DESKTOP_ROOT, 'resources/extensions/react-devtools/manifest.json')),
+      'DevTools extensions not fetched (pnpm --filter @arbora/desktop extensions)',
+    );
+    const userData = tempUserData();
+    writeFileSync(
+      join(userData, 'settings.json'),
+      JSON.stringify({ version: 3, browser: { devToolsExtensionsLoad: 'startup' } }),
+    );
+    const { app, page } = await launchWithFixture(userData);
     try {
       await openUrl(page, vite.url, FIXTURE_TITLE);
       const names = await app.evaluate(({ webContents }) => {

@@ -84,7 +84,11 @@ describe('loadSettings', () => {
     expect(warnings).toEqual([]);
     expect(settings.version).toBe(SETTINGS_VERSION);
     expect(settings.theme).toBe('dark');
-    expect(settings.browser).toEqual({ devToolsExtensions: true, trustLocalhostCertificates: true });
+    expect(settings.browser).toEqual({
+      devToolsExtensions: true,
+      devToolsExtensionsLoad: 'onDemand',
+      trustLocalhostCertificates: true,
+    });
     expect(settings.projects['/p']?.browser).toBeUndefined();
   });
 
@@ -258,7 +262,11 @@ describe('Stage 9 settings', () => {
     expect(next.sounds).toEqual({ ...current.sounds, volume: 20 });
     expect(next.notifications.finished).toBe(false);
     expect(next.updates.channel).toBe('beta');
-    expect(next.browser).toEqual({ devToolsExtensions: true, trustLocalhostCertificates: false });
+    expect(next.browser).toEqual({
+      devToolsExtensions: true,
+      devToolsExtensionsLoad: 'onDemand',
+      trustLocalhostCertificates: false,
+    });
     expect(next.terminal.fontSize).toBe(15);
     expect(next.agents.adapterVersions).toEqual({ codex: 'latest' });
     expect(next.projectGroups).toHaveLength(1);

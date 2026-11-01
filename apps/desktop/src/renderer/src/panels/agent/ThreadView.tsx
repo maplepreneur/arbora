@@ -77,7 +77,7 @@ function AuthCard({ thread }: { thread: ThreadSummary }) {
   );
 }
 
-export function ThreadView({ thread, projectPath }: { thread: ThreadSummary; projectPath: string }) {
+export default function ThreadView({ thread, projectPath }: { thread: ThreadSummary; projectPath: string }) {
   const events = useAgents((s) => s.events[thread.id]);
   const logOpen = useAgents((s) => s.logOpen);
   const agentName = useAgents((s) => s.agents.find((a) => a.id === thread.agentId)?.name ?? thread.agentId);

@@ -33,6 +33,8 @@ export interface BrowserSessionsOptions {
 export class BrowserSessions {
   private readonly prepared = new Map<string, Promise<Session>>();
   private readonly sessions = new Set<Session>();
+  /** Sessions whose page DevTools were opened, so on-demand extensions belong there now. */
+  private readonly demanded = new Set<Session>();
   private applied: string;
 
   constructor(private readonly options: BrowserSessionsOptions) {
@@ -58,6 +60,27 @@ export class BrowserSessions {
     if (next === this.applied) return;
     this.applied = next;
     for (const pending of this.prepared.values()) await this.syncExtensions(await pending);
+  }
+
+  /**
+   * Loads the DevTools extensions into `ses` if they are wanted and not loaded yet (on-demand
+   * mode). Resolves true when something was loaded, which means the page must reload for React
+   * DevTools to hook in before React boots.
+   */
+  async ensureExtensions(ses: Session): Promise<boolean> {
+    this.demanded.add(ses);
+    const before = new Set(ses.extensions.getAllExtensions().map((e) => e.id));
+    await this.syncExtensions(ses);
+    const added = ses.extensions.getAllExtensions().filter((e) => !before.has(e.id));
+    if (added.length === 0) return false;
+    // React DevTools registers its hook script from its service worker once that worker runs; a
+    // reload before then would load the page without the hook.
+    await waitFor(() => {
+      const scopes = Object.values(ses.serviceWorkers.getAllRunning()).map((w) => w.scope);
+      return added.every((e) => scopes.some((scope) => scope.startsWith(`chrome-extension://${e.id}/`)));
+    }, 5000);
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 500));
+    return true;
   }
 
   dispose(): void {
@@ -91,7 +114,9 @@ export class BrowserSessions {
   };
 
   private async syncExtensions(ses: Session): Promise<void> {
-    const wanted = this.options.settings().devToolsExtensions;
+    const settings = this.options.settings();
+    const wanted =
+      settings.devToolsExtensions && (settings.devToolsExtensionsLoad === 'startup' || this.demanded.has(ses));
     const loaded = ses.extensions.getAllExtensions();
     if (!wanted) {
       for (const extension of loaded) ses.extensions.removeExtension(extension.id);
@@ -107,4 +132,9 @@ export class BrowserSessions {
       }
     }
   }
+}
+
+async function waitFor(check: () => boolean, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!check() && Date.now() < deadline) await new Promise((resolveTick) => setTimeout(resolveTick, 50));
 }

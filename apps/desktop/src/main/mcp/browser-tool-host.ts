@@ -17,7 +17,7 @@ import {
   type TerminalRunResult,
   type ToolPolicy,
   type ViewportRequest,
-} from '@arbora/mcp-browser-server';
+} from '@arbora/mcp-browser-server/host';
 import { resolveInsideRoot } from '@arbora/acp-client';
 import {
   stripAnsi,

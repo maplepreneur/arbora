@@ -149,6 +149,12 @@ export const SETTINGS_VERSION = 3;
 export const browserSettingsSchema = z.object({
   /** Load the bundled React and Vue DevTools into the browser panel's session. */
   devToolsExtensions: z.boolean().default(true),
+  /**
+   * `onDemand` loads them the first time page DevTools opens (the page reloads once so React
+   * DevTools can install its hook); `startup` loads them before the first page. Each extension's
+   * service worker keeps a ~22 MB renderer process alive, so on demand is the default.
+   */
+  devToolsExtensionsLoad: z.enum(['onDemand', 'startup']).default('onDemand'),
   /** Accept self-signed certificates from localhost dev servers (Vite `https: true`, mkcert, ...). */
   trustLocalhostCertificates: z.boolean().default(true),
 });

@@ -87,6 +87,8 @@ export interface BrowserServiceOptions {
   /** Installs the keybinding interceptor on the page; returns a disposer. */
   readonly attachInterceptor: (contents: WebContents) => () => void;
   readonly saveState: (state: ProjectBrowserState) => void;
+  /** Runs before page DevTools open; true means extensions were just loaded and the page must reload. */
+  readonly beforeDevTools?: () => Promise<boolean>;
 }
 
 interface Metrics {
@@ -248,6 +250,16 @@ export class BrowserService {
     this.releaseFocusGuard = release;
   }
 
+  private async openDevTools(contents: WebContents): Promise<void> {
+    try {
+      const reload = (await this.options.beforeDevTools?.()) ?? false;
+      if (reload && /^https?:/.test(contents.getURL())) contents.reload();
+    } catch (error) {
+      console.warn(`[browser] DevTools extensions: ${(error as Error).message}`);
+    }
+    if (!contents.isDestroyed() && !contents.isDevToolsOpened()) contents.openDevTools({ mode: 'detach' });
+  }
+
   action(action: BrowserAction): void {
     const contents = this.contents;
     switch (action) {
@@ -273,7 +285,7 @@ export class BrowserService {
         break;
       case 'toggleDevTools':
         if (contents.isDevToolsOpened()) contents.closeDevTools();
-        else contents.openDevTools({ mode: 'detach' });
+        else void this.openDevTools(contents);
         break;
       case 'zoomIn':
         this.setZoom(stepZoom(this.state.zoomFactor, 1));

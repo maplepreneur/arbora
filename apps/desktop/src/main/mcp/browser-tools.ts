@@ -1,12 +1,12 @@
 import type { McpServer } from '@agentclientprotocol/sdk';
 import {
-  BrowserMcpServer,
   MCP_SERVER_NAME,
   SHIM_TOKEN_ENV,
   type BrowserToolHost,
   type McpActivity,
-} from '@arbora/mcp-browser-server';
+} from '@arbora/mcp-browser-server/host';
 import type { McpAttachment } from '../agent/agent-service.js';
+import { loadBrowserMcpServer } from '../lazy/mcp-server.js';
 
 /** How agents without HTTP MCP start the stdio shim: Arbora's own executable in Node mode. */
 export interface ShimCommand {
@@ -44,6 +44,7 @@ export async function openBrowserTools(
   onActivity?: (activity: McpActivity) => void,
 ): Promise<McpAttachment> {
   let listed = false;
+  const BrowserMcpServer = await loadBrowserMcpServer();
   const server = new BrowserMcpServer({
     host,
     version,

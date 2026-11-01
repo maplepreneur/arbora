@@ -135,7 +135,7 @@ jobs:
           mkdir -p packaged
           tar -xzf dist/*.tar.gz -C packaged --strip-components=1
           sudo chown root packaged/chrome-sandbox && sudo chmod 4755 packaged/chrome-sandbox
-      - name: Idle RSS and screenshot latency
+      - name: Idle memory and screenshot latency
         run: xvfb-run -a pnpm --filter @arbora/desktop perf
         env:
           ARBORA_APP: ${{ github.workspace }}/packaged/arbora

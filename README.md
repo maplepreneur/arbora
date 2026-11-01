@@ -78,7 +78,7 @@ You can also start the dev server from Arbora itself. The **Terminal** tab (`Ctr
 
 Agents can see and drive the browser panel themselves (Stage 5). Every agent thread gets its own `arbora-browser` MCP server: Streamable HTTP on `127.0.0.1` with a random port and a per-session bearer token, or a stdio shim (Arbora's own executable in Node mode) for agents whose `initialize` does not advertise HTTP MCP. Its tools cover navigation, accessibility snapshots with `ref`s, screenshots, console and network errors, element sources, real mouse and keyboard input through CDP, viewport emulation, and the dev server (status, logs, restart) and short terminal commands. The first prompt of a thread tells the agent to verify its own changes, and `.arbora/SKILL.md` holds the full guide. Screenshots the agent takes show up as thumbnails in the thread. Leaving the dev server's origin asks once per origin; `browser_evaluate` and `terminal_run` ask once per session unless `.arbora/project.json` sets `"browserTools": { "evaluate": "allow" | "deny" | "ask", "terminalRun": … }` (the "Always"/"Never" answers write it for you). `ARBORA_MCP_TRANSPORT=stdio` sends every agent through the shim, for agents whose HTTP MCP client misbehaves.
 
-The browser panel loads React DevTools and Vue DevTools into the page's DevTools (`Mod+Alt+I`). `pnpm dev` and `pnpm e2e` download them from the Chrome Web Store on first run and check them against the SHA-256 pins in `apps/desktop/resources/extensions/extensions.json`; offline, they are skipped with a warning. `pnpm --filter @arbora/desktop extensions:update` re-pins them to the current store versions.
+The browser panel loads React DevTools and Vue DevTools into the page's DevTools (`Mod+Alt+I`). They load the first time you open page DevTools, and the page reloads once so React DevTools can hook in; set `"browser": { "devToolsExtensionsLoad": "startup" }` (Settings → Browser) to load them before every page instead, at about 45 MB. `pnpm dev` and `pnpm e2e` download them from the Chrome Web Store on first run and check them against the SHA-256 pins in `apps/desktop/resources/extensions/extensions.json`; offline, they are skipped with a warning. `pnpm --filter @arbora/desktop extensions:update` re-pins them to the current store versions.
 
 ### Agents, groups and notifications
 
@@ -95,7 +95,7 @@ pnpm test             # Vitest unit tests (pnpm test:watch while developing)
 pnpm e2e              # builds once, then runs the Playwright-for-Electron smoke tests
 ```
 
-CI runs all four on Linux, macOS and Windows. On a headless Linux box, run the e2e tests under a virtual display: `xvfb-run -a pnpm e2e`. `pnpm perf` checks the performance budget (idle RSS under 350 MB with the fixture loaded, screenshot under 300 ms) against `out/`, or against a packaged build with `ARBORA_APP=/path/to/arbora`.
+CI runs all four on Linux, macOS and Windows. On a headless Linux box, run the e2e tests under a virtual display: `xvfb-run -a pnpm e2e`. `pnpm perf` checks the performance budget (idle memory as PSS under 350 MB with the fixture loaded, screenshot under 300 ms) against `out/` (run `pnpm build` first), or against a packaged build with `ARBORA_APP=/path/to/arbora`. Linux only.
 
 ### 6. Build installers (optional)
 

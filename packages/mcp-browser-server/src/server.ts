@@ -6,10 +6,9 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import type { BrowserToolHost } from './host.js';
 import { registerBrowserTools, ToolContext } from './tools.js';
 
-export const MCP_SERVER_NAME = 'arbora-browser';
-export const MCP_PATH = '/mcp';
-/** The stdio shim's bearer token travels in the environment, not argv, so it does not show up in `ps`. */
-export const SHIM_TOKEN_ENV = 'ARBORA_MCP_TOKEN';
+import { MCP_PATH, MCP_SERVER_NAME } from './constants.js';
+
+export { MCP_PATH, MCP_SERVER_NAME, SHIM_TOKEN_ENV } from './constants.js';
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 
 /** What the server saw from the agent, so Arbora can warn when an agent never loaded the tools. */

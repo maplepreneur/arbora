@@ -1,5 +1,5 @@
 import { net } from 'electron';
-import electronUpdater, { type AppUpdater, type ProgressInfo, type UpdateInfo } from 'electron-updater';
+import type { AppUpdater, ProgressInfo, UpdateInfo } from 'electron-updater';
 import {
   canSelfUpdate,
   manualUpdateHint,
@@ -12,6 +12,7 @@ import {
   type UpdateSettings,
   type UpdateState,
 } from '@arbora/shared';
+import { loadAutoUpdater } from './lazy/updater.js';
 
 export interface UpdateServiceOptions {
   readonly kind: InstallKind;
@@ -59,7 +60,7 @@ export class UpdateService {
     if (this.state.status === 'checking' || this.state.status === 'downloading') return this.state;
     this.set({ status: 'checking' });
     try {
-      if (canSelfUpdate(this.options.kind)) await this.selfUpdater().checkForUpdates();
+      if (canSelfUpdate(this.options.kind)) await (await this.selfUpdater()).checkForUpdates();
       else await this.checkManually();
     } catch (error) {
       this.set({ status: 'error', message: (error as Error).message });
@@ -69,11 +70,11 @@ export class UpdateService {
 
   async download(): Promise<void> {
     if (!canSelfUpdate(this.options.kind) || this.state.status !== 'available') return;
-    await this.selfUpdater().downloadUpdate();
+    await (await this.selfUpdater()).downloadUpdate();
   }
 
   install(): void {
-    if (this.state.status === 'ready') this.selfUpdater().quitAndInstall();
+    if (this.state.status === 'ready') this.updater?.quitAndInstall();
   }
 
   dispose(): void {
@@ -86,11 +87,11 @@ export class UpdateService {
     this.options.emit(state);
   }
 
-  private selfUpdater(): AppUpdater {
+  private async selfUpdater(): Promise<AppUpdater> {
     const settings = this.options.settings();
     if (!this.updater) {
       // The getter picks the platform updater (Mac, NSIS, AppImage) on first access.
-      const updater = electronUpdater.autoUpdater;
+      const updater = await loadAutoUpdater();
       updater.logger = null;
       updater.autoInstallOnAppQuit = true;
       updater.on('update-available', (info: UpdateInfo) => {

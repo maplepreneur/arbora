@@ -345,6 +345,7 @@ export class ProjectWindow {
           }),
         ),
       saveState: (browser) => this.saveBrowserState(projectPath, browser),
+      beforeDevTools: () => this.options.browserSessions.ensureExtensions(session),
     });
     this.browser.setBounds(this.browserBounds.rect, this.browserBounds.emulation);
   }

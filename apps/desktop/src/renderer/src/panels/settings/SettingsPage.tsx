@@ -6,7 +6,7 @@ import { executeCommand } from '../../commands';
 import { updateSettings } from '../../settings-client';
 import { useApp, type SettingsSection } from '../../store';
 import { AgentsSection } from './AgentsSection';
-import { inputClass, SettingRow, Toggle } from './controls';
+import { inputClass, Segmented, SettingRow, Toggle } from './controls';
 import { KeyboardSection } from './KeyboardSection';
 import { NotificationsSection } from './NotificationsSection';
 import { ProjectSection } from './ProjectSection';
@@ -161,14 +161,26 @@ function BrowserSection() {
   const hasProject = useApp((s) => s.project !== null);
   return (
     <div>
-      <SettingRow
-        title="React and Vue DevTools"
-        detail="Load the bundled extensions into the browser panel. Applies after a restart."
-      >
+      <SettingRow title="React and Vue DevTools" detail="Load the bundled extensions into the browser panel.">
         <Toggle
           on={browser.devToolsExtensions}
           label="DevTools extensions"
           onChange={(on) => void updateSettings({ browser: { devToolsExtensions: on } })}
+        />
+      </SettingRow>
+      <SettingRow
+        title="Load DevTools extensions"
+        detail="When DevTools opens saves about 45 MB; the page reloads once the first time. At startup keeps them ready for every page."
+      >
+        <Segmented
+          label="When to load the DevTools extensions"
+          testId="setting-devtools-load"
+          value={browser.devToolsExtensionsLoad}
+          options={[
+            { value: 'onDemand', label: 'When DevTools opens' },
+            { value: 'startup', label: 'At startup' },
+          ]}
+          onChange={(devToolsExtensionsLoad) => void updateSettings({ browser: { devToolsExtensionsLoad } })}
         />
       </SettingRow>
       <SettingRow
