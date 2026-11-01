@@ -14,7 +14,7 @@ This document breaks [PLAN.md](./PLAN.md) into stages a coding agent can execute
 
 ## Progress
 
-**Now:** Stages 0–8 are `Done`. Stages 7 and 8 got `arch-ok` on Omarchy/Hyprland on 1 Nov 2026 (Hyprland 0.56.2), and Stage 8's scratch pull request is [PR #1](https://github.com/maplepreneur/arbora-stage8-scratch/pull/1). Stage 9 (Distribution and polish) is `In progress` on `main` as of 1 Nov 2026: onboarding, the full Settings UI with a shortcut editor, `electron-updater` with channels, signing and notarization config, the AUR package and release script, a tag-driven release workflow, diagnostics export, an accessibility pass and user docs, plus a Projects page with project groups, agent groups, and notifications and sounds when an agent needs you. 495 unit tests and 44 e2e tests pass locally. Left for Stage 9: the idle-memory budget on the packaged build (~374 MB against 350; ~345 MB on `out/`), the `arbora-releases` setup and the first unsigned release from a tag (Actions minutes), fresh-install checks per OS, and `arch-ok`. **Next:** Stage 10 (Grove), which reuses Stage 9's attention state, agent groups, Settings page and onboarding wizard. Stages 12, 13 (Themes) and 14 (Extensions) stay specified and not started. Shipping is commits on `main` (no PRs) until Actions minutes are back; see [AGENTS.md](../AGENTS.md#shipping).
+**Now:** Stages 0–8 are `Done`. Stages 7 and 8 got `arch-ok` on Omarchy/Hyprland on 1 Nov 2026 (Hyprland 0.56.2), and Stage 8's scratch pull request is [PR #1](https://github.com/maplepreneur/arbora-stage8-scratch/pull/1). Stage 9 (Distribution and polish) is `In progress` on `main` as of 1 Nov 2026: onboarding, the full Settings UI with a shortcut editor, `electron-updater` with channels, signing and notarization config, the AUR package and release script, a tag-driven release workflow, diagnostics export, an accessibility pass and user docs, plus a Projects page with project groups, agent groups, and notifications and sounds when an agent needs you. 495 unit tests and 44 e2e tests pass locally. Left for Stage 9: the idle-memory budget on the packaged build (~374 MB against 350; ~345 MB on `out/`), the `arbora-releases` setup and the first unsigned release from a tag (Actions minutes), fresh-install checks per OS, and `arch-ok`. **Next:** Stage 10 (Grove), which reuses Stage 9's attention state, agent groups, Settings page and onboarding wizard. Stages 12, 13 (Themes), 14 (Extensions) and 15 (Accounts and membership: required sign-in, Arbora Pro at $5/month or $50/year, see [MONETIZATION.md](./MONETIZATION.md)) stay specified and not started. Shipping is commits on `main` (no PRs) until Actions minutes are back; see [AGENTS.md](../AGENTS.md#shipping).
 
 | Stage | Name | Status | Notes |
 | --- | --- | --- | --- |
@@ -33,6 +33,7 @@ This document breaks [PLAN.md](./PLAN.md) into stages a coding agent can execute
 | 12 | Tabs, cross-tab agent work and passwords | Not started | Specified 29 Oct 2026 (PLAN § 4.13–4.15, ADR 0005–0006). Three sub-parts, landed separately: 12a tabs, 12b cross-tab prompts and the design-match loop, 12c 1Password. Starts with a spike on whether the 1Password extension unlocks through the desktop app inside Electron. Depends on Stages 1, 4 and 5; Stage 9 for the settings and onboarding UI. |
 | 13 | Themes | Not started | Specified 30 Oct 2026 (PLAN § 4.16). Colour packs in `theme.json` on top of the existing light/dark/system switch. Not the next stage. It only needs the CSS variables in `styles.css` and the Settings page, so it can be pulled forward. |
 | 14 | Extensions | Not started | Specified 30 Oct 2026 (PLAN § 4.17, ADR 0007). Settings installs from a short approved catalog: Svelte DevTools and Bitwarden for the browser, and coding tools such as Robocop. Not the next stage. Browser entries need Stage 1's `loadExtension` path; coding tools need Stage 7's Problems panel. |
+| 15 | Accounts and membership | Not started | Specified 1 Nov 2026 (PLAN § 4.18, ADR 0008, [MONETIZATION.md](./MONETIZATION.md)). Required sign-in through the system browser, Arbora Pro at $5/month or $50/year with a 14-day trial (Stripe Billing), signed entitlements verified offline, and the Free/Pro gates per stage. Three sub-parts: 15a sign-in, 15b billing and entitlements, 15c gates. Needs the account server next to the website, and Stage 9's Settings and onboarding. |
 
 Status values: `Not started`, `In progress` or `In progress (PR #N)` / `In progress (PR #N, merged)`, `Blocked (reason)`, `Done` or `Done (PR #N)`. During direct-to-main, new work uses `In progress` or `Done` and names the commit on `main`. Never mark `Done` from CI alone; `arch-ok` on Omarchy/Hyprland is required.
 
@@ -1126,6 +1127,78 @@ Hyprland uses Super for everything, so Arbora's Ctrl-based chords do not collide
 - [ ] Coding-tool runner, Robocop parser, Problems output, install hint
 - [ ] Settings section, both groups
 - [ ] Fixture extension e2e, parser unit tests
+- [ ] `arch-ok` on Omarchy/Hyprland
+
+---
+
+## Stage 15: Accounts and membership
+
+**Goal.** Nobody uses Arbora without signing in, and Arbora Pro ($5 USD a month or $50 a year) unlocks the power features. A new account gets 14 days of Pro. Free stays good enough to reach the first success. The plan, the prices and the Free/Pro table per stage are in [MONETIZATION.md](./MONETIZATION.md); if this section and that page ever differ, that page wins on pricing and gating, and this section on how it is built.
+
+**Features.** `F-ACCOUNT-01` to `F-ACCOUNT-07` ([PLAN § 4.18](./PLAN.md#418-accounts-and-membership-f-account), [ADR 0008](./PLAN.md#adr-0008-a-required-account-and-a-membership-for-the-power-features)).
+
+**Depends on.** Stage 9 (Settings, the onboarding wizard, `safeStorage`, `app.openExternal`, the update channels). Gates for later stages (Grove, Stage 11, Stage 12) are added by those stages through the same `can(feature)` check; this stage ships the gates for features that exist when it lands. The account server can be built in the website's repository.
+
+**Sub-parts, landed in order.** 15a sign-in (everyone on a trial, no gates), 15b billing and entitlements, 15c gates and upgrade prompts behind a server-side switch.
+
+**Out of scope.** Team plans and seats, SSO/SAML, education programs, regional prices, a merchant of record (possible later without app changes), usage-based billing, any usage telemetry.
+
+### Instructions
+
+1. **Account server (website side).** Endpoints, all HTTPS, JSON:
+   - `GET /app/sign-in?client_id=arbora-desktop&redirect_uri=…&code_challenge=…&code_challenge_method=S256&state=…`: the auth provider's sign-in (email magic link, GitHub, Google), then a redirect to `redirect_uri` with `code` and `state`. Allowed redirect URIs: `arbora://auth/callback` and `http://127.0.0.1:<any port>/callback`.
+   - `POST /v1/token`: `authorization_code` (with `code_verifier`) and `refresh_token` grants; returns `{ access_token (15 min), refresh_token (rotating, 90 days), expires_in }`.
+   - `POST /v1/device` and polling on `/v1/token` with `device_code`: the device fallback ("enter ABCD-EFGH at <site>/activate").
+   - `GET /v1/entitlements` (bearer access token): `{ token }`, an Ed25519 JWT with `{ sub, email, plan: "free" | "pro", source: "trial" | "subscription" | "grant", trialEndsAt, periodEndsAt, cancelAtPeriodEnd, limits: { concurrentAgents, designSavesPerMonth, referenceTabs }, gatesEnabled, iat, exp: iat + 14 days }`.
+   - `POST /v1/checkout` `{ interval: "month" | "year" }` and `POST /v1/portal`: return Stripe Checkout and Customer Portal URLs for the signed-in account. Checkout uses Billing with the prices' lookup keys `pro_monthly` / `pro_yearly`, `customer` reused per account, `client_reference_id` = account id, and a success URL that deep-links `arbora://account/refresh`.
+   - `POST /api/stripe/webhook`: verify the signature; on `checkout.session.completed`, `customer.subscription.created|updated|deleted`, `invoice.paid` and `invoice.payment_failed`, store the subscription status and period end per account. `active`, `trialing` and `past_due` count as Pro. Idempotent by event id.
+   - `DELETE /v1/account`: delete the account and cancel the subscription (privacy law, and the Settings button).
+   Tables: `accounts (id, email, created_at, trial_ends_at, stripe_customer_id)`, `subscriptions (account_id, stripe_subscription_id, status, price_lookup_key, current_period_end, cancel_at_period_end)`, `refresh_tokens (hash, account_id, device_name, expires_at, revoked_at)`, `webhook_events (id)`. Log nothing about projects or prompts; there is nothing to log.
+2. **Shared contract (`packages/shared/src/account.ts`).** zod schemas for the entitlement claims, `FEATURES` (an enum of gateable features: `concurrentAgents`, `grove`, `designMode`, `projectGroups`, `agentGroups`, `referenceTabs`, `crossTab`, `designMatch`, `agentLogin`, `worktrees`, `writeThrough`, `designHistory`, `actionTraces`, `groveOrchestration`), and a pure `can(entitlement, feature, usage)` that returns `{ allowed: true } | { allowed: false, reason, limit? }`. Exhaustive `switch` over `FEATURES`. Unit-test every row of MONETIZATION.md's table, the trial, `past_due`, expiry, and `gatesEnabled: false` (everything allowed). The Ed25519 public keys (current and next) live here.
+3. **Sign-in in main (`apps/desktop/src/main/account/`).** `AccountService` owns the tokens and the entitlement. Sign-in: generate the PKCE verifier and `state`, open the system browser with `shell.openExternal`, and receive the code through the protocol handler (`app.setAsDefaultProtocolClient('arbora')`; macOS `open-url`; Windows and Linux the `second-instance` argv) or a one-shot loopback server on `127.0.0.1:0` that closes after one request or 5 minutes. Check `state`. Exchange the code. Store the refresh token with `safeStorage.encryptString` in `<userData>/account.bin`; never in `settings.json`. Device-code flow as a fallback button. Refresh the access token when it is within 60 s of expiry; on `invalid_grant`, sign out.
+4. **Entitlements in main.** Fetch on startup, window focus (at most every 10 minutes), the `arbora://account/refresh` deep link, and every 6 hours. Verify the JWT signature with `node:crypto` (`verify(null, data, publicKey, sig)` for Ed25519) and `exp`. Cache the last valid token in `<userData>/entitlement.jwt`. Offline, use it until `exp`; after that, the account counts as signed out for new windows, and a window with a project keeps working until it closes. IPC: `account.get`, `account.signIn`, `account.signInWithDevice`, `account.signOut`, `account.openCheckout { interval }`, `account.openPortal`, `account.delete`, and the event `account.changed`. The renderer never sees tokens.
+5. **Required sign-in (renderer).** With no valid entitlement, the window shows a full sign-in screen instead of the Projects page or a project: "Sign in to Arbora" with Continue in browser, Use a code instead, and a line on what the server stores. Projects passed on the command line open after sign-in. The onboarding wizard's first step is this screen. e2e runs use a local fake account server (`e2e/account-server.ts`) and a test signing key through `ARBORA_ACCOUNT_URL` and `ARBORA_ACCOUNT_TEST_KEY`; release builds reject the test key.
+6. **Settings → Account.** Email, plan (Free, Pro trial with days left, Pro monthly or yearly with renewal date, or "cancels on <date>"), **Upgrade** (yearly preselected, monthly beside it), **Manage membership** (portal), **Sign out**, **Delete account** (typed confirmation), and "What Arbora's server knows about you". Title-bar account menu: avatar initial, plan, Settings, Sign out.
+7. **Gates (15c).** Every gate calls main's `can()`; the renderer only renders the answer. Limits counted locally: running agents from `AgentService`, design saves in `settings.account.usage.designSaves[YYYY-MM]`, open reference tabs. The gate UI is one component, `components/UpgradeGate.tsx`: what Pro adds, the price, Upgrade, and "Not now". Pro-only data after a lapse (agent groups, project groups, design history) is shown read-only, never hidden or deleted. A running agent turn is never interrupted by a lapse. `gatesEnabled` from the server turns all gates off until the website's pricing page is live.
+8. **Onboarding and docs.** Onboarding starts with sign-in and ends with the plan ("You're on a 14-day Pro trial"). README and FAQ: why an account is needed, what is stored, offline use. `docs/MONETIZATION.md` stays the source for prices and gates.
+9. **Tests.** Unit: PKCE (verifier/challenge per RFC 7636), `state` mismatch, JWT verification (bad signature, wrong key, expired, the next key), `can()` for every feature and plan, the month counter roll-over, the offline window. e2e with the fake server: first launch shows the sign-in screen; the loopback callback signs in and shows the Projects page; a Free entitlement blocks a second running agent and shows the gate; switching the fake server to Pro and sending `arbora://account/refresh` lifts it; an expired cached entitlement offline shows the sign-in screen for a new window only; sign-out returns to the sign-in screen and removes `account.bin`.
+
+### Gotchas
+
+- **Protocol handlers differ per OS.** macOS delivers `arbora://` through `open-url` (register it before `ready`), Windows and Linux start a second instance with the URL in argv (the single-instance lock already forwards argv). Linux needs `MimeType=x-scheme-handler/arbora;` in the `.desktop` file (electron-builder's `linux.mimeTypes`, plus `aur/arbora.desktop`); the tarball has no `.desktop` file, so it uses the loopback redirect. `pnpm dev` registers `process.execPath` with the app path as an argument.
+- **Never parse the callback in the renderer.** The code and `state` go straight from the protocol or loopback handler to `AccountService`.
+- **The loopback server binds `127.0.0.1` only,** accepts one request, checks `state`, and answers with a page that says "You can close this tab".
+- **Clock skew.** Accept JWTs up to 5 minutes in the future; use the server's `iat` for the offline window, not only the local clock.
+- **`safeStorage` on Linux** without gnome-keyring or KWallet returns `isEncryptionAvailable() === false` (Stage 9 gotcha): ask before falling back, and keep the refresh token out of `settings.json` and diagnostics exports either way.
+- **Diagnostics export** must not include `account.bin`, `entitlement.jwt` or the email; add them to the redaction test.
+- **Stripe webhooks are the source of truth,** not the checkout success page (a user can close the tab before it loads). The deep link only asks the app to refresh.
+- **Restricted Stripe key on the server only.** The app never holds a Stripe key or a price id; it asks the server for a Checkout URL.
+- **Stripe Tax** calculates nothing without a registration. Do not enable `automatic_tax` until the registrations exist (MONETIZATION.md).
+- **A gate is not a crash.** A Free user who hits the agent limit sees the gate in place of the new thread; existing threads and their transcripts still open.
+
+### Acceptance
+
+- A fresh install shows the sign-in screen; nothing else is reachable except Settings → Account → Sign in, Help, and quitting.
+- Signing in through the browser returns to Arbora on all three OSes (protocol) and from the Linux tarball (loopback); the device code works with the browser on another machine.
+- A new account is on a 14-day Pro trial. Upgrading through Checkout in Stripe test mode turns the account Pro in the app within a minute, without a restart. Cancelling in the Portal keeps Pro to the period end.
+- Free limits behave as MONETIZATION.md's table says, each with the upgrade gate, and no Pro-only data disappears after a lapse.
+- Offline for 13 days the app works; on day 15 a new window asks to sign in, and an open project window keeps working.
+- No token, email or entitlement appears in `settings.json`, logs, the ACP log or a diagnostics zip.
+- `arch-ok` on Omarchy/Hyprland covers the protocol sign-in from the AUR package and the loopback sign-in from the tarball.
+
+### Checklist
+
+- [ ] Account server endpoints, tables and the Stripe webhook (website repository)
+- [ ] Stripe products, prices (`pro_monthly`, `pro_yearly`), Customer Portal, webhook, restricted key (sandbox first)
+- [ ] `packages/shared/src/account.ts`: schemas, `FEATURES`, `can()`, public keys, unit tests
+- [ ] `AccountService`: PKCE sign-in (protocol, loopback, device code), token storage, refresh, sign-out
+- [ ] Signed entitlements: verify, cache, refresh triggers, 14-day offline window
+- [ ] Required sign-in screen and onboarding step
+- [ ] Settings → Account and the title-bar account menu
+- [ ] Gates and `UpgradeGate` for the features that exist (agents, design mode, groups), behind `gatesEnabled`
+- [ ] Redaction of account files in diagnostics; privacy text in README and FAQ
+- [ ] Unit tests and the fake-server e2e
+- [ ] Terms, privacy and refund pages on the website
 - [ ] `arch-ok` on Omarchy/Hyprland
 
 ---

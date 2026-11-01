@@ -153,4 +153,5 @@ Repository layout: `apps/desktop` (electron-vite app: `src/main`, `src/preload`,
 - [docs/BUILD_STAGES.md](docs/BUILD_STAGES.md): stage-by-stage build instructions, gotchas, acceptance criteria and progress tracking.
 - [docs/FAQ.md](docs/FAQ.md): why Ctrl instead of Super, macOS PATH, Windows SmartScreen, Hyprland and Wayland flags, the Linux sandbox.
 - [docs/AGENT_SETUP.md](docs/AGENT_SETUP.md): installing and signing in to Claude Code, Codex, Kimi Code, Grok Build, OpenCode and custom agents.
+- [docs/MONETIZATION.md](docs/MONETIZATION.md): accounts, Arbora Pro pricing ($5/month, $50/year), and which features are Free or Pro in each stage.
 - [docs/RELEASING.md](docs/RELEASING.md): tagging a release, signing and notarization secrets, the AUR package, the performance budget.

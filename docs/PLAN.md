@@ -10,7 +10,7 @@ Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents 
 
 **Now:** Stages 0–8 are `Done`. Stage 6 was signed off on 30 Oct 2026. Stages 7 and 8 got `arch-ok` on Omarchy/Hyprland on 1 Nov 2026 (Hyprland 0.56.2): native Wayland, float and tile, DP-5 scale 1.25 restored afterward, `Ctrl+P` and `Ctrl+Shift+P`, the portal Open Project dialog, the packaged binary, and a workspace move. Stage 8's scratch pull request is [PR #1](https://github.com/maplepreneur/arbora-stage8-scratch/pull/1) on private `maplepreneur/arbora-stage8-scratch`. Stage 9 (Distribution and polish) is `In progress` on `main` (1 Nov 2026): the onboarding wizard, the full Settings UI (custom agents, env overrides, adapter versions, a shortcut editor with conflict detection, notifications and sounds, project and MCP permissions, updates and diagnostics), `electron-updater` with Stable and Beta channels, signing and notarization config, the AUR package and its release script, `release.yml` from tags, diagnostics export, an accessibility pass and user docs. It also adds the Projects page with project groups and **Switch Project…** (`F-SHELL-07`), agent groups and pinned threads (`F-AGENT-12`), and the title-bar bell, desktop notifications, sounds and badge when an agent needs you (`F-AGENT-13`). 495 unit tests and 44 e2e tests pass locally, and `main` CI is green on Linux ([run 41345050712](https://github.com/maplepreneur/arbora/actions/runs/41345050712)). Shipping is commits on `main` with no pull requests until GitHub Actions minutes are back ([AGENTS.md](../AGENTS.md#shipping)).
 
-**Next:** finish Stage 9: settle the idle-memory budget for the packaged build, do the one-time `arbora-releases` setup and cut the first unsigned release from a tag once minutes are back, check fresh installs per OS, and `arch-ok` on Omarchy/Hyprland. Then Stage 10 (Grove), which can reuse Stage 9's attention state, agent groups, Settings page and onboarding wizard. Stages 12, 13 (Themes) and 14 (Extensions) are specified and not started.
+**Next:** finish Stage 9: settle the idle-memory budget for the packaged build, do the one-time `arbora-releases` setup and cut the first unsigned release from a tag once minutes are back, check fresh installs per OS, and `arch-ok` on Omarchy/Hyprland. Then Stage 10 (Grove), which can reuse Stage 9's attention state, agent groups, Settings page and onboarding wizard. Stages 12, 13 (Themes), 14 (Extensions) and 15 (Accounts and membership, [MONETIZATION.md](./MONETIZATION.md)) are specified and not started.
 
 **Blockers / open:** Stage 9's idle-memory budget: about 345 MB PSS on the production `out/` build after loading the DevTools extensions on demand and the MCP server, updater and transcript lazily, but about 374 MB for the packaged binary, which also counts the two zygote processes (Xvfb, software GL). Decide whether the 350 MB budget counts zygotes, or measure on real hardware. Distribution is unsigned downloads for now (no Apple, Windows or AUR accounts, decided 1 Nov 2026); unsigned macOS builds cannot update in place and show a download notice. Installers and updates come from the public `maplepreneur/arbora-releases` repository and the website links there (`docs/WEBSITE_DOWNLOADS.md`). Open: creating that repository with the `RELEASES_TOKEN` secret and the `release` environment, and the first tag (about 60 billed minutes). The packaged memory budget also blocks the publish step until it is settled. Fresh-install checks per OS are not done. Stage 6's Appendix B design-save row is still empty. Stage 5's manual matrix used free OpenCode models only, so Kimi Code and Grok Build have no Stage 5 runs. Claude Code and Codex stay built-in but are not tested. Still open from Stage 2: the flaky macOS e2e clipboard step in the terminal tests. Agent mode's target picker is not filtered by sign-in yet. The Stage 8 scratch repo cannot be deleted with the current `gh` token.
 
@@ -41,7 +41,7 @@ Design principles:
 - Two workspaces, one window. The browser workspace is the default. Grove is the other full layout, for several agents at once. Switching parks the page and keeps agents running. Quitting the app stops them.
 - Agents own their auth, models and tools. Arbora is a client, never a proxy for provider keys.
 - Secrets stay with the user. Passwords, one-time codes and vault contents never enter a prompt, a tool result, a log or a screenshot sent to an agent. Agents can ask Arbora to log in; they cannot read what was filled.
-- One Chromium. No extra webviews, no language servers by default, no telemetry.
+- One Chromium. No extra webviews, no language servers by default, no telemetry. An Arbora account is required (Stage 15): the account server learns the email, the plan, the app version and OS at entitlement refresh, and nothing about projects, prompts or usage.
 - Every stage ends with an app you can actually use.
 
 ---
@@ -536,6 +536,18 @@ An approved catalog the user installs from Settings. Stage 14. See [ADR 0007](#a
 - `F-EXT-03` Coding entries run a tool the user already has, and put its output in Problems next to ESLint and `tsc`. The first entry is Robocop (`robocop check` on `*.robot` and `*.resource`). If the binary is missing, the row shows `pip install robotframework-robocop` and copies that command. Arbora does not run the installer. Further linters are more rows of the same shape.
 - `F-EXT-04` Settings has an Extensions section with a Browser group and a Coding group. Each row can be enabled and removed. Nothing in the catalog is on until the user turns it on.
 
+### 4.18 Accounts and membership (`F-ACCOUNT`)
+
+Stage 15. Everyone signs in; Arbora Pro is $5/month or $50/year. Pricing, the Free/Pro table per stage and the setup outside the code are in [MONETIZATION.md](./MONETIZATION.md). [ADR 0008](#adr-0008-a-required-account-and-a-membership-for-the-power-features).
+
+- `F-ACCOUNT-01` Sign-in is required before any project opens: a full-window sign-in screen on first launch and after sign-out. Sign-in runs in the system browser (OAuth 2.0 authorization code with PKCE, RFC 8252), returning through the `arbora://auth/callback` protocol or a loopback redirect, with a device-code fallback. No password field inside Arbora.
+- `F-ACCOUNT-02` Tokens in the OS keychain through `safeStorage`; with no keyring on Linux, ask before using the fallback. Sign out from Settings → Account and the title-bar account menu clears them.
+- `F-ACCOUNT-03` Entitlements: a server-signed (Ed25519) token with plan, trial and period ends and limits, verified in main with a public key in the build, refreshed on startup, focus, the checkout deep link and every 6 hours. Valid offline for 14 days on the last token.
+- `F-ACCOUNT-04` Plans: Free, a 14-day Pro trial for new accounts, Pro monthly and yearly. Checkout and the Customer Portal open in the browser from Settings → Account and from every gate.
+- `F-ACCOUNT-05` Gates in main through one `can(feature)` check over the entitlement, with the limits and features of MONETIZATION.md's table. Each gate explains what Pro adds, shows the price and links to checkout. A lapsed membership makes Pro items read-only and never deletes them.
+- `F-ACCOUNT-06` Settings → Account: email, plan, renewal or trial end, Upgrade, Manage membership, Sign out, and what the server stores. The onboarding wizard starts with sign-in.
+- `F-ACCOUNT-07` The account server (with the website): sign-in, `GET /v1/entitlements`, Checkout and Portal session endpoints, and the Stripe webhook. Not in this repository unless the website lives here.
+
 ---
 
 ## 5. Phase overview
@@ -559,6 +571,7 @@ Detailed instructions, gotchas and progress live in [BUILD_STAGES.md](./BUILD_ST
 | 12 | Tabs, cross-tab agent work and passwords | Browser tabs with app and reference roles, prompts from any tab to any open project, the design-match loop (Figma → app), and 1Password with a setup script and secret-free agent logins |
 | 13 | Themes | `theme.json` colour packs on the existing light/dark/system switch |
 | 14 | Extensions | Settings installs approved browser extensions (Svelte DevTools, Bitwarden) and coding tools (Robocop) |
+| 15 | Accounts and membership | Required sign-in, Arbora Pro at $5/month or $50/year with a 14-day trial, signed entitlements and Free/Pro gates |
 
 ---
 
@@ -631,6 +644,16 @@ Detailed instructions, gotchas and progress live in [BUILD_STAGES.md](./BUILD_ST
 **Rejected.** Loading extensions from the user's Chrome profile. A store UI. Running `pip` or `npm` on enable. A theme engine that accepts arbitrary CSS.
 
 ---
+
+### ADR 0008: A required account, and a membership for the power features
+
+**Context.** Arbora needs income to keep being built. It does not resell models (ADR 0002), so there is no usage to charge for; the value is the tool. The user wants every person to sign in and a paid membership at $5 a month or $50 a year.
+
+**Decision.** An Arbora account is required to use the app. Accounts, billing and entitlements live on a server next to the website (Stripe Billing, an auth provider such as Supabase Auth). The desktop app signs in through the system browser with PKCE and receives a server-signed entitlement it verifies offline. Free covers the first success and everyday use; Pro gates leverage: concurrent agents, Grove, design mode at volume, the design-match loop, worktrees and write-through, agent logins, project and agent groups. Limits are counted locally; the app sends no usage.
+
+**Consequences.** Arbora is no longer usable with no network at all: a first sign-in needs one, and the app runs 14 days offline after that. There is a server to run, legal pages to publish, and tax to handle. "No telemetry" now has a precise exception (the entitlement refresh). Unsigned builds can be patched to skip the gates; that is accepted. Security, privacy and data export are never gated, and a lapsed membership never deletes anything.
+
+**Rejected.** Charging per prompt or token (Arbora does not see usage and should not). A license key typed into the app (no single account across machines, and keys leak). Gating agent mode or the browser tools (it would hide the product's point and degrade the user's own agents). A sign-in form inside Arbora (phishing-shaped; the browser already has the user's passwords and passkeys).
 
 ## 7. Assumptions
 
