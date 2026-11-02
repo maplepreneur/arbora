@@ -26,6 +26,11 @@ run() {
   echo "== $(date -Is) launch $*"
 } >>"$log"
 
+# Latest origin/main when the tree is clean. A dirty tree or local-only commits stay as they are.
+if ! "$repo/scripts/update-to-main.sh" >>"$log" 2>&1; then
+  echo "arbora: launching the checkout already on disk" >>"$log"
+fi
+
 if [[ ! -f "$repo/node_modules/.modules.yaml" || "$repo/pnpm-lock.yaml" -nt "$repo/node_modules/.modules.yaml" ]]; then
   run "pnpm install --frozen-lockfile" || fail "pnpm install failed"
 fi

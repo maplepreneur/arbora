@@ -1,9 +1,9 @@
 name: Release
 
-# Tag v* -> build and sign on every OS -> upload to a draft GitHub Release on this repository ->
-# budget check -> publish after approval in the `release` environment. Signing steps use secrets
-# when they exist and build unsigned otherwise (docs/RELEASING.md). Costs about 60 billed minutes.
-# The AUR package is not published.
+# Tag v* (or a workflow_dispatch of that tag) -> build on every OS -> upload a draft GitHub
+# Release -> publish it. Merges to main start this via release-main.yml. Signing steps use
+# secrets when they exist and build unsigned otherwise (docs/RELEASING.md). Costs about 60
+# billed minutes. The AUR package is not published.
 on:
   push:
     tags: ['v*']
@@ -17,7 +17,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 env:
@@ -168,8 +168,6 @@ jobs:
     name: Publish the release
     needs: build
     runs-on: ubuntu-latest
-    # Required reviewers on this environment are the "publish on approval" gate.
-    environment: release
     steps:
       - name: Publish the draft
         env:
