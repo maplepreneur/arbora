@@ -8,12 +8,10 @@ Download the build for your OS from the [releases page](https://github.com/maple
 
 | OS | File | Install | Updates |
 | --- | --- | --- | --- |
-| Arch / Omarchy | `.tar.gz` or `.AppImage` | same files as Any Linux below. No AUR package. | AppImage updates in place; the tarball tells you to download the new archive |
+| Arch / Omarchy | `.AppImage` | `chmod +x Arbora-linux-x86_64.AppImage && ./Arbora-linux-x86_64.AppImage`. Needs FUSE 2 (`sudo pacman -S fuse2`). No AUR package. | in place, from Arbora |
 | Debian / Ubuntu | `.deb` | `sudo apt install ./arbora-<version>-linux-amd64.deb` | Arbora tells you a new release exists; install the new `.deb` |
-| Any Linux | `.AppImage` | `chmod +x Arbora-*.AppImage && ./Arbora-*.AppImage` | in place, from Arbora |
-| Any Linux | `.tar.gz` | extract, then `./arbora /path/to/project` | Arbora tells you; unpack the new tarball |
-| macOS (Apple silicon or Intel) | `.dmg` | open it and drag Arbora to Applications; allow it once in System Settings (below) | signed builds in place; unsigned builds tell you to download the new `.dmg` |
-| Windows 10/11 | `.exe` (per-user NSIS) | run the installer; no admin rights needed | in place, from Arbora |
+| macOS (Apple silicon and Intel) | `.dmg` | open the matching `.dmg` and drag Arbora to Applications; allow it once in System Settings (below) | signed builds in place; unsigned builds tell you to download the new `.dmg` |
+| Windows 10/11 | `.exe` (per-user NSIS, 64-bit) | run the installer; no admin rights needed | in place, from Arbora |
 
 Settings → Updates & diagnostics picks the channel (**Stable** or **Beta**), whether Arbora checks on startup, and whether it downloads updates in the background. **Check for Updates…** in the palette checks now and shows the release notes.
 

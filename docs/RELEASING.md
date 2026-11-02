@@ -16,7 +16,7 @@ A full run costs about 60 billed minutes (macOS at 10x, Windows at 2x). Tag only
 
 Arbora ships with no Apple or Windows signing account. Leave the secrets below unset: the workflow builds unsigned installers, skips notarization, and says so in the log. What users get:
 
-- **Linux:** no difference. The AppImage updates itself; the `.deb` and tarball show what to download. Arch and Omarchy use those same files. There is no AUR package.
+- **Linux:** Arch and Omarchy use the AppImage, which updates itself. Debian and Ubuntu use the `.deb`, which shows what to download. There is no AUR package. A `.tar.gz` is also uploaded for the memory check.
 - **Windows:** SmartScreen warns once (**More info → Run anyway**). Updates still install in place.
 - **macOS:** Gatekeeper blocks the first launch until the user clicks **Open Anyway** in System Settings → Privacy & Security. The app cannot update itself (Squirrel.Mac requires a Developer ID signature), so Arbora checks the app's own signature at startup (`codesign -dv`) and, without a team id, only tells the user to download the new `.dmg`. Apple silicon needs at least an ad-hoc signature to run; electron-builder applies one when no identity is configured. Check that on the first Mac build.
 

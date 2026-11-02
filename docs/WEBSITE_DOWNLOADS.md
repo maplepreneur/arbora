@@ -222,7 +222,7 @@ export async function detectPlatform(): Promise<Platform | null> {
 
 - **AppImage** (any distribution): `chmod +x Arbora-linux-x86_64.AppImage && ./Arbora-linux-x86_64.AppImage`. Needs FUSE 2 (`sudo pacman -S fuse2`, `sudo apt install libfuse2`). Updates itself.
 - **Debian / Ubuntu**: `sudo apt install ./Arbora-linux-amd64.deb`. Arbora tells you when to download a new `.deb`.
-- **Arch / Omarchy and others**: extract the tarball and run `./arbora`, or use the AppImage. There is no AUR package.
+- **Arch / Omarchy**: `chmod +x Arbora-linux-x86_64.AppImage && ./Arbora-linux-x86_64.AppImage`. Needs FUSE 2 (`sudo pacman -S fuse2`). If the sandbox helper is not configured, start it with `ARBORA_FLAGS="--no-sandbox"`. There is no AUR package.
 - If you see "The SUID sandbox helper binary was found, but is not configured correctly" with the tarball, run `sudo chown root:root chrome-sandbox && sudo chmod 4755 chrome-sandbox` in its folder.
 
 **Verify a download (optional)**: compare `sha256sum <file>` (Linux), `shasum -a 256 <file>` (macOS) or `Get-FileHash <file>` (PowerShell) with the matching line in `SHA256SUMS-<OS>.txt`.

@@ -33,11 +33,11 @@ To bind Arbora to a Hyprland key, use `omarchy-launch-or-focus arbora` or `exec 
 
 ## "The SUID sandbox helper binary was found, but is not configured correctly"
 
-Chromium's sandbox helper (`chrome-sandbox`) must be owned by root with mode `4755`. The `.deb` sets that up. For the tarball run `sudo chown root:root chrome-sandbox && sudo chmod 4755 chrome-sandbox` in the unpacked folder. Some AppImage setups need `--no-sandbox` because the AppImage is mounted without setuid; on Arch, prefer the tarball.
+Chromium's sandbox helper (`chrome-sandbox`) must be owned by root with mode `4755`. The `.deb` sets that up. The AppImage is mounted without setuid, so on Arch start it with `ARBORA_FLAGS="--no-sandbox" ./Arbora-linux-x86_64.AppImage` if you see this error.
 
 ## The AppImage does not start
 
-It needs FUSE 2 (Arch: `sudo pacman -S fuse2`; Debian/Ubuntu: `sudo apt install libfuse2`). The tarball needs no FUSE.
+It needs FUSE 2 (Arch: `sudo pacman -S fuse2`; Debian/Ubuntu: `sudo apt install libfuse2`). Arch and Omarchy use this file. If it still will not start, run `./Arbora-linux-x86_64.AppImage --appimage-extract-and-run`.
 
 ## Notifications do not appear on Linux
 
