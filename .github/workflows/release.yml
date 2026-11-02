@@ -79,22 +79,28 @@ jobs:
         run: |
           # An empty CSC_LINK is not "unset". electron-builder resolves it to the project
           # directory and dies with "<dir> not a file" while signing.
+          builder_args=()
           if [ -z "${CSC_LINK:-}" ]; then
             unset CSC_LINK CSC_KEY_PASSWORD
             export CSC_IDENTITY_AUTO_DISCOVERY=false
-            echo "No macOS signing certificate: building unsigned."
+            # Without an identity electron-builder skips signing entirely, and macOS then calls the
+            # unsealed bundle "damaged". `-` ad-hoc signs it, which Gatekeeper lets through Open Anyway.
+            if [ "$RUNNER_OS" = macOS ]; then builder_args+=(-c.mac.identity=-); fi
+            echo "No macOS signing certificate: ad-hoc signing."
           fi
           if [ -z "${WIN_CSC_LINK:-}" ]; then
             unset WIN_CSC_LINK WIN_CSC_KEY_PASSWORD
             echo "No Windows signing certificate: building unsigned."
           fi
-          pnpm --filter @arbora/desktop release
+          pnpm --filter @arbora/desktop release "${builder_args[@]}"
       - name: Verify the macOS signature
-        if: runner.os == 'macOS' && env.HAS_MAC_CERT == 'true'
+        if: runner.os == 'macOS'
         run: |
-          app="$(ls -d apps/desktop/dist/mac*/Arbora.app | head -n 1)"
-          codesign --verify --deep --strict --verbose=2 "$app"
-          spctl --assess --type execute --verbose "$app"
+          for app in apps/desktop/dist/mac*/Arbora.app; do
+            codesign --verify --deep --strict --verbose=2 "$app"
+            codesign -dv --verbose=2 "$app"
+            if [ "$HAS_MAC_CERT" = true ]; then spctl --assess --type execute --verbose "$app"; fi
+          done
       - name: Checksums
         shell: bash
         working-directory: apps/desktop/dist

@@ -30,7 +30,7 @@ Releases are unsigned until Arbora has Apple and Windows signing accounts. On ma
 Electron is downloaded as a prebuilt binary. The terminal uses `node-pty`, a native module: macOS and Windows use its bundled prebuilt binaries, while Linux compiles it during `pnpm install`, so Linux needs Python 3, `make` and a C++ compiler (Arch: `sudo pacman -S --needed base-devel python`; Debian/Ubuntu: `sudo apt install build-essential python3`). Platform notes:
 
 - **Linux (including Arch/Omarchy/Hyprland):** Wayland works out of the box. The app passes `--ozone-platform-hint=auto` itself, so you do not need to set `ELECTRON_OZONE_PLATFORM_HINT`. Native dialogs need an xdg-desktop-portal (`xdg-desktop-portal-hyprland` or `-gtk`), which Omarchy already ships.
-- **macOS:** no extra setup. Packaged builds are unsigned, so right-click and choose Open the first time.
+- **macOS:** no extra setup. Packaged builds are ad-hoc signed only, so allow the first launch with **Open Anyway** in System Settings → Privacy & Security.
 - **Windows:** use PowerShell or Windows Terminal. Git must check files out with LF endings; the repo's `.gitattributes` handles this.
 
 ### 2. Clone and install
