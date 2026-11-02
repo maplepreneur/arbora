@@ -29,11 +29,11 @@ Extra Chromium switches go in `ARBORA_FLAGS`, for example:
 - NVIDIA with a blank or black window: `ARBORA_FLAGS="--disable-gpu-sandbox"`
 - A Wayland problem you want to rule out: `ARBORA_FLAGS="--ozone-platform=x11"`
 
-The AUR package's `arbora` command also reads `~/.config/arbora-flags.conf`, one switch per line. To bind Arbora to a Hyprland key, use `omarchy-launch-or-focus arbora` or `exec arbora`; the window class is `arbora`.
+To bind Arbora to a Hyprland key, use `omarchy-launch-or-focus arbora` or `exec arbora`; the window class is `arbora`.
 
 ## "The SUID sandbox helper binary was found, but is not configured correctly"
 
-Chromium's sandbox helper (`chrome-sandbox`) must be owned by root with mode `4755`. The AUR package and the `.deb` set that up. For the tarball run `sudo chown root:root chrome-sandbox && sudo chmod 4755 chrome-sandbox` in the unpacked folder. Some AppImage setups need `--no-sandbox` because the AppImage is mounted without setuid; prefer the AUR package or the tarball on Arch.
+Chromium's sandbox helper (`chrome-sandbox`) must be owned by root with mode `4755`. The `.deb` sets that up. For the tarball run `sudo chown root:root chrome-sandbox && sudo chmod 4755 chrome-sandbox` in the unpacked folder. Some AppImage setups need `--no-sandbox` because the AppImage is mounted without setuid; on Arch, prefer the tarball.
 
 ## The AppImage does not start
 
@@ -45,7 +45,7 @@ Electron needs a notification daemon (mako, dunst, swaync; Omarchy ships mako). 
 
 ## Does Arbora send anything anywhere?
 
-No telemetry, no crash upload. Crash dumps and `logs/main.log` stay in the user-data folder. **Export Diagnostics…** writes a zip you can attach to a bug report yourself; it removes agent environment values, tokens and your home folder path. Update checks ask GitHub Releases (the public `maplepreneur/arbora-releases` repository) and can be turned off in Settings → Updates & diagnostics.
+No telemetry, no crash upload. Crash dumps and `logs/main.log` stay in the user-data folder. **Export Diagnostics…** writes a zip you can attach to a bug report yourself; it removes agent environment values, tokens and your home folder path. Update checks ask GitHub Releases on `maplepreneur/arbora` and can be turned off in Settings → Updates & diagnostics.
 
 ## Where are settings, threads and screenshots?
 

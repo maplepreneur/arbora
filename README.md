@@ -4,11 +4,11 @@ Arbora is a cross-platform desktop app (Linux, macOS, Windows) for building web 
 
 ## Install
 
-Download the build for your OS from the [releases](https://github.com/maplepreneur/arbora-releases/releases/latest) (installers live in the public `arbora-releases` repository; see [docs/WEBSITE_DOWNLOADS.md](docs/WEBSITE_DOWNLOADS.md) for the setup and the website download page). The first launch opens **Getting started**, which takes you from an empty window to a working `Mod+K` prompt: open a project, start its dev server, connect an agent, check the two mode shortcuts, and choose notifications and sounds. Run it again any time from the command palette (**Getting Started…**) or Settings → Updates & diagnostics.
+Download the build for your OS from the [releases page](https://github.com/maplepreneur/arbora/releases). The website links there and does not host the files. There is no AUR package. See [docs/WEBSITE_DOWNLOADS.md](docs/WEBSITE_DOWNLOADS.md). The first launch opens **Getting started**, which takes you from an empty window to a working `Mod+K` prompt: open a project, start its dev server, connect an agent, check the two mode shortcuts, and choose notifications and sounds. Run it again any time from the command palette (**Getting Started…**) or Settings → Updates & diagnostics.
 
 | OS | File | Install | Updates |
 | --- | --- | --- | --- |
-| Arch / Omarchy | `arbora-bin` (AUR) | `yay -S arbora-bin` (or `paru -S arbora-bin`) | your AUR helper (`yay -Syu`) |
+| Arch / Omarchy | `.tar.gz` or `.AppImage` | same files as Any Linux below. No AUR package. | AppImage updates in place; the tarball tells you to download the new archive |
 | Debian / Ubuntu | `.deb` | `sudo apt install ./arbora-<version>-linux-amd64.deb` | Arbora tells you a new release exists; install the new `.deb` |
 | Any Linux | `.AppImage` | `chmod +x Arbora-*.AppImage && ./Arbora-*.AppImage` | in place, from Arbora |
 | Any Linux | `.tar.gz` | extract, then `./arbora /path/to/project` | Arbora tells you; unpack the new tarball |
@@ -154,4 +154,4 @@ Repository layout: `apps/desktop` (electron-vite app: `src/main`, `src/preload`,
 - [docs/FAQ.md](docs/FAQ.md): why Ctrl instead of Super, macOS PATH, Windows SmartScreen, Hyprland and Wayland flags, the Linux sandbox.
 - [docs/AGENT_SETUP.md](docs/AGENT_SETUP.md): installing and signing in to Claude Code, Codex, Kimi Code, Grok Build, OpenCode and custom agents.
 - [docs/MONETIZATION.md](docs/MONETIZATION.md): accounts, Arbora Pro pricing ($5/month, $50/year), and which features are Free or Pro in each stage.
-- [docs/RELEASING.md](docs/RELEASING.md): tagging a release, signing and notarization secrets, the AUR package, the performance budget.
+- [docs/RELEASING.md](docs/RELEASING.md): tagging a release, signing secrets, and the performance budget. Downloads are GitHub Releases; the website links to that page.

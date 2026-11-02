@@ -1,23 +1,23 @@
-# Arbora downloads: GitHub Releases and a website download page
+# Arbora downloads: GitHub Releases, linked from the website
 
 This document is self-contained. Hand it to a person or an AI assistant together with access to the website's code. Part 1 is done once in GitHub, Part 2 is each release, and Part 3 is the download page.
+
+The website does not host installers. It links to the [GitHub releases page](https://github.com/maplepreneur/arbora/releases). There is no AUR package (decided 2 Nov 2026).
 
 ## How it fits together
 
 ```
-maplepreneur/arbora            (private)  source code, CI, the release workflow
+maplepreneur/arbora   (public)   source, CI, and GitHub Releases
         │  git tag v0.1.0 → .github/workflows/release.yml
         ▼
-maplepreneur/arbora-releases   (public)   GitHub Releases with the installers, nothing else
-        │
-        ├── Arbora's built-in updater reads latest*.yml from here (no login needed)
-        ├── the AUR package (aur/PKGBUILD) downloads the tarball from here
-        └── the website's download page links to the files here
+https://github.com/maplepreneur/arbora/releases
+        ├── Arbora's built-in updater reads latest*.yml from here
+        └── the website links to this page
 ```
 
-The installers are unsigned (there are no Apple, Windows or AUR accounts). That works:
+The installers are unsigned (there are no Apple or Windows signing accounts). That works:
 
-- **Linux:** no warnings. The AppImage updates itself; the `.deb` and the tarball show "a new version is available" with a link.
+- **Linux:** no warnings. The AppImage updates itself; the `.deb` and the tarball show "a new version is available" with a link. Arch and Omarchy use the AppImage or the tarball.
 - **Windows:** SmartScreen warns once ("More info" → "Run anyway"). Updates install in place.
 - **macOS:** the first launch is blocked until the user clicks "Open Anyway" in System Settings → Privacy & Security. The app cannot update itself (macOS only installs updates for Developer ID signed apps), so it shows "a new version is available" with a link.
 
@@ -27,60 +27,26 @@ The download page must explain the Windows and macOS steps (Part 3 has the wordi
 
 ## Part 1: one-time GitHub setup
 
-Do these in order. Steps 1–4 are clicks in github.com; nothing in the source code needs to change, because the source repository already points at `maplepreneur/arbora-releases`.
+Installers publish to `maplepreneur/arbora`, which is already public, so the workflow uses `GITHUB_TOKEN`. There is no second repository and no publish token.
 
-### 1. Create the public releases repository
+### 1. Approval gate
 
-1. github.com → **New repository**.
-2. Owner `maplepreneur`, name **`arbora-releases`**, visibility **Public**.
-3. Tick **Add a README file** (a release needs at least one commit to tag). Suggested README text:
+The `release` environment on `maplepreneur/arbora` requires a review from `maplepreneur`. Every release waits there before **Publish the release** runs. Until then the release is a draft.
 
-   ```markdown
-   # Arbora releases
+### 2. Actions minutes
 
-   Installers for [Arbora](https://<your-website>/). Download the latest version from the
-   [download page](https://<your-website>/download) or from [Releases](../../releases/latest).
-   Source code is not in this repository.
-   ```
+A release builds on Linux, macOS and Windows: about 60 billed minutes (macOS counts 10x, Windows 2x). Check **Settings → Billing and plans** for remaining minutes, or set a spending limit. The ordinary push CI is not affected. The performance budget job currently fails on the packaged build (about 374 MB against 350) and does not block publish.
 
-4. In the new repository: **Settings → General → Features**, untick Issues, Wiki and Projects if you do not want them (optional).
+### 3. (Optional) Signing later
 
-If you would rather keep everything in one place, you can instead make `maplepreneur/arbora` public and change `repo: arbora-releases` back to `repo: arbora` in `apps/desktop/electron-builder.yml`, `UPDATE_REPOSITORY` in `packages/shared/src/updates.ts`, `RELEASES_REPO` in `.github/workflows/release.yml`, and the URLs in `aur/PKGBUILD`. The rest of this document then applies with `arbora` in place of `arbora-releases`.
-
-### 2. Create a token that can publish there
-
-The release workflow runs in the private repository and must write releases to the public one, which the built-in `GITHUB_TOKEN` cannot do.
-
-1. github.com → your avatar → **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
-2. Name: `arbora-releases publish`. Expiration: up to a year (put a reminder in your calendar to renew it).
-3. **Resource owner:** `maplepreneur`. **Repository access:** Only select repositories → `arbora-releases`.
-4. **Repository permissions → Contents: Read and write.** (Metadata: Read-only is added automatically.) Nothing else.
-5. Generate and copy the token.
-6. In the **private** repository `maplepreneur/arbora`: **Settings → Secrets and variables → Actions → New repository secret**. Name **`RELEASES_TOKEN`**, value: the token.
-
-The workflow stops with "Add the RELEASES_TOKEN secret" when it is missing.
-
-### 3. Add the approval gate
-
-1. In `maplepreneur/arbora`: **Settings → Environments → New environment**, name **`release`**.
-2. Tick **Required reviewers** and add yourself.
-
-Every release waits for you to approve the **Publish the release** job before it becomes public. Until then it is a draft that only you can see.
-
-### 4. Make sure Actions can run
-
-A release builds on Linux, macOS and Windows: about 60 billed minutes on a private repository (macOS counts 10x, Windows 2x). Check **Settings → Billing and plans** for remaining minutes, or set a spending limit. The ordinary push CI is not affected.
-
-### 5. (Optional) Signing and the AUR later
-
-All optional secrets (`MAC_CSC_LINK`, `APPLE_API_KEY_*`, `WIN_CSC_LINK`, `AUR_SSH_KEY`) are described in [RELEASING.md](./RELEASING.md). Leave them unset for unsigned releases.
+Signing secrets (`MAC_CSC_LINK`, `APPLE_API_KEY_*`, `WIN_CSC_LINK`) are described in [RELEASING.md](./RELEASING.md). Leave them unset for unsigned releases.
 
 ---
 
 ## Part 2: cutting a release
 
-1. Set `"version"` in `apps/desktop/package.json` (for example `0.1.0`; a version like `0.2.0-beta.1` becomes a prerelease on the beta channel). Commit and push to `main`.
-2. Tag and push the tag from the **private** repository:
+1. Set `"version"` in `apps/desktop/package.json` (for example `0.1.0`; a version like `0.2.0-beta.1` becomes a prerelease on the beta channel). Commit and push to `main`. The current version is `0.0.1`; bump it before the first real tag.
+2. Tag and push the tag:
 
    ```bash
    git tag v0.1.0
@@ -88,13 +54,12 @@ All optional secrets (`MAC_CSC_LINK`, `APPLE_API_KEY_*`, `WIN_CSC_LINK`, `AUR_SS
    ```
 
 3. Watch **Actions → Release** in `maplepreneur/arbora`. It:
-   - builds and uploads everything to a **draft** release `v0.1.0` in `arbora-releases`,
+   - builds and uploads everything to a **draft** release `v0.1.0` on this repository,
    - adds `SHA256SUMS-Linux.txt`, `SHA256SUMS-macOS.txt`, `SHA256SUMS-Windows.txt`,
    - adds versionless copies (below) for stable links,
-   - runs the performance budget on the packaged Linux build,
-   - writes the AUR files as an artifact (pushes them only when `AUR_SSH_KEY` is set),
+   - runs the performance budget on the packaged Linux build (a miss does not block publish),
    - waits for your approval, then publishes the release and marks it **Latest** (prereleases are not marked Latest).
-4. Optionally edit the release notes in `arbora-releases` → Releases before approving. The in-app update dialog shows them.
+4. Optionally edit the release notes on the draft before approving. The in-app update dialog shows them. The website should link to `https://github.com/maplepreneur/arbora/releases`.
 
 ### Files in every release
 
@@ -114,12 +79,12 @@ All optional secrets (`MAC_CSC_LINK`, `APPLE_API_KEY_*`, `WIN_CSC_LINK`, `AUR_SS
 Stable links that always point at the newest published, non-prerelease version:
 
 ```
-https://github.com/maplepreneur/arbora-releases/releases/latest/download/Arbora-win-x64.exe
-https://github.com/maplepreneur/arbora-releases/releases/latest/download/Arbora-mac-arm64.dmg
-https://github.com/maplepreneur/arbora-releases/releases/latest/download/Arbora-mac-x64.dmg
-https://github.com/maplepreneur/arbora-releases/releases/latest/download/Arbora-linux-x86_64.AppImage
-https://github.com/maplepreneur/arbora-releases/releases/latest/download/Arbora-linux-amd64.deb
-https://github.com/maplepreneur/arbora-releases/releases/latest/download/Arbora-linux-x64.tar.gz
+https://github.com/maplepreneur/arbora/releases/latest/download/Arbora-win-x64.exe
+https://github.com/maplepreneur/arbora/releases/latest/download/Arbora-mac-arm64.dmg
+https://github.com/maplepreneur/arbora/releases/latest/download/Arbora-mac-x64.dmg
+https://github.com/maplepreneur/arbora/releases/latest/download/Arbora-linux-x86_64.AppImage
+https://github.com/maplepreneur/arbora/releases/latest/download/Arbora-linux-amd64.deb
+https://github.com/maplepreneur/arbora/releases/latest/download/Arbora-linux-x64.tar.gz
 ```
 
 Do not delete or rename the versioned files or the `latest*.yml` files: installed copies of Arbora read them to find updates.
@@ -129,6 +94,8 @@ Do not delete or rename the versioned files or the `latest*.yml` files: installe
 ## Part 3: the website download page (instructions for the implementer)
 
 ### Requirements
+
+The minimum is a link to `https://github.com/maplepreneur/arbora/releases`. The page below is optional and lists each file itself.
 
 1. A page at `/download` (or wherever fits the site) that offers Arbora for Windows, macOS (Apple silicon and Intel) and Linux (AppImage, `.deb`, tarball), plus a "Beta" link to prereleases if the site wants one.
 2. Detect the visitor's OS and, on macOS, the chip; show one primary **Download for <OS>** button for it and list every other file under "Other platforms". Detection must never hide the other files.
@@ -145,7 +112,7 @@ The version number is not in those links. To show it, either type it by hand, or
 
 ### Approach B: version and notes from the GitHub API, cached on the server
 
-Fetch `https://api.github.com/repos/maplepreneur/arbora-releases/releases/latest` on the server (at build time for a static site, or with a revalidation window such as one hour). That returns `tag_name`, `name`, `published_at`, `html_url`, `body` (Markdown release notes) and `assets[]` with `name`, `browser_download_url` and `size`. For a beta link, fetch `/releases?per_page=10` and take the first entry with `prerelease: true`.
+Fetch `https://api.github.com/repos/maplepreneur/arbora/releases/latest` on the server (at build time for a static site, or with a revalidation window such as one hour). That returns `tag_name`, `name`, `published_at`, `html_url`, `body` (Markdown release notes) and `assets[]` with `name`, `browser_download_url` and `size`. For a beta link, fetch `/releases?per_page=10` and take the first entry with `prerelease: true`.
 
 Match assets by name, not by position:
 
@@ -162,7 +129,7 @@ export const PLATFORMS: Record<Platform, { label: string; stable: string; patter
   'linux-tar': { label: 'Linux tarball (.tar.gz)', stable: 'Arbora-linux-x64.tar.gz', pattern: /^arbora-[\d.]+(?:-[\w.]+)?-linux-x64\.tar\.gz$/ },
 };
 
-const REPO = 'maplepreneur/arbora-releases';
+const REPO = 'maplepreneur/arbora';
 
 export interface ReleaseInfo {
   version: string; // "0.1.0"
@@ -255,7 +222,7 @@ export async function detectPlatform(): Promise<Platform | null> {
 
 - **AppImage** (any distribution): `chmod +x Arbora-linux-x86_64.AppImage && ./Arbora-linux-x86_64.AppImage`. Needs FUSE 2 (`sudo pacman -S fuse2`, `sudo apt install libfuse2`). Updates itself.
 - **Debian / Ubuntu**: `sudo apt install ./Arbora-linux-amd64.deb`. Arbora tells you when to download a new `.deb`.
-- **Arch / Omarchy and others**: extract the tarball and run `./arbora`. For a system install with a menu entry, use the AUR recipe: download the repository's `aur/` folder (or the `aur-arbora-bin` artifact of the release workflow) and run `makepkg -si` there.
+- **Arch / Omarchy and others**: extract the tarball and run `./arbora`, or use the AppImage. There is no AUR package.
 - If you see "The SUID sandbox helper binary was found, but is not configured correctly" with the tarball, run `sudo chown root:root chrome-sandbox && sudo chmod 4755 chrome-sandbox` in its folder.
 
 **Verify a download (optional)**: compare `sha256sum <file>` (Linux), `shasum -a 256 <file>` (macOS) or `Get-FileHash <file>` (PowerShell) with the matching line in `SHA256SUMS-<OS>.txt`.
@@ -284,9 +251,7 @@ export async function detectPlatform(): Promise<Platform | null> {
 
 | Symptom | Cause and fix |
 | --- | --- |
-| Workflow fails at "Releases token present" | Add `RELEASES_TOKEN` (Part 1, step 2). |
-| `HttpError: Resource not accessible by personal access token` | The token lacks **Contents: Read and write** on `arbora-releases`, or it expired. |
 | Release stays a draft | The **Publish the release** job waits for approval in the `release` environment (Actions → the run → Review deployments). |
 | `releases/latest/download/...` returns 404 | No published non-prerelease release yet, or the stable copies were not uploaded (see the "Versionless copies" step log). |
-| Installed Arbora says "Could not check for updates: GitHub answered 404" | `arbora-releases` is private or has no published release. |
-| Performance budget job fails | Idle memory above 350 MB; see `docs/BUILD_STAGES.md`, Stage 9 gotchas. Approving publish is blocked until it passes. |
+| Installed Arbora says "Could not check for updates: GitHub answered 404" | There is no published release yet. |
+| Performance budget job fails | Idle memory above 350 MB; see `docs/BUILD_STAGES.md`, Stage 9 gotchas. Publish still runs. |

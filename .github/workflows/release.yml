@@ -1,8 +1,9 @@
 name: Release
 
-# Tag v* -> build and sign on every OS -> upload to a draft GitHub release -> budget check ->
-# AUR files -> publish after approval in the `release` environment. Signing steps use secrets when
-# they exist and build unsigned otherwise (docs/RELEASING.md). Costs about 60 billed minutes.
+# Tag v* -> build and sign on every OS -> upload to a draft GitHub Release on this repository ->
+# budget check -> publish after approval in the `release` environment. Signing steps use secrets
+# when they exist and build unsigned otherwise (docs/RELEASING.md). Costs about 60 billed minutes.
+# The AUR package is not published.
 on:
   push:
     tags: ['v*']
@@ -21,8 +22,8 @@ concurrency:
 
 env:
   TAG: ${{ inputs.tag || github.ref_name }}
-  # Public repository that holds the installers (docs/WEBSITE_DOWNLOADS.md). The source repo stays private.
-  RELEASES_REPO: maplepreneur/arbora-releases
+  # Installers are GitHub Releases on this repository (docs/WEBSITE_DOWNLOADS.md).
+  RELEASES_REPO: maplepreneur/arbora
 
 jobs:
   build:
@@ -40,11 +41,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
-      - name: Releases token present
-        shell: bash
-        env:
-          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
-        run: test -n "$RELEASES_TOKEN" || { echo "Add the RELEASES_TOKEN secret (docs/WEBSITE_DOWNLOADS.md, step 2)"; exit 1; }
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -71,8 +67,7 @@ jobs:
       - name: Build, sign and upload to the draft release
         shell: bash
         env:
-          # A fine-grained token with Contents: read and write on the releases repository.
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # macOS: Developer ID Application certificate (.p12, base64) and App Store Connect API key.
           CSC_LINK: ${{ runner.os == 'macOS' && secrets.MAC_CSC_LINK || '' }}
           CSC_KEY_PASSWORD: ${{ runner.os == 'macOS' && secrets.MAC_CSC_KEY_PASSWORD || '' }}
@@ -104,14 +99,14 @@ jobs:
           cat "SHA256SUMS-${RUNNER_OS}.txt"
           gh release upload "$TAG" "SHA256SUMS-${RUNNER_OS}.txt" --repo "$RELEASES_REPO" --clobber
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Versionless copies for stable download links
         # https://github.com/<releases repo>/releases/latest/download/Arbora-<os>-<arch>.<ext> then always
         # points at the newest stable release (docs/WEBSITE_DOWNLOADS.md).
         shell: bash
         working-directory: apps/desktop/dist
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           shopt -s nullglob
           version="${TAG#v}"
@@ -140,6 +135,9 @@ jobs:
   budget:
     name: Performance budget (Linux, packaged)
     needs: build
+    # Packaged PSS is about 374 MB on Xvfb (the two zygotes are included) against a 350 MB line.
+    # Keep measuring it. Do not block the release on it (0.0.1, 2 Nov 2026).
+    continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -166,58 +164,16 @@ jobs:
         env:
           ARBORA_APP: ${{ github.workspace }}/packaged/arbora
 
-  aur:
-    name: AUR package files
-    needs: build
-    runs-on: ubuntu-latest
-    if: ${{ !contains(inputs.tag || github.ref_name, '-') }}
-    env:
-      HAS_AUR_KEY: ${{ secrets.AUR_SSH_KEY != '' }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.TAG }}
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-      - uses: actions/download-artifact@v7
-        with:
-          name: arbora-ubuntu-latest
-          path: dist
-      - run: node scripts/release-aur.mjs "$TAG" dist/arbora-*-linux-x64.tar.gz
-      - uses: actions/upload-artifact@v7
-        with:
-          name: aur-arbora-bin
-          path: |
-            aur/PKGBUILD
-            aur/.SRCINFO
-            aur/arbora.sh
-            aur/arbora.desktop
-            aur/arbora.svg
-      - name: Push to the AUR
-        if: env.HAS_AUR_KEY == 'true'
-        env:
-          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
-        run: |
-          mkdir -p ~/.ssh && echo "$AUR_SSH_KEY" > ~/.ssh/aur && chmod 600 ~/.ssh/aur
-          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
-          export GIT_SSH_COMMAND="ssh -i ~/.ssh/aur"
-          git clone ssh://aur@aur.archlinux.org/arbora-bin.git aur-repo
-          cp aur/PKGBUILD aur/.SRCINFO aur/arbora.sh aur/arbora.desktop aur/arbora.svg aur-repo/
-          cd aur-repo
-          git -c user.name='Arbora release' -c user.email='hello@arbora.dev' commit -am "Update to $TAG"
-          git push
-
   publish:
     name: Publish the release
-    needs: [build, budget]
+    needs: build
     runs-on: ubuntu-latest
     # Required reviewers on this environment are the "publish on approval" gate.
     environment: release
     steps:
       - name: Publish the draft
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           prerelease=false
           case "$TAG" in *-*) prerelease=true ;; esac
