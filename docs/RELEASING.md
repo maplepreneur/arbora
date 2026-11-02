@@ -11,7 +11,7 @@ Merging a pull request into `main` does this. Feature work lands on `beta` first
 3. The **Performance budget** job runs the packaged Linux build against `fixtures/plain-html`: idle memory (PSS over the whole process tree) 10 s after load under 350 MB, and the median `browser.screenshot` under 300 ms. The packaged build measures about 374 MB on Xvfb because that sum includes the two zygote processes (see the Stage 9 gotchas). The job reports that and does not block publish.
 4. **Publish** makes the draft public and marks a stable version Latest. A version with `-` is a prerelease. The AUR recipe in `aur/` is not built or pushed. `main` is then merged back into `beta` so the testing line has the version bump.
 
-A full run costs about 60 billed minutes (macOS at 10x, Windows at 2x). Every merge to `main` spends that. To rebuild a tag that already exists: **Actions → Release → Run workflow**, with the tag (for example `v0.0.1`).
+A full run costs about 60 billed minutes (macOS at 10x, Windows at 2x). Every merge to `main` spends that. To rebuild a tag that already exists: **Actions → Release → Run workflow**, with the tag (for example `v0.0.1`). The workflow file that runs is the one in that tag, so a signing fix has to be in the commit the tag points at. An empty `CSC_LINK` must be unset or the macOS build fails with `not a file` (Stage 9 gotchas).
 
 The git branch `beta` is where pull requests land for testing. It is not the in-app Beta update channel (`0.2.0-beta.1`).
 

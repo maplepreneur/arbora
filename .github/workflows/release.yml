@@ -77,9 +77,16 @@ jobs:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: |
-          if [ -z "$CSC_LINK$WIN_CSC_LINK" ]; then
-            echo "No signing certificate for $RUNNER_OS: building unsigned."
+          # An empty CSC_LINK is not "unset". electron-builder resolves it to the project
+          # directory and dies with "<dir> not a file" while signing.
+          if [ -z "${CSC_LINK:-}" ]; then
+            unset CSC_LINK CSC_KEY_PASSWORD
             export CSC_IDENTITY_AUTO_DISCOVERY=false
+            echo "No macOS signing certificate: building unsigned."
+          fi
+          if [ -z "${WIN_CSC_LINK:-}" ]; then
+            unset WIN_CSC_LINK WIN_CSC_KEY_PASSWORD
+            echo "No Windows signing certificate: building unsigned."
           fi
           pnpm --filter @arbora/desktop release
       - name: Verify the macOS signature
