@@ -1,13 +1,14 @@
 # Maintainer: Arbora <hello@arbora.dev>
 #
-# Repackages the Linux tarball from the GitHub release. `scripts/release-aur.mjs` bumps pkgver and
-# sha256sums for each release and regenerates .SRCINFO; do not edit those two by hand.
+# Not published. Arbora ships from GitHub Releases, not the AUR (decided 2 Nov 2026). This recipe
+# repackages the Linux tarball if an AUR package is added later. `scripts/release-aur.mjs` bumps
+# pkgver and sha256sums and regenerates .SRCINFO; do not edit those two by hand.
 pkgname=arbora-bin
 pkgver=0.0.1
 pkgrel=1
 pkgdesc='Design mode for coding agents: point at your running web app and describe the change'
 arch=('x86_64')
-url='https://github.com/maplepreneur/arbora-releases'
+url='https://github.com/maplepreneur/arbora'
 license=('LicenseRef-Arbora')
 depends=('gtk3' 'nss' 'alsa-lib' 'libxss' 'libxtst' 'libnotify' 'xdg-utils' 'at-spi2-core' 'util-linux-libs')
 optdepends=(
@@ -22,7 +23,7 @@ provides=('arbora')
 conflicts=('arbora')
 options=('!strip' '!debug')
 source=(
-  "arbora-${pkgver}-linux-x64.tar.gz::https://github.com/maplepreneur/arbora-releases/releases/download/v${pkgver}/arbora-${pkgver}-linux-x64.tar.gz"
+  "arbora-${pkgver}-linux-x64.tar.gz::https://github.com/maplepreneur/arbora/releases/download/v${pkgver}/arbora-${pkgver}-linux-x64.tar.gz"
   'arbora.sh'
   'arbora.desktop'
   'arbora.svg'

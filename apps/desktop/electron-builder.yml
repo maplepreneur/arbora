@@ -29,13 +29,13 @@ asarUnpack:
   - '**/*.node'
   - '**/node-pty/**/spawn-helper'
 
-# GitHub Releases of the public `arbora-releases` repository feed electron-updater and the website's
-# download page; the source repository stays private. `pnpm package` passes `--publish never`; the
-# release workflow passes `--publish always`, which uploads to a draft release there.
+# GitHub Releases on maplepreneur/arbora feed electron-updater. The website links to that
+# releases page and does not host the files. `pnpm package` passes `--publish never`; the
+# release workflow passes `--publish always`, which uploads to a draft release.
 publish:
   provider: github
   owner: maplepreneur
-  repo: arbora-releases
+  repo: arbora
   releaseType: draft
 # `x.y.z-beta.n` builds write beta.yml as well, so the beta channel also sees stable releases.
 generateUpdatesFilesForAllChannels: true

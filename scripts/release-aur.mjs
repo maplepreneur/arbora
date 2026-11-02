@@ -5,8 +5,7 @@
 //   node scripts/release-aur.mjs --check          (verify .SRCINFO matches PKGBUILD)
 //   node scripts/release-aur.mjs --srcinfo        (regenerate .SRCINFO after editing PKGBUILD)
 //
-// The release workflow runs it after the Linux build with the tarball it just uploaded, then
-// pushes aur/ to ssh://aur@aur.archlinux.org/arbora-bin.git when AUR_SSH_KEY is set.
+// Not used by the release workflow. Arbora does not publish an AUR package (2 Nov 2026).
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
