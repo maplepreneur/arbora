@@ -26,9 +26,16 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libarchive-tools rpm fakeroot
       - run: pnpm install --frozen-lockfile
-      - run: pnpm package
+      - name: Package
+        shell: bash
+        run: |
+          # Ad-hoc sign on macOS: an unsealed bundle is reported as "damaged" (docs/RELEASING.md).
+          if [ "$RUNNER_OS" = macOS ]; then pnpm package -c.mac.identity=-; else pnpm package; fi
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Verify the macOS signature
+        if: runner.os == 'macOS'
+        run: for app in apps/desktop/dist/mac*/Arbora.app; do codesign --verify --deep --strict --verbose=2 "$app"; done
       - uses: actions/upload-artifact@v7
         with:
           name: arbora-${{ matrix.os }}

@@ -21,7 +21,7 @@ Arbora ships with no Apple or Windows signing account. Leave the secrets below u
 
 - **Linux:** Arch and Omarchy use the AppImage, which updates itself. Debian and Ubuntu use the `.deb`, which shows what to download. There is no AUR package. A `.tar.gz` is also uploaded for the memory check.
 - **Windows:** SmartScreen warns once (**More info → Run anyway**). Updates still install in place.
-- **macOS:** Gatekeeper blocks the first launch until the user clicks **Open Anyway** in System Settings → Privacy & Security. The app cannot update itself (Squirrel.Mac requires a Developer ID signature), so Arbora checks the app's own signature at startup (`codesign -dv`) and, without a team id, only tells the user to download the new `.dmg`. Apple silicon needs at least an ad-hoc signature to run; electron-builder applies one when no identity is configured. Check that on the first Mac build.
+- **macOS:** Gatekeeper blocks the first launch until the user clicks **Open Anyway** in System Settings → Privacy & Security. The app cannot update itself (Squirrel.Mac requires a Developer ID signature), so Arbora checks the app's own signature at startup (`codesign -dv`) and, without a team id, only tells the user to download the new `.dmg`. The bundle must still carry an ad-hoc signature, or macOS reports a downloaded copy as "damaged and can't be opened" with no Open Anyway. electron-builder does not add one by itself: with no identity and `CSC_IDENTITY_AUTO_DISCOVERY=false` it logs `skipped macOS application code signing` and leaves the bundle unsealed (that is what broke `v0.0.2`). So without a certificate the workflow passes `-c.mac.identity=-`, and the **Verify the macOS signature** step runs `codesign --verify --deep --strict` on every macOS build. Do not put `identity: "-"` in `electron-builder.yml`: it would replace the Developer ID once a certificate exists.
 
 The repository is public, so the updater and the website can read releases without a token. The website links to the [releases page](https://github.com/maplepreneur/arbora/releases) ([WEBSITE_DOWNLOADS.md](./WEBSITE_DOWNLOADS.md)). To host the files on the website itself instead, set `publish` in `electron-builder.yml` to `{ provider: generic, url: https://<site>/arbora/downloads }` and upload each release's installers with its `latest.yml`, `latest-mac.yml`, `latest-linux.yml` (and `beta*.yml`) to that folder; the in-app check for `.deb`, tarball and unsigned macOS installs then also needs that URL instead of the GitHub API.
 
@@ -51,6 +51,6 @@ Linux packages are not signed; the checksum files are the integrity check.
 
 ```bash
 pnpm package                                        # unsigned installers for this OS in apps/desktop/dist
-CSC_IDENTITY_AUTO_DISCOVERY=false pnpm package       # macOS: skip the keychain lookup
+CSC_IDENTITY_AUTO_DISCOVERY=false pnpm package -c.mac.identity=-   # macOS: skip the keychain, ad-hoc sign
 ARBORA_APP=apps/desktop/dist/linux-unpacked/arbora xvfb-run -a pnpm perf   # the budget on a packaged build
 ```

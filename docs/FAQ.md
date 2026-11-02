@@ -18,6 +18,8 @@ The installer is not signed with a code-signing certificate yet. Click **More in
 
 Releases are not signed with an Apple Developer ID yet. After dragging Arbora to Applications and trying to open it once, open System Settings → Privacy & Security, scroll to the message about Arbora and click **Open Anyway**, then confirm. (On macOS 15 and later the old right-click → **Open** shortcut no longer bypasses this.) In a terminal, `xattr -dr com.apple.quarantine /Applications/Arbora.app` does the same.
 
+If macOS says Arbora "is damaged and can't be opened", you have `v0.0.2`, which shipped without even an ad-hoc signature. Install a newer release, or repair the copy you have: `xattr -dr com.apple.quarantine /Applications/Arbora.app && codesign --force --deep --sign - /Applications/Arbora.app`.
+
 macOS only installs updates for signed apps, so an unsigned Arbora does not update itself: when a new version is out, Arbora says so and links the release page; download the new `.dmg` and replace the app in Applications.
 
 ## Hyprland, Wayland and blurry text
