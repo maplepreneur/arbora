@@ -6,12 +6,16 @@ Cursor always-on copy of the progress rule: [`.cursor/rules/update-stage-progres
 
 ## Shipping
 
-Until told otherwise (set 30 Oct 2026): commit on `main` and push `origin main`. Do not open a branch or a pull request. GitHub Actions minutes for this private repo are used up for the month, and review PRs are not worth a CI run while development is this fast.
+Since 1 Nov 2026 (Actions minutes replenished): work on a branch and open a pull request into `main`. Do not push code straight to `main`. Actions minutes are billed on this private repo, so keep CI runs few:
 
-- The progress update below goes in that same commit. Do not leave it for a follow-up.
-- Run `pnpm typecheck && pnpm lint && pnpm test` before a push that contains code. Run `pnpm e2e` when the change touches the Electron app (needs a display; use `xvfb-run -a` on headless Linux).
-- A push of code to `main` still starts the Linux CI job. Changes that only touch `**/*.md`, `docs/**` or `.cursor/**` do not. Do not add `ci:all-os` and do not start the all-OS workflow. Batch commits so a stage is not one push per file.
-- This section is what to revert when Actions minutes are back and PRs are wanted again.
+- **One branch and one PR per logical piece of work** (a stage sub-part, a fix). Commit locally as often as you like; **push when the work is tested locally**, not after every commit. Every push to a ready PR runs CI again.
+- **Open the PR as a draft while it is still changing** (drafts skip CI). Mark it ready once, when you expect it to pass. Do not push and mark ready in the same breath (the cancelled draft run takes the ready run with it; see BUILD_STAGES cross-cutting gotchas).
+- **Run the checks locally first:** `pnpm typecheck && pnpm lint && pnpm test` before any push with code, and `pnpm e2e` when the change touches the Electron app (needs a display; `xvfb-run -a` on headless Linux). CI is the confirmation, not the place to find failures.
+- **Linux only by default.** Add the `ci:all-os` label (macOS costs 10x, Windows 2x) only when the change is platform-specific (paths, shells, keyboard labels, packaging, native modules), once, just before merge, and remove it once that run is green.
+- **Merging does not rerun CI on `main`;** the PR run is the gate. `main` gets a weekly Linux run (Mondays) and "Run workflow" on demand. If a merge could interact with other merged work, update the branch from `main` before the final push so the PR run covers the result.
+- **Docs-only changes** (`**/*.md`, `docs/**`, `.cursor/**`) skip CI. They still go through a PR, which can be merged without waiting.
+- **Releases cost about 60 minutes** (three OSes). Tag only when a release is intended (docs/RELEASING.md). Do not run `package.yml` or the all-OS dispatch to "see if it works".
+- The progress update below goes in the PR with the work, not a follow-up PR. Stage statuses use `In progress (PR #N)` while open and `In progress (PR #N, merged)` / `Done (PR #N)` after merge.
 
 ## End of work: update progress
 
@@ -19,11 +23,11 @@ A task is not finished until the phase docs match what you just did. Update them
 
 1. Read [docs/BUILD_STAGES.md](docs/BUILD_STAGES.md) **Progress** and the current stage checklist, and [docs/PLAN.md](docs/PLAN.md) **Current phase**.
 2. Tick finished checklist items. Leave unverified items unchecked (especially Omarchy/Hyprland `arch-ok`).
-3. Set the Progress table **Status** and **Notes** for every stage you touched. Notes must be true *now*: on `main` or not, CI result (name red jobs), what is left, what comes next. Do not leave "then merge" after the work is on `main`.
+3. Set the Progress table **Status** and **Notes** for every stage you touched. Notes must be true *now*: the PR and whether it is merged, the CI result (name red jobs and link the run), what is left, what comes next. After the merge, a small docs PR can record "merged" and the final CI run; do not leave "then merge" in the notes.
 4. Rewrite **Current phase** in `docs/PLAN.md` so **Now / Next / Blockers** match that table.
 5. Append new gotchas to the stage that discovered them. Fill Appendix B cells when you ran a manual agent matrix.
 
-Status values: `Not started`, `In progress` or `In progress (PR #N)` / `In progress (PR #N, merged)`, `Blocked (reason)`, `Done` or `Done (PR #N)`. During direct-to-main, new work uses `In progress` or `Done` and names the commit on `main`. Keep `PR #N` on stages that already landed that way.
+Status values: `Not started`, `In progress` or `In progress (PR #N)` / `In progress (PR #N, merged)`, `Blocked (reason)`, `Done` or `Done (PR #N)`. Work done during the direct-to-main period (30 Oct to 1 Nov 2026) names its commit on `main`; new work names its PR.
 
 Never mark a stage `Done` from CI alone. The definition of done requires `arch-ok` on Omarchy/Hyprland (see BUILD_STAGES "Local testing"). Until then the status stays `In progress` or `Blocked`.
 
@@ -33,7 +37,7 @@ When you finish a stage's code, point the next unstarted stage's Notes at "Next 
 
 - `pnpm install` (postinstall runs `install-electron`; Electron 45 no longer downloads its binary on install)
 - `pnpm typecheck && pnpm lint && pnpm test` before every code push; `pnpm e2e` for the Electron smoke tests (needs a display; use `xvfb-run -a` on headless Linux)
-- CI minutes are billed, and the monthly allowance is used up (30 Oct 2026). Ship on `main` (see Shipping). A code push to `main` still runs the Linux job. Do not open a PR and do not request macOS or Windows (`ci:all-os` or "Run workflow" with `all_os`, 10x and 2x minutes) until minutes are back.
+- CI minutes are billed. Ship through pull requests and keep runs few (see Shipping): drafts while iterating, Linux only, `ci:all-os` (10x and 2x minutes) only for platform-specific changes right before merge.
 - `pnpm dev -- /absolute/path/to/project` to launch with a project open
 
 ## Where things go

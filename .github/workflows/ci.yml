@@ -1,12 +1,15 @@
 name: CI
 
 # The repo is private, so Actions minutes are billed: macOS at 10x and Windows at 2x Linux.
-# Every run checks Linux only. macOS and Windows run when a PR has the `ci:all-os` label, or
-# from "Run workflow" with "all_os" ticked. Docs-only changes and draft PRs skip CI.
+# Spending rules (AGENTS.md "Shipping"):
+# - Pull requests are the gate. Every run checks Linux only; macOS and Windows run when a PR has the
+#   `ci:all-os` label, or from "Run workflow" with "all_os" ticked.
+# - Draft PRs and docs-only changes skip CI, and a new push cancels the run still going for that PR.
+# - Merges to `main` do not run CI again (the PR already did). `main` gets one Linux run a week and
+#   "Run workflow" on demand.
 on:
-  push:
-    branches: [main]
-    paths-ignore: ['**/*.md', 'docs/**', '.cursor/**', 'LICENSE']
+  schedule:
+    - cron: '0 12 * * 1'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, labeled]
     paths-ignore: ['**/*.md', 'docs/**', '.cursor/**', 'LICENSE']
