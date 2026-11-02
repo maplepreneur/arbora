@@ -6,15 +6,15 @@ Cursor always-on copy of the progress rule: [`.cursor/rules/update-stage-progres
 
 ## Shipping
 
-Since 1 Nov 2026 (Actions minutes replenished): work on a branch and open a pull request into `main`. Do not push code straight to `main`. Actions minutes are billed on this private repo, so keep CI runs few:
+Since 2 Nov 2026: work on a branch and open a pull request into `beta`. `beta` is the testing line. `main` is only the stable line: a pull request from `beta` into `main` publishes the next GitHub Release (about 60 billed minutes). Do not open feature pull requests against `main`, and do not push code straight to either branch. Actions minutes are billed, so keep CI runs few:
 
 - **One branch and one PR per logical piece of work** (a stage sub-part, a fix). Commit locally as often as you like; **push when the work is tested locally**, not after every commit. Every push to a ready PR runs CI again.
 - **Open the PR as a draft while it is still changing** (drafts skip CI). Mark it ready once, when you expect it to pass. Do not push and mark ready in the same breath (the cancelled draft run takes the ready run with it; see BUILD_STAGES cross-cutting gotchas).
 - **Run the checks locally first:** `pnpm typecheck && pnpm lint && pnpm test` before any push with code, and `pnpm e2e` when the change touches the Electron app (needs a display; `xvfb-run -a` on headless Linux). CI is the confirmation, not the place to find failures.
 - **Linux only by default.** Add the `ci:all-os` label (macOS costs 10x, Windows 2x) only when the change is platform-specific (paths, shells, keyboard labels, packaging, native modules), once, just before merge, and remove it once that run is green.
-- **Merging does not rerun CI on `main`;** the PR run is the gate. `main` gets a weekly Linux run (Mondays) and "Run workflow" on demand. If a merge could interact with other merged work, update the branch from `main` before the final push so the PR run covers the result.
+- **Merging does not rerun CI;** the PR run is the gate. `main` gets a weekly Linux run (Mondays) and "Run workflow" on demand, and a merge into `main` also starts the release build. If a merge could interact with other merged work, update the branch from `beta` before the final push so the PR run covers the result.
 - **Docs-only changes** (`**/*.md`, `docs/**`, `.cursor/**`) skip CI. They still go through a PR, which can be merged without waiting.
-- **Releases cost about 60 minutes** (three OSes). Tag only when a release is intended (docs/RELEASING.md). Do not run `package.yml` or the all-OS dispatch to "see if it works".
+- **Releases cost about 60 minutes** (three OSes) and happen by themselves when a pull request merges into `main`. Do not tag a release or run `package.yml` by hand unless you are rebuilding one (docs/RELEASING.md). The git branch `beta` is not the in-app Beta update channel.
 - The progress update below goes in the PR with the work, not a follow-up PR. Stage statuses use `In progress (PR #N)` while open and `In progress (PR #N, merged)` / `Done (PR #N)` after merge.
 
 ## End of work: update progress
@@ -37,7 +37,7 @@ When you finish a stage's code, point the next unstarted stage's Notes at "Next 
 
 - `pnpm install` (postinstall runs `install-electron`; Electron 45 no longer downloads its binary on install)
 - `pnpm typecheck && pnpm lint && pnpm test` before every code push; `pnpm e2e` for the Electron smoke tests (needs a display; use `xvfb-run -a` on headless Linux)
-- CI minutes are billed. Ship through pull requests and keep runs few (see Shipping): drafts while iterating, Linux only, `ci:all-os` (10x and 2x minutes) only for platform-specific changes right before merge.
+- CI minutes are billed. Ship through pull requests into `beta` and keep runs few (see Shipping): drafts while iterating, Linux only, `ci:all-os` (10x and 2x minutes) only for platform-specific changes right before merge. Promote `beta` to `main` only when that line is ready to release.
 - `pnpm dev -- /absolute/path/to/project` to launch with a project open
 
 ## Where things go

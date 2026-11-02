@@ -1,0 +1,62 @@
+name: Cut a release
+
+# A merged pull request pushes to main. That push tags the next stable version and starts
+# Release. The first unpublished x.y.z is tagged as-is; once that tag exists, the patch
+# number goes up by one and is committed. Pushes made here use GITHUB_TOKEN, which does not
+# start this workflow again. Costs about 60 billed minutes per release (docs/RELEASING.md).
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: cut-release
+  cancel-in-progress: false
+
+jobs:
+  cut:
+    name: Tag and start the release
+    if: "${{ !startsWith(github.event.head_commit.message, 'chore: release v') }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Tag the version and start the build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git fetch origin --tags --force
+          current="$(node -p "require('./apps/desktop/package.json').version")"
+          if git rev-parse -q --verify "refs/tags/v$current" >/dev/null; then
+            version="$(node scripts/release-version.mjs next "$current" true)"
+            node scripts/release-version.mjs write "$version"
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add apps/desktop/package.json
+            git commit -m "chore: release v$version"
+            git push origin HEAD:main
+          else
+            version="$current"
+          fi
+          git tag "v$version"
+          git push origin "v$version"
+          echo "version=$version" >> "$GITHUB_ENV"
+          for attempt in 1 2 3 4 5; do
+            gh workflow run release.yml --ref "v$version" -f tag="v$version" && break
+            sleep 5
+          done
+      - name: Merge main back into beta
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          git fetch origin beta && git fetch origin main || { echo "beta does not exist yet"; exit 0; }
+          git checkout -B beta origin/beta
+          git merge origin/main -m "Merge main into beta"
+          git push origin beta

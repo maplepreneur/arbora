@@ -4,13 +4,16 @@ Releases are GitHub Releases on the public repository `maplepreneur/arbora`, bui
 
 ## Cut a release
 
-1. Set `version` in `apps/desktop/package.json` (`0.2.0`, or `0.2.0-beta.1` for the beta channel) and commit it on `main`.
-2. Tag and push: `git tag v0.2.0 && git push origin v0.2.0`. The tag must match the version; the workflow checks.
-3. The workflow builds on Linux, macOS and Windows, signs what it has secrets for, and uploads everything to a **draft** release on this repository with `SHA256SUMS-<os>.txt` files and versionless copies (`Arbora-<os>-<arch>.<ext>`) for stable `releases/latest/download/` links.
-4. The **Performance budget** job runs the packaged Linux build against `fixtures/plain-html`: idle memory (PSS over the whole process tree) 10 s after load under 350 MB, and the median `browser.screenshot` under 300 ms. The packaged build measures about 374 MB on Xvfb because that sum includes the two zygote processes (see the Stage 9 gotchas). The job reports that and does not block **Publish**.
-5. **Publish** waits for approval on the `release` environment, then publishes the draft. A version with `-` is marked as a prerelease. The AUR recipe in `aur/` is not built or pushed.
+Merging a pull request into `main` does this. Feature work lands on `beta` first; `main` is only what is ready to ship.
 
-A full run costs about 60 billed minutes (macOS at 10x, Windows at 2x). Tag only when a release is intended; a failed run still costs most of those minutes.
+1. [`.github/workflows/release-main.yml`](../.github/workflows/release-main.yml) reads `version` in `apps/desktop/package.json`. If `v` plus that version is not a tag yet, it tags the merge. If the tag already exists, it bumps the patch (`0.0.1` → `0.0.2`), commits `chore: release v…`, and tags that commit.
+2. It starts [`.github/workflows/release.yml`](../.github/workflows/release.yml) for that tag. The build runs on Linux, macOS and Windows, signs what it has secrets for, and uploads a draft with `SHA256SUMS-<os>.txt` files and versionless copies (`Arbora-<os>-<arch>.<ext>`).
+3. The **Performance budget** job runs the packaged Linux build against `fixtures/plain-html`: idle memory (PSS over the whole process tree) 10 s after load under 350 MB, and the median `browser.screenshot` under 300 ms. The packaged build measures about 374 MB on Xvfb because that sum includes the two zygote processes (see the Stage 9 gotchas). The job reports that and does not block publish.
+4. **Publish** makes the draft public and marks a stable version Latest. A version with `-` is a prerelease. The AUR recipe in `aur/` is not built or pushed. `main` is then merged back into `beta` so the testing line has the version bump.
+
+A full run costs about 60 billed minutes (macOS at 10x, Windows at 2x). Every merge to `main` spends that. To rebuild a tag that already exists: **Actions → Release → Run workflow**, with the tag (for example `v0.0.1`).
+
+The git branch `beta` is where pull requests land for testing. It is not the in-app Beta update channel (`0.2.0-beta.1`).
 
 ## Without signing accounts
 

@@ -7,8 +7,10 @@ The website does not host installers. It links to the [GitHub releases page](htt
 ## How it fits together
 
 ```
-maplepreneur/arbora   (public)   source, CI, and GitHub Releases
-        │  git tag v0.1.0 → .github/workflows/release.yml
+pull request → beta          testing
+        │  pull request beta → main
+        ▼
+maplepreneur/arbora main     tags the next x.y.z and runs release.yml
         ▼
 https://github.com/maplepreneur/arbora/releases
         ├── Arbora's built-in updater reads latest*.yml from here
@@ -29,9 +31,9 @@ The download page must explain the Windows and macOS steps (Part 3 has the wordi
 
 Installers publish to `maplepreneur/arbora`, which is already public, so the workflow uses `GITHUB_TOKEN`. There is no second repository and no publish token.
 
-### 1. Approval gate
+### 1. Branches
 
-The `release` environment on `maplepreneur/arbora` requires a review from `maplepreneur`. Every release waits there before **Publish the release** runs. Until then the release is a draft.
+`beta` is the default branch. Pull requests for testing target it. A pull request from `beta` into `main` publishes the next stable release. Nothing else needs to be clicked.
 
 ### 2. Actions minutes
 
@@ -45,21 +47,14 @@ Signing secrets (`MAC_CSC_LINK`, `APPLE_API_KEY_*`, `WIN_CSC_LINK`) are describe
 
 ## Part 2: cutting a release
 
-1. Set `"version"` in `apps/desktop/package.json` (for example `0.1.0`; a version like `0.2.0-beta.1` becomes a prerelease on the beta channel). Commit and push to `main`. The current version is `0.0.1`; bump it before the first real tag.
-2. Tag and push the tag:
+Merge the tested `beta` branch into `main`. [`.github/workflows/release-main.yml`](../.github/workflows/release-main.yml) tags the next stable version (`0.0.1`, then `0.0.2`, …) and starts **Release**. Watch **Actions → Release**. It:
 
-   ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
-   ```
+- builds and uploads everything, then publishes the release and marks a stable version **Latest**,
+- adds `SHA256SUMS-Linux.txt`, `SHA256SUMS-macOS.txt`, `SHA256SUMS-Windows.txt`,
+- adds versionless copies (below) for stable links,
+- runs the performance budget on the packaged Linux build (a miss does not block publish).
 
-3. Watch **Actions → Release** in `maplepreneur/arbora`. It:
-   - builds and uploads everything to a **draft** release `v0.1.0` on this repository,
-   - adds `SHA256SUMS-Linux.txt`, `SHA256SUMS-macOS.txt`, `SHA256SUMS-Windows.txt`,
-   - adds versionless copies (below) for stable links,
-   - runs the performance budget on the packaged Linux build (a miss does not block publish),
-   - waits for your approval, then publishes the release and marks it **Latest** (prereleases are not marked Latest).
-4. Optionally edit the release notes on the draft before approving. The in-app update dialog shows them. The website should link to `https://github.com/maplepreneur/arbora/releases`.
+The in-app update dialog shows the release notes. The website should link to `https://github.com/maplepreneur/arbora/releases`. To rebuild a tag, use **Actions → Release → Run workflow**.
 
 ### Files in every release
 
@@ -251,7 +246,7 @@ export async function detectPlatform(): Promise<Platform | null> {
 
 | Symptom | Cause and fix |
 | --- | --- |
-| Release stays a draft | The **Publish the release** job waits for approval in the `release` environment (Actions → the run → Review deployments). |
+| Release stays a draft | **Publish the release** has not finished, or the build failed. A merge to `main` publishes without an extra approval. |
 | `releases/latest/download/...` returns 404 | No published non-prerelease release yet, or the stable copies were not uploaded (see the "Versionless copies" step log). |
 | Installed Arbora says "Could not check for updates: GitHub answered 404" | There is no published release yet. |
 | Performance budget job fails | Idle memory above 350 MB; see `docs/BUILD_STAGES.md`, Stage 9 gotchas. Publish still runs. |
