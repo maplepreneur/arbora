@@ -13,7 +13,17 @@ Merging a pull request into `main` does this. Feature work lands on `beta` first
 
 A full run costs about 60 billed minutes (macOS at 10x, Windows at 2x). Every merge to `main` spends that. To rebuild a tag that already exists: **Actions → Release → Run workflow**, with the tag (for example `v0.0.1`). The workflow file that runs is the one in that tag, so a signing fix has to be in the commit the tag points at. An empty `CSC_LINK` must be unset or the macOS build fails with `not a file` (Stage 9 gotchas).
 
-The git branch `beta` is where pull requests land for testing. It is not the in-app Beta update channel (`0.2.0-beta.1`).
+The git branch `beta` is where pull requests land for testing. Merging into it publishes nothing. The in-app Beta channel gets a prerelease from it only when someone runs **Cut a beta** (below).
+
+## Publish a beta
+
+**Actions → Cut a beta → Run workflow**, with **Use workflow from** set to `beta`. Do this when `beta` has something worth testing, not after every merge: each run is a full release, about 60 billed minutes.
+
+1. [`.github/workflows/release-beta.yml`](../.github/workflows/release-beta.yml) picks the next `x.y.z-beta.n` (`scripts/release-version.mjs beta`). `x.y.z` is the stable version that has not shipped yet: the `version` in `apps/desktop/package.json` when it is ahead of every stable tag and untagged, otherwise one patch above the newest stable tag. `n` counts up from the betas already tagged for that version. After `v0.0.3`, the first beta is `0.0.4-beta.1`, then `0.0.4-beta.2`, and the next merge into `main` publishes `0.0.4`.
+2. It commits that version to `package.json` on top of the tip of `beta`, tags that commit, and pushes only the tag. The `beta` branch keeps its plain `x.y.z`, so `release-main.yml` works as before.
+3. It starts Release for the tag. Publish marks a version with `-` as a prerelease and does not make it Latest, so `releases/latest` and Stable users never see it.
+
+Beta users update to the newest of the betas and the stable releases: a beta sorts above the stable release before it and below the one it leads to. A user who switches from Beta to Stable stays on their beta until the next stable release (the updater does not downgrade). GitHub only lists a `workflow_dispatch` workflow once the file is on the default branch, so **Cut a beta** appears after this file reaches `main`. Do not run it from another branch; the job skips anything but `beta`.
 
 ## Without signing accounts
 
@@ -43,14 +53,27 @@ Linux packages are not signed; the checksum files are the integrity check.
 
 ## Channels and updates
 
-- `x.y.z` goes to **Stable** (`latest`), `x.y.z-beta.n` to **Beta**. Beta users also get stable releases.
+Settings → Updates & diagnostics → **Channel**:
+
+- **Stable** (`latest`, the default) gets `x.y.z`.
+- **Beta** (`beta`) gets `x.y.z-beta.n` from **Cut a beta**, and every stable release.
+- **Development** (`off`) never checks, downloads or installs an update. A downloaded update does not install on quit either.
+
+Builds that are not from `release.yml` never update, whatever the channel says, so a builder's copy is never replaced (`updatePolicy` in `packages/shared/src/updates.ts`):
+
+- `pnpm dev`, `pnpm e2e` and `scripts/arbora-local` run unpackaged (`installKind: dev`). Settings shows "Updates are off in development builds." The launcher moves its checkout by channel instead (README, "Use your checkout as an installed app").
+- `pnpm package` and `package.yml` builds are packaged but are not release builds: `release.yml` sets `ARBORA_RELEASE_BUILD=true` while it builds, electron-vite bakes that into `out/main/index.js`, and the **The build checks for updates** step fails the job if it is missing. Start a local build with `ARBORA_UPDATES=on` to test the updater against the published releases.
+- `ARBORA_UPDATES=off` turns updates off in any build, and the launcher then leaves the checkout alone too.
+
+How each install updates:
+
 - macOS (`.dmg`/`.zip`), Windows (per-user NSIS) and the AppImage update in place.
 - The `.deb` and the tarball are installed by the user. Arbora checks the GitHub Releases API and shows what to download.
 
 ## Local builds
 
 ```bash
-pnpm package                                        # unsigned installers for this OS in apps/desktop/dist
+pnpm package                                        # unsigned installers for this OS in apps/desktop/dist (never self-update)
 CSC_IDENTITY_AUTO_DISCOVERY=false pnpm package -c.mac.identity=-   # macOS: skip the keychain, ad-hoc sign
 ARBORA_APP=apps/desktop/dist/linux-unpacked/arbora xvfb-run -a pnpm perf   # the budget on a packaged build
 ```

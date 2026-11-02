@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   canSelfUpdate,
+  checkoutBranch,
   compareVersions,
   detectInstallKind,
   isOfferedUpdate,
@@ -8,6 +9,8 @@ import {
   pickRelease,
   releaseNotesText,
   releasePageUrl,
+  updatePolicy,
+  updatesOffText,
   versionChannel,
 } from './updates.js';
 
@@ -31,6 +34,60 @@ describe('channels', () => {
     expect(isOfferedUpdate('0.1.0', '0.2.0-beta.1', 'latest')).toBe(false);
     expect(isOfferedUpdate('0.1.0', '0.2.0-beta.1', 'beta')).toBe(true);
     expect(isOfferedUpdate('0.2.0', '0.2.0', 'beta')).toBe(false);
+  });
+
+  it('gives beta users the stable release a beta leads to, and keeps leavers off older stables', () => {
+    expect(isOfferedUpdate('0.2.0-beta.3', '0.2.0', 'beta')).toBe(true);
+    expect(isOfferedUpdate('0.2.0-beta.3', '0.2.0', 'latest')).toBe(true);
+    expect(isOfferedUpdate('0.2.0-beta.3', '0.1.9', 'latest')).toBe(false);
+  });
+});
+
+describe('updatePolicy', () => {
+  const release = { kind: 'appimage', releaseBuild: true, env: undefined, channel: 'latest' } as const;
+
+  it('follows the channel in release builds', () => {
+    expect(updatePolicy(release)).toEqual({ enabled: true, channel: 'latest' });
+    expect(updatePolicy({ ...release, channel: 'beta' })).toEqual({ enabled: true, channel: 'beta' });
+    expect(updatePolicy({ ...release, channel: 'off' })).toEqual({ enabled: false, reason: 'setting' });
+  });
+
+  it('is always off when not packaged, whatever the setting or ARBORA_UPDATES says', () => {
+    for (const channel of ['latest', 'beta', 'off'] as const) {
+      for (const env of [undefined, 'on', 'off']) {
+        expect(updatePolicy({ ...release, kind: 'dev', channel, env })).toEqual({ enabled: false, reason: 'dev' });
+      }
+    }
+  });
+
+  it('keeps local packaged builds put unless ARBORA_UPDATES=on', () => {
+    const local = { ...release, releaseBuild: false };
+    expect(updatePolicy(local)).toEqual({ enabled: false, reason: 'local-build' });
+    expect(updatePolicy({ ...local, channel: 'beta' })).toEqual({ enabled: false, reason: 'local-build' });
+    expect(updatePolicy({ ...local, env: 'on' })).toEqual({ enabled: true, channel: 'latest' });
+    expect(updatePolicy({ ...local, env: 'on', channel: 'off' })).toEqual({ enabled: false, reason: 'setting' });
+  });
+
+  it('lets ARBORA_UPDATES=off turn any build off', () => {
+    for (const env of ['off', 'OFF', '0', 'false', ' off ']) {
+      expect(updatePolicy({ ...release, env })).toEqual({ enabled: false, reason: 'env' });
+    }
+    expect(updatePolicy({ ...release, env: 'yes' })).toEqual({ enabled: true, channel: 'latest' });
+  });
+
+  it('explains every reason', () => {
+    expect(updatesOffText('dev')).toMatch(/development builds/);
+    expect(updatesOffText('local-build')).toMatch(/ARBORA_UPDATES=on/);
+    expect(updatesOffText('env')).toMatch(/ARBORA_UPDATES=off/);
+    expect(updatesOffText('setting')).toMatch(/Development channel/);
+  });
+});
+
+describe('checkoutBranch', () => {
+  it('maps Stable to main, Beta to beta and Development to nothing', () => {
+    expect(checkoutBranch('latest')).toBe('main');
+    expect(checkoutBranch('beta')).toBe('beta');
+    expect(checkoutBranch('off')).toBeNull();
   });
 });
 

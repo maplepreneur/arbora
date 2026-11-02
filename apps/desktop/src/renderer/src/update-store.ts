@@ -1,11 +1,17 @@
 import { create } from 'zustand';
-import type { UpdateState } from '@arbora/shared';
-import { openOverlay, showToast, useApp } from './store';
+import { updatesOffText, type UpdateState } from '@arbora/shared';
+import { closeOverlay, openOverlay, showToast } from './store';
 
-export const useUpdates = create<{ state: UpdateState; version: string; selfUpdates: boolean }>()(() => ({
+export const useUpdates = create<{
+  state: UpdateState;
+  version: string;
+  selfUpdates: boolean;
+  sourceLauncher: boolean;
+}>()(() => ({
   state: { status: 'idle' },
   version: '',
   selfUpdates: false,
+  sourceLauncher: false,
 }));
 
 let announced: string | null = null;
@@ -27,6 +33,7 @@ export function applyUpdateState(state: UpdateState, fromUser = false): void {
       }
       return;
     case 'idle':
+    case 'off':
     case 'checking':
     case 'current':
     case 'downloading':
@@ -40,16 +47,17 @@ export function applyUpdateState(state: UpdateState, fromUser = false): void {
 }
 
 export async function loadUpdateState(): Promise<void> {
-  const { state, version, selfUpdates } = await window.arbora.invoke('updates.getState');
-  useUpdates.setState({ state, version, selfUpdates });
+  const { state, version, selfUpdates, sourceLauncher } = await window.arbora.invoke('updates.getState');
+  useUpdates.setState({ state, version, selfUpdates, sourceLauncher });
 }
 
 /** **Check for Updates…**: checks now and shows the result in the update dialog. */
 export async function checkForUpdates(): Promise<void> {
-  if (useApp.getState().info.installKind === 'dev') {
-    showToast('Updates are off in development builds');
-    return;
+  if (useUpdates.getState().state.status !== 'off') openOverlay('update');
+  const state = await window.arbora.invoke('updates.check');
+  applyUpdateState(state, true);
+  if (state.status === 'off') {
+    closeOverlay('update');
+    showToast(updatesOffText(state.reason));
   }
-  openOverlay('update');
-  applyUpdateState(await window.arbora.invoke('updates.check'), true);
 }
