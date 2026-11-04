@@ -10,8 +10,10 @@ import { AppearanceSection } from './AppearanceSection';
 import { GitSection } from './GitSection';
 import { inputClass, Segmented, SettingRow, Toggle } from './controls';
 import { KeyboardSection } from './KeyboardSection';
+import { McpSection } from './McpSection';
 import { NotificationsSection } from './NotificationsSection';
 import { ProjectSection } from './ProjectSection';
+import { SkillsSection } from './SkillsSection';
 import { UpdatesSection } from './UpdatesSection';
 
 type Section = SettingsSection;
@@ -23,6 +25,8 @@ const SECTIONS: readonly { id: Section; label: string }[] = [
   { id: 'notifications', label: 'Notifications & sounds' },
   { id: 'editor', label: 'Editor' },
   { id: 'git', label: 'Git' },
+  { id: 'skills', label: 'Skills' },
+  { id: 'mcp', label: 'MCP servers' },
   { id: 'browser', label: 'Browser' },
   { id: 'project', label: 'Project' },
   { id: 'keyboard', label: 'Keyboard' },
@@ -254,6 +258,8 @@ export default function SettingsPage() {
           {section === 'appearance' && <AppearanceSection />}
           {section === 'editor' && <EditorSection />}
           {section === 'git' && <GitSection />}
+          {section === 'skills' && <SkillsSection />}
+          {section === 'mcp' && <McpSection />}
           {section === 'browser' && <BrowserSection />}
           {section === 'notifications' && <NotificationsSection />}
           {section === 'project' && <ProjectSection />}

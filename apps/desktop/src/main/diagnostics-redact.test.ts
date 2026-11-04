@@ -21,6 +21,29 @@ describe('redactSettings', () => {
     expect(out).toContain('~/code/shop');
     expect(out).toContain('"OPENAI_API_KEY":"[redacted]"');
   });
+
+  it('drops MCP server env values and headers', () => {
+    const settings = {
+      ...defaultSettings(),
+      mcpServers: [
+        {
+          id: '1',
+          name: 'docs',
+          enabled: true,
+          transport: 'stdio' as const,
+          command: 'npx',
+          args: [],
+          env: { DOCS_KEY: 'plain-value-1' },
+          url: '',
+          headers: { 'X-Custom': 'plain-value-2' },
+          agents: [],
+        },
+      ],
+    };
+    const out = JSON.stringify(redactSettings(settings, '/home/ana'));
+    expect(out).not.toContain('plain-value');
+    expect(out).toContain('"DOCS_KEY":"[redacted]"');
+  });
 });
 
 describe('redactText', () => {

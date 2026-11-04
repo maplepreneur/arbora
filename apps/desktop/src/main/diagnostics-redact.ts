@@ -27,8 +27,9 @@ export function redactText(text: string, home: string): string {
 }
 
 /**
- * Settings as they go into a diagnostics zip: every agent env value is dropped (agents keep API
- * keys there), any key that looks like a secret is dropped, and home paths are shortened.
+ * Settings as they go into a diagnostics zip: every agent and MCP server env value and header is
+ * dropped (API keys live there), any key that looks like a secret is dropped, and home paths are
+ * shortened.
  */
 export function redactSettings(settings: AppSettings, home: string): unknown {
   const copy: AppSettings = {
@@ -38,6 +39,11 @@ export function redactSettings(settings: AppSettings, home: string): unknown {
       custom: settings.agents.custom.map((agent) => ({ ...agent, env: redactEnv(agent.env) })),
       env: Object.fromEntries(Object.entries(settings.agents.env).map(([id, env]) => [id, redactEnv(env)])),
     },
+    mcpServers: settings.mcpServers.map((server) => ({
+      ...server,
+      env: redactEnv(server.env),
+      headers: redactEnv(server.headers),
+    })),
   };
   const walk = (value: unknown, key: string | null): unknown => {
     if (key !== null && SECRET_KEY.test(key) && typeof value === 'string') return REDACTED;

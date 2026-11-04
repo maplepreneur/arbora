@@ -34,6 +34,8 @@ import { defineHandler, sendEvent } from './ipc.js';
 import { buildMacMenu } from './menu.js';
 import { ensureArboraGitignore, ensureProjectSettingsFile, updateProjectSettingsFile } from './project-settings.js';
 import { SettingsStore } from './settings-store.js';
+import { importableMcpServers } from './skills/mcp-import.js';
+import { SkillLibrary } from './skills/skill-library.js';
 import { detectTilingCompositor, parseProjectArg, shouldQuitWhenAllWindowsClosed, startupSwitches } from './startup.js';
 import { inferProjectDevCommand } from './terminal/dev-command.js';
 import type { DevServer } from './terminal/dev-server.js';
@@ -358,6 +360,37 @@ function main(): void {
       shell.showItemInFolder(path);
       return undefined;
     });
+
+    const skillsHome = process.env['ARBORA_SKILLS_HOME'] || homedir();
+    const skills = new SkillLibrary({
+      home: skillsHome,
+      platform: process.platform,
+      env: async () => {
+        await shellEnvironment.ready;
+        return shellEnvironment.env();
+      },
+      searchUrl: process.env['ARBORA_SKILLS_API'] || undefined,
+      gitBase: process.env['ARBORA_SKILLS_GIT_BASE'] || undefined,
+    });
+    defineHandler('skills.list', isTrusted, () => skills.list());
+    defineHandler('skills.setTargets', isTrusted, ({ name, targets }) => skills.setTargets(name, targets));
+    defineHandler('skills.remove', isTrusted, ({ name }) => skills.remove(name));
+    defineHandler('skills.adopt', isTrusted, ({ name }) => skills.adopt(name));
+    defineHandler('skills.reveal', isTrusted, async ({ name }) => {
+      if (name) shell.showItemInFolder(join(skills.libraryPath, name, 'SKILL.md'));
+      else {
+        mkdirSync(skills.libraryPath, { recursive: true });
+        await shell.openPath(skills.libraryPath);
+      }
+      return undefined;
+    });
+    defineHandler('skills.search', isTrusted, ({ query }) => skills.search(query));
+    defineHandler('skills.install', isTrusted, ({ source, skillId, targets }) =>
+      skills.install(source, skillId, targets),
+    );
+    defineHandler('mcp.importable', isTrusted, (_req, event) =>
+      importableMcpServers(skillsHome, windowFor(event.sender).project?.path ?? null),
+    );
 
     defineHandler('window.getState', isTrusted, (_req, event) => windowFor(event.sender).state());
     defineHandler('window.control', isTrusted, ({ action }, event) => {

@@ -78,6 +78,8 @@ export type SettingsSection =
   | 'notifications'
   | 'editor'
   | 'git'
+  | 'skills'
+  | 'mcp'
   | 'browser'
   | 'project'
   | 'keyboard'

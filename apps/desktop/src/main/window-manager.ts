@@ -13,6 +13,7 @@ import {
   CommandId,
   DEFAULT_COMMANDS,
   KeybindingTable,
+  mcpServersFor,
   resolveKeybindingSpecs,
   type KeybindingContext,
   type LayoutState,
@@ -457,6 +458,7 @@ export class ProjectWindow {
       },
       mcp: (threadId) => this.openBrowserTools(projectPath, threadId),
       mcpTransport: process.env['ARBORA_MCP_TRANSPORT'] === 'stdio' ? 'stdio' : 'auto',
+      userMcpServers: (agentId, http) => mcpServersFor(settings.get().mcpServers, agentId, http),
       events: {
         threadsChanged: (threads) => sendEvent(app, 'agent.threadsChanged', { threads }),
         groupsChanged: (groups) => sendEvent(app, 'agent.groupsChanged', { groups }),
