@@ -5,11 +5,12 @@ import { ensureArboraGitignore } from '../project-settings.js';
 
 /**
  * Writes `.arbora/SKILL.md` (the browser-tools guide the preface points agents at) when it is
- * missing or out of date. The text does not depend on the dev URL, so it only changes with Arbora.
+ * missing or out of date. The text does not depend on the dev URL, so it only changes with Arbora
+ * and the Grove orchestration setting (`groveTools`).
  */
-export function writeSkillFile(projectPath: string): void {
+export function writeSkillFile(projectPath: string, groveTools: boolean): void {
   const file = join(projectPath, SKILL_FILE);
-  const content = browserSkill({ projectPath, devUrl: null });
+  const content = browserSkill({ projectPath, devUrl: null, groveTools });
   ensureArboraGitignore(projectPath, true);
   try {
     if (existsSync(file) && readFileSync(file, 'utf8') === content) return;

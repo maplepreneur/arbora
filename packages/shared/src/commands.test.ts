@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  CommandId,
   CommandRegistry,
   DEFAULT_COMMANDS,
   commandIdSchema,
+  GROVE_SELECT_COMMANDS,
+  groveSessionIndex,
   neighbourPanel,
   resolveKeybindingSpecs,
   WORKSPACE_PANELS,
@@ -71,5 +74,29 @@ describe('neighbourPanel', () => {
       (panel) => DEFAULT_COMMANDS.find((c) => c.id === `arbora.focus.${panel}`)?.keybinding,
     );
     expect(chords).toEqual(['mod+1', 'mod+2', 'mod+3', 'mod+4']);
+  });
+});
+
+describe('Grove commands', () => {
+  it('select rows 1 to 9 with hidden, Grove-only Mod+digit chords', () => {
+    const rows = GROVE_SELECT_COMMANDS.map((id) => DEFAULT_COMMANDS.find((c) => c.id === id));
+    expect(rows.map((c) => c?.keybinding)).toEqual(
+      ['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((n) => `mod+${n}`),
+    );
+    expect(rows.every((c) => c?.when === 'grove' && c.hidden === true && c.intercept === true)).toBe(true);
+    expect(GROVE_SELECT_COMMANDS.map((id) => groveSessionIndex(id))).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(groveSessionIndex(CommandId.groveNextSession)).toBeNull();
+  });
+
+  it('are all intercepted, with workspace commands under View and session commands under Grove', () => {
+    const grove = DEFAULT_COMMANDS.filter((c) => c.id.startsWith('arbora.grove.'));
+    expect(grove.length).toBe(18);
+    expect(grove.every((c) => c.category === 'Grove' && c.intercept === true)).toBe(true);
+    for (const id of [CommandId.toggleWorkspace, CommandId.showBrowserWorkspace, CommandId.showGrove]) {
+      expect(DEFAULT_COMMANDS.find((c) => c.id === id)).toMatchObject({ category: 'View', intercept: true });
+    }
+    expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.toggleWorkspace)?.keybinding).toBe('mod+alt+g');
+    // The launcher runs from the palette in either workspace; Mod+Shift+N opens it inside Grove.
+    expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.groveLaunch)?.when).toBeUndefined();
   });
 });

@@ -30,6 +30,7 @@ import {
 } from '@arbora/acp-client';
 import {
   ACP_LOG_LIMIT,
+  DEFAULT_THREAD_TITLE,
   EDIT_TOOL_KINDS,
   idleThreadState,
   permissionMemoryKey,
@@ -97,6 +98,8 @@ export interface McpAttachment {
   servers(http: boolean): McpServer[];
   /** Whether the agent has asked for the tool list (agents that cannot reach the server never do). */
   readonly toolsListed: boolean;
+  /** The server also carries the Grove orchestration tools (a lead session). */
+  readonly groveTools?: boolean;
   close(): Promise<void>;
 }
 
@@ -147,13 +150,38 @@ interface ThreadRecord {
   stopRequested: boolean;
   /** Model picked for this thread when it was created; wins over the agent's default model. */
   initialModel: string | undefined;
+  /** Prompts accepted but not finished, including ones still waiting for the agent to start. */
+  promptsInFlight: number;
+}
+
+export interface CreateThreadOptions {
+  /** A value of the agent's `model` config option; wins over the user's default model. */
+  readonly model?: string | undefined;
+  /** Agent group; an unknown id files the thread as ungrouped. */
+  readonly groupId?: string | null | undefined;
+  /** The lead session that starts this one as a helper (Grove orchestration). */
+  readonly parentThreadId?: string | null | undefined;
+  /** Names the thread before its first prompt (Grove's launcher, `grove_start_agent`). */
+  readonly title?: string | undefined;
+  readonly autoApproveEdits?: boolean | undefined;
+}
+
+export interface WaitOptions {
+  /** `all`: every thread settled; `any`: at least one. */
+  readonly until: 'all' | 'any';
+  readonly timeoutMs: number;
+  readonly signal?: AbortSignal;
+  /**
+   * The thread whose turn is waiting (a lead in `grove_wait`). The wait ends with `false` once that
+   * turn is over: not every agent drops its MCP request when its turn is cancelled.
+   */
+  readonly turnOf?: string;
 }
 
 const SAVE_DELAY_MS = 300;
 const MAX_AUTO_RESTARTS = 3;
 /** How long Stop waits for the agent to honour `session/cancel` before it stops the process. */
 export const STOP_GRACE_MS = 3000;
-const DEFAULT_TITLE = 'New thread';
 const TITLE_LENGTH = 60;
 
 export class AgentServiceError extends Error {}
@@ -174,6 +202,8 @@ export class AgentService {
   private readonly store: ThreadStore;
   private readonly groups: AgentGroupStore;
   private readonly now: () => number;
+  /** `waitForSettled` checks, run after anything that can settle a thread. */
+  private readonly settleWaiters = new Set<() => void>();
   private disposed = false;
 
   constructor(private readonly options: AgentServiceOptions) {
@@ -192,6 +222,10 @@ export class AgentService {
     return { agents: this.options.registry.list(), availability: this.options.registry.detect(this.options.lookup()) };
   }
 
+  agentName(agentId: string): string {
+    return this.options.registry.get(agentId)?.name ?? agentId;
+  }
+
   listThreads(): ThreadSummary[] {
     return [...this.records.values()].map((r) => this.summary(r)).sort((a, b) => b.updatedAt - a.updatedAt);
   }
@@ -201,27 +235,30 @@ export class AgentService {
     return record ? { ...record.thread, state: record.thread.state, events: [...record.normalizer.events] } : null;
   }
 
-  /** `model` overrides the user's default model for this agent in the new session. */
-  createThread(agentId: string, model?: string, groupId?: string | null): ThreadSummary {
+  createThread(agentId: string, options: CreateThreadOptions = {}): ThreadSummary {
     const agent = this.options.registry.get(agentId);
     if (!agent) throw new AgentServiceError(`Unknown agent ${agentId}`);
     const now = this.now();
+    const { groupId, parentThreadId } = options;
     const known = groupId != null && this.groups.list().some((g) => g.id === groupId);
+    const title = options.title?.trim().slice(0, 200);
     const thread: Thread = {
       id: randomUUID(),
       agentId,
-      title: DEFAULT_TITLE,
+      title: title || DEFAULT_THREAD_TITLE,
       createdAt: now,
       updatedAt: now,
       sessionId: null,
-      autoApproveEdits: false,
+      autoApproveEdits: options.autoApproveEdits ?? false,
       groupId: known ? groupId : null,
       pinned: false,
+      archivedAt: null,
+      parentThreadId: parentThreadId != null && this.records.has(parentThreadId) ? parentThreadId : null,
       state: idleThreadState(),
       events: [],
     };
     const record = this.record(thread);
-    record.initialModel = model;
+    record.initialModel = options.model;
     this.records.set(thread.id, record);
     this.store.save(this.getThread(thread.id) ?? thread);
     this.emitThreads();
@@ -234,10 +271,24 @@ export class AgentService {
     const record = this.records.get(threadId);
     if (!record) return;
     this.records.delete(threadId);
+    this.wakeWaiters();
     clearTimeout(record.saveTimer);
     await this.stopRuntime(record);
     this.store.delete(threadId);
     this.emitThreads();
+  }
+
+  /**
+   * Moves a thread to Grove's Recent, stopping its process first, or brings it back. The
+   * transcript stays; the next prompt after a restore starts the agent again.
+   */
+  async setArchived(threadId: string, archived: boolean): Promise<void> {
+    const record = this.require(threadId);
+    if (archived) await this.stopProcess(threadId);
+    record.thread = { ...record.thread, archivedAt: archived ? (record.thread.archivedAt ?? this.now()) : null };
+    this.scheduleSave(record);
+    this.emitThreads();
+    this.wakeWaiters();
   }
 
   renameThread(threadId: string, title: string): void {
@@ -309,21 +360,30 @@ export class AgentService {
   ): Promise<{ stopReason: string | null; error?: string }> {
     const record = this.require(threadId);
     if (blocks.length === 0 && attachments.length === 0) throw new AgentServiceError('Nothing to send');
+    if (record.thread.archivedAt !== null) {
+      throw new AgentServiceError('This session is archived. Restore it before sending it a message.');
+    }
     if (record.thread.state.status === 'prompting') throw new AgentServiceError('The agent is still working');
 
-    let runtime: Runtime;
+    record.promptsInFlight++;
     try {
-      runtime = await this.ensureRuntime(record);
-    } catch (error) {
-      if (error instanceof AgentStoppedError) return { stopReason: 'cancelled' };
-      if (record.thread.state.status === 'auth_required') {
-        record.pendingPrompt = { blocks, attachments, title: options.title };
-        return { stopReason: null, error: 'auth_required' };
+      let runtime: Runtime;
+      try {
+        runtime = await this.ensureRuntime(record);
+      } catch (error) {
+        if (error instanceof AgentStoppedError) return { stopReason: 'cancelled' };
+        if (record.thread.state.status === 'auth_required') {
+          record.pendingPrompt = { blocks, attachments, title: options.title };
+          return { stopReason: null, error: 'auth_required' };
+        }
+        return { stopReason: null, error: messageOf(error) };
       }
-      return { stopReason: null, error: messageOf(error) };
+      if (!runtime.sessionId) return { stopReason: null, error: 'No session' };
+      return await this.runTurn(record, runtime, blocks, attachments, options.title);
+    } finally {
+      record.promptsInFlight--;
+      this.wakeWaiters();
     }
-    if (!runtime.sessionId) return { stopReason: null, error: 'No session' };
-    return this.runTurn(record, runtime, blocks, attachments, options.title);
   }
 
   /**
@@ -368,6 +428,66 @@ export class AgentService {
     record.stopRequested = true;
     await this.stopRuntime(record);
     this.setState(record, { status: 'idle', error: null });
+  }
+
+  /**
+   * Ends the agent process whatever it is doing (Grove's Stop, archive, a lead's `grove_stop`). A
+   * turn gets `session/cancel` and a short grace first so the agent can save its session; the
+   * thread then shows as Stopped until the next prompt starts the agent again.
+   */
+  async stopProcess(threadId: string): Promise<void> {
+    const record = this.require(threadId);
+    record.pendingPrompt = null;
+    const runtime = record.runtime;
+    if (record.thread.state.status === 'prompting' && runtime?.sessionId) {
+      await runtime.session.cancel(runtime.sessionId).catch(() => undefined);
+      await this.settles(record, STOP_GRACE_MS);
+    }
+    if (!record.runtime && !record.starting && record.thread.state.status === 'idle') return;
+    record.stopRequested = true;
+    await this.stopRuntime(record);
+    record.crashes = 0;
+    this.setState(record, { status: 'idle', error: null });
+  }
+
+  /**
+   * Resolves once the threads are settled (nothing more happens until someone acts: done, idle,
+   * waiting on the user, failed or stopped), or with `false` on the timeout or the abort signal. A
+   * deleted or archived thread counts as settled, so this never waits on something that is gone.
+   */
+  waitForSettled(threadIds: readonly string[], options: WaitOptions): Promise<boolean> {
+    if (options.signal?.aborted || this.disposed) return Promise.resolve(false);
+    return new Promise<boolean>((resolveWait) => {
+      const finish = (settled: boolean): void => {
+        clearTimeout(timer);
+        this.settleWaiters.delete(check);
+        options.signal?.removeEventListener('abort', onAbort);
+        resolveWait(settled);
+      };
+      const check = (): void => {
+        if (this.disposed || (options.turnOf !== undefined && !this.isPrompting(options.turnOf))) {
+          finish(false);
+          return;
+        }
+        const settled = threadIds.map((id) => this.isSettled(id));
+        if (options.until === 'all' ? settled.every(Boolean) : settled.some(Boolean)) finish(true);
+      };
+      const onAbort = (): void => finish(false);
+      const timer = setTimeout(() => finish(false), Math.max(0, options.timeoutMs));
+      options.signal?.addEventListener('abort', onAbort, { once: true });
+      this.settleWaiters.add(check);
+      check();
+    });
+  }
+
+  /** Whether the thread is settled (see `waitForSettled`); unknown and archived threads are. */
+  isSettled(threadId: string): boolean {
+    const record = this.records.get(threadId);
+    if (!record || record.thread.archivedAt !== null) return true;
+    const status = record.thread.state.status;
+    if (record.pendingPermissions.size > 0 || status === 'auth_required' || status === 'error') return true;
+    if (status === 'starting' || status === 'prompting') return false;
+    return record.promptsInFlight === 0;
   }
 
   respondPermission(threadId: string, requestId: string, optionId: string): void {
@@ -521,6 +641,7 @@ export class AgentService {
 
   async dispose(): Promise<void> {
     this.disposed = true;
+    this.wakeWaiters();
     for (const record of this.records.values()) {
       clearTimeout(record.saveTimer);
       this.saveNow(record);
@@ -546,7 +667,16 @@ export class AgentService {
       stopRequested: false,
       saveTimer: undefined,
       initialModel: undefined,
+      promptsInFlight: 0,
     };
+  }
+
+  private wakeWaiters(): void {
+    for (const check of [...this.settleWaiters]) check();
+  }
+
+  private isPrompting(threadId: string): boolean {
+    return this.records.get(threadId)?.thread.state.status === 'prompting';
   }
 
   /** Resolves true once the thread is no longer prompting, false after `timeoutMs`. */
@@ -584,6 +714,7 @@ export class AgentService {
     record.thread = { ...record.thread, updatedAt: this.now() };
     if (!this.disposed) this.options.events.threadEvents(record.thread.id, changes);
     this.scheduleSave(record);
+    this.wakeWaiters();
   }
 
   private setState(record: ThreadRecord, patch: Partial<ThreadState>): void {
@@ -592,6 +723,7 @@ export class AgentService {
       this.options.events.threadState(record.thread.id, record.thread.state);
       if (patch.status !== undefined) this.emitThreads();
     }
+    this.wakeWaiters();
   }
 
   private applyState(record: ThreadRecord, updates: StateUpdate[]): void {
@@ -911,17 +1043,21 @@ export class AgentService {
               projectPath: this.options.projectPath,
               devUrl: this.options.devUrl(),
               browserTools: runtime.mcp !== null,
+              groveTools: runtime.mcp?.groveTools === true,
             }),
           },
           ...shown,
         ]
       : shown;
 
-    if (record.thread.title === DEFAULT_TITLE) {
+    if (record.thread.title === DEFAULT_THREAD_TITLE) {
       const text =
         title?.trim() || blocks.find((b): b is ContentBlock & { type: 'text' } => b.type === 'text')?.text.trim();
       if (text) {
-        record.thread = { ...record.thread, title: text.split('\n')[0]?.slice(0, TITLE_LENGTH) ?? DEFAULT_TITLE };
+        record.thread = {
+          ...record.thread,
+          title: text.split('\n')[0]?.slice(0, TITLE_LENGTH) ?? DEFAULT_THREAD_TITLE,
+        };
         this.emitThreads();
       }
     }
@@ -1083,6 +1219,7 @@ export class AgentService {
       const onAbort = (): void => pending.resolve(null);
       signal?.addEventListener('abort', onAbort, { once: true });
       record.pendingPermissions.set(requestId, pending);
+      this.wakeWaiters();
     });
   }
 

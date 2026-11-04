@@ -13,6 +13,8 @@ import {
   mergeAgentSettings,
   mergeEditorSettings,
   migrateSettings,
+  projectSettingsPatchSchema,
+  projectSettingsSchema,
   projectSettingsUpdates,
   resolveDefaultAgent,
   resolveTaskAgent,
@@ -78,10 +80,10 @@ describe('loadSettings', () => {
   });
 
   it('preserves per-project layout state', () => {
-    const projects = {
-      '/p': { layout: { groups: { main: { browser: 70, agent: 30 } }, sidebarView: 'git', bottomTab: 'problems' } },
-    };
-    expect(loadSettings({ version: 1, projects }).settings.projects).toEqual(projects);
+    const layout = { groups: { main: { browser: 70, agent: 30 } }, sidebarView: 'git', bottomTab: 'problems' };
+    expect(loadSettings({ version: 1, projects: { '/p': { layout } } }).settings.projects).toEqual({
+      '/p': { layout: { ...layout, workspace: 'browser', groveThreadId: null } },
+    });
   });
 
   it('upgrades a v1 file with browser defaults and keeps existing values', () => {
@@ -389,5 +391,46 @@ describe('Stage 9 settings', () => {
       devCommand: 'pnpm dev',
       devUrl: undefined,
     });
+  });
+});
+
+describe('Stage 10 settings (Grove)', () => {
+  it('upgrades a v4 file to v5 with Grove defaults and the browser workspace', () => {
+    const layout = { groups: {}, sidebarView: 'files', bottomTab: 'terminal' };
+    const { settings, warnings } = loadSettings({ version: 4, theme: 'dark', projects: { '/p': { layout } } });
+    expect(warnings).toEqual([]);
+    expect(SETTINGS_VERSION).toBe(5);
+    expect(settings.version).toBe(5);
+    expect(settings.theme).toBe('dark');
+    expect(settings.grove).toEqual({ orchestration: true, maxChildren: 4 });
+    expect(settings.projects['/p']?.layout).toMatchObject({ workspace: 'browser', groveThreadId: null });
+    expect(migrateSettings({ version: 4, grove: { maxChildren: 2 } })).toEqual({
+      version: 5,
+      grove: { maxChildren: 2 },
+    });
+  });
+
+  it('keeps the Grove layout and patches Grove settings field by field', () => {
+    const projects = { '/p': { layout: { workspace: 'grove', groveThreadId: 't1' } } };
+    expect(loadSettings({ version: 5, projects }).settings.projects['/p']?.layout).toMatchObject({
+      workspace: 'grove',
+      groveThreadId: 't1',
+      groups: {},
+    });
+    const patch = appSettingsPatchSchema.parse({ grove: { maxChildren: 2 } });
+    expect(patch).toEqual({ grove: { maxChildren: 2 } });
+    expect(applySettingsPatch(defaultSettings(), patch).grove).toEqual({ orchestration: true, maxChildren: 2 });
+    expect(appSettingsPatchSchema.safeParse({ grove: { maxChildren: 0 } }).success).toBe(false);
+    expect(appSettingsPatchSchema.safeParse({ grove: { maxChildren: 11 } }).success).toBe(false);
+    expect(loadSettings({ version: 5, grove: { maxChildren: 50 } }).warnings).toEqual([
+      'settings.grove is invalid and was reset to its default',
+    ]);
+  });
+
+  it('accepts startDefaultOnOpen in project.json and clears it with null', () => {
+    expect(projectSettingsSchema.parse({ startDefaultOnOpen: false }).startDefaultOnOpen).toBe(false);
+    expect(projectSettingsSchema.parse({}).startDefaultOnOpen).toBeUndefined();
+    const patch = projectSettingsPatchSchema.parse({ startDefaultOnOpen: null, defaultAgent: 'codex' });
+    expect(projectSettingsUpdates(patch)).toEqual({ startDefaultOnOpen: undefined, defaultAgent: 'codex' });
   });
 });

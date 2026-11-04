@@ -26,6 +26,7 @@ import {
   type ProjectSettings,
   type WindowBounds,
   type WindowState,
+  type WorkspaceKind,
 } from '@arbora/shared';
 import type { AgentRegistry } from '@arbora/acp-client';
 import { AgentService } from './agent/agent-service.js';
@@ -39,6 +40,7 @@ import { sendEvent } from './ipc.js';
 import { attachKeybindingInterceptor, type InterceptorSource } from './keybinding-interceptor.js';
 import { ArboraToolHost, type PermissionAnswer } from './mcp/browser-tool-host.js';
 import { openBrowserTools, type ShimCommand } from './mcp/browser-tools.js';
+import { GroveHost } from './mcp/grove-tool-host.js';
 import { writeSkillFile } from './mcp/skill-file.js';
 import { ensureArboraGitignore, readProjectSettings, updateProjectSettingsFile } from './project-settings.js';
 import type { SettingsStore } from './settings-store.js';
@@ -91,6 +93,9 @@ const FOCUS_APP_COMMANDS: ReadonlySet<string> = new Set([
   CommandId.agentShowAttention,
   CommandId.focusNextPanel,
   CommandId.focusPreviousPanel,
+  CommandId.toggleWorkspace,
+  CommandId.showGrove,
+  CommandId.groveLaunch,
 ]);
 const BOUNDS_SAVE_DELAY_MS = 500;
 
@@ -210,6 +215,7 @@ export class ProjectWindow {
     designActive?: boolean | undefined;
     textEditing?: boolean | undefined;
     recording?: boolean | undefined;
+    workspace?: WorkspaceKind | undefined;
   }): void {
     this.context = {
       modeActive: context.modeActive,
@@ -217,6 +223,7 @@ export class ProjectWindow {
       designActive: context.designActive === true,
       textEditing: context.textEditing === true,
       recording: context.recording === true,
+      workspace: context.workspace ?? 'browser',
     };
   }
 
@@ -304,7 +311,7 @@ export class ProjectWindow {
     this.stopTerminals();
     this.stopWorkspace();
     this.project = null;
-    this.context = { modeActive: false, terminalFocused: false };
+    this.context = { modeActive: false, terminalFocused: false, workspace: 'browser' };
     this.window.setTitle('Arbora');
     this.rebuildKeybindings();
     this.emitProject();
@@ -470,10 +477,25 @@ export class ProjectWindow {
     });
   }
 
-  /** The Stage 5 browser tools for one agent thread: an MCP server over this window's services. */
+  /**
+   * The Stage 5 browser tools for one agent thread: an MCP server over this window's services. A
+   * thread that is not a helper also gets the Grove orchestration tools while they are on.
+   */
   private openBrowserTools(projectPath: string, threadId: string): ReturnType<typeof openBrowserTools> {
-    writeSkillFile(projectPath);
-    const { platform, shellEnvironment } = this.options;
+    const { platform, settings, shellEnvironment } = this.options;
+    const orchestration = settings.get().grove.orchestration;
+    writeSkillFile(projectPath, orchestration);
+    const thread = this.agents?.listThreads().find((t) => t.id === threadId);
+    const grove =
+      orchestration && thread?.parentThreadId === null
+        ? new GroveHost({
+            threadId,
+            agents: () => this.agents,
+            agentSettings: () => settings.get().agents,
+            projectDefaultAgent: () => this.project?.settings.defaultAgent,
+            maxHelpers: () => settings.get().grove.maxChildren,
+          })
+        : undefined;
     const host = new ArboraToolHost({
       projectPath,
       browser: () => this.browser,
@@ -521,7 +543,7 @@ export class ProjectWindow {
       },
       preview: (preview) => this.agents?.addBrowserPreview(threadId, preview),
     });
-    return openBrowserTools(host, this.options.mcpShim, this.options.appVersion);
+    return openBrowserTools(host, this.options.mcpShim, this.options.appVersion, { grove });
   }
 
   private startAgentMode(projectPath: string): void {

@@ -39,6 +39,19 @@ describe('firstPromptPreface', () => {
     expect(withTools).toContain('/p/.arbora/SKILL.md');
     expect(withTools.split(/\s+/).length).toBeLessThan(300);
   });
+
+  it('describes the Grove tools only to a session that has them', () => {
+    const base = { projectPath: '/p', devUrl: 'http://localhost:5173/', browserTools: true };
+    expect(firstPromptPreface(base)).not.toContain('grove_');
+    expect(firstPromptPreface({ ...base, browserTools: false, groveTools: true })).not.toContain('grove_');
+    const lead = firstPromptPreface({ ...base, groveTools: true });
+    expect(lead).toContain('grove_start_agent');
+    expect(lead.split(/\s+/).length).toBeLessThan(300);
+    // The fake agent acts on these words anywhere in a prompt, preface included.
+    expect(lead).not.toMatch(
+      /crash|stubborn|slow|plan|browser check|tool sweep|list mcp servers|restart dev|grove delegate|comment to|\bevaluate\b|\brun\b/i,
+    );
+  });
 });
 
 describe('browserSkill', () => {
@@ -48,5 +61,13 @@ describe('browserSkill', () => {
     expect(skill).toContain('http://localhost:5173/');
     expect(skill).toContain('browser_snapshot');
     expect(skill).not.toMatch(/token|bearer/i);
+    expect(skill).not.toContain('grove_');
+  });
+
+  it('adds the Grove section when orchestration is on', () => {
+    const skill = browserSkill({ projectPath: '/p', devUrl: null, groveTools: true });
+    expect(skill).toContain('## Grove helpers');
+    expect(skill).toContain('grove_wait');
+    expect(skill.split(/\s+/).filter(Boolean).length).toBeLessThan(400);
   });
 });

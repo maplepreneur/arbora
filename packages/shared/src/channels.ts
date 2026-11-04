@@ -66,6 +66,7 @@ import {
   projectSettingsSchema,
   recentProjectSchema,
   themeModeSchema,
+  workspaceKindSchema,
 } from './settings.js';
 import {
   skillLibrarySchema,
@@ -142,6 +143,7 @@ export const keybindingContextSchema = z.object({
   textEditing: z.boolean().default(false),
   /** The shortcut editor is recording a chord: main must let every key through to it. */
   recording: z.boolean().default(false),
+  workspace: workspaceKindSchema.default('browser'),
 });
 
 /** Request/response channels. Keep this the single registry of IPC surface. */
@@ -371,10 +373,18 @@ export const channels = {
    */
   'agent.verify': defineChannel('agent.verify', z.object({ agentId: z.string() }), agentVerificationSchema),
   'agent.listThreads': defineChannel('agent.listThreads', none, z.array(threadSummarySchema)),
-  /** `model` is a value of the agent's `model` config option; it wins over the agent's default model. */
+  /**
+   * `model` is a value of the agent's `model` config option; it wins over the agent's default model.
+   * `title` names the thread before its first prompt (Grove's launcher titles it with the task).
+   */
   'agent.createThread': defineChannel(
     'agent.createThread',
-    z.object({ agentId: z.string(), model: z.string().max(300).optional(), groupId: z.string().nullable().optional() }),
+    z.object({
+      agentId: z.string(),
+      model: z.string().max(300).optional(),
+      groupId: z.string().nullable().optional(),
+      title: z.string().trim().min(1).max(200).optional(),
+    }),
     threadSummarySchema,
   ),
   'agent.getThread': defineChannel('agent.getThread', threadId, threadSchema.nullable()),
@@ -423,6 +433,13 @@ export const channels = {
   'agent.authenticate': defineChannel('agent.authenticate', threadId.extend({ methodId: z.string() }), none),
   /** Stops the agent process (if any) and starts it again on the next prompt. */
   'agent.restart': defineChannel('agent.restart', threadId, none),
+  /**
+   * Ends the agent process in any state (Grove's Stop). The thread shows as Stopped; the next
+   * prompt starts the agent again and restores the session when it can.
+   */
+  'agent.stopProcess': defineChannel('agent.stopProcess', threadId, none),
+  /** Moves a thread to Grove's Recent (stopping its process first) or back to the list. */
+  'agent.archiveThread': defineChannel('agent.archiveThread', threadId.extend({ archived: z.boolean() }), none),
   'agent.getLog': defineChannel('agent.getLog', threadId, z.array(acpLogEntrySchema)),
   /** Writes the redacted log as JSON; `path` is null when the save dialog was cancelled. */
   'agent.exportLog': defineChannel('agent.exportLog', threadId, z.object({ path: z.string().nullable() })),

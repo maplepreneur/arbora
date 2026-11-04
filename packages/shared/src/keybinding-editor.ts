@@ -29,10 +29,17 @@ export function bindingFromChord(chord: Chord, platform: Platform): string {
   return parts.join('+');
 }
 
-/** Whether two `when` scopes can be active at the same time. */
+/**
+ * Whether two `when` scopes can claim the same keystroke. A `grove` binding is not a conflict with
+ * an `always` one: it wins inside Grove and leaves the chord alone everywhere else, which is how
+ * `Mod+1` selects a Grove row and still focuses a panel in the browser workspace.
+ */
 export function scopesOverlap(a: KeybindingWhen, b: KeybindingWhen): boolean {
-  if (a === b || a === 'always' || b === 'always') return true;
+  if (a === b) return true;
   const pair = new Set([a, b]);
+  // Modes end on the way into Grove; its session pane is an agent thread.
+  if (pair.has('grove')) return pair.has('agentPanel');
+  if (pair.has('always')) return true;
   // Design mode is a mode; agent mode can be on while the agent panel has focus.
   return pair.has('modeActive') && (pair.has('design') || pair.has('agentPanel'));
 }

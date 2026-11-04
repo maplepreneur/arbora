@@ -16,6 +16,8 @@ function thread(events: ThreadEvent[] = []): Thread {
     autoApproveEdits: false,
     groupId: null,
     pinned: false,
+    archivedAt: null,
+    parentThreadId: null,
     state: {
       status: 'ready',
       error: null,

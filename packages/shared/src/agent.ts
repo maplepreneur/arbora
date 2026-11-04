@@ -314,6 +314,9 @@ export function idleThreadState(): ThreadState {
 
 export const THREAD_FILE_VERSION = 1;
 
+/** A thread's title until its first prompt (or a rename) sets one. */
+export const DEFAULT_THREAD_TITLE = 'New thread';
+
 /** Persisted thread metadata (`.arbora/threads/<id>.json` minus `events`). */
 export const threadSummarySchema = z.object({
   id: z.string(),
@@ -329,6 +332,10 @@ export const threadSummarySchema = z.object({
   groupId: z.string().nullable().default(null),
   /** Pinned threads stay at the top of the list. */
   pinned: z.boolean().default(false),
+  /** When the thread moved to Grove's Recent; null while it is listed. */
+  archivedAt: z.number().int().nullable().default(null),
+  /** The lead session that started this one as a helper (Grove orchestration). */
+  parentThreadId: z.string().nullable().default(null),
   state: threadStateSchema,
 });
 export type ThreadSummary = z.infer<typeof threadSummarySchema>;

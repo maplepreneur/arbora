@@ -138,6 +138,51 @@ describe('KeybindingTable', () => {
     expect(table.forCommand(CommandId.agentMode)).toBeUndefined();
     expect(table.forCommand(CommandId.designMode)).toBeDefined();
   });
+
+  it('gives Mod+1 to panel focus in the browser workspace and to row 1 in Grove', () => {
+    const { table } = build('linux');
+    const ctrl1 = parseChord('ctrl+1', 'linux');
+    expect(table.match(ctrl1, idle)?.commandId).toBe(CommandId.focusSidebarPanel);
+    expect(table.match(ctrl1, { ...idle, workspace: 'browser' })?.commandId).toBe(CommandId.focusSidebarPanel);
+    expect(table.match(ctrl1, { ...idle, workspace: 'grove' })?.commandId).toBe(CommandId.groveSelectSession1);
+    expect(table.match(parseChord('ctrl+9', 'linux'), idle)).toBeUndefined();
+    expect(table.match(parseChord('ctrl+9', 'linux'), { ...idle, workspace: 'grove' })?.commandId).toBe(
+      CommandId.groveSelectSession9,
+    );
+    // A focused terminal does not swallow Ctrl+digit, in either workspace.
+    expect(table.match(ctrl1, { ...idle, workspace: 'grove', terminalFocused: true })?.commandId).toBe(
+      CommandId.groveSelectSession1,
+    );
+  });
+
+  it('matches Grove chords only while Grove shows', () => {
+    const { table } = build('linux');
+    const grove: KeybindingContext = { ...idle, workspace: 'grove' };
+    const newAgent = parseChord('ctrl+alt+n', 'linux');
+    expect(table.match(newAgent, idle)).toBeUndefined();
+    expect(table.match(newAgent, grove)?.commandId).toBe(CommandId.groveNewDefault);
+    const down = parseChord('ctrl+alt+down', 'linux');
+    expect(table.match(down, idle)?.commandId).toBe(CommandId.focusPanelDown);
+    expect(table.match(down, grove)?.commandId).toBe(CommandId.groveNextSession);
+    expect(table.match(parseChord('ctrl+alt+up', 'linux'), grove)?.commandId).toBe(CommandId.grovePreviousSession);
+    expect(table.match(parseChord('ctrl+alt+g', 'linux'), idle)?.commandId).toBe(CommandId.toggleWorkspace);
+    expect(table.match(parseChord('ctrl+alt+g', 'linux'), grove)?.commandId).toBe(CommandId.toggleWorkspace);
+    expect(table.match(parseChord('ctrl+alt+g', 'linux'), { ...idle, terminalFocused: true })?.commandId).toBe(
+      CommandId.toggleWorkspace,
+    );
+  });
+
+  it('prefers a scoped binding over an always binding on the same chord, whatever the order', () => {
+    const specs = [
+      { commandId: 'a.always', binding: 'mod+y', when: 'always' as const, intercept: false },
+      { commandId: 'b.panel', binding: 'mod+y', when: 'agentPanel' as const, intercept: false },
+    ];
+    for (const ordered of [specs, [...specs].reverse()]) {
+      const { table } = KeybindingTable.build(ordered, 'linux');
+      expect(table.match(parseChord('ctrl+y', 'linux'), idle)?.commandId).toBe('a.always');
+      expect(table.match(parseChord('ctrl+y', 'linux'), { ...idle, agentFocused: true })?.commandId).toBe('b.panel');
+    }
+  });
 });
 
 describe('isTerminalPassthroughChord', () => {

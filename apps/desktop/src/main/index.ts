@@ -682,8 +682,8 @@ function main(): void {
       return probe;
     });
     defineHandler('agent.listThreads', isTrusted, (_req, event) => windowFor(event.sender).agents?.listThreads() ?? []);
-    defineHandler('agent.createThread', isTrusted, ({ agentId, model, groupId }, event) =>
-      requireAgents(event.sender).createThread(agentId, model, groupId),
+    defineHandler('agent.createThread', isTrusted, ({ agentId, model, groupId, title }, event) =>
+      requireAgents(event.sender).createThread(agentId, { model, groupId, title }),
     );
     defineHandler('agent.listGroups', isTrusted, (_req, event) => windowFor(event.sender).agents?.listGroups() ?? []);
     defineHandler('agent.saveGroups', isTrusted, ({ groups }, event) => requireAgents(event.sender).saveGroups(groups));
@@ -715,6 +715,14 @@ function main(): void {
     });
     defineHandler('agent.stop', isTrusted, async ({ threadId }, event) => {
       await requireAgents(event.sender).stop(threadId);
+      return undefined;
+    });
+    defineHandler('agent.stopProcess', isTrusted, async ({ threadId }, event) => {
+      await requireAgents(event.sender).stopProcess(threadId);
+      return undefined;
+    });
+    defineHandler('agent.archiveThread', isTrusted, async ({ threadId, archived }, event) => {
+      await requireAgents(event.sender).setArchived(threadId, archived);
       return undefined;
     });
     defineHandler('agent.respondPermission', isTrusted, ({ threadId, requestId, optionId }, event) => {
