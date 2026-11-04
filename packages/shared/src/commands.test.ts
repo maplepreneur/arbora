@@ -90,12 +90,26 @@ describe('Grove commands', () => {
 
   it('are all intercepted, with workspace commands under View and session commands under Grove', () => {
     const grove = DEFAULT_COMMANDS.filter((c) => c.id.startsWith('arbora.grove.'));
-    expect(grove.length).toBe(18);
+    expect(grove.length).toBe(24);
+    expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.groveFocusAgents)).toMatchObject({
+      title: 'Focus agents',
+      keybinding: 'mod+shift+a',
+      when: 'grove',
+      intercept: true,
+    });
+    expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.groveArchiveSession)?.keybinding).toBe('mod+w');
     expect(grove.every((c) => c.category === 'Grove' && c.intercept === true)).toBe(true);
     for (const id of [CommandId.toggleWorkspace, CommandId.showBrowserWorkspace, CommandId.showGrove]) {
       expect(DEFAULT_COMMANDS.find((c) => c.id === id)).toMatchObject({ category: 'View', intercept: true });
     }
     expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.toggleWorkspace)?.keybinding).toBe('mod+alt+g');
+    expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.groveSearch)).toMatchObject({
+      keybinding: 'mod+shift+k',
+      intercept: true,
+    });
+    expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.groveSearch)?.when).toBeUndefined();
+    expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.agentMode)?.keybinding).toBe('mod+k');
+    expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.commandPalette)?.keybinding).toBe('mod+shift+p');
     // The launcher runs from the palette in either workspace; Mod+Shift+N opens it inside Grove.
     expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.groveLaunch)?.when).toBeUndefined();
   });

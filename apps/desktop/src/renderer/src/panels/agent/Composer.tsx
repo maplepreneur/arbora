@@ -88,7 +88,12 @@ export function Composer({
     // Showing a thread focuses its composer, but not away from a field the user is typing in
     // (Grove's rename box opens together with the session it renames).
     const active = document.activeElement;
-    if (requested || active === element || !isTextField(active)) element.focus();
+    // The Grove agent list keeps focus across a selection change (click or Arrow Up/Down).
+    // An explicit focus request still moves here, including Next/Previous Agent.
+    const inAgentList =
+      active instanceof Element &&
+      active.closest('[data-testid="grove-sessions"], [data-testid="grove-rail"]') !== null;
+    if (requested || active === element || (!isTextField(active) && !inAgentList)) element.focus();
   }, [focusRequest, thread.id]);
 
   useEffect(() => {

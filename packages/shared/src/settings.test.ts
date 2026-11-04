@@ -8,6 +8,8 @@ import {
   fontFamily,
   isPickableAgent,
   MONO_FONT_STACK,
+  layoutForAppLaunch,
+  layoutStateSchema,
   loadSettings,
   MAX_RECENT_PROJECTS,
   mergeAgentSettings,
@@ -399,13 +401,19 @@ describe('Stage 10 settings (Grove)', () => {
     const layout = { groups: {}, sidebarView: 'files', bottomTab: 'terminal' };
     const { settings, warnings } = loadSettings({ version: 4, theme: 'dark', projects: { '/p': { layout } } });
     expect(warnings).toEqual([]);
-    expect(SETTINGS_VERSION).toBe(5);
-    expect(settings.version).toBe(5);
+    expect(SETTINGS_VERSION).toBe(6);
+    expect(settings.version).toBe(6);
     expect(settings.theme).toBe('dark');
-    expect(settings.grove).toEqual({ orchestration: true, maxChildren: 4 });
+    expect(settings.grove).toEqual({
+      orchestration: true,
+      maxChildren: 4,
+      projects: [],
+      trustedCommands: [],
+      launch: 'browser',
+    });
     expect(settings.projects['/p']?.layout).toMatchObject({ workspace: 'browser', groveThreadId: null });
     expect(migrateSettings({ version: 4, grove: { maxChildren: 2 } })).toEqual({
-      version: 5,
+      version: 6,
       grove: { maxChildren: 2 },
     });
   });
@@ -419,7 +427,29 @@ describe('Stage 10 settings (Grove)', () => {
     });
     const patch = appSettingsPatchSchema.parse({ grove: { maxChildren: 2 } });
     expect(patch).toEqual({ grove: { maxChildren: 2 } });
-    expect(applySettingsPatch(defaultSettings(), patch).grove).toEqual({ orchestration: true, maxChildren: 2 });
+    expect(applySettingsPatch(defaultSettings(), patch).grove).toEqual({
+      orchestration: true,
+      maxChildren: 2,
+      projects: [],
+      trustedCommands: [],
+      launch: 'browser',
+    });
+    expect(applySettingsPatch(defaultSettings(), { grove: { launch: 'grove' } }).grove.launch).toBe('grove');
+    expect(loadSettings({ version: 6, grove: { maxChildren: 3 } }).settings.grove.launch).toBe('browser');
+    expect(layoutForAppLaunch(undefined, 'browser').workspace).toBe('browser');
+    expect(layoutForAppLaunch(undefined, 'grove')).toMatchObject({ workspace: 'grove', groveThreadId: null });
+    const savedBrowser = layoutStateSchema.parse({
+      workspace: 'browser',
+      groveThreadId: 't1',
+      sidebarView: 'git',
+    });
+    expect(layoutForAppLaunch(savedBrowser, 'browser')).toEqual(savedBrowser);
+    const savedGrove = layoutStateSchema.parse({ workspace: 'grove', groveThreadId: 'keep', sidebarView: 'search' });
+    expect(layoutForAppLaunch(savedGrove, 'browser')).toEqual(savedGrove);
+    expect(layoutForAppLaunch({ workspace: 'browser', groveThreadId: 't1' }, 'grove')).toMatchObject({
+      workspace: 'grove',
+      groveThreadId: 't1',
+    });
     expect(appSettingsPatchSchema.safeParse({ grove: { maxChildren: 0 } }).success).toBe(false);
     expect(appSettingsPatchSchema.safeParse({ grove: { maxChildren: 11 } }).success).toBe(false);
     expect(loadSettings({ version: 5, grove: { maxChildren: 50 } }).warnings).toEqual([

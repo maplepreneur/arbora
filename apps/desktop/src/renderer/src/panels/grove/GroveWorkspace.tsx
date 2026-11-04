@@ -2,12 +2,24 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type Reac
 import { Group, Panel, Separator, usePanelRef, type Layout } from 'react-resizable-panels';
 import { loadThread, useAgents } from '../../agent-store';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
-import { maybeAutoStart, selectSession, setGroveLayoutController, useGrove, useGroveModel } from '../../grove-store';
+import {
+  focusGroveProject,
+  maybeAutoStart,
+  selectSession,
+  setGroveLayoutController,
+  useGrove,
+  useGroveModel,
+  useGroveSidebar,
+} from '../../grove-store';
 import type { GroveModel } from '../../grove-model';
 import { GROVE_GROUP, setGroupLayout, useApp } from '../../store';
 import { GroveEmpty } from './GroveEmpty';
 import { GroveLauncher } from './GroveLauncher';
-import { SessionList, SessionRail } from './SessionList';
+import { GroveProjectSwitch } from './GroveProjectSwitch';
+import { GroveSearch } from './GroveSearch';
+import { GroveSide } from './GroveSide';
+import { GroveTerminal } from './GroveTerminal';
+import { SessionRail } from './SessionList';
 import { SessionPane } from './SessionPane';
 
 const SettingsPage = lazy(() => import('../settings/SettingsPage'));
@@ -79,6 +91,7 @@ function Pane({ model, projectPath }: { model: GroveModel; projectPath: string }
   const settingsOpen = useApp((s) => s.settingsOpen);
   const loaded = useAgents((s) => s.loaded);
   const selectedId = useApp((s) => s.layout.groveThreadId);
+  const terminalId = useGrove((s) => s.terminalId);
   const session = selectedId === null ? undefined : model.byId.get(selectedId);
   if (settingsOpen) {
     return (
@@ -89,6 +102,7 @@ function Pane({ model, projectPath }: { model: GroveModel; projectPath: string }
       </ErrorBoundary>
     );
   }
+  if (terminalId) return <GroveTerminal id={terminalId} />;
   if (session) return <SessionPane session={session} model={model} projectPath={projectPath} />;
   if (loaded && model.listed.length === 0) return <GroveEmpty />;
   return <div className="h-full bg-bg" />;
@@ -100,10 +114,14 @@ function Pane({ model, projectPath }: { model: GroveModel; projectPath: string }
  */
 export default function GroveWorkspace() {
   const model = useGroveModel();
-  const projectPath = useApp((s) => s.project?.path ?? '');
+  const sidebar = useGroveSidebar();
+  const windowPath = useApp((s) => s.project?.path ?? '');
+  const focusPath = useGrove((s) => s.focusPath);
+  const projectPath = focusPath ?? windowPath;
   const selectedId = useApp((s) => s.layout.groveThreadId);
   const epoch = useApp((s) => s.layoutEpoch);
   const launcherOpen = useGrove((s) => s.launcherOpen);
+  const terminalShown = useGrove((s) => s.terminalId);
   const loaded = useAgents((s) => s.loaded);
   const agentCount = useAgents((s) => s.agents.length);
   const container = useRef<HTMLDivElement>(null);
@@ -129,8 +147,20 @@ export default function GroveWorkspace() {
   }, [loaded, agentCount, projectPath]);
 
   useEffect(() => {
+    const listed = useApp.getState().settings.grove.projects.map((entry) => entry.path);
+    const openPath = useApp.getState().project?.path;
+    const focus = useGrove.getState().focusPath;
+    if (listed.length === 0) return;
+    if (focus && listed.includes(focus)) return;
+    if (!focus && openPath && listed.includes(openPath)) return;
+    const next = listed[0];
+    if (next) void focusGroveProject(next === openPath ? null : next);
+  }, []);
+
+  useEffect(() => {
+    if (terminalShown) return;
     if (fallbackId) selectSession(fallbackId, { focus: false });
-  }, [fallbackId]);
+  }, [fallbackId, terminalShown]);
 
   useEffect(() => {
     if (selectedSessionId) void loadThread(selectedSessionId).catch(() => undefined);
@@ -151,17 +181,15 @@ export default function GroveWorkspace() {
     >
       {narrow === null ? null : narrow ? (
         <>
-          <SessionRail model={model} selectedId={selectedSessionId ?? null} />
+          <SessionRail sessions={sidebar.order.map((row) => row.session)} selectedId={selectedSessionId ?? null} />
           <div className="min-w-0 flex-1">{pane}</div>
         </>
       ) : (
-        <GroveColumns
-          key={`grove-${epoch}`}
-          list={<SessionList model={model} selectedId={selectedSessionId ?? null} />}
-          pane={pane}
-        />
+        <GroveColumns key={`grove-${epoch}`} list={<GroveSide />} pane={pane} />
       )}
       {launcherOpen && <GroveLauncher />}
+      <GroveSearch />
+      <GroveProjectSwitch />
     </div>
   );
 }

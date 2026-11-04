@@ -71,6 +71,13 @@ describe('conflicts', () => {
       CommandId.groveNewDefault,
     ]);
     expect(conflictsFor(CommandId.groveArchiveSession, 'mod+k', DEFAULT_COMMANDS, {}, undefined, 'linux')).toEqual([]);
+    expect(rows.find((r) => r.commandId === CommandId.groveSearch)).toMatchObject({
+      binding: 'mod+shift+k',
+      when: 'always',
+    });
+    expect(conflictsFor(CommandId.agentMode, 'mod+shift+k', DEFAULT_COMMANDS, {}, undefined, 'linux')).toEqual([
+      CommandId.groveSearch,
+    ]);
   });
 
   it('has no conflicts in the defaults', () => {

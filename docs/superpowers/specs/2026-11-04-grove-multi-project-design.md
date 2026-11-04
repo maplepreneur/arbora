@@ -132,12 +132,12 @@ The docked agent panel and the bottom terminal drawer in the browser workspace r
 
 | Action | Result |
 | --- | --- |
-| Add project to Grove | Runtime starts. No window is required. Nothing is spawned until the user starts an agent or a terminal. |
+| Add project to Grove | Runtime starts. No window is required. Nothing is spawned until the user starts an agent, a terminal, or a trusted command. Adding a project does not start the dev server. |
 | Open the same project in a window | The window attaches to that runtime. Terminals and agents already running stay. |
 | Close that window | Runtime stays, because the path is still listed in Grove. |
 | Remove from Grove while a window has it open | The list entry goes. The window's runtime stays until the window closes or switches project. |
 | Remove from Grove with nothing else holding it | Confirm when anything is running, then dispose the runtime. |
-| Quit | Every runtime disposes. Closing the last window quits as it does today, and processes listed only in Grove stop with it. There is no extra confirm. |
+| Quit | Confirmed quit disposes every runtime. Closing the last window does not, while a Grove project still has a terminal or agent process: the Electron process stays up and a tray menu can show the window or quit. Quit asks first when anything is still running. The Grove project list is not cleared. |
 
 Switching the browser workspace to another project on the same window detaches that window from the old runtime and attaches the new one. The old runtime survives when Grove still lists it.
 
@@ -159,9 +159,13 @@ e2e, in `apps/desktop/e2e/grove.spec.ts`, with the fake agent:
 
 `pnpm typecheck && pnpm lint && pnpm test`, then `pnpm e2e` for the Grove spec. One branch, one draft PR into `beta`.
 
-## Out of scope
+## Now in scope
 
-- Detecting agent CLIs inside a terminal, memory figures, the `Mod+K` palette, project cycling chords, and imported commands. Each is its own spec.
-- Worktrees, a background daemon, and agents that survive quit.
-- Sectioning the project list by `projectGroups`.
-- Running a project's dev server automatically when it is added to Grove.
+These were deferred here and now have their own specs. None of them starts a dev server because a project was added.
+
+| Spec | What it adds |
+| --- | --- |
+| [Project groups](./2026-11-04-grove-project-groups.md) | The sidebar sections `settings.grove.projects` with the existing `settings.projectGroups` and each project's `groupId`. |
+| [Commands list](./2026-11-04-grove-commands-list.md) | A collapsible Commands block under each project. Clicking a row runs it after one trust click. |
+| [Worktree sessions](./2026-11-04-grove-worktree-sessions.md) | The launcher can start an agent in a new git worktree that becomes its own Grove project. |
+| [Process lifetime](./2026-11-04-grove-process-lifetime.md) | Grove projects keep running after the last window closes. Quit confirms before stopping them. The next launch adopts a still-living pid or shows it gone. `settings.grove.launch` chooses Browser or Grove on app start. Close in the sidebar is what drops a project from that list. |

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react';
-import { appearanceCssVariables } from '@arbora/shared';
+import { appearanceCssVariables, groveWebsiteAction } from '@arbora/shared';
 import { CommandPalette } from './components/CommandPalette';
+import { KeybindingsCheatsheet } from './components/KeybindingsCheatsheet';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { QuickOpen } from './components/QuickOpen';
 import { TitleBar } from './components/TitleBar';
@@ -19,6 +20,7 @@ import {
   loadAgentSnapshot,
   noteFileChanged,
   resetAgents,
+  useAgents,
 } from './agent-store';
 import {
   initAttentionTracking,
@@ -30,10 +32,18 @@ import {
 } from './attention-store';
 import { applyLibrary } from './projects-store';
 import { applyUpdateState } from './update-store';
-import { executeCommand, navigateBrowser, registerBuiltinCommands, revealThread } from './commands';
+import { executeCommand, navigateBrowser, openGroveWebsite, registerBuiltinCommands, revealThread } from './commands';
 import { onFilesChanged, resetFiles, setDiagnostics } from './files-store';
 import { noteAgentWatcherChanges, refreshGit, scheduleGitRefresh, useGit } from './git-client';
-import { initGroveTracking } from './grove-store';
+import {
+  initGroveTracking,
+  noteProjectTerminals,
+  indexedThreadIds,
+  noteProjectThreads,
+  patchProjectThread,
+  refreshGroveAgents,
+  useGrove,
+} from './grove-store';
 import { useKeybindingContextSync, useKeybindingDispatch } from './keybindings';
 import {
   addProblems,
@@ -75,6 +85,14 @@ function GroveLoading() {
 /** Tool failures repeat on every save; say each one once per session. */
 const shownToolErrors = new Set<string>();
 
+/** The project whose agent and terminal events this window is showing. */
+function activeProjectPath(): string | null {
+  const { project, layout } = useApp.getState();
+  const focus = useGrove.getState().focusPath;
+  if (layout.workspace === 'grove' && focus) return focus;
+  return project?.path ?? null;
+}
+
 function useMainEvents(): void {
   useEffect(() => {
     const { arbora } = window;
@@ -92,22 +110,38 @@ function useMainEvents(): void {
       arbora.on('browser.problemsAdded', ({ entries }) => addProblems(entries)),
       arbora.on('browser.problemsCleared', () => useApp.setState({ problems: [] })),
       arbora.on('browser.urlSuggested', ({ url }) => useApp.setState({ suggestedUrl: url })),
-      arbora.on('terminal.changed', ({ terminals }) => applyTerminalList(terminals)),
-      arbora.on('terminal.urlDetected', ({ url, opened }) => {
-        if (opened) showToast(`Opened ${url} in the browser`);
-        else showToast(`Dev server at ${url}`, { label: 'Open in browser', run: () => void navigateBrowser(url) });
+      arbora.on('terminal.changed', ({ projectPath, terminals }) => {
+        noteProjectTerminals(projectPath, terminals);
+        if (projectPath === activeProjectPath()) applyTerminalList(terminals);
       }),
-      arbora.on('agent.threadsChanged', ({ threads }) => {
-        applyThreadList(threads);
-        pruneAttention(threads.map((t) => t.id));
+      arbora.on('terminal.urlDetected', ({ projectPath, url, opened }) => {
+        if (projectPath !== activeProjectPath()) return;
+        if (opened) {
+          showToast(`Opened ${url} in the browser`);
+          return;
+        }
+        const grove = groveWebsiteAction({ workspace: useApp.getState().layout.workspace, projectPath, url });
+        showToast(`Dev server at ${url}`, {
+          label: 'Open in browser',
+          run: () => void (grove ? openGroveWebsite(grove) : navigateBrowser(url)),
+        });
       }),
-      arbora.on('agent.groupsChanged', ({ groups }) => applyGroups(groups)),
-      arbora.on('agent.threadEvents', ({ threadId, changes }) => {
-        applyThreadChanges(threadId, changes);
+      arbora.on('agent.threadsChanged', ({ projectPath, threads }) => {
+        noteProjectThreads(projectPath, threads);
+        if (projectPath === activeProjectPath()) applyThreadList(threads);
+        const live = useAgents.getState().threads.map((thread) => thread.id);
+        pruneAttention([...new Set([...indexedThreadIds(), ...live])]);
+      }),
+      arbora.on('agent.groupsChanged', ({ projectPath, groups }) => {
+        if (projectPath === activeProjectPath()) applyGroups(groups);
+      }),
+      arbora.on('agent.threadEvents', ({ projectPath, threadId, changes }) => {
+        if (projectPath === activeProjectPath()) applyThreadChanges(threadId, changes);
         noteThreadChanges(threadId, changes);
       }),
-      arbora.on('agent.threadState', ({ threadId, state }) => {
-        applyThreadState(threadId, state);
+      arbora.on('agent.threadState', ({ projectPath, threadId, state }) => {
+        if (projectPath === activeProjectPath()) applyThreadState(threadId, state);
+        else patchProjectThread(projectPath, threadId, state);
         noteThreadState(threadId, state);
       }),
       arbora.on('notification.clicked', ({ threadId }) => {
@@ -115,8 +149,13 @@ function useMainEvents(): void {
       }),
       arbora.on('updates.state', (state) => applyUpdateState(state)),
       arbora.on('projects.changed', (library) => applyLibrary(library)),
-      arbora.on('agent.log', ({ threadId, entry }) => appendLog(threadId, entry)),
-      arbora.on('agent.fileChanged', ({ threadId, path }) => noteFileChanged(threadId, path)),
+      arbora.on('agent.log', ({ projectPath, threadId, entry }) => {
+        if (projectPath === activeProjectPath()) appendLog(threadId, entry);
+      }),
+      arbora.on('agent.fileChanged', ({ projectPath, threadId, path }) => {
+        if (projectPath === activeProjectPath()) noteFileChanged(threadId, path);
+      }),
+      arbora.on('grove.usage', ({ samples }) => useGrove.setState({ usage: samples })),
       arbora.on('agentMode.picked', () => dispatchMode({ type: 'picked' })),
       arbora.on('agentMode.selected', (selection) => dispatchMode({ type: 'resolved', selection })),
       arbora.on('agentMode.ended', ({ error }) => {
@@ -187,9 +226,12 @@ function useBrowserSnapshot(): void {
 /** Terminals belong to the project; reload the list (after a renderer reload too) when it changes. */
 function useTerminalSnapshot(): void {
   const projectPath = useApp((s) => s.project?.path);
+  const workspace = useApp((s) => s.layout.workspace);
+  const focusPath = useGrove((s) => s.focusPath);
+  const scope = workspace === 'grove' && focusPath ? focusPath : projectPath;
   useEffect(() => {
     resetTerminals();
-    if (!projectPath) return;
+    if (!scope) return;
     let active = true;
     void window.arbora.invoke('terminal.list').then((terminals) => {
       if (active) applyTerminalList(terminals);
@@ -197,7 +239,7 @@ function useTerminalSnapshot(): void {
     return () => {
       active = false;
     };
-  }, [projectPath]);
+  }, [scope]);
 }
 
 /** Open files, the tree and diagnostics belong to the project. */
@@ -213,12 +255,30 @@ function useFilesReset(): void {
 /** Agents and threads belong to the project; reload them when it changes (and after a renderer reload). */
 function useAgentSnapshot(): void {
   const projectPath = useApp((s) => s.project?.path);
+  const workspace = useApp((s) => s.layout.workspace);
+  const focusPath = useGrove((s) => s.focusPath);
+  const scope = workspace === 'grove' && focusPath ? focusPath : projectPath;
+  useEffect(() => {
+    const indexed = indexedThreadIds();
+    if (indexed.length === 0) resetAttention();
+    else pruneAttention(indexed);
+  }, [projectPath]);
   useEffect(() => {
     resetAgents();
-    resetAttention();
-    if (!projectPath) return;
-    void loadAgentSnapshot().catch((error: unknown) => showToast(`Could not load agents: ${(error as Error).message}`));
-  }, [projectPath]);
+    if (!scope) return;
+    void loadAgentSnapshot()
+      .then(() => {
+        noteProjectThreads(scope, useAgents.getState().threads);
+        pruneAttention([
+          ...new Set([...indexedThreadIds(), ...useAgents.getState().threads.map((thread) => thread.id)]),
+        ]);
+      })
+      .catch((error: unknown) => showToast(`Could not load agents: ${(error as Error).message}`));
+  }, [scope]);
+  useEffect(() => {
+    if (workspace !== 'grove') return;
+    refreshGroveAgents();
+  }, [workspace]);
 }
 
 function useThemeClass(): void {
@@ -286,7 +346,7 @@ export function App() {
       data-last-cue={lastCue ? `${lastCue.kind}:${lastCue.sound ? 'sound' : 'silent'}` : undefined}
     >
       <TitleBar />
-      {project && grove ? (
+      {grove ? (
         <ErrorBoundary label="Grove">
           <Suspense fallback={<GroveLoading />}>
             <GroveWorkspace />
@@ -304,6 +364,7 @@ export function App() {
         <ProjectsHome />
       )}
       <CommandPalette />
+      <KeybindingsCheatsheet />
       <ProjectSwitcher />
       <UpdateDialog />
       {overlay === 'onboarding' && (

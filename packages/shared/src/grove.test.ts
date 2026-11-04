@@ -10,6 +10,8 @@ import {
   formatElapsed,
   groveRows,
   groveSummary,
+  cycleListedProject,
+  groveWebsiteAction,
   isSettledStatus,
   NO_ACTIVITY,
   overlaps,
@@ -391,6 +393,39 @@ describe('transcriptLines', () => {
     expect(transcriptLines(events, 1)).toEqual(['User: two']);
     expect(transcriptLines(events, 0)).toEqual(['User: two']);
     expect(transcriptLines(events, 2)[0]).toHaveLength('Agent: '.length + 4000 + 1);
+  });
+});
+
+describe('groveWebsiteAction', () => {
+  it('switches to the browser workspace, opens that project, and navigates to the url', () => {
+    expect(groveWebsiteAction({ workspace: 'grove', projectPath: '/app', url: 'http://localhost:3000/' })).toEqual({
+      switchWorkspace: 'browser',
+      openProject: '/app',
+      navigate: 'http://localhost:3000/',
+    });
+  });
+
+  it('keeps the window project when the terminal has no project path', () => {
+    expect(groveWebsiteAction({ workspace: 'grove', projectPath: null, url: 'http://localhost:3000/' })).toEqual({
+      switchWorkspace: 'browser',
+      openProject: null,
+      navigate: 'http://localhost:3000/',
+    });
+  });
+
+  it('leaves a browser-workspace link on its current path', () => {
+    expect(groveWebsiteAction({ workspace: 'browser', projectPath: '/app', url: 'http://localhost:3000/' })).toBeNull();
+  });
+});
+
+describe('cycleListedProject', () => {
+  it('skips the current project, wraps, and does nothing with fewer than two', () => {
+    expect(cycleListedProject(['a', 'b', 'c'], 'a', 1)).toBe('b');
+    expect(cycleListedProject(['a', 'b', 'c'], 'c', 1)).toBe('a');
+    expect(cycleListedProject(['a', 'b', 'c'], 'b', -1)).toBe('a');
+    expect(cycleListedProject(['a', 'b', 'c'], 'a', -1)).toBe('c');
+    expect(cycleListedProject(['only'], 'only', 1)).toBeNull();
+    expect(cycleListedProject([], null, 1)).toBeNull();
   });
 });
 
