@@ -6,6 +6,7 @@ import { executeCommand } from '../../commands';
 import { updateSettings } from '../../settings-client';
 import { useApp, type SettingsSection } from '../../store';
 import { AgentsSection } from './AgentsSection';
+import { AppearanceSection } from './AppearanceSection';
 import { inputClass, Segmented, SettingRow, Toggle } from './controls';
 import { KeyboardSection } from './KeyboardSection';
 import { NotificationsSection } from './NotificationsSection';
@@ -17,6 +18,7 @@ type Section = SettingsSection;
 const SECTIONS: readonly { id: Section; label: string }[] = [
   { id: 'agents', label: 'Agents' },
   { id: 'general', label: 'General' },
+  { id: 'appearance', label: 'Appearance' },
   { id: 'notifications', label: 'Notifications & sounds' },
   { id: 'editor', label: 'Editor' },
   { id: 'browser', label: 'Browser' },
@@ -39,7 +41,6 @@ const THEMES: readonly { value: ThemeMode; label: string }[] = [
 
 function GeneralSection() {
   const theme = useApp((s) => s.theme.mode);
-  const fontSize = useApp((s) => s.settings.terminal.fontSize);
   const isMac = useApp((s) => s.info.platform === 'darwin');
   const quitOnLastWindowClose = useApp((s) => s.settings.quitOnLastWindowClose);
   return (
@@ -66,20 +67,6 @@ function GeneralSection() {
             </button>
           ))}
         </div>
-      </SettingRow>
-      <SettingRow title="Terminal font size">
-        <input
-          type="number"
-          min={8}
-          max={32}
-          value={fontSize}
-          onChange={(event) => {
-            const value = Number(event.target.value);
-            if (Number.isInteger(value) && value >= 8 && value <= 32)
-              void updateSettings({ terminal: { fontSize: value } });
-          }}
-          className="h-7 w-16 rounded border border-border bg-bg px-2 text-xs"
-        />
       </SettingRow>
       {isMac && (
         <SettingRow
@@ -130,20 +117,6 @@ function EditorSection() {
           label="Type-check on save"
           testId="setting-tsc-on-save"
           onChange={(on) => void updateSettings({ editor: { tscOnSave: on } })}
-        />
-      </SettingRow>
-      <SettingRow title="Editor font size">
-        <input
-          type="number"
-          min={8}
-          max={32}
-          value={editor.fontSize}
-          onChange={(event) => {
-            const value = Number(event.target.value);
-            if (Number.isInteger(value) && value >= 8 && value <= 32)
-              void updateSettings({ editor: { fontSize: value } });
-          }}
-          className="h-7 w-16 rounded border border-border bg-bg px-2 text-xs"
         />
       </SettingRow>
       <SettingRow title="Terminal shell" detail="Empty uses $SHELL (macOS, Linux) or PowerShell (Windows).">
@@ -276,6 +249,7 @@ export default function SettingsPage() {
         <div className="mx-auto max-w-3xl px-6 py-5">
           {section === 'agents' && <AgentsSection />}
           {section === 'general' && <GeneralSection />}
+          {section === 'appearance' && <AppearanceSection />}
           {section === 'editor' && <EditorSection />}
           {section === 'browser' && <BrowserSection />}
           {section === 'notifications' && <NotificationsSection />}

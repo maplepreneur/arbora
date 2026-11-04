@@ -380,13 +380,13 @@ function EventView({
   switch (event.kind) {
     case 'user_message':
       return (
-        <div className="ml-6 rounded-lg bg-accent-soft px-3 py-2 text-[12.5px]" data-testid="user-message">
+        <div className="ml-6 agent-text rounded-lg bg-accent-soft px-3 py-2" data-testid="user-message">
           <Blocks blocks={event.blocks} projectPath={projectPath} />
         </div>
       );
     case 'agent_message':
       return (
-        <div className="px-1 text-[12.5px]" data-testid="agent-message">
+        <div className="agent-text px-1" data-testid="agent-message">
           <Blocks blocks={event.blocks} projectPath={projectPath} />
         </div>
       );

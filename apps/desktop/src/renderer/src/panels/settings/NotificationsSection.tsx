@@ -1,5 +1,5 @@
 import { Play } from 'lucide-react';
-import { SOUND_IDS, type SoundId, type SoundSettings } from '@arbora/shared';
+import { CLASSIC_SOUND_IDS, NATURE_SOUND_IDS, type SoundId, type SoundSettings } from '@arbora/shared';
 import { updateSettings } from '../../settings-client';
 import { playSound, SOUND_LABELS } from '../../sounds';
 import { useApp } from '../../store';
@@ -29,11 +29,21 @@ function SoundPicker({ event, sounds }: { event: SoundEvent; sounds: SoundSettin
         }}
         className="h-7 rounded border border-border bg-bg px-1.5 text-xs disabled:opacity-50"
       >
-        {SOUND_IDS.map((id) => (
-          <option key={id} value={id}>
-            {SOUND_LABELS[id]}
-          </option>
-        ))}
+        <option value="none">{SOUND_LABELS.none}</option>
+        <optgroup label="Nature">
+          {NATURE_SOUND_IDS.map((id) => (
+            <option key={id} value={id}>
+              {SOUND_LABELS[id]}
+            </option>
+          ))}
+        </optgroup>
+        <optgroup label="Classic">
+          {CLASSIC_SOUND_IDS.map((id) => (
+            <option key={id} value={id}>
+              {SOUND_LABELS[id]}
+            </option>
+          ))}
+        </optgroup>
       </select>
       <button
         type="button"

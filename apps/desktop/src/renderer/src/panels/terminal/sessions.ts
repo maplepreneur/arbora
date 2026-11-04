@@ -3,14 +3,14 @@ import { SearchAddon } from '@xterm/addon-search';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal, type ILink, type ITheme } from '@xterm/xterm';
-import { findDevUrls, terminalClipboardAction, type ResolvedTheme } from '@arbora/shared';
+import { findDevUrls, fontFamily, terminalClipboardAction, type ResolvedTheme } from '@arbora/shared';
 import { navigateBrowser, openFileAtLocation } from '../../commands';
 import { bindingForEvent } from '../../keybindings';
 import { showToast, useApp } from '../../store';
 import { useTerminals } from '../../terminal-store';
 
 const FONT_FAMILY =
-  "ui-monospace, 'JetBrainsMono Nerd Font', 'JetBrains Mono', 'CaskaydiaMono Nerd Font', 'Cascadia Code', 'SF Mono', Menlo, Consolas, 'Symbols Nerd Font Mono', 'DejaVu Sans Mono', monospace";
+  "'Dank Mono', ui-monospace, 'JetBrainsMono Nerd Font', 'JetBrains Mono', 'CaskaydiaMono Nerd Font', 'Cascadia Code', 'SF Mono', Menlo, Consolas, 'Symbols Nerd Font Mono', 'DejaVu Sans Mono', monospace";
 const RESIZE_DEBOUNCE_MS = 50;
 
 const THEMES: Readonly<Record<ResolvedTheme, ITheme>> = {
@@ -105,7 +105,7 @@ function createSession(id: string): TerminalSession {
   const { settings, theme, info } = useApp.getState();
   const term = new Terminal({
     allowProposedApi: true,
-    fontFamily: FONT_FAMILY,
+    fontFamily: fontFamily(settings.appearance.codeFont, FONT_FAMILY),
     fontSize: settings.terminal.fontSize,
     lineHeight: 1.15,
     scrollback: 5000,
@@ -276,9 +276,13 @@ export function initTerminalSessions(): void {
     if (state.theme.resolved !== previous.theme.resolved) {
       for (const session of sessions.values()) session.term.options.theme = THEMES[state.theme.resolved];
     }
-    if (state.settings.terminal.fontSize !== previous.settings.terminal.fontSize) {
+    if (
+      state.settings.terminal.fontSize !== previous.settings.terminal.fontSize ||
+      state.settings.appearance.codeFont !== previous.settings.appearance.codeFont
+    ) {
       for (const session of sessions.values()) {
         session.term.options.fontSize = state.settings.terminal.fontSize;
+        session.term.options.fontFamily = fontFamily(state.settings.appearance.codeFont, FONT_FAMILY);
         session.fit();
       }
     }

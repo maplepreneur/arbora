@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react';
+import { appearanceCssVariables } from '@arbora/shared';
 import { CommandPalette } from './components/CommandPalette';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { QuickOpen } from './components/QuickOpen';
@@ -206,6 +207,14 @@ function useThemeClass(): void {
   }, [resolved]);
 }
 
+function useAppearanceVariables(): void {
+  const appearance = useApp((s) => s.settings.appearance);
+  useEffect(() => {
+    const style = document.documentElement.style;
+    for (const [name, value] of Object.entries(appearanceCssVariables(appearance))) style.setProperty(name, value);
+  }, [appearance]);
+}
+
 /** Without this, dropping a file anywhere outside the drop zone navigates the window to it. */
 function usePreventFileNavigation(): void {
   useEffect(() => {
@@ -241,6 +250,7 @@ export function App() {
   useAgentSnapshot();
   useFilesReset();
   useThemeClass();
+  useAppearanceVariables();
   usePreventFileNavigation();
   useKeybindingDispatch();
   useKeybindingContextSync();

@@ -72,7 +72,7 @@ export interface InitialState {
 }
 
 export type SettingsSection =
-  'agents' | 'general' | 'notifications' | 'editor' | 'browser' | 'project' | 'keyboard' | 'updates';
+  'agents' | 'general' | 'appearance' | 'notifications' | 'editor' | 'browser' | 'project' | 'keyboard' | 'updates';
 
 export type Overlay = 'onboarding' | 'switcher' | 'update';
 

@@ -192,7 +192,7 @@ export function Composer({ thread, projectPath }: { thread: ThreadSummary; proje
                   ? 'Message the agent… ( / for commands)'
                   : 'Message the agent…'
           }
-          className="block max-h-[200px] w-full resize-none overflow-y-hidden rounded border border-border bg-bg px-2 py-1.5 pr-16 text-[12.5px] outline-none select-text focus:border-accent"
+          className="block max-h-[200px] w-full resize-none overflow-y-hidden rounded border border-border bg-bg px-2 py-1.5 pr-16 agent-text outline-none select-text focus:border-accent"
           onChange={(event) => {
             setDraft(thread.id, event.target.value);
             setCaret(event.target.selectionStart);

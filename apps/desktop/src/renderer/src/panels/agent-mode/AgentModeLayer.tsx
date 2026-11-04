@@ -247,7 +247,7 @@ function AgentModePopover({ selection, targetIndex, onTargetIndex }: PopoverProp
         placeholder="What should the agent change? (Enter to send, Shift+Enter for a new line)"
         onChange={(event) => setText(event.target.value)}
         onKeyDown={onKeyDown}
-        className="w-full resize-none rounded border border-border bg-bg px-2 py-1.5 text-[12.5px] outline-none select-text focus:border-accent"
+        className="w-full resize-none rounded border border-border bg-bg px-2 py-1.5 agent-text outline-none select-text focus:border-accent"
       />
       <div className="flex flex-wrap gap-1">
         <Toggle

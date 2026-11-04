@@ -218,6 +218,7 @@ function main(): void {
       theme.setMode(next.theme);
       void browserSessions.applySettings();
       manager.rebuildKeybindings();
+      manager.applyZoom();
       mainLog.setEnabled(next.diagnostics.logToFile);
       attention.applyBadge();
       for (const w of manager.all()) sendEvent(w.contents, 'settings.changed', next);
