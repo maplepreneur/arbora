@@ -2,10 +2,11 @@ import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'no
 import { join } from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import type { NavigationState, ScreenshotResult } from '@arbora/shared';
-import { DESKTOP_ROOT, FIXTURES, launch, tempUserData } from './app';
+import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, tempUserData } from './app';
 import { freePort, startSelfSignedServer, startViteFixture, type RunningServer } from './servers';
 
 const VITE_REACT = join(FIXTURES, 'vite-react');
+const FAKE_AGENT = join(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
 const SCREENSHOTS = join(VITE_REACT, '.arbora/screenshots');
 const MOD = process.platform === 'darwin' ? 'meta' : 'control';
 
@@ -191,7 +192,19 @@ test.describe('Stage 1 browser panel', () => {
   });
 
   test('shows console errors and failed requests in Problems with timestamps and sources', async () => {
-    const { app, page } = await launchWithFixture();
+    const userData = tempUserData();
+    writeFileSync(
+      join(userData, 'settings.json'),
+      JSON.stringify({
+        version: 3,
+        agents: {
+          custom: [{ id: 'fake', name: 'Fake agent', command: process.execPath, args: [FAKE_AGENT], env: {} }],
+          ...checkedAgents(['fake']),
+        },
+        tasks: { fix: { agentId: 'fake', model: 'smart' } },
+      }),
+    );
+    const { app, page } = await launchWithFixture(userData);
     try {
       await openUrl(page, vite.url, FIXTURE_TITLE);
       await page.getByTestId('bottom-tab-problems').click();
@@ -215,6 +228,14 @@ test.describe('Stage 1 browser panel', () => {
       await expect(rows.filter({ hasText: 'ERR_CONNECTION_REFUSED' })).toHaveCount(1);
       await expect(page.getByTestId('problems-badge')).toHaveText('3');
 
+      // "Fix all" starts a thread with the Fix problems task's agent and model.
+      await expect(page.getByTestId('problems-fix-all')).toHaveText('Fix all 3');
+      await page.getByTestId('problems-fix-all').click();
+      const sent = page.getByTestId('user-message').first();
+      await expect(sent).toContainText('Fix these problems from the browser at', { timeout: 20_000 });
+      await expect(sent).toContainText('[error, network] GET 404 Not Found');
+      await expect(page.getByTestId('model-select')).toHaveAttribute('data-value', 'smart');
+
       // Info-level console output is buffered too, shown under "All".
       await inPage(app, `console.log('fixture: %s %d', 'hello', 42)`);
       await page.getByTestId('problems-filter-all').click();
@@ -228,6 +249,14 @@ test.describe('Stage 1 browser panel', () => {
       await expect(page.getByTestId('problems-empty')).toBeVisible();
       await expect(page.getByTestId('problems-badge')).toBeHidden();
     } finally {
+      // The fixture project is shared; later specs count its threads.
+      await page
+        .evaluate(async () => {
+          for (const thread of await window.arbora.invoke('agent.listThreads')) {
+            await window.arbora.invoke('agent.deleteThread', { threadId: thread.id });
+          }
+        })
+        .catch(() => undefined);
       await app.close();
     }
   });

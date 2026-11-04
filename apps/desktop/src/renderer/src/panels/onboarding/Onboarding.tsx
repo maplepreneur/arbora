@@ -28,8 +28,9 @@ import { updateProjectSettings, updateSettings } from '../../settings-client';
 import { playSound } from '../../sounds';
 import { closeOverlay, openSettings, useApp } from '../../store';
 import { useTerminals } from '../../terminal-store';
+import { TaskDefaults } from '../settings/TaskAgentPicker';
 
-const STEPS = ['welcome', 'project', 'dev', 'agents', 'keys', 'alerts', 'finish'] as const;
+const STEPS = ['welcome', 'project', 'dev', 'agents', 'tasks', 'keys', 'alerts', 'finish'] as const;
 type Step = (typeof STEPS)[number];
 
 const STEP_LABELS: Readonly<Record<Step, string>> = {
@@ -37,6 +38,7 @@ const STEP_LABELS: Readonly<Record<Step, string>> = {
   project: 'Project',
   dev: 'Dev server',
   agents: 'Agents',
+  tasks: 'Task defaults',
   keys: 'Shortcuts',
   alerts: 'Alerts',
   finish: 'Try it',
@@ -305,6 +307,19 @@ function AgentsStep() {
   );
 }
 
+function TasksStep() {
+  const project = useApp((s) => s.project);
+  if (!project) return <StepShell title="Task defaults" lead="Open a project first; agents run in its folder." />;
+  return (
+    <StepShell
+      title="Pick an agent for each job"
+      lead="Agent mode, design mode, fixing problems and commit messages can each start threads with their own agent and model. Leave one on Default agent to use the starred agent. You can change these later in Settings → Agents."
+    >
+      <TaskDefaults />
+    </StepShell>
+  );
+}
+
 function KeysStep({ pressed }: { pressed: ReadonlySet<string> }) {
   const agentLabel = useChordLabel(CommandId.agentMode);
   const designLabel = useChordLabel(CommandId.designMode);
@@ -514,6 +529,7 @@ export default function Onboarding() {
         {step === 'project' && <ProjectStep />}
         {step === 'dev' && <DevStep />}
         {step === 'agents' && <AgentsStep />}
+        {step === 'tasks' && <TasksStep />}
         {step === 'keys' && <KeysStep pressed={pressed} />}
         {step === 'alerts' && <AlertsStep />}
         {step === 'finish' && <FinishStep />}

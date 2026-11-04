@@ -25,6 +25,7 @@ import { useAutoVerify, usePickableAgents, verifyAgent } from '../../agent-picke
 import { Picker } from '../../components/Picker';
 import { showToast, useApp } from '../../store';
 import { inputClass, SectionTitle, SettingRow, Toggle } from './controls';
+import { TaskDefaults } from './TaskAgentPicker';
 
 function StatusBadge({ verification, checking }: { verification: AgentVerification | undefined; checking: boolean }) {
   if (checking) {
@@ -378,6 +379,13 @@ export function AgentsSection() {
   return (
     <div className="flex flex-col gap-4">
       <CurrentDefault />
+      <div>
+        <SectionTitle>Defaults per task</SectionTitle>
+        <p className="mb-2 text-xs text-fg-muted">
+          New threads started from these places use their own agent and model. An open thread keeps its own.
+        </p>
+        <TaskDefaults />
+      </div>
       <div className="flex items-start gap-4">
         <p className="flex-1 text-sm text-fg-muted">
           Arbora starts each agent once to check that you are signed in and to read its models. Only signed-in agents

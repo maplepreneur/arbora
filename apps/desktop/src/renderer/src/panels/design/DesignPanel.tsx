@@ -792,13 +792,14 @@ interface DesignTarget {
 
 /**
  * Where the send bar sends: the user's pick if it is still signed in, else a new thread with the
- * default agent and its default model. Only signed-in, visible agents (and their threads) count.
+ * design task's agent and model (Settings → Agents), else the default agent and its default model. Only signed-in, visible agents (and their threads) count.
  */
 function useDesignTarget(): DesignTarget | null {
   const pickable = usePickableAgents();
   const threads = useAgents((s) => s.threads);
   const chosen = useApp((s) => s.design.target);
   const chosenModel = useApp((s) => s.design.model);
+  const task = useApp((s) => s.settings.tasks.design);
   return useMemo(() => {
     const byId = new Map(pickable.map((entry) => [entry.agent.id, entry]));
     const thread = chosen?.startsWith('thread:')
@@ -814,9 +815,16 @@ function useDesignTarget(): DesignTarget | null {
         detail: `Continues “${thread.title}” with its current model`,
       };
     }
-    const entry = (chosen?.startsWith('new:') ? byId.get(chosen.slice('new:'.length)) : undefined) ?? pickable[0];
+    const entry =
+      (chosen?.startsWith('new:') ? byId.get(chosen.slice('new:'.length)) : undefined) ??
+      (task.agentId !== null ? byId.get(task.agentId) : undefined) ??
+      pickable[0];
     if (!entry) return null;
-    const model = entry.models.find((m) => m.value === chosenModel)?.value ?? entry.models[0]?.value;
+    const taskModel = task.agentId === entry.agent.id ? task.model : null;
+    const model =
+      entry.models.find((m) => m.value === chosenModel)?.value ??
+      entry.models.find((m) => m.value === taskModel)?.value ??
+      entry.models[0]?.value;
     return {
       key: `new:${entry.agent.id}`,
       target: { type: 'new', agentId: entry.agent.id, ...(model ? { model } : {}) },
@@ -825,7 +833,7 @@ function useDesignTarget(): DesignTarget | null {
       model,
       detail: 'Starts a new thread',
     };
-  }, [pickable, threads, chosen, chosenModel]);
+  }, [pickable, threads, chosen, chosenModel, task]);
 }
 
 function AgentPicker({ value }: { value: string }) {
