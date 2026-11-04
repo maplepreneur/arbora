@@ -99,7 +99,10 @@ export const notificationSettingsSchema = z.object({
 });
 export type NotificationSettings = z.infer<typeof notificationSettingsSchema>;
 
-export const SOUND_IDS = ['none', 'chime', 'ping', 'pop', 'knock', 'bell'] as const;
+/** Nature cues (the tree in the logo) first, then the original synth cues. */
+export const NATURE_SOUND_IDS = ['chickadee', 'robin', 'songbird', 'woodpecker', 'owl', 'droplet', 'leaves'] as const;
+export const CLASSIC_SOUND_IDS = ['chime', 'ping', 'pop', 'knock', 'bell'] as const;
+export const SOUND_IDS = ['none', ...NATURE_SOUND_IDS, ...CLASSIC_SOUND_IDS] as const;
 export const soundIdSchema = z.enum(SOUND_IDS);
 export type SoundId = z.infer<typeof soundIdSchema>;
 
@@ -109,9 +112,9 @@ export const soundSettingsSchema = z.object({
   volume: z.number().int().min(0).max(100).default(60),
   /** Play while the thread is already on screen in a focused window. */
   whenFocused: z.boolean().default(false),
-  permission: soundIdSchema.default('ping'),
-  finished: soundIdSchema.default('chime'),
-  failed: soundIdSchema.default('knock'),
+  permission: soundIdSchema.default('chickadee'),
+  finished: soundIdSchema.default('robin'),
+  failed: soundIdSchema.default('woodpecker'),
 });
 export type SoundSettings = z.infer<typeof soundSettingsSchema>;
 
@@ -153,7 +156,7 @@ export type OnboardingSettings = z.infer<typeof onboardingSettingsSchema>;
 
 export const MAX_RECENT_PROJECTS = 10;
 
-export const SETTINGS_VERSION = 3;
+export const SETTINGS_VERSION = 4;
 
 export const browserSettingsSchema = z.object({
   /** Load the bundled React and Vue DevTools into the browser panel's session. */
@@ -169,10 +172,56 @@ export const browserSettingsSchema = z.object({
 });
 export type BrowserSettings = z.infer<typeof browserSettingsSchema>;
 
+export const SANS_FONT_STACK = "system-ui, -apple-system, 'Segoe UI', Ubuntu, Cantarell, 'Noto Sans', sans-serif";
+/**
+ * Dank Mono is the preferred code font. Its licence does not allow Arbora to bundle it, so it
+ * is used when installed and the stack falls back to the platform's monospace fonts.
+ */
+export const MONO_FONT_STACK =
+  "'Dank Mono', ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', Menlo, Consolas, monospace";
+
+export const UI_SCALE_MIN = 80;
+export const UI_SCALE_MAX = 150;
+
+export const appearanceSettingsSchema = z.object({
+  /** Interface zoom in percent: everything in the app window grows, not the page in the browser. */
+  uiScale: z.number().int().min(UI_SCALE_MIN).max(UI_SCALE_MAX).default(100),
+  /** CSS font families; empty uses the default stack (`SANS_FONT_STACK`, `MONO_FONT_STACK`). */
+  interfaceFont: z.string().max(300).default(''),
+  /** Editor, terminal and code blocks. */
+  codeFont: z.string().max(300).default(''),
+  /** Agent messages and the composer; empty follows the interface font. */
+  agentFont: z.string().max(300).default(''),
+  agentFontSize: z.number().int().min(10).max(24).default(14),
+});
+export type AppearanceSettings = z.infer<typeof appearanceSettingsSchema>;
+
+/** A font setting as a CSS `font-family` value: the user's choice first, then the fallback stack. */
+export function fontFamily(choice: string, fallback: string): string {
+  const trimmed = choice.trim();
+  if (!trimmed) return fallback;
+  const families = trimmed.split(',').map((family) => {
+    const name = family.trim();
+    return /^['"]|^[\w-]+$/.test(name) ? name : `'${name.replace(/'/g, '')}'`;
+  });
+  return [...families, fallback].join(', ');
+}
+
+/** The renderer's font variables (`styles.css`) for the appearance settings. */
+export function appearanceCssVariables(appearance: AppearanceSettings): Record<string, string> {
+  const sans = fontFamily(appearance.interfaceFont, SANS_FONT_STACK);
+  return {
+    '--font-sans': sans,
+    '--font-mono': fontFamily(appearance.codeFont, MONO_FONT_STACK),
+    '--font-agent': fontFamily(appearance.agentFont, sans),
+    '--agent-font-size': `${appearance.agentFontSize}px`,
+  };
+}
+
 export const terminalSettingsSchema = z.object({
   /** Shell executable; defaults to `$SHELL` (macOS/Linux) or pwsh/PowerShell/cmd (Windows). */
   shell: z.string().min(1).optional(),
-  fontSize: z.number().int().min(8).max(32).default(13),
+  fontSize: z.number().int().min(8).max(32).default(14),
 });
 export type TerminalSettings = z.infer<typeof terminalSettingsSchema>;
 
@@ -183,7 +232,7 @@ export const editorSettingsSchema = z.object({
   eslintOnSave: z.boolean().default(true),
   /** Run `tsc --noEmit` after saving a TypeScript file. Off by default: slow on large projects. */
   tscOnSave: z.boolean().default(false),
-  fontSize: z.number().int().min(8).max(32).default(13),
+  fontSize: z.number().int().min(8).max(32).default(14),
 });
 export type EditorSettings = z.infer<typeof editorSettingsSchema>;
 
@@ -333,6 +382,7 @@ export const appSettingsSchema = z.object({
    * keeps Arbora in the dock with no window, as most Mac apps do. Other platforms always quit.
    */
   quitOnLastWindowClose: z.boolean().default(true),
+  appearance: appearanceSettingsSchema.default(appearanceSettingsSchema.parse({})),
   browser: browserSettingsSchema.default(browserSettingsSchema.parse({})),
   terminal: terminalSettingsSchema.default(terminalSettingsSchema.parse({})),
   editor: editorSettingsSchema.default(editorSettingsSchema.parse({})),
@@ -373,6 +423,7 @@ export const appSettingsPatchSchema = z
     keybindings: keybindingOverridesSchema,
     terminalPassthrough: z.boolean(),
     quitOnLastWindowClose: z.boolean(),
+    appearance: patchSchema(appearanceSettingsSchema),
     browser: patchSchema(browserSettingsSchema),
     terminal: patchSchema(terminalSettingsSchema),
     editor: patchSchema(editorSettingsSchema),
@@ -405,6 +456,7 @@ export function applySettingsPatch(current: AppSettings, patch: AppSettingsPatch
     ...(patch.keybindings !== undefined ? { keybindings: patch.keybindings } : {}),
     ...(patch.terminalPassthrough !== undefined ? { terminalPassthrough: patch.terminalPassthrough } : {}),
     ...(patch.quitOnLastWindowClose !== undefined ? { quitOnLastWindowClose: patch.quitOnLastWindowClose } : {}),
+    ...(patch.appearance !== undefined ? { appearance: mergeDefined(current.appearance, patch.appearance) } : {}),
     ...(patch.browser !== undefined ? { browser: mergeDefined(current.browser, patch.browser) } : {}),
     ...(patch.terminal !== undefined ? { terminal: mergeDefined(current.terminal, patch.terminal) } : {}),
     ...(patch.editor !== undefined ? { editor: mergeEditorSettings(current.editor, patch.editor) } : {}),
@@ -436,7 +488,27 @@ export const SETTINGS_MIGRATIONS: Readonly<Record<number, Migration>> = {
   1: (input) => ({ ...input, version: 2 }),
   // v3 added `agents` (custom agents and remembered permissions), defaulted by the schema.
   2: (input) => ({ ...input, version: 3 }),
+  // v4 made nature sounds the default and code text 14px; settings still on the v3 defaults move.
+  3: (input) => {
+    const next: Record<string, unknown> = { ...input, version: 4 };
+    const sounds = objectField(input, 'sounds');
+    if (sounds?.['permission'] === 'ping' && sounds['finished'] === 'chime' && sounds['failed'] === 'knock') {
+      next['sounds'] = { ...sounds, permission: 'chickadee', finished: 'robin', failed: 'woodpecker' };
+    }
+    for (const key of ['editor', 'terminal']) {
+      const section = objectField(input, key);
+      if (section?.['fontSize'] === 13) next[key] = { ...section, fontSize: 14 };
+    }
+    return next;
+  },
 };
+
+function objectField(input: Record<string, unknown>, key: string): Record<string, unknown> | null {
+  const value = input[key];
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
 
 export class SettingsMigrationError extends Error {
   constructor(message: string) {

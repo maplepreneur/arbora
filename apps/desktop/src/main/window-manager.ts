@@ -121,6 +121,8 @@ export class ProjectWindow {
   /** Bumped whenever the browser is (re)started or stopped, to drop stale async starts. */
   private browserGeneration = 0;
   private browserBounds: { rect: Rect | null; emulation: ViewportEmulation | null } = { rect: null, emulation: null };
+  /** Interface size from settings. The renderer reports CSS pixels, so browser bounds are scaled by it. */
+  private zoom = 1;
   terminals: TerminalService | null = null;
   devServer: DevServer | null = null;
   agents: AgentService | null = null;
@@ -167,6 +169,7 @@ export class ProjectWindow {
     // The window title reflects the project; ignore the renderer's <title>.
     this.window.on('page-title-updated', (event) => event.preventDefault());
     this.window.once('ready-to-show', () => this.window.show());
+    contents.on('did-finish-load', () => this.applyZoom());
     this.window.on('closed', () => this.dispose());
 
     if ('url' in options.renderer) void this.window.loadURL(options.renderer.url);
@@ -217,9 +220,31 @@ export class ProjectWindow {
     return this.browserHistory?.list() ?? [];
   }
 
+  applyZoom(): void {
+    const zoom = this.options.settings.get().appearance.uiScale / 100;
+    this.window.webContents.setZoomFactor(zoom);
+    if (zoom === this.zoom) return;
+    this.zoom = zoom;
+    this.browser?.setBounds(this.scaledBrowserRect(), this.browserBounds.emulation);
+  }
+
+  private scaledBrowserRect(): Rect | null {
+    const { rect } = this.browserBounds;
+    if (!rect || this.zoom === 1) return rect;
+    const z = this.zoom;
+    const x = Math.round(rect.x * z);
+    const y = Math.round(rect.y * z);
+    return {
+      x,
+      y,
+      width: Math.round((rect.x + rect.width) * z) - x,
+      height: Math.round((rect.y + rect.height) * z) - y,
+    };
+  }
+
   setBrowserBounds(rect: Rect | null, emulation: ViewportEmulation | null): void {
     this.browserBounds = { rect, emulation };
-    this.browser?.setBounds(rect, emulation);
+    this.browser?.setBounds(this.scaledBrowserRect(), emulation);
   }
 
   rebuildKeybindings(): void {
@@ -348,7 +373,7 @@ export class ProjectWindow {
       saveState: (browser) => this.saveBrowserState(projectPath, browser),
       beforeDevTools: () => this.options.browserSessions.ensureExtensions(session),
     });
-    this.browser.setBounds(this.browserBounds.rect, this.browserBounds.emulation);
+    this.browser.setBounds(this.scaledBrowserRect(), this.browserBounds.emulation);
   }
 
   private stopBrowser(): void {
@@ -734,6 +759,10 @@ export class WindowManager {
 
   all(): ProjectWindow[] {
     return [...this.windows];
+  }
+
+  applyZoom(): void {
+    for (const w of this.windows) w.applyZoom();
   }
 
   rebuildKeybindings(): void {

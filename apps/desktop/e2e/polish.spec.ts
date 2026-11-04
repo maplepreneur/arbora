@@ -259,7 +259,16 @@ test.describe('Stage 9 settings', () => {
     try {
       await page.keyboard.press('ControlOrMeta+,');
       await expect(page.getByTestId('settings-page')).toBeVisible();
-      for (const section of ['general', 'notifications', 'editor', 'browser', 'project', 'updates', 'agents']) {
+      for (const section of [
+        'general',
+        'appearance',
+        'notifications',
+        'editor',
+        'browser',
+        'project',
+        'updates',
+        'agents',
+      ]) {
         await page.getByTestId(`settings-nav-${section}`).click();
       }
       await page.getByTestId('settings-nav-project').click();
@@ -306,6 +315,38 @@ test.describe('Stage 9 settings', () => {
         .toEqual({ channel: 'off', autoCheck: true, autoDownload: true });
       // Still off for the build reason, not the channel: an unpackaged run never updates.
       await expect(updates).toContainText('Updates are off in development builds.');
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('zooms the interface and sets the agent and code fonts from Appearance', async () => {
+    const userData = tempUserData();
+    const project = tempProject();
+    writeSettings(userData);
+    const { app, page } = await launch(userData, [project]);
+    try {
+      await page.keyboard.press('ControlOrMeta+,');
+      await page.getByTestId('settings-nav-appearance').click();
+      await page.getByTestId('ui-scale-125').click();
+      await expect
+        .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.webContents.getZoomFactor()))
+        .toBe(1.25);
+
+      await page.getByTestId('setting-agent-font-size').fill('17');
+      await page.getByTestId('setting-codeFont').fill('Fira Code');
+      await page.getByTestId('setting-codeFont').press('Enter');
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const style = document.documentElement.style;
+            const mono = style.getPropertyValue('--font-mono');
+            return [style.getPropertyValue('--agent-font-size'), mono.startsWith("'Fira Code', 'Dank Mono'")];
+          }),
+        )
+        .toEqual(['17px', true]);
+      const saved = JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')) as { appearance: object };
+      expect(saved.appearance).toMatchObject({ uiScale: 125, agentFontSize: 17, codeFont: 'Fira Code' });
     } finally {
       await app.close();
     }

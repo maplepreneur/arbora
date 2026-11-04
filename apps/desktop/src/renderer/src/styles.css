@@ -106,7 +106,19 @@
   --color-attention: var(--attention);
   --color-attention-soft: var(--attention-soft);
   --font-sans: system-ui, -apple-system, 'Segoe UI', Ubuntu, Cantarell, 'Noto Sans', sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', Menlo, Consolas, monospace;
+  --font-mono: 'Dank Mono', ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', Menlo, Consolas, monospace;
+}
+
+/* Overridden from Settings > Appearance (`appearanceCssVariables`). */
+:root {
+  --font-agent: var(--font-sans);
+  --agent-font-size: 14px;
+}
+
+.agent-text {
+  font-family: var(--font-agent);
+  font-size: var(--agent-font-size);
+  line-height: 1.55;
 }
 
 html,

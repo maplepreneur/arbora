@@ -231,6 +231,7 @@ function main(): void {
       theme.setMode(next.theme);
       void browserSessions.applySettings();
       manager.rebuildKeybindings();
+      manager.applyZoom();
       mainLog.setEnabled(next.diagnostics.logToFile);
       updates.refresh();
       attention.applyBadge();

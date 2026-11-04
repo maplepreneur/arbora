@@ -2,12 +2,10 @@ import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { EditorView } from '@codemirror/view';
 import { tags as t } from '@lezer/highlight';
 
-const MONO = "ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', Menlo, Consolas, monospace";
-
 /** Chrome colours come from the app's CSS variables, so light and dark follow the app theme. */
 export const editorTheme = EditorView.theme({
   '&': { height: '100%', color: 'var(--fg)', backgroundColor: 'var(--bg)' },
-  '.cm-scroller': { fontFamily: MONO, lineHeight: '1.5' },
+  '.cm-scroller': { fontFamily: 'var(--font-mono)', lineHeight: '1.5' },
   '.cm-content': { caretColor: 'var(--fg)' },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--fg)' },
   '&.cm-focused': { outline: 'none' },

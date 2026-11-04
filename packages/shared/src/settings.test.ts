@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   addRecentProject,
+  appearanceCssVariables,
   applySettingsPatch,
   appSettingsPatchSchema,
   defaultSettings,
+  fontFamily,
   isPickableAgent,
+  MONO_FONT_STACK,
   loadSettings,
   MAX_RECENT_PROJECTS,
   mergeAgentSettings,
@@ -12,6 +15,7 @@ import {
   migrateSettings,
   projectSettingsUpdates,
   resolveDefaultAgent,
+  SANS_FONT_STACK,
   visibleModels,
   SETTINGS_VERSION,
   SettingsMigrationError,
@@ -92,10 +96,62 @@ describe('loadSettings', () => {
     expect(settings.projects['/p']?.browser).toBeUndefined();
   });
 
+  it('moves the untouched v3 sound trio to the nature sounds and keeps chosen ones', () => {
+    const old = {
+      enabled: true,
+      volume: 40,
+      whenFocused: false,
+      permission: 'ping',
+      finished: 'chime',
+      failed: 'knock',
+    };
+    expect(loadSettings({ version: 3, sounds: old }).settings.sounds).toEqual({
+      ...old,
+      permission: 'chickadee',
+      finished: 'robin',
+      failed: 'woodpecker',
+    });
+    const chosen = { ...old, finished: 'bell' };
+    expect(loadSettings({ version: 3, sounds: chosen }).settings.sounds).toEqual(chosen);
+  });
+
+  it('moves 13px editor and terminal text to the new 14px default only', () => {
+    const { settings } = loadSettings({ version: 3, editor: { fontSize: 13 }, terminal: { fontSize: 16 } });
+    expect(settings.editor.fontSize).toBe(14);
+    expect(settings.terminal.fontSize).toBe(16);
+    expect(settings.appearance).toEqual({
+      uiScale: 100,
+      interfaceFont: '',
+      codeFont: '',
+      agentFont: '',
+      agentFontSize: 14,
+    });
+  });
+
+  it('builds font-family values with the fallback stack', () => {
+    expect(fontFamily('', MONO_FONT_STACK)).toBe(MONO_FONT_STACK);
+    expect(fontFamily('Dank Mono', 'monospace')).toBe("'Dank Mono', monospace");
+    expect(fontFamily('Inter, "IBM Plex Sans"', 'sans-serif')).toBe('Inter, "IBM Plex Sans", sans-serif');
+    expect(MONO_FONT_STACK.startsWith("'Dank Mono'")).toBe(true);
+  });
+
+  it('lets the agent font follow the interface font', () => {
+    const vars = appearanceCssVariables({ ...defaultSettings().appearance, interfaceFont: 'Inter', agentFontSize: 16 });
+    expect(vars['--font-sans']).toBe(`Inter, ${SANS_FONT_STACK}`);
+    expect(vars['--font-agent']).toBe(`Inter, ${SANS_FONT_STACK}`);
+    expect(vars['--font-mono']).toBe(MONO_FONT_STACK);
+    expect(vars['--agent-font-size']).toBe('16px');
+  });
+
+  it('patches appearance without resetting the other fields', () => {
+    const next = applySettingsPatch(defaultSettings(), { appearance: { uiScale: 120 } });
+    expect(next.appearance).toMatchObject({ uiScale: 120, agentFontSize: 14 });
+  });
+
   it('upgrades a v2 file with empty agent settings', () => {
     const { settings, warnings } = loadSettings({ version: 2, theme: 'light' });
     expect(warnings).toEqual([]);
-    expect(settings.version).toBe(3);
+    expect(settings.version).toBe(SETTINGS_VERSION);
     expect(settings.agents).toEqual({
       custom: [],
       permissions: {},
@@ -206,7 +262,7 @@ describe('loadSettings', () => {
   it('defaults editor settings for files written before Stage 7', () => {
     const { settings, warnings } = loadSettings({ version: 3, theme: 'dark' });
     expect(warnings).toEqual([]);
-    expect(settings.editor).toEqual({ formatOnSave: true, eslintOnSave: true, tscOnSave: false, fontSize: 13 });
+    expect(settings.editor).toEqual({ formatOnSave: true, eslintOnSave: true, tscOnSave: false, fontSize: 14 });
   });
 
   it('merges editor patches, leaving omitted fields alone', () => {
@@ -239,7 +295,7 @@ describe('Stage 9 settings', () => {
     const { settings, warnings } = loadSettings({ version: 3, theme: 'dark' });
     expect(warnings).toEqual([]);
     expect(settings.notifications).toMatchObject({ enabled: true, whenFocused: false, badge: true });
-    expect(settings.sounds).toMatchObject({ enabled: true, volume: 60, finished: 'chime' });
+    expect(settings.sounds).toMatchObject({ enabled: true, volume: 60, finished: 'robin' });
     expect(settings.updates).toEqual({ channel: 'latest', autoCheck: true, autoDownload: true });
     expect(settings.diagnostics).toEqual({ logToFile: true, crashDumps: true });
     expect(settings.onboarding).toEqual({ completed: false, checkedChords: [] });
