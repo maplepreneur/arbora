@@ -107,8 +107,6 @@ const FOCUS_APP_COMMANDS: ReadonlySet<string> = new Set([
   CommandId.agentShowAttention,
   CommandId.focusNextPanel,
   CommandId.focusPreviousPanel,
-  CommandId.toggleWorkspace,
-  CommandId.showGrove,
   CommandId.groveLaunch,
   CommandId.groveSearch,
   CommandId.groveSwitchProject,

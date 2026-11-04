@@ -19,7 +19,7 @@ interface ChordRow {
 }
 
 const CHORDS: readonly ChordRow[] = [
-  { ids: [CommandId.toggleWorkspace], text: 'Switch between the browser and Grove' },
+  { ids: [CommandId.toggleMaximizeRight], text: 'Maximize the right column, and back' },
   { ids: [CommandId.groveNewDefault], text: 'Start the default agent' },
   { ids: [CommandId.groveNewTerminal], text: 'New terminal in the open project' },
   { ids: [CommandId.agentNewThread], text: 'New agent with a task' },
@@ -29,8 +29,11 @@ const CHORDS: readonly ChordRow[] = [
   { ids: [CommandId.agentShowAttention], text: 'The agent that needs you' },
   { ids: [CommandId.groveStopSession], text: 'Stop the selected agent' },
   { ids: [CommandId.groveArchiveSession], text: 'Archive the selected agent' },
-  { ids: [CommandId.toggleSidebar], text: 'Hide or show the list' },
-  { ids: [CommandId.focusPanelLeft, CommandId.focusPanelRight], text: 'Move between the list and the composer' },
+  { ids: [CommandId.toggleSidebar], text: 'Hide or show the project tree' },
+  {
+    ids: [CommandId.focusPanelLeft, CommandId.focusPanelRight],
+    text: 'Move between the tree, the chat and the right column',
+  },
 ];
 
 function ProjectDefaults() {
@@ -65,12 +68,12 @@ function ProjectDefaults() {
         </select>
       </SettingRow>
       <SettingRow
-        title="Start it when Grove opens empty"
+        title="Start it when the project has no agents"
         detail="Opening Grove with no agents starts one session of the default agent, once per visit."
       >
         <Toggle
           on={startOnOpen}
-          label="Start the default agent when Grove opens empty"
+          label="Start the default agent when the project has no agents"
           testId="setting-grove-start-on-open"
           onChange={(on) => void setStartDefaultOnOpen(on)}
         />

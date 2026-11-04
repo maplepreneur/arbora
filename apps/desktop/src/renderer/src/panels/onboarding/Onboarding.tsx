@@ -324,7 +324,7 @@ function TasksStep() {
 
 /** The chords a step asks the user to press; onboarding takes them instead of running them. */
 const PROBED_CHORDS: Partial<Readonly<Record<Step, readonly string[]>>> = {
-  grove: [CommandId.toggleWorkspace],
+  grove: [CommandId.toggleMaximizeRight],
   keys: [CommandId.agentMode, CommandId.designMode],
 };
 
@@ -407,11 +407,15 @@ function GroveStep({ pressed }: { pressed: ReadonlySet<string> }) {
             data-testid="onboarding-grove-start-on-open"
             onChange={(event) => void setStartDefaultOnOpen(event.target.checked)}
           />
-          Start it when Grove opens with no agents
+          Start it when the project has no agents
         </label>
       </div>
       <ul className="grid gap-2">
-        <ChordCheck id={CommandId.toggleWorkspace} text="Switch between the page and Grove" pressed={pressed} />
+        <ChordCheck
+          id={CommandId.toggleMaximizeRight}
+          text="Give the page the whole window, and back"
+          pressed={pressed}
+        />
       </ul>
     </StepShell>
   );

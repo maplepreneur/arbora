@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'no
 import { join } from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import type { NavigationState, ScreenshotResult } from '@arbora/shared';
-import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, tempUserData } from './app';
+import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, showRight, tempUserData } from './app';
 import { freePort, startSelfSignedServer, startViteFixture, type RunningServer } from './servers';
 
 const VITE_REACT = join(FIXTURES, 'vite-react');
@@ -77,18 +77,11 @@ async function launchWithFixture(userData = tempUserData()): Promise<{ app: Elec
   return launched;
 }
 
-/** Narrow tiles (Hyprland half-width, CI) hide toolbar buttons; collapsing the sidebar shows them all. */
+/** Narrow tiles (Hyprland half-width, CI) hide toolbar buttons; maximizing the right column shows them all. */
 async function roomForToolbar(page: Page): Promise<void> {
-  await page.getByTestId('panel-browser').click();
-  await page.keyboard.press('ControlOrMeta+B');
-  await expect
-    .poll(() =>
-      page
-        .getByTestId('panel-sidebar')
-        .evaluate((el) => el.clientWidth, undefined, { timeout: 1000 })
-        .catch(() => 0),
-    )
-    .toBeLessThan(2);
+  const maximize = page.getByTestId('right-maximize');
+  if ((await maximize.getAttribute('aria-pressed')) !== 'true') await maximize.click();
+  await expect(maximize).toHaveAttribute('aria-pressed', 'true');
 }
 
 const FIXTURE_TITLE = 'Arbora fixture: Vite + React';
@@ -131,10 +124,9 @@ test.describe('Stage 1 browser panel', () => {
         'undefined',
       ]);
 
-      // Resizing the bottom panel moves the view with it.
-      await page.getByTestId('panel-browser').click({ position: { x: 5, y: 5 } });
-      await page.keyboard.press('ControlOrMeta+J');
-      await expect.poll(async () => (await viewBounds(app)).height).toBeGreaterThan(Math.round(box.height) + 50);
+      // Maximizing the right column moves the view with it.
+      await page.getByTestId('right-maximize').click();
+      await expect.poll(async () => (await viewBounds(app)).width).toBeGreaterThan(Math.round(box.width) + 50);
 
       // The palette is DOM, so the view hides while it is open.
       await page.keyboard.press('ControlOrMeta+Shift+P');
@@ -207,7 +199,7 @@ test.describe('Stage 1 browser panel', () => {
     const { app, page } = await launchWithFixture(userData);
     try {
       await openUrl(page, vite.url, FIXTURE_TITLE);
-      await page.getByTestId('bottom-tab-problems').click();
+      await showRight(page, 'problems');
       await expect(page.getByTestId('problems-empty')).toBeVisible();
 
       await inPage(app, `document.querySelector('[data-testid="card-console"] button').click()`);

@@ -3,8 +3,7 @@ import { Command } from 'cmdk';
 import { File } from 'lucide-react';
 import { baseName, parentPath, type FuzzyResult } from '@arbora/shared';
 import { openFile, useFiles } from '../files-store';
-import { isGroveShowing, showWorkspace } from '../grove-store';
-import { showToast } from '../store';
+import { showToast, useApp } from '../store';
 import { matchFiles, parseQuickOpenQuery, type QuickOpenRequest, type QuickOpenResponse } from './quick-open-match';
 
 const LIMIT = 60;
@@ -175,8 +174,7 @@ export function QuickOpen() {
   const choose = (path: string): void => {
     const { line, column } = parseQuickOpenQuery(text);
     close();
-    // The finder also opens over Grove; the editor is in the browser workspace.
-    if (isGroveShowing()) showWorkspace('browser');
+    useApp.setState({ settingsOpen: false });
     openFile(path, {
       pinned: true,
       ...(line !== undefined ? { at: { line, ...(column !== undefined ? { column } : {}) } } : {}),

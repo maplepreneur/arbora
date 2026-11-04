@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { launch, tempUserData } from './app';
+import { launch, showSide, tempUserData } from './app';
 
 function repo(): string {
   const dir = mkdtempSync(join(tmpdir(), 'arbora-git-e2e-'));
@@ -29,7 +29,7 @@ test('git panel lists the branch and an untracked file', async () => {
   const dir = repo();
   const { app, page } = await launch(tempUserData(), [dir]);
   try {
-    await page.getByTestId('rail-git').click();
+    await showSide(page, 'git');
     await expect(page.getByTestId('git-panel')).toBeVisible();
     await expect(page.getByLabel('Branch')).toHaveValue('main');
     await expect(page.locator('[data-testid="git-file"][data-path="note.txt"]')).toBeVisible();
@@ -43,7 +43,7 @@ test('stage all with the shortcut, then commit from the message box', async () =
   writeFileSync(join(dir, 'other.txt'), 'two\n');
   const { app, page } = await launch(tempUserData(), [dir]);
   try {
-    await page.getByTestId('rail-git').click();
+    await showSide(page, 'git');
     await expect(page.locator('[data-testid="git-file"][data-path="other.txt"]')).toBeVisible();
     await page.keyboard.press('ControlOrMeta+Alt+s');
     const staged = page.getByTestId('git-section-staged');

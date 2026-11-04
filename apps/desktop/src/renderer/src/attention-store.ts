@@ -30,7 +30,7 @@ export function resetAttention(): void {
   syncCount();
 }
 
-/** The thread on screen in the workspace that shows: the Grove selection, or the docked panel's open thread. */
+/** The thread in the chat column, unless Settings covers it. */
 export function visibleThreadId(): string | null {
   const { settingsOpen, layout } = useApp.getState();
   if (settingsOpen) return null;

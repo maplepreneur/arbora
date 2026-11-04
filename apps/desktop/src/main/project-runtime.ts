@@ -253,6 +253,8 @@ export async function readProjectCommands(root: string): Promise<ProjectCommand[
     artisan,
     cargo,
     goMod,
+    gemfile,
+    specDir,
   ] = await Promise.all([
     readOptional(join(root, 'package.json')),
     readOptional(join(root, 'Procfile.dev')),
@@ -269,12 +271,16 @@ export async function readProjectCommands(root: string): Promise<ProjectCommand[
     fileExists(join(root, 'artisan')),
     fileExists(join(root, 'Cargo.toml')),
     fileExists(join(root, 'go.mod')),
+    readOptional(join(root, 'Gemfile')),
+    fileExists(join(root, 'spec')),
   ]);
   return detectProjectCommands({
     ...(packageJson !== undefined
       ? { packageJson, packageManager: packageManagerFor({ pnpm, yarn, bun: bunLock || bunLockb }) }
       : {}),
-    ...(railsBin || application ? { rails: true, binDev, binJobs } : {}),
+    ...(railsBin || application
+      ? { rails: true, binDev, binJobs, specDir, ...(gemfile !== undefined ? { gemfile } : {}) }
+      : {}),
     ...(procfileDev !== undefined ? { procfileDev } : {}),
     ...(makefile !== undefined ? { makefile } : {}),
     ...(composerJson !== undefined ? { composerJson } : {}),

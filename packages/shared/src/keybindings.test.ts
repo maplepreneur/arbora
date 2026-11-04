@@ -172,11 +172,11 @@ describe('KeybindingTable', () => {
     expect(table.match(parseChord('ctrl+tab', 'linux'), idle)).toBeUndefined();
     expect(table.match(parseChord('ctrl+k', 'linux'), grove)?.commandId).toBe(CommandId.agentMode);
     expect(table.match(parseChord('ctrl+k', 'linux'), grove)?.commandId).not.toBe(CommandId.groveSearch);
-    expect(table.match(parseChord('ctrl+alt+g', 'linux'), idle)?.commandId).toBe(CommandId.toggleWorkspace);
-    expect(table.match(parseChord('ctrl+alt+g', 'linux'), grove)?.commandId).toBe(CommandId.toggleWorkspace);
-    expect(table.match(parseChord('ctrl+alt+g', 'linux'), { ...idle, terminalFocused: true })?.commandId).toBe(
-      CommandId.toggleWorkspace,
+    expect(table.match(parseChord('ctrl+alt+m', 'linux'), grove)?.commandId).toBe(CommandId.toggleMaximizeRight);
+    expect(table.match(parseChord('ctrl+alt+m', 'linux'), { ...grove, terminalFocused: true })?.commandId).toBe(
+      CommandId.toggleMaximizeRight,
     );
+    expect(table.match(parseChord('ctrl+alt+g', 'linux'), grove)).toBeUndefined();
     const newTerminal = parseChord('ctrl+shift+t', 'linux');
     expect(CommandId.groveNewTerminal).toBe('arbora.grove.newTerminal');
     expect(table.match(newTerminal, idle)).toBeUndefined();
@@ -191,18 +191,15 @@ describe('KeybindingTable', () => {
     for (const context of [idle, browser, grove]) {
       expect(table.match(parseChord('ctrl+k', 'linux'), context)?.commandId).toBe(CommandId.agentMode);
       expect(table.match(parseChord('ctrl+shift+k', 'linux'), context)?.commandId).toBe(CommandId.groveSearch);
-      // Mod+Alt+G is Toggle Browser / Grove: entering Grove focuses the browser's project.
-      expect(table.match(parseChord('ctrl+alt+g', 'linux'), context)?.commandId).toBe(CommandId.toggleWorkspace);
     }
     expect(table.match(parseChord('ctrl+shift+p', 'linux'), grove)?.commandId).toBe(CommandId.commandPalette);
     const mac = build('darwin').table;
     const macGrove: KeybindingContext = { ...idle, workspace: 'grove' };
     expect(mac.match(parseChord('cmd+k', 'darwin'), macGrove)?.commandId).toBe(CommandId.agentMode);
     expect(mac.match(parseChord('cmd+shift+k', 'darwin'), idle)?.commandId).toBe(CommandId.groveSearch);
-    expect(mac.match(parseChord('cmd+alt+g', 'darwin'), idle)?.commandId).toBe(CommandId.toggleWorkspace);
   });
 
-  it('focuses and closes Grove agents only while Grove shows', () => {
+  it('focuses Grove agents in Grove, and archives or stops only with focus in the chat', () => {
     const { table } = build('linux');
     const grove: KeybindingContext = { ...idle, workspace: 'grove' };
     const browser: KeybindingContext = { ...idle, workspace: 'browser' };
@@ -213,25 +210,24 @@ describe('KeybindingTable', () => {
     const close = parseChord('ctrl+w', 'linux');
     expect(table.match(close, idle)?.commandId).toBe(CommandId.editorCloseTab);
     expect(table.match(close, browser)?.commandId).toBe(CommandId.editorCloseTab);
-    expect(table.match(close, grove)).toMatchObject({ commandId: CommandId.groveArchiveSession, intercept: true });
-    expect(table.match(parseChord('alt+a', 'linux'), grove)).toMatchObject({
+    expect(table.match(close, grove)?.commandId).toBe(CommandId.editorCloseTab);
+    const chat: KeybindingContext = { ...grove, agentFocused: true };
+    expect(table.match(parseChord('alt+a', 'linux'), chat)).toMatchObject({
       commandId: CommandId.groveArchiveSession,
-      intercept: true,
+      intercept: false,
     });
-    expect(table.match(parseChord('alt+a', 'linux'), browser)).toBeUndefined();
-    expect(table.match(parseChord('alt+s', 'linux'), grove)).toMatchObject({
+    expect(table.match(parseChord('alt+a', 'linux'), grove)).toBeUndefined();
+    expect(table.match(parseChord('alt+s', 'linux'), chat)).toMatchObject({
       commandId: CommandId.groveStopSession,
-      intercept: true,
+      intercept: false,
     });
-    expect(table.match(parseChord('alt+s', 'linux'), browser)).toBeUndefined();
+    expect(table.match(parseChord('alt+s', 'linux'), grove)).toBeUndefined();
     const overridden = build('linux', { [CommandId.groveArchiveSession]: 'mod+shift+w' }).table;
-    expect(overridden.match(parseChord('alt+a', 'linux'), grove)).toBeUndefined();
-    expect(overridden.match(close, grove)?.commandId).toBe(CommandId.editorCloseTab);
-    expect(overridden.match(parseChord('ctrl+shift+w', 'linux'), grove)?.commandId).toBe(CommandId.groveArchiveSession);
+    expect(overridden.match(parseChord('alt+a', 'linux'), chat)).toBeUndefined();
+    expect(overridden.match(parseChord('ctrl+shift+w', 'linux'), chat)?.commandId).toBe(CommandId.groveArchiveSession);
     const mac = build('darwin').table;
-    expect(mac.match(parseChord('cmd+w', 'darwin'), browser)?.commandId).toBe(CommandId.editorCloseTab);
+    expect(mac.match(parseChord('cmd+w', 'darwin'), grove)?.commandId).toBe(CommandId.editorCloseTab);
     expect(mac.match(parseChord('cmd+shift+a', 'darwin'), grove)?.commandId).toBe(CommandId.groveFocusAgents);
-    expect(mac.match(parseChord('cmd+w', 'darwin'), grove)?.commandId).toBe(CommandId.groveArchiveSession);
   });
 
   it('prefers a scoped binding over an always binding on the same chord, whatever the order', () => {

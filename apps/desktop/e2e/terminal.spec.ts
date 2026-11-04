@@ -2,7 +2,7 @@ import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import type { NavigationState, TerminalInfo } from '@arbora/shared';
-import { DESKTOP_ROOT, FIXTURES, launch, tempUserData } from './app';
+import { DESKTOP_ROOT, FIXTURES, launch, showRight, tempUserData } from './app';
 import { freePort } from './servers';
 
 const VITE_REACT = join(FIXTURES, 'vite-react');
@@ -53,6 +53,7 @@ test.describe('Stage 2 terminal panel', () => {
     const port = await freePort();
     const { app, page } = await launch(tempUserData(), [VITE_REACT]);
     try {
+      await showRight(page, 'terminal');
       await expect(page.getByTestId('terminal-xterm')).toBeVisible();
       await expect.poll(async () => (await terminals(page)).length).toBe(1);
       const [shell] = await terminals(page);
@@ -73,7 +74,7 @@ test.describe('Stage 2 terminal panel', () => {
       await focusTerminal(page);
       await page.keyboard.press('Control+K');
       await page.waitForTimeout(300);
-      await expect(page.getByTestId('mode-banner')).toBeHidden();
+      await expect(page.getByTestId('mode-pills')).toHaveAttribute('data-mode', 'idle');
       // Ctrl+C stops Vite; the shell stays.
       await page.keyboard.press('Control+C');
       await expect.poll(async () => (await terminals(page))[0]?.exitCode).toBeNull();
@@ -88,7 +89,7 @@ test.describe('Stage 2 terminal panel', () => {
     const url = `http://localhost:${port}/`;
     const { app, page } = await launch(tempUserData(), [PLAIN_HTML], { PORT: String(port) });
     try {
-      await expect(page.getByTestId('terminal-panel')).toBeVisible();
+      await showRight(page, 'terminal');
       await page.getByTestId('devserver-run').click();
       await expect.poll(async () => (await terminals(page)).find((t) => t.kind === 'dev')?.command).toBe('pnpm dev');
       const settingsFile = join(PLAIN_HTML, '.arbora/project.json');
@@ -135,10 +136,9 @@ test.describe('Stage 2 terminal panel', () => {
   test('tabs, splits, search and clipboard', async () => {
     const { app, page } = await launch(tempUserData(), [VITE_REACT]);
     try {
+      await showRight(page, 'terminal');
       await expect.poll(async () => (await terminals(page)).length).toBe(1);
       const textarea = page.locator('[data-testid="terminal-pane"][data-active="true"] textarea').first();
-      await expect(textarea).not.toBeFocused();
-      await page.keyboard.press('Control+Backquote');
       await expect(textarea).toBeFocused();
 
       await page.getByTestId('terminal-new').click();

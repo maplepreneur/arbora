@@ -97,8 +97,11 @@ describe('Grove commands', () => {
       when: 'grove',
       intercept: true,
     });
+    for (const id of [CommandId.groveArchiveSession, CommandId.groveStopSession]) {
+      expect(DEFAULT_COMMANDS.find((c) => c.id === id)).toMatchObject({ when: 'agentPanel', intercept: false });
+    }
     expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.groveArchiveSession)?.keybinding).toBe('alt+a');
-    expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.groveArchiveSession)?.extraKeybindings).toEqual(['mod+w']);
+    expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.groveArchiveSession)?.extraKeybindings).toBeUndefined();
     expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.groveStopSession)?.keybinding).toBe('alt+s');
     expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.groveNewTerminal)).toMatchObject({
       title: 'New Terminal',
@@ -106,11 +109,13 @@ describe('Grove commands', () => {
       when: 'grove',
       intercept: true,
     });
-    expect(grove.every((c) => c.category === 'Grove' && c.intercept === true)).toBe(true);
-    for (const id of [CommandId.toggleWorkspace, CommandId.showBrowserWorkspace, CommandId.showGrove]) {
-      expect(DEFAULT_COMMANDS.find((c) => c.id === id)).toMatchObject({ category: 'View', intercept: true });
-    }
-    expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.toggleWorkspace)?.keybinding).toBe('mod+alt+g');
+    expect(grove.every((c) => c.category === 'Grove' && (c.intercept === true || c.when === 'agentPanel'))).toBe(true);
+    expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.toggleMaximizeRight)).toMatchObject({
+      category: 'View',
+      keybinding: 'mod+alt+m',
+      intercept: true,
+    });
+    expect(DEFAULT_COMMANDS.some((c) => c.id === 'arbora.toggleWorkspace')).toBe(false);
     expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.groveSearch)).toMatchObject({
       keybinding: 'mod+shift+k',
       intercept: true,

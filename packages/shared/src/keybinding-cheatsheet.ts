@@ -7,7 +7,7 @@ const SCOPE_LABEL: Readonly<Record<KeybindingWhen, string | null>> = {
   always: null,
   modeActive: 'in a mode',
   design: 'in design mode',
-  agentPanel: 'in the agent panel',
+  agentPanel: 'in the chat',
   grove: 'in Grove',
 };
 

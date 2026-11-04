@@ -51,27 +51,8 @@ function GeneralSection() {
   const theme = useApp((s) => s.theme.mode);
   const isMac = useApp((s) => s.info.platform === 'darwin');
   const quitOnLastWindowClose = useApp((s) => s.settings.quitOnLastWindowClose);
-  const launch = useApp((s) => s.settings.grove.launch);
   return (
     <div>
-      <SettingRow
-        title="Open in"
-        detail="Browser or Grove. Browser is the default. Applies the next time you start Arbora."
-      >
-        <select
-          aria-label="Open in"
-          data-testid="setting-grove-launch"
-          value={launch}
-          onChange={(event) => {
-            const next = event.target.value === 'grove' ? 'grove' : 'browser';
-            void updateSettings({ grove: { launch: next } });
-          }}
-          className="h-7 rounded border border-border bg-bg px-1.5 text-xs"
-        >
-          <option value="browser">Browser</option>
-          <option value="grove">Grove</option>
-        </select>
-      </SettingRow>
       <SettingRow title="Theme">
         <div role="radiogroup" className="flex rounded-md border border-border bg-bg-muted p-0.5">
           {THEMES.map((option) => (

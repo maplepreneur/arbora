@@ -154,7 +154,7 @@ function SecurityBadge({ url }: { url: string }) {
   }
 }
 
-/** The URL bar remounts with the browser workspace and the browser tab; each request focuses it once. */
+/** The URL bar remounts with the Browser tab; each request focuses it once. */
 let handledFocusRequest = 0;
 
 function UrlBar({ state }: { state: NavigationState | null }) {

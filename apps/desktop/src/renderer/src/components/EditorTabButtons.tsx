@@ -1,6 +1,6 @@
-import { Globe, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import clsx from 'clsx';
-import { closeTab, showBrowserTab, tabTitle, useFiles, type EditorTab } from '../files-store';
+import { closeTab, showEditorTab, tabTitle, useFiles, type EditorTab } from '../files-store';
 import { showToast, useApp } from '../store';
 
 async function tabMenu(tab: EditorTab): Promise<void> {
@@ -57,7 +57,7 @@ function Tab({ tab, active }: { tab: EditorTab; active: boolean }) {
       data-dirty={dirty}
       data-preview={preview}
       title={tab.path}
-      onClick={() => useFiles.setState({ active: tab.id })}
+      onClick={() => showEditorTab(tab.id)}
       onDoubleClick={() => {
         if (tab.kind === 'file' && tab.preview) {
           useFiles.setState((s) => ({ tabs: s.tabs.map((t) => (t.id === tab.id ? { ...tab, preview: false } : t)) }));
@@ -71,8 +71,8 @@ function Tab({ tab, active }: { tab: EditorTab; active: boolean }) {
         void tabMenu(tab);
       }}
       className={clsx(
-        'group flex h-full max-w-[200px] shrink-0 cursor-default items-center gap-1.5 border-r border-border pr-1 pl-3 text-xs',
-        active ? 'bg-bg text-fg' : 'bg-bg-subtle text-fg-muted hover:text-fg',
+        'group flex h-6 max-w-[200px] shrink-0 cursor-default items-center gap-1.5 rounded pr-1 pl-2 text-xs',
+        active ? 'bg-bg-muted text-fg' : 'text-fg-subtle hover:text-fg',
       )}
     >
       <span className={clsx('truncate', preview && 'italic')}>{tabTitle(tab)}</span>
@@ -100,34 +100,15 @@ function Tab({ tab, active }: { tab: EditorTab; active: boolean }) {
   );
 }
 
-/** Browser plus open files and diffs, above the centre pane. Hidden while nothing is open. */
-export function EditorTabs() {
+/** Open files and diffs, drawn in the right column's tab strip after the browser and terminals. */
+export function EditorTabButtons({ showing }: { showing: boolean }) {
   const tabs = useFiles((s) => s.tabs);
   const active = useFiles((s) => s.active);
-  if (tabs.length === 0) return null;
   return (
-    <div
-      role="tablist"
-      aria-label="Editor tabs"
-      data-testid="editor-tabs"
-      className="flex h-8 shrink-0 overflow-x-auto overflow-y-hidden border-b border-border bg-bg-subtle [scrollbar-width:none]"
-    >
-      <button
-        type="button"
-        role="tab"
-        aria-selected={active === null}
-        data-testid="editor-tab-browser"
-        onClick={showBrowserTab}
-        className={clsx(
-          'flex h-full shrink-0 items-center gap-1.5 border-r border-border px-3 text-xs',
-          active === null ? 'bg-bg text-fg' : 'text-fg-muted hover:text-fg',
-        )}
-      >
-        <Globe size={13} /> Browser
-      </button>
+    <>
       {tabs.map((tab) => (
-        <Tab key={tab.id} tab={tab} active={tab.id === active} />
+        <Tab key={tab.id} tab={tab} active={showing && tab.id === active} />
       ))}
-    </div>
+    </>
   );
 }

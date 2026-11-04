@@ -40,11 +40,35 @@ describe('project commands', () => {
     const commands = detectProjectCommands({ rails: true, binDev: true, binJobs: true });
     expect(commands.map((command) => command.command)).toEqual([
       'bin/dev',
+      'bundle install',
       'bin/rails db:migrate',
+      'bin/rails db:rollback',
+      'bin/rails db:seed',
+      'bin/rails routes',
       'bin/rails console',
       'bin/rails test',
       'bin/jobs',
     ]);
+    expect(commands.map((command) => command.title)).toEqual([
+      'Dev server',
+      'Bundle install',
+      'Migrate',
+      'Rollback',
+      'Seed',
+      'Routes',
+      'Console',
+      'Test',
+      'Jobs',
+    ]);
+  });
+
+  it('runs RSpec instead of Minitest when the Gemfile has rspec and spec/ exists', () => {
+    const gemfile = "source 'https://rubygems.org'\ngroup :test do\n  gem 'rspec-rails'\nend\n";
+    const withSpec = detectProjectCommands({ rails: true, gemfile, specDir: true });
+    expect(withSpec.find((command) => command.title === 'Test')?.command).toBe('bundle exec rspec');
+    expect(withSpec.find((command) => command.title === 'Dev server')?.command).toBe('bin/rails server');
+    const noSpecDir = detectProjectCommands({ rails: true, gemfile });
+    expect(noSpecDir.find((command) => command.title === 'Test')?.command).toBe('bin/rails test');
   });
 
   it('reads a Procfile, a Makefile, Composer, Cargo and Go', () => {

@@ -41,9 +41,11 @@ function browserState(page: Page): Promise<NavigationState | null> {
 
 function inPage<T>(app: ElectronApplication, code: string): Promise<T> {
   return app.evaluate(async ({ webContents }, source) => {
-    const page = webContents
+    // A parked project keeps its page, so prefer the one that loaded the fixture.
+    const pages = webContents
       .getAllWebContents()
-      .find((wc) => wc.session.storagePath?.includes('arbora-browser-') && !wc.getURL().startsWith('devtools:'));
+      .filter((wc) => wc.session.storagePath?.includes('arbora-browser-') && !wc.getURL().startsWith('devtools:'));
+    const page = pages.find((wc) => wc.getURL().startsWith('http')) ?? pages[0];
     if (!page) throw new Error('No browser panel webContents');
     return (await page.executeJavaScript(source)) as T;
   }, code);
@@ -309,21 +311,27 @@ test.describe('Stage 6 design mode', () => {
         .poll(() => inPage<string>(app, `document.querySelector(${JSON.stringify(CARD)}).style.paddingTop`))
         .toBe('40px');
 
-      // Grove would leave the edit behind on a parked page, so the switch asks first; Keep editing stays.
-      await page.keyboard.press('ControlOrMeta+Alt+G');
+      // Switching project would leave the edit behind on a parked page, so it asks first; Keep editing stays.
+      const other = join(FIXTURES, 'plain-html');
+      await page.evaluate((path) => window.arbora.invoke('grove.addProject', { path }), other);
+      const otherRow = page.locator(`[data-testid="grove-project"][data-path="${other}"]`);
+      await otherRow.click();
       const confirm = page.getByTestId('design-confirm');
-      await expect(confirm).toContainText('before opening Grove');
-      await expect(page.getByTestId('grove')).toHaveCount(0);
+      await expect(confirm).toContainText('before switching project');
+      await expect(page.getByTestId('title-project-name')).not.toHaveText('plain-html');
       await page.getByTestId('design-stay').click();
       await expect(confirm).toHaveCount(0);
       await expect(page.getByTestId('design-panel')).toBeVisible();
-      await page.keyboard.press('ControlOrMeta+Alt+G');
+      await otherRow.click();
       await expect(confirm).toBeVisible();
 
-      // Discard reverts the page, then goes where the user was heading.
+      // Discard reverts the page, then the switch goes ahead.
       await page.getByTestId('design-discard').click();
-      await expect(page.getByTestId('grove')).toBeVisible();
+      await expect(page.getByTestId('title-project-name')).toHaveText('plain-html');
       await expect(page.getByTestId('mode-banner')).toHaveCount(0);
+      await page.locator(`[data-testid="grove-project"][data-path="${project}"]`).click();
+      await expect(page.getByTestId('title-project-name')).not.toHaveText('plain-html');
+      await switchWorkspace(page, 'browser');
       await expect
         .poll(() => inPage<string>(app, `document.querySelector(${JSON.stringify(CARD)}).style.backgroundColor`))
         .toBe('');
@@ -331,8 +339,6 @@ test.describe('Stage 6 design mode', () => {
         .poll(() => inPage<string>(app, `document.querySelector(${JSON.stringify(CARD)}).style.paddingTop`))
         .toBe('');
       await expect.poll(() => inPage<boolean>(app, OVERLAY)).toBe(false);
-      await switchWorkspace(page, 'browser');
-      await expect(page.getByTestId('browser-panel')).toBeVisible();
       await expect(page.getByTestId('mode-banner')).toHaveCount(0);
     } finally {
       await deleteThreads(page).catch(() => undefined);

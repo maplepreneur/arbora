@@ -67,10 +67,10 @@ describe('conflicts', () => {
     });
     // The row chords are fixed: they are hidden from the editor.
     expect(rows.some((r) => r.commandId === CommandId.groveSelectSession1)).toBe(false);
-    expect(conflictsFor(CommandId.groveArchiveSession, 'mod+alt+n', DEFAULT_COMMANDS, {}, undefined, 'linux')).toEqual([
+    expect(conflictsFor(CommandId.groveNextSession, 'mod+alt+n', DEFAULT_COMMANDS, {}, undefined, 'linux')).toEqual([
       CommandId.groveNewDefault,
     ]);
-    expect(conflictsFor(CommandId.groveArchiveSession, 'mod+k', DEFAULT_COMMANDS, {}, undefined, 'linux')).toEqual([]);
+    expect(conflictsFor(CommandId.groveNextSession, 'mod+k', DEFAULT_COMMANDS, {}, undefined, 'linux')).toEqual([]);
     expect(rows.find((r) => r.commandId === CommandId.groveSearch)).toMatchObject({
       binding: 'mod+shift+k',
       when: 'always',

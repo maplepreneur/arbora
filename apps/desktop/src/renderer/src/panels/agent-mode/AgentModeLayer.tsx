@@ -20,7 +20,7 @@ import { defaultAgentModeTarget, isListed, useAgents } from '../../agent-store';
 import { taskModelFor, useDefaultAgentId, useTaskAgentId } from '../../agent-defaults';
 import { Picker } from '../../components/Picker';
 import { showAgentThread } from '../../commands';
-import { dispatchMode } from '../../store';
+import { dispatchMode, useApp } from '../../store';
 
 const POPOVER_WIDTH = 380;
 const POPOVER_HEIGHT_ESTIMATE = 300;
@@ -58,11 +58,12 @@ function parseTarget(key: string): AgentModeTarget | null {
   return null;
 }
 
-/** The thread open in the agent panel, else a new thread with agent mode's agent (or the default). */
+/** The thread in the chat column, else a new thread with agent mode's agent (or the default). */
 function useDefaultTarget(): string | null {
   const defaultAgent = useDefaultAgentId();
   const taskAgentId = useTaskAgentId('agentMode');
-  return useAgents((s) => defaultAgentModeTarget(s, taskAgentId ?? defaultAgent));
+  const chatThread = useApp((s) => s.layout.groveThreadId);
+  return useAgents((s) => defaultAgentModeTarget(s, chatThread, taskAgentId ?? defaultAgent));
 }
 
 function TargetPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {

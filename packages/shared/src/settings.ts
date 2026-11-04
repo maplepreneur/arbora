@@ -33,11 +33,21 @@ export type BottomTab = z.infer<typeof bottomTabSchema>;
 
 export const workspaceKindSchema = z.enum(['browser', 'grove']) satisfies z.ZodType<WorkspaceKind>;
 
+/** The tab the shell's right column shows. `editor` is the files store's active tab. */
+export const rightViewSchema = z.enum(['browser', 'terminal', 'editor', 'changes', 'problems']);
+export type RightView = z.infer<typeof rightViewSchema>;
+
 export const layoutStateSchema = z.object({
   groups: z.record(z.string(), panelGroupLayoutSchema).default({}),
   sidebarView: sidebarViewSchema.default('files'),
   bottomTab: bottomTabSchema.default('terminal'),
   workspace: workspaceKindSchema.default('browser'),
+  rightView: rightViewSchema.default('browser'),
+  /** Changes and Problems stay in the right column's strip once opened, until closed. */
+  rightPanels: z
+    .array(z.enum(['changes', 'problems']))
+    .max(2)
+    .default([]),
   /** The session Grove shows; the docked agent panel keeps its own open thread. */
   groveThreadId: z.string().nullable().default(null),
 });

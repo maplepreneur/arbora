@@ -13,6 +13,7 @@ import {
   type GroveTab,
 } from '../../grove-store';
 import type { GroveModel, GroveSession } from '../../grove-model';
+import { ModeSwitch } from '../../components/ModeSwitch';
 import { ipcError } from '../../ipc-error';
 import { useChordLabel } from '../../keybindings';
 import { showToast } from '../../store';
@@ -214,11 +215,12 @@ function Tabs({ tab, changes }: { tab: GroveTab; changes: number }) {
           )}
         </button>
       ))}
+      <ModeSwitch />
     </div>
   );
 }
 
-/** One session: its header, the Transcript (the docked thread view) and Changes tabs. */
+/** One session in the chat column: its header, the Transcript and Changes tabs, and the mode switch. */
 export function SessionPane({
   session,
   model,

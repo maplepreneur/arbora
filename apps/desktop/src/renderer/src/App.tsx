@@ -10,7 +10,6 @@ import { Tooltips } from './components/Tooltips';
 import { ProjectsHome } from './components/ProjectsHome';
 import { ProjectSwitcher } from './components/ProjectSwitcher';
 import { UpdateDialog } from './components/UpdateDialog';
-import { Workspace } from './components/Workspace';
 import {
   appendLog,
   applyGroups,
@@ -52,7 +51,7 @@ import {
   closeOverlay,
   openOverlay,
   setProblems,
-  GROVE_GROUP,
+  SHELL_GROUP,
   setProject,
   showToast,
   useApp,
@@ -63,18 +62,15 @@ const SettingsPage = lazy(() => import('./panels/settings/SettingsPage'));
 const Onboarding = lazy(() => import('./panels/onboarding/Onboarding'));
 const GroveWorkspace = lazy(() => import('./panels/grove/GroveWorkspace'));
 
-/**
- * Grove's two columns while its chunk loads. The browser layout has already unmounted, so a null
- * fallback would flash an empty window on the first switch.
- */
-function GroveLoading() {
-  const list = useApp((s) => s.layout.groups[GROVE_GROUP]?.['grove-list'] ?? 24);
+/** The shell's tree column while its chunk loads, so the first paint is not an empty window. */
+function ShellLoading() {
+  const tree = useApp((s) => s.layout.groups[SHELL_GROUP]?.['tree'] ?? 18);
   return (
     <div className="flex min-h-0 min-w-0 flex-1" aria-busy="true">
-      {list > 0 && (
+      {tree > 0 && (
         <div
-          className="h-full max-w-[45%] min-w-[180px] border-r border-border bg-bg-subtle"
-          style={{ width: `${list}%` }}
+          className="h-full max-w-[40%] min-w-[180px] border-r border-border bg-bg-subtle"
+          style={{ width: `${tree}%` }}
         />
       )}
       <div className="h-full min-w-0 flex-1 bg-bg" />
@@ -112,7 +108,7 @@ function useMainEvents(): void {
       arbora.on('browser.urlSuggested', ({ url }) => useApp.setState({ suggestedUrl: url })),
       arbora.on('terminal.changed', ({ projectPath, terminals }) => {
         noteProjectTerminals(projectPath, terminals);
-        if (projectPath === activeProjectPath()) applyTerminalList(terminals);
+        if (projectPath === activeProjectPath()) applyTerminalList(terminals, projectPath);
       }),
       arbora.on('terminal.urlDetected', ({ projectPath, url, opened }) => {
         if (projectPath !== activeProjectPath()) return;
@@ -234,7 +230,7 @@ function useTerminalSnapshot(): void {
     if (!scope) return;
     let active = true;
     void window.arbora.invoke('terminal.list').then((terminals) => {
-      if (active) applyTerminalList(terminals);
+      if (active) applyTerminalList(terminals, scope);
     });
     return () => {
       active = false;
@@ -322,7 +318,7 @@ export function App() {
   const project = useApp((s) => s.project);
   const settingsOpen = useApp((s) => s.settingsOpen);
   const overlay = useApp((s) => s.overlay);
-  const grove = useApp((s) => s.layout.workspace === 'grove');
+  const groveListed = useApp((s) => s.settings.grove.projects.length > 0);
   const lastCue = useAttention((s) => s.lastCue);
   useEffect(() => registerBuiltinCommands(), []);
   useEffect(() => initAttentionTracking(), []);
@@ -346,14 +342,12 @@ export function App() {
       data-last-cue={lastCue ? `${lastCue.kind}:${lastCue.sound ? 'sound' : 'silent'}` : undefined}
     >
       <TitleBar />
-      {grove ? (
+      {project || groveListed ? (
         <ErrorBoundary label="Grove">
-          <Suspense fallback={<GroveLoading />}>
+          <Suspense fallback={<ShellLoading />}>
             <GroveWorkspace />
           </Suspense>
         </ErrorBoundary>
-      ) : project ? (
-        <Workspace />
       ) : settingsOpen ? (
         <ErrorBoundary label="Settings">
           <Suspense fallback={null}>

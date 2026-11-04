@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { TerminalInfo, TerminalSize } from '@arbora/shared';
+import { showRightView } from './store';
 
 export type SplitDirection = 'horizontal' | 'vertical';
 
@@ -22,6 +23,8 @@ export interface TerminalState {
   lastSize: TerminalSize;
   /** Main's list has been fetched for this project (so an empty list really means no terminals). */
   loaded: boolean;
+  /** The project `terminals` belongs to. A window that just switched project still holds the old list. */
+  loadedFor: string | null;
   /** "Run Dev Server" is creating the dev terminal; the panel should not open a default shell. */
   devStarting: boolean;
   /** Bumped to move keyboard focus to the active pane, once it is mounted. */
@@ -37,6 +40,7 @@ const INITIAL: TerminalState = {
   searchOpen: false,
   lastSize: { cols: 100, rows: 24 },
   loaded: false,
+  loadedFor: null,
   devStarting: false,
   focusRequest: 0,
 };
@@ -88,8 +92,32 @@ export function reconcileTabs(
   return { tabs, activeTabId, activePaneId };
 }
 
-export function applyTerminalList(terminals: TerminalInfo[]): void {
-  useTerminals.setState((s) => ({ terminals, loaded: true, ...reconcileTabs(s, terminals) }));
+/** A terminal main created that has not reached this store yet; it activates when the list has it. */
+let pendingReveal: string | null = null;
+
+export function applyTerminalList(terminals: TerminalInfo[], projectPath: string | null): void {
+  useTerminals.setState((s) => ({ terminals, loaded: true, loadedFor: projectPath, ...reconcileTabs(s, terminals) }));
+  if (pendingReveal && terminals.some((t) => t.id === pendingReveal)) {
+    const id = pendingReveal;
+    pendingReveal = null;
+    activateTerminal(id);
+  }
+}
+
+/** Shows terminal `id` as the right column's tab and focuses it. */
+export function revealTerminal(id: string, info?: TerminalInfo): void {
+  useTerminals.setState((s) => {
+    if (s.tabs.some((t) => t.panes.includes(id))) return {};
+    if (!info) return {};
+    return {
+      terminals: s.terminals.some((t) => t.id === id) ? s.terminals : [...s.terminals, info],
+      ...placeTerminal(s, id, null),
+    };
+  });
+  if (useTerminals.getState().tabs.some((t) => t.panes.includes(id))) activateTerminal(id);
+  else pendingReveal = id;
+  showRightView('terminal');
+  focusActiveTerminal();
 }
 
 /** Moves terminal `id` into `target` (a split of the active tab) or its own tab, and activates it. */
