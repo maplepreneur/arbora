@@ -281,8 +281,8 @@ importers:
   packages/acp-client:
     dependencies:
       '@agentclientprotocol/sdk':
-        specifier: 2.1.0
-        version: 2.1.0(zod@4.6.7)
+        specifier: 2.2.0
+        version: 2.2.0(zod@4.6.7)
       '@arbora/shared':
         specifier: workspace:*
         version: link:../shared
@@ -318,8 +318,8 @@ importers:
 
 packages:
 
-  '@agentclientprotocol/sdk@2.1.0':
-    resolution: {integrity: sha512-IuKjJmHLPzbmbg26eK9Jopd8AVxgLuu8fX114YzYAU6tLYclCo2DUzLL4vbCpYGr9mzvs2T0kigE3ZCueL06tg==}
+  '@agentclientprotocol/sdk@2.2.0':
+    resolution: {integrity: sha512-o1+eDQVb05yzPY+5v54awHyONU1oeLsbLVavkwrMQaZDuJDh/38pQiXJS4ix4d6QA3Y4bU0lHFRjwg99KKKSaQ==}
     peerDependencies:
       '@modelcontextprotocol/server': ^2.4.0
       zod: ^3.25.76 || ^4.0.0
@@ -6141,7 +6141,7 @@ packages:
 
 snapshots:
 
-  '@agentclientprotocol/sdk@2.1.0(zod@4.6.7)':
+  '@agentclientprotocol/sdk@2.2.0(zod@4.6.7)':
     dependencies:
       zod: 4.6.7
 

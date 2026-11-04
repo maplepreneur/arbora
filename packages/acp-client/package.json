@@ -8,7 +8,7 @@
     "./fake-agent": "./src/testing/fake-agent.ts"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "2.1.0",
+    "@agentclientprotocol/sdk": "2.2.0",
     "@arbora/shared": "workspace:*"
   },
   "devDependencies": {
