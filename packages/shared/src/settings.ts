@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { customAgentSchema, rememberedPermissionsSchema } from './agent.js';
 import { viewportPresetIdSchema } from './browser.js';
+import { mcpServerConfigSchema } from './mcp-servers.js';
 
 export const themeModeSchema = z.enum(['system', 'light', 'dark']);
 export type ThemeMode = z.infer<typeof themeModeSchema>;
@@ -438,6 +439,8 @@ export const appSettingsSchema = z.object({
   agents: agentSettingsSchema.default(agentSettingsSchema.parse({})),
   tasks: taskAgentsSchema.default(taskAgentsSchema.parse({})),
   git: gitSettingsSchema.default(gitSettingsSchema.parse({})),
+  /** MCP servers Arbora passes to every agent session (`session/new`), next to its browser tools. */
+  mcpServers: z.array(mcpServerConfigSchema).max(100).default([]),
   notifications: notificationSettingsSchema.default(notificationSettingsSchema.parse({})),
   sounds: soundSettingsSchema.default(soundSettingsSchema.parse({})),
   updates: updateSettingsSchema.default(updateSettingsSchema.parse({})),
@@ -481,6 +484,13 @@ export const appSettingsPatchSchema = z
     agents: agentSettingsPatchSchema,
     tasks: patchSchema(taskAgentsSchema),
     git: patchSchema(gitSettingsSchema),
+    mcpServers: z
+      .array(mcpServerConfigSchema)
+      .max(100)
+      .refine(
+        (list) => new Set(list.map((server) => server.name)).size === list.length,
+        'MCP server names must be unique',
+      ),
     notifications: patchSchema(notificationSettingsSchema),
     sounds: patchSchema(soundSettingsSchema),
     updates: patchSchema(updateSettingsSchema),
@@ -516,6 +526,7 @@ export function applySettingsPatch(current: AppSettings, patch: AppSettingsPatch
     ...(patch.agents !== undefined ? { agents: mergeAgentSettings(current.agents, patch.agents) } : {}),
     ...(patch.tasks !== undefined ? { tasks: mergeDefined(current.tasks, patch.tasks) } : {}),
     ...(patch.git !== undefined ? { git: mergeDefined(current.git, patch.git) } : {}),
+    ...(patch.mcpServers !== undefined ? { mcpServers: patch.mcpServers } : {}),
     ...(patch.notifications !== undefined
       ? { notifications: mergeDefined(current.notifications, patch.notifications) }
       : {}),

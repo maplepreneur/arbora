@@ -21,6 +21,7 @@
  * - "evaluate": `browser_evaluate` of `document.title` (needs the user's permission)
  * - "tool sweep": every other tool once against the vite-react fixture, one result line each
  * - "restart dev": `devserver_restart`, `browser_get_url`, `devserver_logs` and `terminal_run`
+ * - "list mcp servers": every server `session/new` passed, with its tool count or "not connected"
  */
 import { Readable, Writable } from 'node:stream';
 import { basename, isAbsolute, join } from 'node:path';
@@ -49,6 +50,8 @@ interface SessionState {
   cancelled: boolean;
   /** Connected MCP clients by server name, with the tools each one listed. */
   mcp: Map<string, { client: Client; tools: string[] }>;
+  /** Every server name `session/new` passed, connected or not. */
+  mcpNames: string[];
 }
 
 const httpMcp = process.env['FAKE_AGENT_NO_HTTP_MCP'] !== '1';
@@ -429,6 +432,13 @@ async function handlePrompt(cx: AgentContext, params: PromptRequest): Promise<Pr
   if (/plan/i.test(text)) await sendPlan(cx, sessionId, state);
   if (isCancelled(state)) return { stopReason: 'cancelled' };
   const browser = /browser check|tool sweep/i.test(text);
+  if (/list mcp servers/i.test(text)) {
+    const lines = state.mcpNames.map((name) => {
+      const tools = state.mcp.get(name)?.tools;
+      return `${name} (${tools ? `${tools.length} tools` : 'not connected'})`;
+    });
+    await say(cx, sessionId, `\n\nMCP servers: ${lines.join(', ') || 'none'}\n\n`, state);
+  }
   if (/browser check/i.test(text)) await browserCheck(cx, sessionId, state);
   if (/tool sweep/i.test(text)) await toolSweep(cx, sessionId, state);
   const restart = /restart dev/i.test(text);
@@ -490,6 +500,7 @@ const app = agent({ name: 'arbora-fake-agent' })
       configOptions: configFor(),
       cancelled: false,
       mcp: await connectMcp(params.mcpServers),
+      mcpNames: params.mcpServers.map((server) => server.name),
     };
     sessions.set(sessionId, state);
     setTimeout(() => {

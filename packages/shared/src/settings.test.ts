@@ -347,6 +347,12 @@ describe('Stage 9 settings', () => {
     expect(next.theme).toBe(current.theme);
   });
 
+  it('replaces the MCP server list and rejects duplicate names', () => {
+    const mcp = { id: 'a', name: 'docs', command: 'npx' };
+    expect(appSettingsPatchSchema.safeParse({ mcpServers: [mcp, { ...mcp, id: 'b' }] }).success).toBe(false);
+    expect(appSettingsPatchSchema.parse({ mcpServers: [mcp] }).mcpServers?.[0]).toMatchObject({ transport: 'stdio' });
+  });
+
   it('parses patches without filling in the defaults of the fields left out', () => {
     expect(appSettingsPatchSchema.parse({ onboarding: { completed: true } })).toEqual({
       onboarding: { completed: true },

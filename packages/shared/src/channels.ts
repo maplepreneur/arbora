@@ -67,6 +67,14 @@ import {
   recentProjectSchema,
   themeModeSchema,
 } from './settings.js';
+import {
+  skillLibrarySchema,
+  skillNameSchema,
+  skillSearchResultSchema,
+  skillSourceSchema,
+  skillTargetIdSchema,
+} from './skills.js';
+import { mcpServerConfigSchema } from './mcp-servers.js';
 import { devServerStatusSchema, terminalInfoSchema, terminalKindSchema, terminalSizeSchema } from './terminal.js';
 import { installKindSchema, updateStateSchema } from './updates.js';
 
@@ -157,6 +165,38 @@ export const channels = {
   'app.setAttention': defineChannel('app.setAttention', z.object({ count: z.number().int().min(0) }), none),
   /** Opens an http(s) URL in the OS browser. */
   'app.openExternal': defineChannel('app.openExternal', z.object({ url: z.url({ protocol: /^https?$/ }) }), none),
+
+  /** Arbora's skill library (`~/.arbora/skills`) and which agents' skill folders link to each skill. */
+  'skills.list': defineChannel('skills.list', none, skillLibrarySchema),
+  /** Links the skill into exactly these agents' folders (symlinks) and unlinks it from the rest. */
+  'skills.setTargets': defineChannel(
+    'skills.setTargets',
+    z.object({ name: skillNameSchema, targets: z.array(skillTargetIdSchema) }),
+    skillLibrarySchema,
+  ),
+  /** Unlinks the skill everywhere and deletes it from the library. */
+  'skills.remove': defineChannel('skills.remove', z.object({ name: skillNameSchema }), skillLibrarySchema),
+  /** Moves a skill found in an agent folder into the library and links it back. */
+  'skills.adopt': defineChannel('skills.adopt', z.object({ name: skillNameSchema }), skillLibrarySchema),
+  'skills.reveal': defineChannel('skills.reveal', z.object({ name: skillNameSchema.nullable() }), none),
+  /** skills.sh search. */
+  'skills.search': defineChannel(
+    'skills.search',
+    z.object({ query: z.string().min(2).max(200) }),
+    z.array(skillSearchResultSchema),
+  ),
+  /** Clones the skill's GitHub repository, copies the skill into the library and links it. */
+  'skills.install': defineChannel(
+    'skills.install',
+    z.object({ source: skillSourceSchema, skillId: skillNameSchema, targets: z.array(skillTargetIdSchema) }),
+    skillLibrarySchema,
+  ),
+  /** MCP servers in other tools' config files (Claude Code, Cursor, Gemini, the project's `.mcp.json`). */
+  'mcp.importable': defineChannel(
+    'mcp.importable',
+    none,
+    z.array(z.object({ origin: z.string(), path: z.string(), servers: z.array(mcpServerConfigSchema) })),
+  ),
 
   /** Zips app info, redacted settings, logs and crash-dump names; `path` is null when cancelled. */
   'diagnostics.export': defineChannel('diagnostics.export', none, z.object({ path: z.string().nullable() })),

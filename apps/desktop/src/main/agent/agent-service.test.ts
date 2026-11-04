@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileS
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { McpServer } from '@agentclientprotocol/sdk';
 import { AgentRegistry, FAKE_AGENT_PATH } from '@arbora/acp-client';
 import {
   toPlatform,
@@ -61,6 +62,7 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
       permissions?: RememberedPermissions;
       defaultModel?: string;
       mcp?: (threadId: string) => Promise<McpAttachment>;
+      userMcpServers?: (agentId: string, http: boolean) => McpServer[];
     } = {},
   ): Harness {
     const h: Harness = {
@@ -94,6 +96,7 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
       devUrl: () => 'http://localhost:5173/',
       defaultModel: () => options.defaultModel,
       ...(options.mcp ? { mcp: options.mcp } : {}),
+      ...(options.userMcpServers ? { userMcpServers: options.userMcpServers } : {}),
       permissions: {
         get: () => h.permissions,
         remember: (key, decision) => {
@@ -531,6 +534,27 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
     );
     expect(JSON.stringify(prompt?.message)).toContain('arbora-browser');
     expect(JSON.stringify(log)).not.toMatch(/Bearer [A-Za-z0-9_-]{20,}/);
+  });
+
+  it("passes the user's MCP servers to session/new", async () => {
+    root = makeRoot();
+    const asked: [string, boolean][] = [];
+    const h = setup({
+      userMcpServers: (agentId, http) => {
+        asked.push([agentId, http]);
+        return [{ name: 'docs', command: 'definitely-not-a-command', args: [], env: [] }];
+      },
+    });
+    const thread = h.service.createThread(FAKE);
+    await h.service.prompt(thread.id, [{ type: 'text', text: 'list mcp servers' }]);
+    expect(asked).toEqual([[FAKE, true]]);
+    const text = h.service
+      .getThread(thread.id)
+      ?.events.flatMap((e) => (e.kind === 'agent_message' ? e.blocks : []))
+      .map((b) => (b.type === 'text' ? b.text : ''))
+      .join('');
+    expect(text).toContain('MCP servers: docs (not connected)');
+    expect(h.service.getLog(thread.id).some((e) => String(e.message) === 'your MCP servers: docs')).toBe(true);
   });
 
   it('warns once when the agent never lists the browser tools', async () => {

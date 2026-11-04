@@ -87,6 +87,8 @@ export interface AgentServiceOptions {
   readonly mcp?: (threadId: string) => Promise<McpAttachment>;
   /** `stdio` sends every agent through the shim, even with `mcpCapabilities.http` (`ARBORA_MCP_TRANSPORT`). */
   readonly mcpTransport?: 'auto' | 'stdio';
+  /** The user's own MCP servers (Settings > MCP servers) for a session of `agentId`. */
+  readonly userMcpServers?: (agentId: string, http: boolean) => McpServer[];
 }
 
 /** MCP servers Arbora runs for one agent session; closed when the agent process stops. */
@@ -784,8 +786,12 @@ export class AgentService {
     return runtime.session.supportsHttpMcp && this.options.mcpTransport !== 'stdio';
   }
 
-  private mcpServers(runtime: Runtime): McpServer[] {
-    return runtime.mcp?.servers(this.httpMcp(runtime)) ?? [];
+  private mcpServers(record: ThreadRecord, runtime: Runtime): McpServer[] {
+    const http = runtime.session.supportsHttpMcp;
+    const own = runtime.mcp?.servers(this.httpMcp(runtime)) ?? [];
+    const user = this.options.userMcpServers?.(record.thread.agentId, http) ?? [];
+    if (user.length > 0) this.info(record, `your MCP servers: ${user.map((server) => server.name).join(', ')}`);
+    return [...own, ...user];
   }
 
   /** `session/load` or `session/resume` when advertised and we have a session id; else `session/new`. */
@@ -801,7 +807,7 @@ export class AgentService {
       }
     }
     if (!restored) {
-      const response = await runtime.session.newSession(this.options.projectPath, this.mcpServers(runtime));
+      const response = await runtime.session.newSession(this.options.projectPath, this.mcpServers(record, runtime));
       runtime.sessionId = response.sessionId;
       // Some agents number sessions per process, so a fresh session may reuse the old id.
       const contextLost = previous !== null;
@@ -860,7 +866,7 @@ export class AgentService {
   ): Promise<boolean> {
     record.replaying = true;
     try {
-      const servers = this.mcpServers(runtime);
+      const servers = this.mcpServers(record, runtime);
       const response =
         how === 'load'
           ? await runtime.session.loadSession(sessionId, this.options.projectPath, servers)
