@@ -15,6 +15,8 @@ export default defineConfig(({ mode }) => {
   const testBuild = mode === 'test';
   return {
     main: {
+      // Only release.yml sets this. Local `pnpm package` builds never update themselves (updatePolicy).
+      define: { __ARBORA_RELEASE_BUILD__: JSON.stringify(process.env['ARBORA_RELEASE_BUILD'] === 'true') },
       build: {
         externalizeDeps: { exclude: WORKSPACE_PACKAGES },
         minify: false,

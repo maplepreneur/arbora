@@ -1,0 +1,49 @@
+name: Cut a beta
+
+# Run by hand: Actions → Cut a beta → Run workflow, on `beta`. Tags the next x.y.z-beta.n from
+# the tip of beta and starts Release, which publishes it as a prerelease for the in-app Beta
+# channel. Merges into beta do not run this: every release costs about 60 billed minutes
+# (docs/RELEASING.md). The version bump is a commit only the tag points at, so the beta branch
+# keeps its plain x.y.z and release-main.yml is unaffected.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: cut-release
+  cancel-in-progress: false
+
+jobs:
+  cut:
+    name: Tag the beta and start the release
+    if: github.ref == 'refs/heads/beta'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: beta
+          fetch-depth: 0
+      - name: Tag the beta and start the build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git fetch origin --tags --force
+          current="$(node -p "require('./apps/desktop/package.json').version")"
+          version="$(git tag -l 'v*' | node scripts/release-version.mjs beta "$current")"
+          node scripts/release-version.mjs write "$version"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/desktop/package.json
+          git commit -m "chore: beta v$version"
+          git tag "v$version"
+          git push origin "v$version"
+          echo "Tagged v$version on beta $(git rev-parse --short HEAD^)." >> "$GITHUB_STEP_SUMMARY"
+          for attempt in 1 2 3 4 5; do
+            gh workflow run release.yml --ref "v$version" -f tag="v$version" && break
+            sleep 5
+          done

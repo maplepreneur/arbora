@@ -118,7 +118,16 @@ export const soundSettingsSchema = z.object({
 });
 export type SoundSettings = z.infer<typeof soundSettingsSchema>;
 
-export const updateChannelSchema = z.enum(['latest', 'beta']);
+/** Where published versions go: `x.y.z` on `latest`, `x.y.z-beta.n` on `beta`. */
+export const releaseChannelSchema = z.enum(['latest', 'beta']);
+export type ReleaseChannel = z.infer<typeof releaseChannelSchema>;
+
+/**
+ * What this copy follows. `latest` (Stable) and `beta` (Beta, which also gets stable releases) read
+ * GitHub Releases, and a source checkout started by `scripts/arbora-local` tracks `origin/main` or
+ * `origin/beta`. `off` (Development) never checks, downloads or moves the checkout.
+ */
+export const updateChannelSchema = z.enum(['latest', 'beta', 'off']);
 export type UpdateChannel = z.infer<typeof updateChannelSchema>;
 
 export const updateSettingsSchema = z.object({
