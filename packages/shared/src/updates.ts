@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Platform } from './platform.js';
-import type { UpdateChannel } from './settings.js';
+import type { ReleaseChannel, UpdateChannel } from './settings.js';
 
 /**
  * How this copy of Arbora can update itself. electron-updater replaces the app in place on macOS,
@@ -125,18 +125,88 @@ export function compareVersions(a: string, b: string): number {
 }
 
 /** `1.2.0-beta.3` is on `beta`; plain versions are on `latest`. */
-export function versionChannel(version: string): UpdateChannel {
+export function versionChannel(version: string): ReleaseChannel {
   return parseVersion(version)?.pre.length ? 'beta' : 'latest';
 }
 
 /** Whether `candidate` should be offered to someone on `current` who follows `channel`. */
-export function isOfferedUpdate(current: string, candidate: string, channel: UpdateChannel): boolean {
+export function isOfferedUpdate(current: string, candidate: string, channel: ReleaseChannel): boolean {
   if (channel === 'latest' && versionChannel(candidate) === 'beta') return false;
   return compareVersions(candidate, current) > 0;
 }
 
+/**
+ * Why this copy does not check for updates. `dev`: not packaged (`pnpm dev`, `pnpm e2e`, the
+ * source launcher). `local-build`: packaged by `pnpm package` rather than the release workflow.
+ * `env`: `ARBORA_UPDATES=off`. `setting`: the Development channel.
+ */
+export const updatesOffReasonSchema = z.enum(['dev', 'local-build', 'env', 'setting']);
+export type UpdatesOffReason = z.infer<typeof updatesOffReasonSchema>;
+
+export type UpdatePolicy =
+  | { readonly enabled: true; readonly channel: ReleaseChannel }
+  | { readonly enabled: false; readonly reason: UpdatesOffReason };
+
+export interface UpdatePolicyInput {
+  readonly kind: InstallKind;
+  /** Built by the release workflow (`ARBORA_RELEASE_BUILD=true` at build time). */
+  readonly releaseBuild: boolean;
+  /** `process.env.ARBORA_UPDATES`. */
+  readonly env: string | undefined;
+  readonly channel: UpdateChannel;
+}
+
+/**
+ * Whether this copy may check for, download and install updates. An unpackaged run never does, so a
+ * builder's checkout is never replaced. A local `pnpm package` build stays put unless started with
+ * `ARBORA_UPDATES=on`, and `ARBORA_UPDATES=off` turns any build off.
+ */
+export function updatePolicy(input: UpdatePolicyInput): UpdatePolicy {
+  if (input.kind === 'dev') return { enabled: false, reason: 'dev' };
+  const override = input.env?.trim().toLowerCase();
+  if (override === 'off' || override === '0' || override === 'false') return { enabled: false, reason: 'env' };
+  if (input.channel === 'off') return { enabled: false, reason: 'setting' };
+  if (!input.releaseBuild && override !== 'on') return { enabled: false, reason: 'local-build' };
+  return { enabled: true, channel: input.channel };
+}
+
+/** One line for Settings → Updates and the palette's **Check for Updates…**. */
+export function updatesOffText(reason: UpdatesOffReason): string {
+  switch (reason) {
+    case 'dev':
+      return 'Updates are off in development builds.';
+    case 'local-build':
+      return 'Updates are off in local builds. Start with ARBORA_UPDATES=on to test the updater.';
+    case 'env':
+      return 'Updates are off (ARBORA_UPDATES=off).';
+    case 'setting':
+      return 'Updates are off on the Development channel.';
+    default: {
+      const unreachable: never = reason;
+      return unreachable;
+    }
+  }
+}
+
+/** The branch `scripts/arbora-local` moves a clean source checkout to, or null to leave it alone. */
+export function checkoutBranch(channel: UpdateChannel): 'main' | 'beta' | null {
+  switch (channel) {
+    case 'latest':
+      return 'main';
+    case 'beta':
+      return 'beta';
+    case 'off':
+      return null;
+    default: {
+      const unreachable: never = channel;
+      return unreachable;
+    }
+  }
+}
+
 export const updateStateSchema = z.discriminatedUnion('status', [
   z.object({ status: z.literal('idle') }),
+  z.object({ status: z.literal('off'), reason: updatesOffReasonSchema }),
   z.object({ status: z.literal('checking') }),
   z.object({ status: z.literal('current'), checkedAt: z.number().int() }),
   z.object({
@@ -176,7 +246,7 @@ export interface GithubRelease {
 export function pickRelease(
   releases: readonly GithubRelease[],
   current: string,
-  channel: UpdateChannel,
+  channel: ReleaseChannel,
 ): GithubRelease | null {
   let best: GithubRelease | null = null;
   for (const release of releases) {

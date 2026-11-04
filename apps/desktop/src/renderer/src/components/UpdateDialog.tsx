@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { CheckCircle2, Download, ExternalLink, LoaderCircle, RefreshCw, X } from 'lucide-react';
+import { updatesOffText } from '@arbora/shared';
 import { checkForUpdates, loadUpdateState, useUpdates } from '../update-store';
 import { closeOverlay, showToast, useApp } from '../store';
 import { Dialog } from './Dialog';
@@ -23,6 +24,13 @@ export function UpdateDialog() {
       body = (
         <p className="flex items-center gap-2 text-sm text-fg-muted">
           <LoaderCircle size={14} className="animate-spin" /> Checking GitHub Releases…
+        </p>
+      );
+      break;
+    case 'off':
+      body = (
+        <p className="text-sm text-fg-muted" data-testid="update-off">
+          {updatesOffText(state.reason)}
         </p>
       );
       break;

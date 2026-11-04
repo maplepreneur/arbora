@@ -26,8 +26,13 @@ run() {
   echo "== $(date -Is) launch $*"
 } >>"$log"
 
-# Latest origin/main when the tree is clean. A dirty tree or local-only commits stay as they are.
-if ! "$repo/scripts/update-to-main.sh" >>"$log" 2>&1; then
+# Settings → Updates picks the branch: Stable follows origin/main, Beta origin/beta, and
+# Development (or ARBORA_UPDATES=off) leaves the checkout alone. update-checkout.sh only moves a
+# clean main or beta checkout; feature branches, edits and local commits stay as they are.
+branch="$(bash -lc "cd \"$repo\" && node scripts/checkout-channel.mjs" 2>>"$log" || echo off)"
+if [[ "$branch" == "off" ]]; then
+  echo "arbora: Development channel; leaving the checkout as it is" >>"$log"
+elif ! "$repo/scripts/update-checkout.sh" "$branch" >>"$log" 2>&1; then
   echo "arbora: launching the checkout already on disk" >>"$log"
 fi
 
@@ -54,4 +59,6 @@ fi
 electron="$repo/node_modules/electron/dist/electron"
 [[ -x "$electron" ]] || fail "Electron binary missing at $electron; run pnpm install"
 unset ELECTRON_RENDERER_URL ELECTRON_RUN_AS_NODE
+# Settings → Updates says what this launcher does with the checkout.
+export ARBORA_LAUNCHER=1
 exec "$electron" --class=arbora "$desktop" "$@" >>"$log" 2>&1
