@@ -12,6 +12,7 @@ import {
   stopAgent,
   useAgents,
 } from '../../agent-store';
+import { pastedImageOnly } from './paste';
 
 /** The slash command being typed at the start of the composer, if any. */
 export function slashQuery(text: string, caret: number): string | null {
@@ -102,6 +103,29 @@ export function Composer({ thread, projectPath }: { thread: ThreadSummary; proje
     addAttachments(thread.id, described);
   };
 
+  const onPaste = (event: React.ClipboardEvent): void => {
+    const data = event.clipboardData;
+    const paths = [...data.files]
+      .map((file) => window.arbora.getPathForFile(file))
+      .filter((path): path is string => Boolean(path));
+    if (paths.length > 0) {
+      event.preventDefault();
+      void window.arbora
+        .invoke('agent.describeAttachments', { paths })
+        .then((described) => addAttachments(thread.id, described));
+      return;
+    }
+    if (!pastedImageOnly([...data.items].map((item) => ({ kind: item.kind, type: item.type })))) return;
+    event.preventDefault();
+    void window.arbora
+      .invoke('agent.pasteImage')
+      .then((attachment) => {
+        if (attachment) addAttachments(thread.id, [attachment]);
+        else showToast('The clipboard has no image Arbora can read');
+      })
+      .catch((error: unknown) => showToast((error as Error).message));
+  };
+
   return (
     <div
       className={clsx('shrink-0 border-t border-border p-2', dragging && 'bg-accent-soft')}
@@ -174,6 +198,7 @@ export function Composer({ thread, projectPath }: { thread: ThreadSummary; proje
             setCaret(event.target.selectionStart);
           }}
           onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
+          onPaste={onPaste}
           onKeyDown={(event) => {
             if (suggestions.length > 0) {
               if (event.key === 'ArrowDown') {

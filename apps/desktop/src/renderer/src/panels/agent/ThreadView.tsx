@@ -130,47 +130,24 @@ export default function ThreadView({ thread, projectPath }: { thread: ThreadSumm
           <ArrowLeft size={13} />
         </button>
         <span className={clsx('h-2 w-2 shrink-0 rounded-full', statusDot(state.status))} data-testid="thread-status" />
-        <span className="min-w-0 flex-1 truncate" title={`${thread.title} — ${agentName}`}>
-          <span className="font-medium">{thread.title}</span>
-          <span className="text-fg-subtle"> · {agentName}</span>
+        <span className="min-w-0 flex-1 truncate font-medium" title={thread.title} data-testid="thread-title">
+          {thread.title}
         </span>
         {isStoppable(state.status) && (
           <button
             type="button"
-            title={state.status === 'prompting' ? 'Stop the agent (Esc in the composer)' : 'Stop starting the agent'}
+            title={state.status === 'prompting' ? 'Stop the agent (Esc)' : 'Stop starting the agent'}
             aria-label="Stop the agent"
             data-testid="thread-stop"
             onClick={() => void invoke(() => stopAgent(thread.id))}
-            className="flex h-6 shrink-0 items-center gap-1 rounded bg-danger/90 px-1.5 text-[11px] text-white hover:bg-danger"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-danger hover:bg-danger/10"
           >
-            <Square size={9} fill="currentColor" /> Stop
+            <Square size={10} fill="currentColor" />
           </button>
         )}
         <button
           type="button"
-          title={
-            thread.autoApproveEdits ? 'Auto-approve edits in the project: on' : 'Auto-approve edits in the project: off'
-          }
-          aria-pressed={thread.autoApproveEdits}
-          data-testid="auto-approve-edits"
-          onClick={() =>
-            void invoke(() =>
-              window.arbora.invoke('agent.setAutoApproveEdits', {
-                threadId: thread.id,
-                enabled: !thread.autoApproveEdits,
-              }),
-            )
-          }
-          className={clsx(
-            'flex h-6 w-6 items-center justify-center rounded hover:bg-bg-muted',
-            thread.autoApproveEdits ? 'text-accent' : 'text-fg-subtle hover:text-fg',
-          )}
-        >
-          <ShieldCheck size={13} />
-        </button>
-        <button
-          type="button"
-          title="ACP log"
+          title="Show the ACP log"
           aria-pressed={logOpen}
           data-testid="toggle-log"
           onClick={toggleLog}
@@ -183,7 +160,7 @@ export default function ThreadView({ thread, projectPath }: { thread: ThreadSumm
         </button>
         <button
           type="button"
-          title="Restart agent"
+          title="Restart the agent"
           aria-label="Restart agent"
           data-testid="restart-agent"
           onClick={() => void invoke(() => window.arbora.invoke('agent.restart', { threadId: thread.id }))}
@@ -193,102 +170,130 @@ export default function ThreadView({ thread, projectPath }: { thread: ThreadSumm
         </button>
       </div>
 
-      {(state.modes || modelOption || otherOptions.length > 0) && (
-        <div
-          className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border px-2 py-1"
-          data-testid="session-controls"
-        >
-          {state.modes && state.modes.availableModes.length > 0 && (
+      <div
+        className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border px-2 py-1"
+        data-testid="session-controls"
+      >
+        <span className="mr-1 max-w-[30%] truncate text-[11px] text-fg-subtle" data-testid="thread-agent">
+          {agentName}
+        </span>
+        {state.modes && state.modes.availableModes.length > 0 && (
+          <Picker
+            label="Mode"
+            icon={Bot}
+            testId="mode-select"
+            menuWidth={240}
+            className="max-w-[40%]"
+            openRequest={mode?.kind === 'modes' ? modeMenuRequest : 0}
+            shortcut={mode?.kind === 'modes' ? modeShortcut || undefined : undefined}
+            value={state.modes.currentModeId}
+            options={state.modes.availableModes.map((m) => ({
+              value: m.id,
+              name: m.name,
+              description: m.description,
+            }))}
+            onChange={(modeId) =>
+              void invoke(() => window.arbora.invoke('agent.setMode', { threadId: thread.id, modeId }))
+            }
+          />
+        )}
+        {modelOption && (
+          <Picker
+            label="Model"
+            icon={Cpu}
+            testId="model-select"
+            favorites={favoriteModels}
+            onToggleFavorite={(value) => toggleFavoriteModel(thread.agentId, value)}
+            defaultValue={defaultModel}
+            onSetDefault={(value) => toggleDefaultModel(thread.agentId, value)}
+            defaultHint={`Use for new ${agentName} threads`}
+            menuWidth={320}
+            className="max-w-[60%]"
+            openRequest={modelMenuRequest}
+            shortcut={modelKey}
+            value={modelOption.currentValue}
+            options={selectOptions(modelOption)}
+            onChange={(value) =>
+              void invoke(() =>
+                window.arbora.invoke('agent.setConfigOption', {
+                  threadId: thread.id,
+                  configId: modelOption.id,
+                  value,
+                }),
+              )
+            }
+          />
+        )}
+        {otherOptions.map((option) =>
+          option.type === 'select' ? (
             <Picker
-              label="Mode"
-              icon={Bot}
-              testId="mode-select"
-              menuWidth={240}
-              className="max-w-[40%]"
-              openRequest={mode?.kind === 'modes' ? modeMenuRequest : 0}
-              shortcut={mode?.kind === 'modes' ? modeShortcut || undefined : undefined}
-              value={state.modes.currentModeId}
-              options={state.modes.availableModes.map((m) => ({
-                value: m.id,
-                name: m.name,
-                description: m.description,
-              }))}
-              onChange={(modeId) =>
-                void invoke(() => window.arbora.invoke('agent.setMode', { threadId: thread.id, modeId }))
-              }
-            />
-          )}
-          {modelOption && (
-            <Picker
-              label="Model"
-              icon={Cpu}
-              testId="model-select"
-              favorites={favoriteModels}
-              onToggleFavorite={(value) => toggleFavoriteModel(thread.agentId, value)}
-              defaultValue={defaultModel}
-              onSetDefault={(value) => toggleDefaultModel(thread.agentId, value)}
-              defaultHint={`Use for new ${agentName} threads`}
-              menuWidth={320}
-              className="max-w-[60%]"
-              openRequest={modelMenuRequest}
-              shortcut={modelKey}
-              value={modelOption.currentValue}
-              options={selectOptions(modelOption)}
+              key={option.id}
+              label={option.name}
+              icon={SlidersHorizontal}
+              className="max-w-[45%]"
+              testId={`config-${option.id}`}
+              openRequest={modeMenuFor(option.id)}
+              shortcut={optionShortcut(option.id)}
+              value={option.currentValue}
+              options={selectOptions(option)}
               onChange={(value) =>
                 void invoke(() =>
-                  window.arbora.invoke('agent.setConfigOption', {
-                    threadId: thread.id,
-                    configId: modelOption.id,
-                    value,
-                  }),
+                  window.arbora.invoke('agent.setConfigOption', { threadId: thread.id, configId: option.id, value }),
                 )
               }
             />
-          )}
-          {otherOptions.map((option) =>
-            option.type === 'select' ? (
-              <Picker
-                key={option.id}
-                label={option.name}
-                icon={SlidersHorizontal}
-                className="max-w-[45%]"
-                testId={`config-${option.id}`}
-                openRequest={modeMenuFor(option.id)}
-                shortcut={optionShortcut(option.id)}
-                value={option.currentValue}
-                options={selectOptions(option)}
-                onChange={(value) =>
+          ) : (
+            <label
+              key={option.id}
+              className="flex h-6 items-center gap-1 text-[11px]"
+              title={option.description ?? undefined}
+            >
+              <input
+                type="checkbox"
+                checked={option.currentValue}
+                data-testid={`config-${option.id}`}
+                onChange={(event) =>
                   void invoke(() =>
-                    window.arbora.invoke('agent.setConfigOption', { threadId: thread.id, configId: option.id, value }),
+                    window.arbora.invoke('agent.setConfigOption', {
+                      threadId: thread.id,
+                      configId: option.id,
+                      value: event.target.checked,
+                    }),
                   )
                 }
               />
-            ) : (
-              <label
-                key={option.id}
-                className="flex h-6 items-center gap-1 text-[11px]"
-                title={option.description ?? undefined}
-              >
-                <input
-                  type="checkbox"
-                  checked={option.currentValue}
-                  data-testid={`config-${option.id}`}
-                  onChange={(event) =>
-                    void invoke(() =>
-                      window.arbora.invoke('agent.setConfigOption', {
-                        threadId: thread.id,
-                        configId: option.id,
-                        value: event.target.checked,
-                      }),
-                    )
-                  }
-                />
-                {option.name}
-              </label>
-            ),
+              {option.name}
+            </label>
+          ),
+        )}
+        <button
+          type="button"
+          title={
+            thread.autoApproveEdits
+              ? 'File edits inside the project are approved without asking. Click to ask again.'
+              : 'Click to approve file edits inside the project without asking'
+          }
+          aria-pressed={thread.autoApproveEdits}
+          data-testid="auto-approve-edits"
+          onClick={() =>
+            void invoke(() =>
+              window.arbora.invoke('agent.setAutoApproveEdits', {
+                threadId: thread.id,
+                enabled: !thread.autoApproveEdits,
+              }),
+            )
+          }
+          className={clsx(
+            'ml-auto flex h-6 shrink-0 items-center gap-1 rounded-full border px-2 text-[11px]',
+            thread.autoApproveEdits
+              ? 'border-accent/50 bg-accent-soft text-accent'
+              : 'border-border text-fg-subtle hover:bg-bg-muted hover:text-fg',
           )}
-        </div>
-      )}
+        >
+          <ShieldCheck size={12} />
+          {thread.autoApproveEdits ? 'Auto-approve edits' : 'Ask before edits'}
+        </button>
+      </div>
 
       {state.status === 'auth_required' && <AuthCard thread={thread} />}
       {state.status === 'error' && state.error && (

@@ -9,6 +9,7 @@ import {
   Monitor,
   Square,
   Sun,
+  TreePine,
   X,
 } from 'lucide-react';
 import clsx from 'clsx';
@@ -126,9 +127,16 @@ export function TitleBar() {
         }
       }}
     >
-      <div className={isMac && !fullScreen ? 'w-[78px] shrink-0' : 'w-3 shrink-0'} />
-      <div className="flex min-w-0 items-center gap-2 font-medium">
-        <span className="pointer-events-none inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-accent" aria-hidden />
+      {/* Room for the traffic lights, plus a gap so the logo does not read as a fourth button. */}
+      <div className={isMac && !fullScreen ? 'w-[88px] shrink-0' : 'w-3 shrink-0'} />
+      <div className="flex min-w-0 items-center gap-1.5 font-medium">
+        <TreePine
+          size={14}
+          strokeWidth={2.25}
+          className="pointer-events-none shrink-0 text-accent"
+          aria-hidden
+          data-testid="title-logo"
+        />
         <span className="pointer-events-none">Arbora</span>
         {project && (
           <>

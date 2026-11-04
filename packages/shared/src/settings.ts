@@ -319,6 +319,11 @@ export const appSettingsSchema = z.object({
   keybindings: keybindingOverridesSchema.default({}),
   /** When a terminal is focused, plain `Ctrl+<key>` chords go to the shell. */
   terminalPassthrough: z.boolean().default(true),
+  /**
+   * macOS only: quit when the last window closes, which also stops dev servers and agents. Off
+   * keeps Arbora in the dock with no window, as most Mac apps do. Other platforms always quit.
+   */
+  quitOnLastWindowClose: z.boolean().default(true),
   browser: browserSettingsSchema.default(browserSettingsSchema.parse({})),
   terminal: terminalSettingsSchema.default(terminalSettingsSchema.parse({})),
   editor: editorSettingsSchema.default(editorSettingsSchema.parse({})),
@@ -358,6 +363,7 @@ export const appSettingsPatchSchema = z
     theme: themeModeSchema,
     keybindings: keybindingOverridesSchema,
     terminalPassthrough: z.boolean(),
+    quitOnLastWindowClose: z.boolean(),
     browser: patchSchema(browserSettingsSchema),
     terminal: patchSchema(terminalSettingsSchema),
     editor: patchSchema(editorSettingsSchema),
@@ -389,6 +395,7 @@ export function applySettingsPatch(current: AppSettings, patch: AppSettingsPatch
     ...(patch.theme !== undefined ? { theme: patch.theme } : {}),
     ...(patch.keybindings !== undefined ? { keybindings: patch.keybindings } : {}),
     ...(patch.terminalPassthrough !== undefined ? { terminalPassthrough: patch.terminalPassthrough } : {}),
+    ...(patch.quitOnLastWindowClose !== undefined ? { quitOnLastWindowClose: patch.quitOnLastWindowClose } : {}),
     ...(patch.browser !== undefined ? { browser: mergeDefined(current.browser, patch.browser) } : {}),
     ...(patch.terminal !== undefined ? { terminal: mergeDefined(current.terminal, patch.terminal) } : {}),
     ...(patch.editor !== undefined ? { editor: mergeEditorSettings(current.editor, patch.editor) } : {}),
@@ -491,7 +498,10 @@ export function loadSettings(raw: unknown): LoadSettingsResult {
 
 export const PROJECT_SETTINGS_VERSION = 1;
 
-/** Committed per-project settings in `<project>/.arbora/project.json`. */
+/**
+ * Per-project settings in `<project>/.arbora/project.json`. `.arbora/.gitignore` keeps them local
+ * unless the team un-ignores `project.json`.
+ */
 export const browserToolPolicySchema = z.enum(['ask', 'allow', 'deny']);
 export type BrowserToolPolicy = z.infer<typeof browserToolPolicySchema>;
 

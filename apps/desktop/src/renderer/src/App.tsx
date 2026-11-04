@@ -4,6 +4,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { QuickOpen } from './components/QuickOpen';
 import { TitleBar } from './components/TitleBar';
 import { Toasts } from './components/Toasts';
+import { Tooltips } from './components/Tooltips';
 import { ProjectsHome } from './components/ProjectsHome';
 import { ProjectSwitcher } from './components/ProjectSwitcher';
 import { UpdateDialog } from './components/UpdateDialog';
@@ -274,6 +275,7 @@ export function App() {
       )}
       {project && <QuickOpen />}
       <Toasts />
+      <Tooltips />
     </div>
   );
 }

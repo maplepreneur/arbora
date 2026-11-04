@@ -44,7 +44,7 @@ import { nextThreadNeedingYou } from './attention-store';
 import { updateSettings } from './settings-client';
 import { closeOverlay, dispatchMode, openOverlay, openSettings, resetLayout, showToast, useApp } from './store';
 import { checkForUpdates } from './update-store';
-import { modeControl, nextValue, selectValues, thinkingControl } from './thread-controls';
+import { modeControl, nextValue, rotationOrder, selectValues, thinkingControl } from './thread-controls';
 import {
   activePane,
   createTerminal,
@@ -236,7 +236,7 @@ export function toggleMode(mode: 'agent' | 'design'): void {
 }
 
 function ipcError(error: unknown): string {
-  return (error as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+  return (error as Error).message.replace(/^Error invoking remote method '[^']+': (\w*Error: )?/, '');
 }
 
 function designPending(): 'idle' | 'agent' {
@@ -361,32 +361,46 @@ async function cycleThreadMode(): Promise<void> {
   const thread = shownThread();
   if (!thread) return;
   const control = modeControl(thread.state);
-  try {
-    if (!control) {
-      showToast('This agent has no modes');
-    } else if (control.kind === 'config') {
-      const value = nextValue(
-        selectValues(control.option).map((v) => v.value),
-        control.option.currentValue,
-      );
-      if (value) {
+  if (!control) {
+    showToast('This agent has no modes');
+    return;
+  }
+  const values =
+    control.kind === 'config'
+      ? selectValues(control.option).map((v) => ({ id: v.value, name: v.name }))
+      : control.values.map((m) => ({ id: m.id, name: m.name }));
+  const current = control.kind === 'config' ? control.option.currentValue : control.current;
+  const refused = refusedModes.get(thread.id) ?? new Set<string>();
+  const failures: string[] = [];
+  // Agents can list a mode they then refuse (Claude Code's Bypass Permissions when it is not
+  // allowed): skip it and keep rotating, so Shift+Tab never sticks on the mode before it.
+  for (const id of rotationOrder(
+    values.map((v) => v.id),
+    current,
+    refused,
+  )) {
+    try {
+      if (control.kind === 'config') {
         await window.arbora.invoke('agent.setConfigOption', {
           threadId: thread.id,
           configId: control.option.id,
-          value,
+          value: id,
         });
+      } else {
+        await window.arbora.invoke('agent.setMode', { threadId: thread.id, modeId: id });
       }
-    } else {
-      const modeId = nextValue(
-        control.values.map((m) => m.id),
-        control.current,
-      );
-      if (modeId) await window.arbora.invoke('agent.setMode', { threadId: thread.id, modeId });
+      break;
+    } catch (error) {
+      refused.add(id);
+      refusedModes.set(thread.id, refused);
+      failures.push(`${values.find((v) => v.id === id)?.name ?? id}: ${ipcError(error)}`);
     }
-  } catch (error) {
-    showToast(ipcError(error));
   }
+  if (failures.length > 0) showToast(`The agent refused ${failures.join('; ')}. Skipped it.`);
 }
+
+/** Modes an agent refused per thread, skipped by Shift+Tab until the app restarts. */
+const refusedModes = new Map<string, Set<string>>();
 
 /** Alt+T: the next thinking level, or thinking on/off for agents with a switch. */
 async function cycleThreadThinking(): Promise<void> {

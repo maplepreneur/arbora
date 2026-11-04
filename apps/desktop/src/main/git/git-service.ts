@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
 import type { GitBranch, GitCommit, GitHunk, GitLine, GitRemote, GitResult, GitStash, GitStatus } from '@arbora/shared';
+import { ARBORA_DIR } from '../project-settings.js';
 import { changedLines, hunksOf, patchWithHunks } from './hunks.js';
 import { parsePorcelain } from './porcelain.js';
 import { GitError, runGit } from './run-git.js';
@@ -215,6 +216,19 @@ export class GitService {
 
   stashDrop(index: number): Promise<GitResult> {
     return this.command(['stash', 'drop', `stash@{${index}}`]);
+  }
+
+  /** Files under `.arbora/` that are already in the index (committed before it was ignored). */
+  trackedArboraFiles(): Promise<number> {
+    return this.enqueue(async (env) => {
+      const { stdout } = await runGit(this.options.root, env, ['ls-files', '--', ARBORA_DIR]);
+      return stdout.split('\n').filter((line) => line !== '').length;
+    });
+  }
+
+  /** Removes `.arbora/` from the index and keeps the files on disk; the next commit records it. */
+  untrackArbora(): Promise<GitResult> {
+    return this.command(['rm', '-r', '--cached', '--quiet', '--', ARBORA_DIR]);
   }
 
   remotes(): Promise<GitRemote[]> {

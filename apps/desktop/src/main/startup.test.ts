@@ -6,9 +6,22 @@ import {
   detectTilingCompositor,
   parseArboraFlags,
   parseProjectArg,
+  shouldQuitWhenAllWindowsClosed,
   shouldRestoreBounds,
   startupSwitches,
 } from './startup.js';
+
+describe('shouldQuitWhenAllWindowsClosed', () => {
+  it('always quits on Linux and Windows', () => {
+    expect(shouldQuitWhenAllWindowsClosed('linux', false)).toBe(true);
+    expect(shouldQuitWhenAllWindowsClosed('win32', false)).toBe(true);
+  });
+
+  it('follows the setting on macOS', () => {
+    expect(shouldQuitWhenAllWindowsClosed('darwin', true)).toBe(true);
+    expect(shouldQuitWhenAllWindowsClosed('darwin', false)).toBe(false);
+  });
+});
 
 describe('parseArboraFlags', () => {
   it('parses space-separated switches with optional values', () => {

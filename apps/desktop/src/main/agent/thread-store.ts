@@ -14,7 +14,7 @@ import {
   type ThreadSummary,
   type ToolCallContent,
 } from '@arbora/shared';
-import { ARBORA_DIR } from '../project-settings.js';
+import { ARBORA_DIR, ensureArboraGitignore } from '../project-settings.js';
 import { writeJsonAtomic } from '../settings-store.js';
 
 const TRUNCATION_MARK = '…[truncated]';
@@ -164,6 +164,7 @@ export class ThreadStore {
 
   save(thread: Thread): void {
     writeJsonAtomic(this.pathFor(thread.id), capThreadFile(thread));
+    ensureArboraGitignore(this.projectPath);
   }
 
   delete(id: string): void {
@@ -172,6 +173,7 @@ export class ThreadStore {
 
   ensureDir(): void {
     mkdirSync(threadsDir(this.projectPath), { recursive: true });
+    ensureArboraGitignore(this.projectPath);
   }
 
   private pathFor(id: string): string {
