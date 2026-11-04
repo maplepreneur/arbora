@@ -18,10 +18,11 @@ import {
 } from 'lucide-react';
 import { CommandId, type AgentVerification } from '@arbora/shared';
 import { toggleDefaultAgent, useDefaultAgentId } from '../../agent-defaults';
-import { verifyAgent } from '../../agent-pickers';
+import { usePickableAgents, verifyAgent } from '../../agent-pickers';
 import { loadAgentSnapshot, useAgents } from '../../agent-store';
 import { runDevServer, setChordProbe, toggleMode } from '../../commands';
 import { Dialog } from '../../components/Dialog';
+import { setStartDefaultOnOpen } from '../../grove-store';
 import { useChordLabel } from '../../keybindings';
 import { openProjectPath } from '../../projects-store';
 import { updateProjectSettings, updateSettings } from '../../settings-client';
@@ -30,7 +31,7 @@ import { closeOverlay, openSettings, useApp } from '../../store';
 import { useTerminals } from '../../terminal-store';
 import { TaskDefaults } from '../settings/TaskAgentPicker';
 
-const STEPS = ['welcome', 'project', 'dev', 'agents', 'tasks', 'keys', 'alerts', 'finish'] as const;
+const STEPS = ['welcome', 'project', 'dev', 'agents', 'tasks', 'grove', 'keys', 'alerts', 'finish'] as const;
 type Step = (typeof STEPS)[number];
 
 const STEP_LABELS: Readonly<Record<Step, string>> = {
@@ -39,6 +40,7 @@ const STEP_LABELS: Readonly<Record<Step, string>> = {
   dev: 'Dev server',
   agents: 'Agents',
   tasks: 'Task defaults',
+  grove: 'Grove',
   keys: 'Shortcuts',
   alerts: 'Alerts',
   finish: 'Try it',
@@ -320,14 +322,103 @@ function TasksStep() {
   );
 }
 
+/** The chords a step asks the user to press; onboarding takes them instead of running them. */
+const PROBED_CHORDS: Partial<Readonly<Record<Step, readonly string[]>>> = {
+  grove: [CommandId.toggleWorkspace],
+  keys: [CommandId.agentMode, CommandId.designMode],
+};
+
+function ChordCheck({ id, text, pressed }: { id: string; text: string; pressed: ReadonlySet<string> }) {
+  const label = useChordLabel(id);
+  const done = pressed.has(id);
+  return (
+    <li
+      data-testid={`onboarding-chord-${id}`}
+      data-pressed={done || undefined}
+      className={clsx(
+        'flex items-center gap-3 rounded-lg border px-3 py-2.5',
+        done ? 'border-accent/50 bg-accent-soft/40' : 'border-border bg-bg',
+      )}
+    >
+      <kbd className="min-w-16 rounded border border-border bg-bg-muted px-2 py-0.5 text-center font-mono text-sm">
+        {label ?? 'unbound'}
+      </kbd>
+      <span className="flex-1 text-sm">{text}</span>
+      {done ? (
+        <span className="flex items-center gap-1 text-xs text-accent">
+          <Check size={12} /> Works
+        </span>
+      ) : (
+        <span className="text-xs text-fg-subtle">Press it now</span>
+      )}
+    </li>
+  );
+}
+
+function GroveStep({ pressed }: { pressed: ReadonlySet<string> }) {
+  const project = useApp((s) => s.project);
+  const pickable = usePickableAgents();
+  const defaultAgent = useDefaultAgentId();
+  if (!project) return <StepShell title="Grove" lead="Open a project first; Grove lists the agents working in it." />;
+  const startOnOpen = project.settings.startDefaultOnOpen !== false;
+  return (
+    <StepShell
+      title="Run several agents in Grove"
+      lead="Grove swaps the page for every agent in this project: who is working, who needs you, and one transcript at a time. Agents keep running when you switch back to the page."
+    >
+      <div className="flex flex-col gap-2">
+        <span className="text-xs text-fg-muted">The agent Grove starts for this project</span>
+        {pickable.length === 0 ? (
+          <p className="rounded-lg border border-border bg-bg px-3 py-2 text-xs text-fg-subtle">
+            Connect an agent in the Agents step first, then pick it here.
+          </p>
+        ) : (
+          <div
+            role="radiogroup"
+            aria-label="Default agent for this project"
+            data-testid="onboarding-grove-agents"
+            className="flex flex-wrap gap-1.5"
+          >
+            {pickable.map(({ agent }) => (
+              <button
+                key={agent.id}
+                type="button"
+                role="radio"
+                aria-checked={defaultAgent === agent.id}
+                data-testid={`onboarding-grove-agent-${agent.id}`}
+                onClick={() => void updateProjectSettings({ defaultAgent: agent.id })}
+                className={clsx(
+                  'flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs',
+                  defaultAgent === agent.id
+                    ? 'border-accent bg-accent-soft font-medium text-accent'
+                    : 'border-border bg-bg hover:border-accent',
+                )}
+              >
+                <Bot size={12} />
+                {agent.name}
+              </button>
+            ))}
+          </div>
+        )}
+        <label className="flex items-center gap-2 text-xs text-fg-muted">
+          <input
+            type="checkbox"
+            checked={startOnOpen}
+            data-testid="onboarding-grove-start-on-open"
+            onChange={(event) => void setStartDefaultOnOpen(event.target.checked)}
+          />
+          Start it when Grove opens with no agents
+        </label>
+      </div>
+      <ul className="grid gap-2">
+        <ChordCheck id={CommandId.toggleWorkspace} text="Switch between the page and Grove" pressed={pressed} />
+      </ul>
+    </StepShell>
+  );
+}
+
 function KeysStep({ pressed }: { pressed: ReadonlySet<string> }) {
-  const agentLabel = useChordLabel(CommandId.agentMode);
-  const designLabel = useChordLabel(CommandId.designMode);
   const platform = useApp((s) => s.info.platform);
-  const rows = [
-    { id: CommandId.agentMode, label: agentLabel, text: 'Agent mode: point at a component' },
-    { id: CommandId.designMode, label: designLabel, text: 'Design mode: edit visually' },
-  ];
   return (
     <StepShell
       title="Your two shortcuts"
@@ -338,32 +429,8 @@ function KeysStep({ pressed }: { pressed: ReadonlySet<string> }) {
       }
     >
       <ul className="grid gap-2">
-        {rows.map((row) => {
-          const done = pressed.has(row.id);
-          return (
-            <li
-              key={row.id}
-              data-testid={`onboarding-chord-${row.id}`}
-              data-pressed={done || undefined}
-              className={clsx(
-                'flex items-center gap-3 rounded-lg border px-3 py-2.5',
-                done ? 'border-accent/50 bg-accent-soft/40' : 'border-border bg-bg',
-              )}
-            >
-              <kbd className="min-w-16 rounded border border-border bg-bg-muted px-2 py-0.5 text-center font-mono text-sm">
-                {row.label ?? 'unbound'}
-              </kbd>
-              <span className="flex-1 text-sm">{row.text}</span>
-              {done ? (
-                <span className="flex items-center gap-1 text-xs text-accent">
-                  <Check size={12} /> Works
-                </span>
-              ) : (
-                <span className="text-xs text-fg-subtle">Press it now</span>
-              )}
-            </li>
-          );
-        })}
+        <ChordCheck id={CommandId.agentMode} text="Agent mode: point at a component" pressed={pressed} />
+        <ChordCheck id={CommandId.designMode} text="Design mode: edit visually" pressed={pressed} />
       </ul>
       <button
         type="button"
@@ -456,9 +523,9 @@ function FinishStep() {
 }
 
 /**
- * First-run setup (F-ONBOARD-01): project, dev command, agents with a connection test, the mode
- * chords with a "press it now" check, notifications and sounds, then a guided `Mod+K`. Stage 10 adds
- * a Grove step; this wizard does not have one yet.
+ * First-run setup (F-ONBOARD-01): project, dev command, agents with a connection test, task
+ * defaults, Grove's default agent and workspace chord, the mode chords (each with a "press it now"
+ * check), notifications and sounds, then a guided `Mod+K`.
  */
 export default function Onboarding() {
   const open = useApp((s) => s.overlay === 'onboarding');
@@ -468,9 +535,10 @@ export default function Onboarding() {
   const index = STEPS.indexOf(step);
 
   useEffect(() => {
-    if (!open || step !== 'keys') return;
+    const probed = PROBED_CHORDS[step];
+    if (!open || !probed) return;
     setChordProbe((commandId) => {
-      if (commandId !== CommandId.agentMode && commandId !== CommandId.designMode) return false;
+      if (!probed.includes(commandId)) return false;
       setPressed((current) => new Set(current).add(commandId));
       return true;
     });
@@ -530,6 +598,7 @@ export default function Onboarding() {
         {step === 'dev' && <DevStep />}
         {step === 'agents' && <AgentsStep />}
         {step === 'tasks' && <TasksStep />}
+        {step === 'grove' && <GroveStep pressed={pressed} />}
         {step === 'keys' && <KeysStep pressed={pressed} />}
         {step === 'alerts' && <AlertsStep />}
         {step === 'finish' && <FinishStep />}

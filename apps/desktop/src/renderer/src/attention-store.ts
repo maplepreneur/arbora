@@ -28,11 +28,18 @@ export function resetAttention(): void {
   syncCount();
 }
 
-/** The thread is on screen: the agent panel shows it and the window has focus. */
-export function isThreadVisible(threadId: string): boolean {
+/** The thread on screen in the workspace that shows: the Grove selection, or the docked panel's open thread. */
+export function visibleThreadId(): string | null {
+  const { settingsOpen, layout } = useApp.getState();
+  if (settingsOpen) return null;
+  if (layout.workspace === 'grove') return layout.groveThreadId;
   const { activeThreadId, view } = useAgents.getState();
-  const { windowState, settingsOpen } = useApp.getState();
-  return windowState.focused && !settingsOpen && view === 'thread' && activeThreadId === threadId;
+  return view === 'thread' ? activeThreadId : null;
+}
+
+/** The thread is on screen and the window has focus. */
+export function isThreadVisible(threadId: string): boolean {
+  return useApp.getState().windowState.focused && visibleThreadId() === threadId;
 }
 
 let lastSentCount = -1;
@@ -136,8 +143,8 @@ export function useThreadAttention(threadId: string): AttentionKind | null {
 /** Clears "finished" and "failed" once the open thread is on screen in a focused window. */
 export function initAttentionTracking(): () => void {
   const check = (): void => {
-    const { activeThreadId } = useAgents.getState();
-    if (activeThreadId && isThreadVisible(activeThreadId)) markSeen(activeThreadId);
+    const threadId = visibleThreadId();
+    if (threadId && isThreadVisible(threadId)) markSeen(threadId);
   };
   const offAgents = useAgents.subscribe(check);
   const offApp = useApp.subscribe(check);

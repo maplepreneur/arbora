@@ -154,6 +154,9 @@ function SecurityBadge({ url }: { url: string }) {
   }
 }
 
+/** The URL bar remounts with the browser workspace and the browser tab; each request focuses it once. */
+let handledFocusRequest = 0;
+
 function UrlBar({ state }: { state: NavigationState | null }) {
   // While editing, the input shows the user's draft; otherwise it follows the page URL.
   const [draft, setDraft] = useState<string | null>(null);
@@ -165,7 +168,8 @@ function UrlBar({ state }: { state: NavigationState | null }) {
   const currentUrl = state?.url ?? '';
 
   useEffect(() => {
-    if (focusRequest === 0) return;
+    if (focusRequest <= handledFocusRequest) return;
+    handledFocusRequest = focusRequest;
     inputRef.current?.focus();
     inputRef.current?.select();
   }, [focusRequest]);

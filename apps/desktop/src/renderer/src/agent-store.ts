@@ -111,9 +111,14 @@ export function applyThreadState(threadId: string, state: ThreadState): void {
   useAgents.setState((s) => ({ threads: s.threads.map((t) => (t.id === threadId ? { ...t, state } : t)) }));
 }
 
+/** Listed in the docked panel and Grove; archived threads only show in Grove's Recent. */
+export function isListed(thread: Pick<ThreadSummary, 'archivedAt'>): boolean {
+  return thread.archivedAt === null;
+}
+
 export function applyThreadList(threads: ThreadSummary[]): void {
   useAgents.setState((s) => {
-    const activeThreadId = threads.some((t) => t.id === s.activeThreadId) ? s.activeThreadId : null;
+    const activeThreadId = threads.some((t) => t.id === s.activeThreadId && isListed(t)) ? s.activeThreadId : null;
     const known = new Set(threads.map((t) => t.id));
     const events = Object.fromEntries(Object.entries(s.events).filter(([id]) => known.has(id)));
     return {
@@ -165,18 +170,59 @@ export async function openThread(threadId: string): Promise<void> {
   }));
 }
 
-/** `model` overrides the agent's default model for this thread; `groupId` files it in a group. */
-export async function createThread(agentId: string, model?: string, groupId?: string | null): Promise<void> {
+const loading = new Map<string, Promise<void>>();
+
+/** Fetches a thread's transcript (and its ACP log) without opening it, unless it is already loaded. */
+export function loadThread(threadId: string, options: { log?: boolean } = {}): Promise<void> {
+  const { events, logs } = useAgents.getState();
+  const wantLog = options.log === true && !logs[threadId];
+  if (events[threadId] && !wantLog) return Promise.resolve();
+  const key = `${threadId}:${wantLog}`;
+  const inFlight = loading.get(key);
+  if (inFlight) return inFlight;
+  const request = Promise.all([
+    events[threadId] ? Promise.resolve(null) : window.arbora.invoke('agent.getThread', { threadId }),
+    wantLog ? window.arbora.invoke('agent.getLog', { threadId }) : Promise.resolve(null),
+  ])
+    .then(([thread, log]) => {
+      useAgents.setState((s) => ({
+        ...(thread && !s.events[threadId] ? { events: { ...s.events, [threadId]: thread.events } } : {}),
+        ...(log && !s.logs[threadId] ? { logs: { ...s.logs, [threadId]: log } } : {}),
+      }));
+    })
+    .finally(() => loading.delete(key));
+  loading.set(key, request);
+  return request;
+}
+
+export interface NewThreadOptions {
+  /** Overrides the agent's default model for this thread. */
+  readonly model?: string | undefined;
+  /** Files it in an agent group. */
+  readonly groupId?: string | null | undefined;
+  /** Grove's launcher names the session after its task. */
+  readonly title?: string | undefined;
+}
+
+/** Creates a thread (the agent starts at once) without opening it anywhere. */
+export async function newThread(agentId: string, options: NewThreadOptions = {}): Promise<ThreadSummary> {
   const summary = await window.arbora.invoke('agent.createThread', {
     agentId,
-    ...(model ? { model } : {}),
-    ...(groupId ? { groupId } : {}),
+    ...(options.model ? { model: options.model } : {}),
+    ...(options.groupId ? { groupId: options.groupId } : {}),
+    ...(options.title ? { title: options.title } : {}),
   });
   useAgents.setState((s) => ({
     threads: s.threads.some((t) => t.id === summary.id) ? s.threads : [summary, ...s.threads],
-    events: { ...s.events, [summary.id]: [] },
-    logs: { ...s.logs, [summary.id]: [] },
+    events: { ...s.events, [summary.id]: s.events[summary.id] ?? [] },
+    logs: { ...s.logs, [summary.id]: s.logs[summary.id] ?? [] },
   }));
+  return summary;
+}
+
+/** `model` overrides the agent's default model for this thread; `groupId` files it in a group. */
+export async function createThread(agentId: string, model?: string, groupId?: string | null): Promise<void> {
+  const summary = await newThread(agentId, { model, groupId });
   await openThread(summary.id);
   focusComposer();
 }
@@ -259,6 +305,24 @@ export function isStoppable(status: ThreadSummary['state']['status']): boolean {
   return status === 'prompting' || status === 'starting';
 }
 
+/** Ends the agent process in any state (Grove's Stop); the next prompt starts it again. */
+export async function stopProcess(threadId: string): Promise<void> {
+  await window.arbora.invoke('agent.stopProcess', { threadId });
+}
+
+/** Moves a thread to Grove's Recent (main stops its process first) or back to the list. */
+export async function archiveThread(threadId: string, archived: boolean): Promise<void> {
+  const archivedAt = archived ? Date.now() : null;
+  useAgents.setState((s) => {
+    const closing = archived && s.activeThreadId === threadId;
+    return {
+      threads: s.threads.map((t) => (t.id === threadId ? { ...t, archivedAt } : t)),
+      ...(closing ? { activeThreadId: null, view: s.view === 'thread' ? ('threads' as const) : s.view } : {}),
+    };
+  });
+  await window.arbora.invoke('agent.archiveThread', { threadId, archived });
+}
+
 /**
  * Where agent mode (`Mod+K`) sends by default: the thread open in the agent panel, else a new
  * thread with the default agent (or the first detected agent, or the first listed one).
@@ -267,7 +331,8 @@ export function defaultAgentModeTarget(
   state: Pick<AgentPanelState, 'view' | 'activeThreadId' | 'threads' | 'agents' | 'availability'>,
   defaultAgentId: string | undefined,
 ): string | null {
-  const open = state.view === 'thread' ? state.threads.find((t) => t.id === state.activeThreadId) : undefined;
+  const open =
+    state.view === 'thread' ? state.threads.find((t) => t.id === state.activeThreadId && isListed(t)) : undefined;
   if (open) return `thread:${open.id}`;
   const detected = new Set(state.availability.filter((a) => a.available).map((a) => a.id));
   const agent =

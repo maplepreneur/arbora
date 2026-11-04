@@ -35,6 +35,7 @@ const WHEN_LABEL: Readonly<Record<KeybindingRow['when'], string | null>> = {
   modeActive: 'in a mode',
   design: 'in design mode',
   agentPanel: 'in the agent panel',
+  grove: 'in Grove',
 };
 
 interface Pending {

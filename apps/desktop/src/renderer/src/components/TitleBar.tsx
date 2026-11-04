@@ -21,6 +21,7 @@ import { useAttentionCount } from '../attention-store';
 import { executeCommand } from '../commands';
 import { useChordLabel } from '../keybindings';
 import { useApp } from '../store';
+import { WorkspaceSwitch } from './WorkspaceSwitch';
 
 type ModeKind = 'idle' | 'agent' | 'design';
 
@@ -239,6 +240,7 @@ export function TitleBar() {
         {project && <ModePills mode={mode} />}
       </div>
       <div className="flex-1" />
+      <WorkspaceSwitch />
       <AttentionButton />
       <button
         type="button"

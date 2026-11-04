@@ -63,6 +63,16 @@ describe('mode state machine', () => {
     expect(transition(confirm, { type: 'designLeave' })).toEqual(IDLE);
   });
 
+  it('asks before leaving unsaved design edits for Grove, and Stay keeps editing', () => {
+    const design = run({ type: 'toggleDesign' });
+    const confirm = transition(design, { type: 'designConfirm', pending: 'grove' });
+    expect(confirm).toEqual({ kind: 'design', phase: 'confirm', pending: 'grove' });
+    // Asking again while the question is open does not change where it goes.
+    expect(transition(confirm, { type: 'designConfirm', pending: 'agent' })).toBe(confirm);
+    expect(transition(confirm, { type: 'designCancelConfirm' })).toEqual({ kind: 'design', phase: 'editing' });
+    expect(transition(IDLE, { type: 'designConfirm', pending: 'grove' })).toBe(IDLE);
+  });
+
   it('starts and stops the page inspector at the right edges', () => {
     const inspecting = run({ type: 'toggleAgent' });
     const selected = transition(inspecting, { type: 'picked' });

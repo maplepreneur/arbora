@@ -35,11 +35,12 @@ import {
   type DesignOp,
   type DesignSelection,
 } from '@arbora/shared';
-import { useAgents } from '../../agent-store';
+import { isListed, useAgents } from '../../agent-store';
 import { toggleDefaultModel } from '../../agent-defaults';
 import { useAutoVerify, usePickableAgents } from '../../agent-pickers';
 import { Picker } from '../../components/Picker';
 import { discardDesign, resendDesignSession, saveDesignTo } from '../../commands';
+import type { DesignPending } from '../../mode';
 import { dispatchMode, openSettings, setDesignTarget, showToast, useApp } from '../../store';
 
 function ipcError(error: unknown): string {
@@ -803,7 +804,7 @@ function useDesignTarget(): DesignTarget | null {
   return useMemo(() => {
     const byId = new Map(pickable.map((entry) => [entry.agent.id, entry]));
     const thread = chosen?.startsWith('thread:')
-      ? threads.find((t) => `thread:${t.id}` === chosen && byId.has(t.agentId))
+      ? threads.find((t) => `thread:${t.id}` === chosen && byId.has(t.agentId) && isListed(t))
       : undefined;
     if (thread) {
       return {
@@ -849,7 +850,7 @@ function AgentPicker({ value }: { value: string }) {
         group: 'Start a new thread',
       })),
       ...threads
-        .filter((thread) => byId.has(thread.agentId))
+        .filter((thread) => byId.has(thread.agentId) && isListed(thread))
         .map((thread) => ({
           value: `thread:${thread.id}`,
           name: thread.title,
@@ -913,7 +914,13 @@ function NoAgents() {
 }
 
 /** Always-visible send bar: how many changes, which agent and model get them, one obvious button. */
-function SendBar({ confirm, target }: { confirm: 'idle' | 'agent' | null; target: DesignTarget | null }) {
+const CONFIRM_TEXT: Readonly<Record<DesignPending, string>> = {
+  idle: 'Send them to an agent, or discard them to put the page back.',
+  agent: 'Send them to an agent, or discard them, before switching to agent mode.',
+  grove: 'Send them to an agent, or discard them, before opening Grove.',
+};
+
+function SendBar({ confirm, target }: { confirm: DesignPending | null; target: DesignTarget | null }) {
   const cursor = useApp((s) => activeOps(s.design.ops, s.design.cursor).length);
   const off = useApp((s) => s.design.cursor - activeOps(s.design.ops, s.design.cursor).length);
   const [busy, setBusy] = useState(false);
@@ -929,11 +936,7 @@ function SendBar({ confirm, target }: { confirm: 'idle' | 'agent' | null; target
           <p className="text-xs font-medium">
             You have {cursor} unsent change{cursor === 1 ? '' : 's'}.
           </p>
-          <p className="text-[11px] text-fg-muted">
-            {confirm === 'agent'
-              ? 'Send them to an agent, or discard them, before switching to agent mode.'
-              : 'Send them to an agent, or discard them to put the page back.'}
-          </p>
+          <p className="text-[11px] text-fg-muted">{CONFIRM_TEXT[confirm]}</p>
           <button
             type="button"
             data-testid="design-stay"

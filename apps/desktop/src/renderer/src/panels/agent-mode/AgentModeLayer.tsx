@@ -16,7 +16,7 @@ import {
   type ResolvedComponent,
   type ViewportPresetId,
 } from '@arbora/shared';
-import { defaultAgentModeTarget, useAgents } from '../../agent-store';
+import { defaultAgentModeTarget, isListed, useAgents } from '../../agent-store';
 import { taskModelFor, useDefaultAgentId, useTaskAgentId } from '../../agent-defaults';
 import { Picker } from '../../components/Picker';
 import { showAgentThread } from '../../commands';
@@ -72,7 +72,7 @@ function TargetPicker({ value, onChange }: { value: string; onChange: (value: st
   const options = useMemo(() => {
     const agentName = (id: string): string => agents.find((a) => a.id === id)?.name ?? id;
     return [
-      ...threads.map((thread) => ({
+      ...threads.filter(isListed).map((thread) => ({
         value: `thread:${thread.id}`,
         name: thread.title,
         description: agentName(thread.agentId),
