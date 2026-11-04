@@ -61,6 +61,8 @@ export interface GroveState {
   readonly focusPath: string | null;
   /** A terminal in the focused project, shown instead of the agent transcript. */
   readonly terminalId: string | null;
+  /** Bumped to move focus into the Grove terminal, including when it is already showing. */
+  readonly terminalFocusRequest: number;
   readonly searchOpen: boolean;
   /** Terminals per project path, including projects that are not the focused one. */
   readonly terminalsByProject: Readonly<Record<string, readonly TerminalInfo[]>>;
@@ -97,6 +99,7 @@ const INITIAL: GroveState = {
   listFocusRequest: 0,
   focusPath: null,
   terminalId: null,
+  terminalFocusRequest: 0,
   searchOpen: false,
   terminalsByProject: {},
   threadsByProject: {},
@@ -276,8 +279,36 @@ export async function focusGroveProject(path: string | null): Promise<void> {
   useGrove.setState({ focusPath: path, terminalId: null, searchOpen: false });
 }
 
-export function selectGroveTerminal(id: string | null): void {
-  useGrove.setState({ terminalId: id });
+export function selectGroveTerminal(id: string | null, options: { focus?: boolean } = {}): void {
+  useGrove.setState((state) => ({
+    terminalId: id,
+    terminalFocusRequest: options.focus ? state.terminalFocusRequest + 1 : state.terminalFocusRequest,
+  }));
+}
+
+/** Starts a shell in the Grove project on screen (or `path`) and focuses it. Does not leave Grove. */
+export async function createGroveTerminal(path?: string): Promise<void> {
+  const open = useApp.getState().project?.path ?? null;
+  const target = path ?? useGrove.getState().focusPath ?? open;
+  if (!target) {
+    showToast('Open a project first');
+    return;
+  }
+  const showing = useGrove.getState().focusPath ?? open;
+  if (showing !== target) {
+    try {
+      await focusGroveProject(target === open ? null : target);
+    } catch (error) {
+      showToast(ipcError(error));
+      return;
+    }
+  }
+  try {
+    const info = await window.arbora.invoke('terminal.create', { cols: 100, rows: 24 });
+    selectGroveTerminal(info.id, { focus: true });
+  } catch (error) {
+    showToast(`Could not start a terminal: ${ipcError(error)}`);
+  }
 }
 
 export function noteProjectTerminals(projectPath: string, terminals: readonly TerminalInfo[]): void {

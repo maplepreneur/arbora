@@ -6,6 +6,7 @@ import { ensureSession } from '../terminal/sessions';
 export function GroveTerminal({ id }: { id: string }) {
   const host = useRef<HTMLDivElement>(null);
   const usage = useGrove((s) => s.usage.find((entry) => entry.kind === 'terminal' && entry.id === id));
+  const focusRequest = useGrove((s) => s.terminalFocusRequest);
   useEffect(() => {
     const container = host.current;
     if (!container) return;
@@ -14,6 +15,10 @@ export function GroveTerminal({ id }: { id: string }) {
     session.focus();
     return () => session.detach(container);
   }, [id]);
+  useEffect(() => {
+    if (!host.current) return;
+    ensureSession(id).focus();
+  }, [id, focusRequest]);
   return (
     <section data-testid="grove-terminal-pane" className="flex h-full min-h-0 flex-col bg-bg">
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3 text-[12px] text-fg-subtle">

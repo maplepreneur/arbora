@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import type { AppSettings, NavigationState, TerminalInfo, ThreadSummary } from '@arbora/shared';
-import { checkedAgents, DESKTOP_ROOT, launch, tempUserData } from './app';
+import { checkedAgents, DESKTOP_ROOT, launch, switchWorkspace, tempUserData } from './app';
 import { freePort } from './servers';
 
 const FAKE_AGENT = resolve(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
@@ -166,11 +166,11 @@ test.describe('Stage 10 Grove', () => {
       const dev = (await terminals(page)).find((t) => t.kind === 'dev');
       if (!dev?.pid) throw new Error('dev server not running');
 
-      await expect(page.getByTestId('workspace-browser')).toHaveAttribute('aria-pressed', 'true');
-      await page.getByTestId('workspace-grove').click();
+      await expect(page.getByTestId('workspace-switch')).toHaveAttribute('data-workspace', 'browser');
+      await switchWorkspace(page, 'grove');
       await expect(page.getByTestId('grove')).toBeVisible();
       await expect(page.getByTestId('workspace')).toHaveCount(0);
-      await expect(page.getByTestId('workspace-grove')).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.getByTestId('workspace-switch')).toHaveAttribute('data-workspace', 'grove');
       await expect.poll(() => viewVisible(app)).toBe(false);
 
       // An empty Grove starts the project's default agent once, selects it and focuses its composer.
@@ -221,7 +221,7 @@ test.describe('Stage 10 Grove', () => {
       await keyInPage(app, 'G', [MOD, 'alt']);
       await expect(page.getByTestId('grove')).toBeVisible();
       await expect(page.getByTestId('grove-row')).toHaveCount(1);
-      await page.getByTestId('workspace-browser').click();
+      await switchWorkspace(page, 'browser');
       await expect(page.getByTestId('workspace')).toBeVisible();
       expect(await threads(page)).toHaveLength(1);
 
@@ -361,12 +361,12 @@ test.describe('Stage 10 Grove', () => {
         .not.toBeNull();
 
       // The docked thread list hides it too.
-      await page.getByTestId('workspace-browser').click();
+      await switchWorkspace(page, 'browser');
       await expect(page.getByTestId('thread-row')).toHaveCount(1);
       await expect(page.getByTestId('thread-row')).toHaveAttribute('data-thread-id', secondId);
 
       // Recent shows it read-only; Restore brings it back to the list.
-      await page.getByTestId('workspace-grove').click();
+      await switchWorkspace(page, 'grove');
       await page.getByTestId('grove-recent-toggle').click();
       await page.getByTestId('grove-recent-row').click();
       await expect(pane).toHaveAttribute('data-thread-id', firstId);
@@ -517,7 +517,7 @@ test.describe('Stage 10 Grove', () => {
     const userData = userDataWithFakeAgent();
     const { app, page } = await launch(userData, [project]);
     try {
-      await page.getByTestId('workspace-grove').click();
+      await switchWorkspace(page, 'grove');
       await expect(page.getByTestId('grove')).toBeVisible();
       const before = (await terminals(page)).length;
       const added = await page.evaluate((path) => window.arbora.invoke('grove.addProject', { path }), project);

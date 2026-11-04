@@ -39,10 +39,17 @@ const PACKAGE_FRAMEWORKS: readonly { readonly pkg: string; readonly framework: P
   { pkg: 'vite', framework: 'vite' },
 ];
 
-/** First match wins. Nuxt beats Vue and Vite. Next beats React. Vite is only the app framework when nothing above matched. */
+/**
+ * First match wins.
+ * Next, Nuxt, Vue, React, Rails, then Vite. A Next app that also depends on React is Next.
+ * Nuxt beats Vue. Vite is only the mark when nothing above matched, so Vite+React is React,
+ * Vite+Vue is Vue, and a Rails app that also lists Vite is Rails.
+ * SvelteKit, Remix, Astro, Angular and Svelte keep their own marks and sit where they do not
+ * outrank a more specific framework from that list.
+ */
 const PRIORITY: readonly ProjectFramework[] = [
-  'nuxt',
   'next',
+  'nuxt',
   'sveltekit',
   'remix',
   'astro',
@@ -50,8 +57,8 @@ const PRIORITY: readonly ProjectFramework[] = [
   'svelte',
   'vue',
   'react',
-  'vite',
   'rails',
+  'vite',
 ];
 
 function dependencyNames(packageJson: string): Set<string> {

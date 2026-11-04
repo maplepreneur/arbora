@@ -82,12 +82,22 @@ test.describe('Stage 0 smoke', () => {
     try {
       const pills = page.getByTestId('mode-pills');
       await expect(pills).toHaveAttribute('data-mode', 'idle');
-      await page.getByTestId('mode-pill-agent').click();
-      await expect(page.getByTestId('mode-banner')).toHaveAttribute('data-mode', 'agent');
-      await expect(pills).toHaveAttribute('data-mode', 'agent');
-      await page.getByTestId('mode-pill-design').click();
-      await expect(page.getByTestId('mode-banner')).toHaveAttribute('data-mode', 'design');
-      await page.getByTestId('mode-pill-idle').click();
+      // A long project name folds the pills into the active mode. The chords are the same actions.
+      if ((await pills.getAttribute('data-collapsed')) === 'true') {
+        await page.keyboard.press('ControlOrMeta+K');
+        await expect(page.getByTestId('mode-banner')).toHaveAttribute('data-mode', 'agent');
+        await expect(pills).toHaveAttribute('data-mode', 'agent');
+        await page.keyboard.press('ControlOrMeta+D');
+        await expect(page.getByTestId('mode-banner')).toHaveAttribute('data-mode', 'design');
+        await page.keyboard.press('Escape');
+      } else {
+        await page.getByTestId('mode-pill-agent').click();
+        await expect(page.getByTestId('mode-banner')).toHaveAttribute('data-mode', 'agent');
+        await expect(pills).toHaveAttribute('data-mode', 'agent');
+        await page.getByTestId('mode-pill-design').click();
+        await expect(page.getByTestId('mode-banner')).toHaveAttribute('data-mode', 'design');
+        await page.getByTestId('mode-pill-idle').click();
+      }
       await expect(page.getByTestId('mode-banner')).toBeHidden();
       await expect(pills).toHaveAttribute('data-mode', 'idle');
 

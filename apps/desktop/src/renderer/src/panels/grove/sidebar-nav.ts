@@ -33,16 +33,33 @@ export type SidebarNavRow =
     }
   | {
       readonly id: string;
+      readonly kind: 'recent';
+      readonly path: string;
+      readonly parentId: string;
+      readonly expanded: boolean;
+    }
+  | {
+      readonly id: string;
       readonly kind: 'action';
-      readonly action: 'new-agent' | 'new-terminal';
+      readonly action: SidebarAction;
       readonly path: string;
       readonly parentId: string;
     };
 
+export type SidebarAction = 'new-agent' | 'new-terminal' | 'show-all-recent';
+
 export interface SidebarNavLeaf {
   readonly kind: 'agent' | 'terminal' | 'command' | 'action';
   readonly id: string;
-  readonly action?: 'new-agent' | 'new-terminal';
+  readonly action?: SidebarAction;
+}
+
+export interface SidebarRecentNav {
+  /** The header is listed. Children appear only while `expanded` is true. */
+  readonly present: boolean;
+  readonly expanded: boolean;
+  readonly visibleIds: readonly string[];
+  readonly showAll: boolean;
 }
 
 export function projectNavId(path: string): string {
@@ -65,8 +82,12 @@ export function commandNavId(path: string, commandId: string): string {
   return `command:${path}:${commandId}`;
 }
 
-export function actionNavId(path: string, action: 'new-agent' | 'new-terminal'): string {
+export function actionNavId(path: string, action: SidebarAction): string {
   return `action:${path}:${action}`;
+}
+
+export function recentNavId(path: string): string {
+  return `recent:${path}`;
 }
 
 export function inboxNavId(path: string, threadId: string): string {
@@ -78,7 +99,12 @@ export function buildSidebarNav(input: {
   readonly projects: readonly {
     path: string;
     expanded: boolean;
-    sections: readonly { section: SideSectionName; expanded: boolean; leaves: readonly SidebarNavLeaf[] }[];
+    sections: readonly {
+      section: SideSectionName;
+      expanded: boolean;
+      leaves: readonly SidebarNavLeaf[];
+      recent?: SidebarRecentNav;
+    }[];
   }[];
 }): SidebarNavRow[] {
   const rows: SidebarNavRow[] = input.inbox.map((row) => ({
@@ -103,6 +129,7 @@ export function buildSidebarNav(input: {
       for (const leaf of section.leaves) {
         rows.push(leafRow(project.path, parentId, leaf));
       }
+      if (section.recent?.present) rows.push(...recentRows(project.path, parentId, section.recent));
     }
   }
   return rows;
@@ -131,6 +158,25 @@ function leafRow(path: string, parentId: string, leaf: SidebarNavLeaf): SidebarN
   }
 }
 
+function recentRows(path: string, parentId: string, recent: SidebarRecentNav): SidebarNavRow[] {
+  const id = recentNavId(path);
+  const rows: SidebarNavRow[] = [{ id, kind: 'recent', path, parentId, expanded: recent.expanded }];
+  if (!recent.expanded) return rows;
+  for (const threadId of recent.visibleIds) {
+    rows.push({ id: agentNavId(threadId), kind: 'agent', threadId, path, parentId: id });
+  }
+  if (recent.showAll) {
+    rows.push({
+      id: actionNavId(path, 'show-all-recent'),
+      kind: 'action',
+      action: 'show-all-recent',
+      path,
+      parentId: id,
+    });
+  }
+  return rows;
+}
+
 /** Up/Down through the visible rows, wrapping. A missing focus starts at the end the arrow is leaving. */
 export function moveSidebarFocus(rows: readonly { id: string }[], id: string | null, delta: 1 | -1): string | null {
   if (rows.length === 0) return null;
@@ -146,8 +192,8 @@ export type SidebarHorizontal =
   | { readonly type: 'collapse'; readonly id: string };
 
 /**
- * Left expands a collapsed category and does nothing when it is already open.
- * Right collapses an open category and does nothing when it is already closed.
+ * Right expands a collapsed category (project, Agents, Terminals, Commands, Recent).
+ * Left collapses an open one, or moves to its parent when it is already closed.
  * On a leaf, Left moves to that row's category header and Right does nothing.
  */
 export function sidebarHorizontal(
@@ -157,13 +203,88 @@ export function sidebarHorizontal(
 ): SidebarHorizontal {
   const row = rows.find((item) => item.id === id);
   if (!row) return { type: 'none' };
-  if (row.kind === 'project' || row.kind === 'section') {
-    if (direction === 'left') return row.expanded ? { type: 'none' } : { type: 'expand', id: row.id };
-    return row.expanded ? { type: 'collapse', id: row.id } : { type: 'none' };
+  if (row.kind === 'project' || row.kind === 'section' || row.kind === 'recent') {
+    if (direction === 'right') return row.expanded ? { type: 'none' } : { type: 'expand', id: row.id };
+    if (row.expanded) return { type: 'collapse', id: row.id };
+    const parent = categoryParent(row);
+    return parent ? { type: 'focus', id: parent } : { type: 'none' };
   }
   const parentId = parentOf(row);
   if (direction === 'left' && parentId) return { type: 'focus', id: parentId };
   return { type: 'none' };
+}
+
+export type SidebarEnter =
+  | { readonly type: 'focus-agent'; readonly threadId: string }
+  | { readonly type: 'focus-terminal'; readonly path: string; readonly terminalId: string }
+  | { readonly type: 'run-command'; readonly path: string; readonly commandId: string }
+  | { readonly type: 'focus-project'; readonly path: string }
+  | { readonly type: 'toggle-section'; readonly path: string; readonly section: SideSectionName }
+  | { readonly type: 'toggle-recent' }
+  | { readonly type: 'new-agent'; readonly path: string }
+  | { readonly type: 'new-terminal'; readonly path: string }
+  | { readonly type: 'show-all-recent' }
+  | { readonly type: 'open-inbox'; readonly path: string; readonly threadId: string };
+
+/** Enter on the highlighted row: open the agent or terminal, or run the command. */
+export function sidebarEnter(row: SidebarNavRow): SidebarEnter {
+  switch (row.kind) {
+    case 'agent':
+      return { type: 'focus-agent', threadId: row.threadId };
+    case 'terminal':
+      return { type: 'focus-terminal', path: row.path, terminalId: row.terminalId };
+    case 'command':
+      return { type: 'run-command', path: row.path, commandId: row.commandId };
+    case 'project':
+      return { type: 'focus-project', path: row.path };
+    case 'section':
+      return { type: 'toggle-section', path: row.path, section: row.section };
+    case 'recent':
+      return { type: 'toggle-recent' };
+    case 'action':
+      return actionEnter(row.action, row.path);
+    case 'inbox':
+      return { type: 'open-inbox', path: row.path, threadId: row.threadId };
+    default: {
+      const unreachable: never = row;
+      return unreachable;
+    }
+  }
+}
+
+function actionEnter(action: SidebarAction, path: string): SidebarEnter {
+  switch (action) {
+    case 'new-agent':
+      return { type: 'new-agent', path };
+    case 'new-terminal':
+      return { type: 'new-terminal', path };
+    case 'show-all-recent':
+      return { type: 'show-all-recent' };
+    default: {
+      const unreachable: never = action;
+      return unreachable;
+    }
+  }
+}
+
+function categoryParent(row: SidebarNavRow): string | undefined {
+  switch (row.kind) {
+    case 'section':
+      return projectNavId(row.path);
+    case 'recent':
+      return row.parentId;
+    case 'inbox':
+    case 'project':
+    case 'agent':
+    case 'terminal':
+    case 'command':
+    case 'action':
+      return undefined;
+    default: {
+      const unreachable: never = row;
+      return unreachable;
+    }
+  }
 }
 
 function parentOf(row: SidebarNavRow): string | undefined {
@@ -172,6 +293,7 @@ function parentOf(row: SidebarNavRow): string | undefined {
     case 'terminal':
     case 'command':
     case 'action':
+    case 'recent':
       return row.parentId;
     case 'inbox':
     case 'project':

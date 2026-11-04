@@ -262,7 +262,27 @@ export function SessionRow({
   );
 }
 
-export function RecentSection({ recent, selectedId }: { recent: readonly GroveSession[]; selectedId: string | null }) {
+export function RecentSection({
+  recent,
+  selectedId,
+  navId,
+  kbd = false,
+  onNavigate,
+  rowNavId,
+  rowKbd,
+  showAllNavId,
+  showAllKbd = false,
+}: {
+  recent: readonly GroveSession[];
+  selectedId: string | null;
+  navId?: string;
+  kbd?: boolean;
+  onNavigate?: (id: string) => void;
+  rowNavId?: (threadId: string) => string;
+  rowKbd?: (threadId: string) => boolean;
+  showAllNavId?: string;
+  showAllKbd?: boolean;
+}) {
   const open = useGrove((s) => s.recentOpen);
   const showAll = useGrove((s) => s.showAllRecent);
   if (recent.length === 0) return null;
@@ -273,48 +293,74 @@ export function RecentSection({ recent, selectedId }: { recent: readonly GroveSe
         type="button"
         aria-expanded={open}
         data-testid="grove-recent-toggle"
-        onClick={() => useGrove.setState({ recentOpen: !open })}
-        className="flex h-7 w-full items-center gap-1 px-1.5 text-[10px] font-semibold tracking-wide text-fg-subtle uppercase hover:text-fg"
+        data-nav-id={navId}
+        data-kbd={kbd || undefined}
+        onClick={() => {
+          if (navId) onNavigate?.(navId);
+          useGrove.setState({ recentOpen: !open });
+        }}
+        className={clsx(
+          'flex h-7 w-full items-center gap-1 px-1.5 text-left text-[10px] font-semibold tracking-wide text-fg-subtle uppercase outline-none hover:text-fg focus-visible:ring-1 focus-visible:ring-accent focus-visible:ring-inset',
+          kbd && 'ring-1 ring-inset ring-accent',
+        )}
       >
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         Recent ({recent.length})
       </button>
       {open && (
         <ul>
-          {shown.map((session) => (
-            <li key={session.id}>
-              <button
-                type="button"
-                data-testid="grove-recent-row"
-                data-thread-id={session.id}
-                aria-current={session.id === selectedId ? 'true' : undefined}
-                title={`${session.name}: archived. Select it to read the transcript or restore it.`}
-                onClick={() => selectSession(session.id, { focus: false })}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  void openRowMenu(session, []);
-                }}
-                className={clsx(
-                  'flex w-full items-center gap-2 py-1 pr-2 pl-3 text-left text-[12px] text-fg-muted outline-none focus-visible:ring-1 focus-visible:ring-accent focus-visible:ring-inset',
-                  session.id === selectedId ? 'bg-bg-muted text-fg' : 'hover:bg-bg-muted/60',
-                )}
-              >
-                <StatusDot status={session.status} />
-                <span className="min-w-0 flex-1 truncate">{session.name}</span>
-                <span className="shrink-0 text-[10px] text-fg-subtle tabular-nums">
-                  {formatWhen(session.archivedAt ?? session.updatedAt)}
-                </span>
-              </button>
-            </li>
-          ))}
+          {shown.map((session) => {
+            const rowId = rowNavId?.(session.id);
+            const rowFocused = rowKbd?.(session.id) === true;
+            return (
+              <li key={session.id}>
+                <button
+                  type="button"
+                  data-testid="grove-recent-row"
+                  data-thread-id={session.id}
+                  data-nav-id={rowId}
+                  data-kbd={rowFocused || undefined}
+                  aria-current={session.id === selectedId ? 'true' : undefined}
+                  title={`${session.name}: archived. Select it to read the transcript or restore it.`}
+                  onClick={() => {
+                    if (rowId) onNavigate?.(rowId);
+                    selectSession(session.id, { focus: false });
+                  }}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    void openRowMenu(session, []);
+                  }}
+                  className={clsx(
+                    'flex w-full items-center gap-2 py-1 pr-2 pl-3 text-left text-[12px] text-fg-muted outline-none focus-visible:ring-1 focus-visible:ring-accent focus-visible:ring-inset',
+                    session.id === selectedId ? 'bg-bg-muted text-fg' : 'hover:bg-bg-muted/60',
+                    rowFocused && 'ring-1 ring-inset ring-accent',
+                  )}
+                >
+                  <StatusDot status={session.status} />
+                  <span className="min-w-0 flex-1 truncate">{session.name}</span>
+                  <span className="shrink-0 text-[10px] text-fg-subtle tabular-nums">
+                    {formatWhen(session.archivedAt ?? session.updatedAt)}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
       {open && !showAll && recent.length > RECENT_LIMIT && (
         <button
           type="button"
           data-testid="grove-recent-all"
-          onClick={() => useGrove.setState({ showAllRecent: true })}
-          className="px-3 pb-1.5 text-[11px] text-accent hover:underline"
+          data-nav-id={showAllNavId}
+          data-kbd={showAllKbd || undefined}
+          onClick={() => {
+            if (showAllNavId) onNavigate?.(showAllNavId);
+            useGrove.setState({ showAllRecent: true });
+          }}
+          className={clsx(
+            'px-3 pb-1.5 text-left text-[11px] text-accent outline-none hover:underline focus-visible:ring-1 focus-visible:ring-accent',
+            showAllKbd && 'ring-1 ring-inset ring-accent',
+          )}
         >
           Show all
         </button>

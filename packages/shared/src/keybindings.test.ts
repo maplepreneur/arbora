@@ -177,6 +177,11 @@ describe('KeybindingTable', () => {
     expect(table.match(parseChord('ctrl+alt+g', 'linux'), { ...idle, terminalFocused: true })?.commandId).toBe(
       CommandId.toggleWorkspace,
     );
+    const newTerminal = parseChord('ctrl+shift+t', 'linux');
+    expect(CommandId.groveNewTerminal).toBe('arbora.grove.newTerminal');
+    expect(table.match(newTerminal, idle)).toBeUndefined();
+    expect(table.match(newTerminal, grove)?.commandId).toBe(CommandId.groveNewTerminal);
+    expect(table.match(newTerminal, { ...grove, terminalFocused: true })?.commandId).toBe(CommandId.groveNewTerminal);
   });
 
   it('keeps Mod+K as agent mode and Mod+Shift+K as Grove search in both workspaces', () => {
