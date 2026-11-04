@@ -1,7 +1,7 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { _electron as electron, expect, type ElectronApplication, type Page } from '@playwright/test';
 
 export const DESKTOP_ROOT = resolve(import.meta.dirname, '..');
 export const MAIN_ENTRY = join(DESKTOP_ROOT, 'out/main/index.js');
@@ -30,6 +30,22 @@ export function checkedAgents(ids: readonly string[]): { verified: Record<string
 export interface LaunchedApp {
   readonly app: ElectronApplication;
   readonly page: Page;
+}
+
+/**
+ * Shows Browser or Grove. A narrow title bar folds the switch into the active option, so the
+ * other segment is not a button; the workspace chord toggles it.
+ */
+export async function switchWorkspace(page: Page, kind: 'browser' | 'grove'): Promise<void> {
+  const group = page.getByTestId('workspace-switch');
+  await expect(group).toBeVisible();
+  if ((await group.getAttribute('data-workspace')) === kind) return;
+  if ((await group.getAttribute('data-collapsed')) === 'true') {
+    await page.keyboard.press('ControlOrMeta+Alt+G');
+  } else {
+    await page.getByTestId(`workspace-${kind}`).click();
+  }
+  await expect(group).toHaveAttribute('data-workspace', kind);
 }
 
 /** Launches the built app (`pnpm build:test`) with an isolated userData directory. */

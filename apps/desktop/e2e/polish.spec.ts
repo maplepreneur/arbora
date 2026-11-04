@@ -82,7 +82,7 @@ test.describe('Stage 9 onboarding', () => {
       // The workspace chord is checked, not run: the browser workspace stays behind the dialog.
       await page.keyboard.press('ControlOrMeta+Alt+G');
       await expect(page.getByTestId('onboarding-chord-arbora.toggleWorkspace')).toHaveAttribute('data-pressed', 'true');
-      await expect(page.getByTestId('workspace-browser')).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.getByTestId('workspace-switch')).toHaveAttribute('data-workspace', 'browser');
       await page.getByTestId('onboarding-next').click();
       await expect(page.getByTestId('onboarding-step-keys')).toBeVisible();
       // Mode chords are intercepted in main; onboarding sees them instead of the modes starting.

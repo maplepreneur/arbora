@@ -2,7 +2,7 @@ import { existsSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import type { NavigationState } from '@arbora/shared';
-import { DESKTOP_ROOT, FIXTURES, launch, tempUserData } from './app';
+import { DESKTOP_ROOT, FIXTURES, launch, switchWorkspace, tempUserData } from './app';
 import { startViteFixture, type RunningServer } from './servers';
 
 const FAKE_AGENT = resolve(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
@@ -331,7 +331,7 @@ test.describe('Stage 6 design mode', () => {
         .poll(() => inPage<string>(app, `document.querySelector(${JSON.stringify(CARD)}).style.paddingTop`))
         .toBe('');
       await expect.poll(() => inPage<boolean>(app, OVERLAY)).toBe(false);
-      await page.getByTestId('workspace-browser').click();
+      await switchWorkspace(page, 'browser');
       await expect(page.getByTestId('browser-panel')).toBeVisible();
       await expect(page.getByTestId('mode-banner')).toHaveCount(0);
     } finally {
