@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Download, FolderOpen, RefreshCw, Sparkles } from 'lucide-react';
-import { CommandId, type UpdateChannel } from '@arbora/shared';
+import { checkoutBranch, CommandId, updatesOffText, type UpdateChannel } from '@arbora/shared';
 import { executeCommand } from '../../commands';
 import { updateSettings } from '../../settings-client';
 import { openOverlay, useApp } from '../../store';
@@ -10,7 +10,29 @@ import { SectionTitle, Segmented, SettingRow, Toggle } from './controls';
 const CHANNELS: readonly { value: UpdateChannel; label: string }[] = [
   { value: 'latest', label: 'Stable' },
   { value: 'beta', label: 'Beta' },
+  { value: 'off', label: 'Development' },
 ];
+
+function channelDetail(channel: UpdateChannel, sourceLauncher: boolean): string {
+  const branch = checkoutBranch(channel);
+  const launcher = sourceLauncher
+    ? branch
+      ? ` This copy runs from a source checkout: each launch moves a clean checkout to origin/${branch}.`
+      : ' This copy runs from a source checkout, and the launcher leaves it as it is.'
+    : '';
+  switch (channel) {
+    case 'latest':
+      return `Stable releases (x.y.z).${launcher}`;
+    case 'beta':
+      return `Prereleases built from the beta branch (x.y.z-beta.n), and every stable release.${launcher}`;
+    case 'off':
+      return `Never checks, downloads or installs an update. For building Arbora yourself.${launcher}`;
+    default: {
+      const unreachable: never = channel;
+      return unreachable;
+    }
+  }
+}
 
 const INSTALL_LABEL: Readonly<Record<ReturnType<typeof useApp.getState>['info']['installKind'], string>> = {
   dmg: 'macOS app',
@@ -26,6 +48,8 @@ function statusText(state: ReturnType<typeof useUpdates.getState>['state']): str
   switch (state.status) {
     case 'idle':
       return 'Not checked yet';
+    case 'off':
+      return updatesOffText(state.reason);
     case 'checking':
       return 'Checking…';
     case 'current':
@@ -55,6 +79,7 @@ export function UpdatesSection() {
     void loadUpdateState();
   }, []);
   const selfUpdating = useUpdates((s) => s.selfUpdates);
+  const sourceLauncher = useUpdates((s) => s.sourceLauncher);
   return (
     <div data-testid="updates-section">
       <SectionTitle>Version</SectionTitle>
@@ -62,14 +87,14 @@ export function UpdatesSection() {
         <button
           type="button"
           data-testid="check-updates"
-          disabled={info.installKind === 'dev' || state.status === 'checking'}
+          disabled={state.status === 'off' || state.status === 'checking'}
           onClick={() => void checkForUpdates()}
           className="flex items-center gap-1 rounded border border-border px-2 py-1 text-xs hover:bg-bg-muted disabled:opacity-40"
         >
           <RefreshCw size={11} /> Check now
         </button>
       </SettingRow>
-      <SettingRow title="Channel" detail="Beta gets prereleases (x.y.z-beta.n) as soon as they are published.">
+      <SettingRow title="Channel" detail={channelDetail(updates.channel, sourceLauncher)}>
         <Segmented
           label="Update channel"
           testId="update-channel"

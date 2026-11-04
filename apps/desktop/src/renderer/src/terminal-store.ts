@@ -47,25 +47,36 @@ export function resetTerminals(): void {
   useTerminals.setState({ ...INITIAL, lastSize: useTerminals.getState().lastSize });
 }
 
+/** Every command an agent runs shares this one tab, listed beside the selected output. */
+export const AGENT_TAB_ID = 'agent-commands';
+
 /**
  * Reconciles tabs with main's terminal list: panes whose terminal is gone are dropped (and empty
- * tabs with them), and terminals not shown anywhere yet (the dev server, agent terminals) get a tab.
+ * tabs with them), terminals not shown anywhere yet (the dev server) get a tab, and agent
+ * terminals are collected in the agent tab, oldest first.
  */
 export function reconcileTabs(
   state: Pick<TerminalState, 'tabs' | 'activeTabId' | 'activePaneId'>,
   terminals: readonly TerminalInfo[],
 ): Pick<TerminalState, 'tabs' | 'activeTabId' | 'activePaneId'> {
-  const ids = new Set(terminals.map((t) => t.id));
+  const ids = new Set(terminals.filter((t) => !t.readOnly).map((t) => t.id));
+  const agentIds = terminals.filter((t) => t.readOnly).map((t) => t.id);
   const tabs: TerminalTab[] = [];
   for (const tab of state.tabs) {
+    if (tab.id === AGENT_TAB_ID) continue;
     const panes = tab.panes.filter((id) => ids.has(id));
     if (panes.length > 0) tabs.push({ ...tab, panes });
   }
+  if (agentIds.length > 0) tabs.push({ id: AGENT_TAB_ID, panes: agentIds, direction: 'horizontal' });
   const shown = new Set(tabs.flatMap((t) => t.panes));
   let activeTabId = tabs.some((t) => t.id === state.activeTabId) ? state.activeTabId : null;
   for (const terminal of terminals) {
     if (shown.has(terminal.id)) continue;
-    tabs.push({ id: terminal.id, panes: [terminal.id], direction: 'horizontal' });
+    tabs.splice(tabs.length - (agentIds.length > 0 ? 1 : 0), 0, {
+      id: terminal.id,
+      panes: [terminal.id],
+      direction: 'horizontal',
+    });
     activeTabId ??= terminal.id;
   }
   activeTabId ??= tabs[0]?.id ?? null;
@@ -73,7 +84,7 @@ export function reconcileTabs(
   const activePaneId =
     activeTab && state.activePaneId && activeTab.panes.includes(state.activePaneId)
       ? state.activePaneId
-      : (activeTab?.panes[0] ?? null);
+      : ((activeTab?.id === AGENT_TAB_ID ? activeTab.panes.at(-1) : activeTab?.panes[0]) ?? null);
   return { tabs, activeTabId, activePaneId };
 }
 
@@ -90,12 +101,15 @@ export function placeTerminal(
   const tabs = state.tabs
     .map((t) => ({ ...t, panes: t.panes.filter((p) => p !== id) }))
     .filter((t) => t.panes.length > 0);
-  const host = target ? tabs.find((t) => t.id === target.tabId) : undefined;
+  const host = target && target.tabId !== AGENT_TAB_ID ? tabs.find((t) => t.id === target.tabId) : undefined;
   if (target && host) {
     const next = tabs.map((t) => (t === host ? { ...t, panes: [...t.panes, id], direction: target.split } : t));
     return { tabs: next, activeTabId: host.id, activePaneId: id };
   }
-  return { tabs: [...tabs, { id, panes: [id], direction: 'horizontal' }], activeTabId: id, activePaneId: id };
+  const tab: TerminalTab = { id, panes: [id], direction: 'horizontal' };
+  const agentAt = tabs.findIndex((t) => t.id === AGENT_TAB_ID);
+  const next = agentAt === -1 ? [...tabs, tab] : [...tabs.slice(0, agentAt), tab, ...tabs.slice(agentAt)];
+  return { tabs: next, activeTabId: id, activePaneId: id };
 }
 
 export function activateTerminal(id: string): void {
@@ -117,6 +131,14 @@ export async function createTerminal(split?: SplitDirection): Promise<TerminalIn
     ...placeTerminal(s, info.id, split && activeTabId ? { split, tabId: activeTabId } : null),
   }));
   return info;
+}
+
+/** Closes the agent commands that have finished; running ones stay. */
+export function clearFinishedAgentTerminals(): void {
+  for (const terminal of useTerminals.getState().terminals) {
+    if (terminal.readOnly && terminal.exitCode !== null)
+      void window.arbora.invoke('terminal.close', { id: terminal.id });
+  }
 }
 
 export function activePane(): TerminalInfo | undefined {

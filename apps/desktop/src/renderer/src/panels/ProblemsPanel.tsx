@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { CircleX, Info, Trash2, TriangleAlert, type LucideIcon } from 'lucide-react';
+import { CircleX, Info, Trash2, TriangleAlert, Wrench, type LucideIcon } from 'lucide-react';
 import clsx from 'clsx';
 import { CommandId, type Diagnostic, type ProblemEntry, type ProblemLevel } from '@arbora/shared';
 import { executeCommand } from '../commands';
 import { allDiagnostics, openFile, useFiles } from '../files-store';
+import { fixDiagnostics, fixPageProblems } from '../fix-problems';
 import { useApp } from '../store';
 
 type Scope = 'page' | 'code';
@@ -69,6 +70,25 @@ function formatSource(entry: ProblemEntry, pageUrl: string): string {
   return label;
 }
 
+function FixButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      data-testid="problem-fix"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      className="flex h-5 shrink-0 items-center gap-1 rounded border border-border bg-bg px-1.5 font-sans text-[11px] text-fg-muted opacity-0 group-hover:opacity-100 hover:border-accent hover:text-accent focus-visible:opacity-100"
+    >
+      <Wrench size={11} />
+      Fix
+    </button>
+  );
+}
+
 function ProblemRow({ entry, pageUrl }: { entry: ProblemEntry; pageUrl: string }) {
   const { icon: Icon, className } = levelIcon(entry.level);
   const source = formatSource(entry, pageUrl);
@@ -78,7 +98,7 @@ function ProblemRow({ entry, pageUrl }: { entry: ProblemEntry; pageUrl: string }
       data-testid="problem-row"
       data-level={entry.level}
       data-source={entry.source}
-      className="flex items-start gap-2 border-b border-border/60 px-3 py-1 font-mono text-[11px] leading-5"
+      className="group flex items-start gap-2 border-b border-border/60 px-3 py-1 font-mono text-[11px] leading-5 hover:bg-bg-muted/50"
     >
       <span className="shrink-0 text-fg-subtle tabular-nums" data-testid="problem-time">
         {formatTime(entry.timestamp)}
@@ -92,6 +112,7 @@ function ProblemRow({ entry, pageUrl }: { entry: ProblemEntry; pageUrl: string }
           {source}
         </span>
       )}
+      <FixButton label="Fix this problem with an agent" onClick={() => void fixPageProblems([entry])} />
     </li>
   );
 }
@@ -99,7 +120,7 @@ function ProblemRow({ entry, pageUrl }: { entry: ProblemEntry; pageUrl: string }
 function DiagnosticRow({ diagnostic }: { diagnostic: Diagnostic }) {
   const { icon: Icon, className } = levelIcon(diagnostic.severity);
   return (
-    <li>
+    <li className="group flex items-start border-b border-border/60 pr-3 hover:bg-bg-muted">
       <button
         type="button"
         data-testid="diagnostic-row"
@@ -108,7 +129,7 @@ function DiagnosticRow({ diagnostic }: { diagnostic: Diagnostic }) {
         onClick={() =>
           openFile(diagnostic.path, { pinned: true, at: { line: diagnostic.line, column: diagnostic.column } })
         }
-        className="flex w-full items-start gap-2 border-b border-border/60 px-3 py-1 text-left font-mono text-[11px] leading-5 hover:bg-bg-muted"
+        className="flex min-w-0 flex-1 items-start gap-2 py-1 pr-2 pl-3 text-left font-mono text-[11px] leading-5"
       >
         <Icon size={13} className={clsx('mt-1 shrink-0', className)} />
         <span className="min-w-0 flex-1 break-words whitespace-pre-wrap text-fg">{diagnostic.message}</span>
@@ -120,6 +141,9 @@ function DiagnosticRow({ diagnostic }: { diagnostic: Diagnostic }) {
           {diagnostic.path}:{diagnostic.line}:{diagnostic.column}
         </span>
       </button>
+      <span className="pt-1">
+        <FixButton label="Fix this problem with an agent" onClick={() => void fixDiagnostics([diagnostic])} />
+      </span>
     </li>
   );
 }
@@ -140,6 +164,7 @@ export default function ProblemsPanel() {
   const errors = source.filter((level) => level === 'error').length;
   const warnings = source.filter((level) => level === 'warning').length;
   const codeErrors = diagnostics.filter((d) => d.severity === 'error').length;
+  const fixCount = scope === 'page' ? visible.length : visibleDiagnostics.length;
 
   return (
     <div className="flex h-full flex-col" data-testid="problems-panel" data-scope={scope}>
@@ -179,6 +204,17 @@ export default function ProblemsPanel() {
         <span className="ml-2 truncate whitespace-nowrap text-fg-subtle" data-testid="problems-counts">
           {errors} errors · {warnings} warnings
         </span>
+        <button
+          type="button"
+          data-testid="problems-fix-all"
+          title={`Send the ${fixCount} problem${fixCount === 1 ? '' : 's'} shown here to an agent to fix`}
+          disabled={fixCount === 0}
+          onClick={() => void (scope === 'page' ? fixPageProblems(visible) : fixDiagnostics(visibleDiagnostics))}
+          className="ml-auto flex h-6 shrink-0 items-center gap-1 rounded border border-border px-2 whitespace-nowrap text-fg-muted hover:border-accent hover:text-accent disabled:opacity-40 disabled:hover:border-border disabled:hover:text-fg-muted"
+        >
+          <Wrench size={12} />
+          {fixCount > 1 ? `Fix all ${fixCount}` : 'Fix'}
+        </button>
         {scope === 'page' && (
           <button
             type="button"
@@ -186,7 +222,7 @@ export default function ProblemsPanel() {
             aria-label="Clear problems"
             data-testid="problems-clear"
             onClick={() => executeCommand(CommandId.browserClearProblems)}
-            className="ml-auto flex h-6 w-6 items-center justify-center rounded text-fg-subtle hover:bg-bg-muted hover:text-fg"
+            className="flex h-6 w-6 items-center justify-center rounded text-fg-subtle hover:bg-bg-muted hover:text-fg"
           >
             <Trash2 size={13} />
           </button>

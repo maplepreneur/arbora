@@ -72,7 +72,19 @@ export interface InitialState {
 }
 
 export type SettingsSection =
-  'agents' | 'general' | 'notifications' | 'editor' | 'browser' | 'project' | 'keyboard' | 'updates';
+  | 'agents'
+  | 'grove'
+  | 'general'
+  | 'appearance'
+  | 'notifications'
+  | 'editor'
+  | 'git'
+  | 'skills'
+  | 'mcp'
+  | 'browser'
+  | 'project'
+  | 'keyboard'
+  | 'updates';
 
 export type Overlay = 'onboarding' | 'switcher' | 'update';
 
@@ -207,8 +219,24 @@ export function setGroupLayout(groupId: string, layout: PanelGroupLayout): void 
   updateLayout({ groups: { ...useApp.getState().layout.groups, [groupId]: layout } });
 }
 
+/** Grove's list and pane sizes (`panels/grove/GroveWorkspace.tsx`). */
+export const GROVE_GROUP = 'arbora.grove';
+
+/** Resets the workspace that shows to its default sizes; the other workspace keeps its own. */
 export function resetLayout(): void {
-  useApp.setState((s) => ({ layout: DEFAULT_LAYOUT, layoutEpoch: s.layoutEpoch + 1 }));
+  useApp.setState((s) => {
+    const { [GROVE_GROUP]: grove, ...browserGroups } = s.layout.groups;
+    const layout: LayoutState =
+      s.layout.workspace === 'grove'
+        ? { ...s.layout, groups: browserGroups }
+        : {
+            ...DEFAULT_LAYOUT,
+            workspace: s.layout.workspace,
+            groveThreadId: s.layout.groveThreadId,
+            groups: grove ? { [GROVE_GROUP]: grove } : {},
+          };
+    return { layout, layoutEpoch: s.layoutEpoch + 1 };
+  });
   persistLayout();
 }
 

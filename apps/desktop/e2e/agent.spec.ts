@@ -7,6 +7,8 @@ import { checkedAgents, DESKTOP_ROOT, launch, tempUserData } from './app';
 
 const FAKE_AGENT = resolve(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
 const FAKE_ID = 'fake';
+const ONE_PIXEL_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
 /** A throwaway project with one file for the fake agent to edit. */
 function tempProject(): string {
@@ -91,7 +93,7 @@ test.describe('Stage 3 agent panel', () => {
         '// Arbora fake agent was here\nexport const App = () => null;\n',
       );
 
-      // Agent-run commands show up as read-only "agent" terminal tabs.
+      // Agent-run commands are read-only terminals, listed together in one "Agent" tab.
       await send(page, 'run echo');
       await expect(page.getByTestId('agent-message').last()).toContainText('hello from fake agent', {
         timeout: 20_000,
@@ -99,7 +101,16 @@ test.describe('Stage 3 agent panel', () => {
       const agentTerminals = (await terminals(page)).filter((t) => t.kind === 'agent');
       expect(agentTerminals).toHaveLength(1);
       expect(agentTerminals[0]?.readOnly).toBe(true);
-      await expect(page.getByTestId('terminal-tab').filter({ hasText: 'agent' })).toBeVisible();
+      expect(agentTerminals[0]?.thread).toBeTruthy();
+      const agentTab = page.locator('[data-testid="terminal-tab"][data-kind="agent"]');
+      await expect(agentTab).toHaveCount(1);
+      await agentTab.click();
+      const command = page.getByTestId('agent-command');
+      await expect(command).toHaveCount(1);
+      await expect(command).toContainText(agentTerminals[0]?.thread ?? '');
+      await expect(page.getByTestId('agent-commands-clear')).toBeVisible({ timeout: 10_000 });
+      await page.getByTestId('agent-commands-clear').click();
+      await expect(agentTab).toHaveCount(0);
 
       // Mode and model changes round-trip through the agent.
       await page.getByTestId('mode-select').click();
@@ -339,7 +350,21 @@ test.describe('Stage 3 agent panel', () => {
       await page.getByTestId('new-thread-choose').click();
       await page.getByTestId(`pick-agent-${FAKE_ID}`).click();
       await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', { timeout: 20_000 });
+      await expect(page.getByTestId('auto-approve-edits')).toHaveText('Ask before edits');
       await page.getByTestId('auto-approve-edits').click();
+      await expect(page.getByTestId('auto-approve-edits')).toHaveText('Auto-approve edits');
+
+      // A pasted screenshot becomes an image attachment saved under the git-ignored .arbora folder.
+      await app.evaluate(async ({ clipboard, ClipboardItem }, png) => {
+        const blob = new Blob([Buffer.from(png, 'base64')], { type: 'image/png' });
+        await clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      }, ONE_PIXEL_PNG);
+      await page.getByTestId('composer-input').focus();
+      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+V' : 'Control+V');
+      await expect(page.getByTestId('attachment-chip')).toContainText('.arbora/pasted/paste-');
+      expect(readFileSync(join(project, '.arbora', '.gitignore'), 'utf8')).toContain('*');
+      await page.getByTestId('attachment-chip').getByRole('button').click();
+
       await send(page, 'add a comment to `App.tsx`');
       await expect(page.getByTestId('permission-outcome')).toContainText('automatic', { timeout: 20_000 });
       await expect(page.getByTestId('diff')).toBeVisible({ timeout: 20_000 });

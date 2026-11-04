@@ -13,6 +13,7 @@ import {
   CommandId,
   DEFAULT_COMMANDS,
   KeybindingTable,
+  mcpServersFor,
   resolveKeybindingSpecs,
   type KeybindingContext,
   type LayoutState,
@@ -25,6 +26,7 @@ import {
   type ProjectSettings,
   type WindowBounds,
   type WindowState,
+  type WorkspaceKind,
 } from '@arbora/shared';
 import type { AgentRegistry } from '@arbora/acp-client';
 import { AgentService } from './agent/agent-service.js';
@@ -38,14 +40,16 @@ import { sendEvent } from './ipc.js';
 import { attachKeybindingInterceptor, type InterceptorSource } from './keybinding-interceptor.js';
 import { ArboraToolHost, type PermissionAnswer } from './mcp/browser-tool-host.js';
 import { openBrowserTools, type ShimCommand } from './mcp/browser-tools.js';
+import { GroveHost } from './mcp/grove-tool-host.js';
 import { writeSkillFile } from './mcp/skill-file.js';
-import { readProjectSettings, updateProjectSettingsFile } from './project-settings.js';
+import { ensureArboraGitignore, readProjectSettings, updateProjectSettingsFile } from './project-settings.js';
 import type { SettingsStore } from './settings-store.js';
 import { shouldRestoreBounds } from './startup.js';
 import { DevServer } from './terminal/dev-server.js';
 import { findExecutable, type ShellEnvironment } from './terminal/shell-env.js';
 import { TerminalService } from './terminal/terminal-service.js';
 import type { ThemeService } from './theme-service.js';
+import { GitAutoSync } from './git/git-auto-sync.js';
 import { GitService } from './git/git-service.js';
 import { ToolingService } from './workspace/tooling/tooling-service.js';
 import { forkUtility } from './workspace/tooling/utility-fork.js';
@@ -89,6 +93,9 @@ const FOCUS_APP_COMMANDS: ReadonlySet<string> = new Set([
   CommandId.agentShowAttention,
   CommandId.focusNextPanel,
   CommandId.focusPreviousPanel,
+  CommandId.toggleWorkspace,
+  CommandId.showGrove,
+  CommandId.groveLaunch,
 ]);
 const BOUNDS_SAVE_DELAY_MS = 500;
 
@@ -121,6 +128,8 @@ export class ProjectWindow {
   /** Bumped whenever the browser is (re)started or stopped, to drop stale async starts. */
   private browserGeneration = 0;
   private browserBounds: { rect: Rect | null; emulation: ViewportEmulation | null } = { rect: null, emulation: null };
+  /** Interface size from settings. The renderer reports CSS pixels, so browser bounds are scaled by it. */
+  private zoom = 1;
   terminals: TerminalService | null = null;
   devServer: DevServer | null = null;
   agents: AgentService | null = null;
@@ -128,6 +137,8 @@ export class ProjectWindow {
   designMode: DesignModeService | null = null;
   workspace: WorkspaceService | null = null;
   git: GitService | null = null;
+  gitSync: GitAutoSync | null = null;
+  private gitSyncKey = '';
 
   constructor(
     private readonly manager: WindowManager,
@@ -167,6 +178,7 @@ export class ProjectWindow {
     // The window title reflects the project; ignore the renderer's <title>.
     this.window.on('page-title-updated', (event) => event.preventDefault());
     this.window.once('ready-to-show', () => this.window.show());
+    contents.on('did-finish-load', () => this.applyZoom());
     this.window.on('closed', () => this.dispose());
 
     if ('url' in options.renderer) void this.window.loadURL(options.renderer.url);
@@ -203,6 +215,7 @@ export class ProjectWindow {
     designActive?: boolean | undefined;
     textEditing?: boolean | undefined;
     recording?: boolean | undefined;
+    workspace?: WorkspaceKind | undefined;
   }): void {
     this.context = {
       modeActive: context.modeActive,
@@ -210,6 +223,7 @@ export class ProjectWindow {
       designActive: context.designActive === true,
       textEditing: context.textEditing === true,
       recording: context.recording === true,
+      workspace: context.workspace ?? 'browser',
     };
   }
 
@@ -217,9 +231,39 @@ export class ProjectWindow {
     return this.browserHistory?.list() ?? [];
   }
 
+  applyZoom(): void {
+    const zoom = this.options.settings.get().appearance.uiScale / 100;
+    this.window.webContents.setZoomFactor(zoom);
+    if (zoom === this.zoom) return;
+    this.zoom = zoom;
+    this.browser?.setBounds(this.scaledBrowserRect(), this.browserBounds.emulation);
+  }
+
+  /** Restarts the background sync timer when its settings changed. */
+  applyGitSync(): void {
+    const key = JSON.stringify(this.options.settings.get().git);
+    if (key === this.gitSyncKey) return;
+    this.gitSyncKey = key;
+    this.gitSync?.reschedule();
+  }
+
+  private scaledBrowserRect(): Rect | null {
+    const { rect } = this.browserBounds;
+    if (!rect || this.zoom === 1) return rect;
+    const z = this.zoom;
+    const x = Math.round(rect.x * z);
+    const y = Math.round(rect.y * z);
+    return {
+      x,
+      y,
+      width: Math.round((rect.x + rect.width) * z) - x,
+      height: Math.round((rect.y + rect.height) * z) - y,
+    };
+  }
+
   setBrowserBounds(rect: Rect | null, emulation: ViewportEmulation | null): void {
     this.browserBounds = { rect, emulation };
-    this.browser?.setBounds(rect, emulation);
+    this.browser?.setBounds(this.scaledBrowserRect(), emulation);
   }
 
   rebuildKeybindings(): void {
@@ -227,6 +271,7 @@ export class ProjectWindow {
   }
 
   openProject(path: string): void {
+    ensureArboraGitignore(path);
     const { settings, warnings } = readProjectSettings(path);
     this.project = { path, name: basename(path), settings, settingsWarnings: warnings };
     this.window.setTitle(`${this.project.name} — Arbora`);
@@ -266,7 +311,7 @@ export class ProjectWindow {
     this.stopTerminals();
     this.stopWorkspace();
     this.project = null;
-    this.context = { modeActive: false, terminalFocused: false };
+    this.context = { modeActive: false, terminalFocused: false, workspace: 'browser' };
     this.window.setTitle('Arbora');
     this.rebuildKeybindings();
     this.emitProject();
@@ -347,7 +392,7 @@ export class ProjectWindow {
       saveState: (browser) => this.saveBrowserState(projectPath, browser),
       beforeDevTools: () => this.options.browserSessions.ensureExtensions(session),
     });
-    this.browser.setBounds(this.browserBounds.rect, this.browserBounds.emulation);
+    this.browser.setBounds(this.scaledBrowserRect(), this.browserBounds.emulation);
   }
 
   private stopBrowser(): void {
@@ -420,6 +465,7 @@ export class ProjectWindow {
       },
       mcp: (threadId) => this.openBrowserTools(projectPath, threadId),
       mcpTransport: process.env['ARBORA_MCP_TRANSPORT'] === 'stdio' ? 'stdio' : 'auto',
+      userMcpServers: (agentId, http) => mcpServersFor(settings.get().mcpServers, agentId, http),
       events: {
         threadsChanged: (threads) => sendEvent(app, 'agent.threadsChanged', { threads }),
         groupsChanged: (groups) => sendEvent(app, 'agent.groupsChanged', { groups }),
@@ -431,10 +477,25 @@ export class ProjectWindow {
     });
   }
 
-  /** The Stage 5 browser tools for one agent thread: an MCP server over this window's services. */
+  /**
+   * The Stage 5 browser tools for one agent thread: an MCP server over this window's services. A
+   * thread that is not a helper also gets the Grove orchestration tools while they are on.
+   */
   private openBrowserTools(projectPath: string, threadId: string): ReturnType<typeof openBrowserTools> {
-    writeSkillFile(projectPath);
-    const { platform, shellEnvironment } = this.options;
+    const { platform, settings, shellEnvironment } = this.options;
+    const orchestration = settings.get().grove.orchestration;
+    writeSkillFile(projectPath, orchestration);
+    const thread = this.agents?.listThreads().find((t) => t.id === threadId);
+    const grove =
+      orchestration && thread?.parentThreadId === null
+        ? new GroveHost({
+            threadId,
+            agents: () => this.agents,
+            agentSettings: () => settings.get().agents,
+            projectDefaultAgent: () => this.project?.settings.defaultAgent,
+            maxHelpers: () => settings.get().grove.maxChildren,
+          })
+        : undefined;
     const host = new ArboraToolHost({
       projectPath,
       browser: () => this.browser,
@@ -482,7 +543,7 @@ export class ProjectWindow {
       },
       preview: (preview) => this.agents?.addBrowserPreview(threadId, preview),
     });
-    return openBrowserTools(host, this.options.mcpShim, this.options.appVersion);
+    return openBrowserTools(host, this.options.mcpShim, this.options.appVersion, { grove });
   }
 
   private startAgentMode(projectPath: string): void {
@@ -544,6 +605,13 @@ export class ProjectWindow {
       },
     });
     this.git = new GitService({ root: projectPath, env: environment });
+    this.gitSync = new GitAutoSync({
+      git: this.git,
+      settings: () => settings.get().git,
+      onSynced: (result) => sendEvent(app, 'git.synced', result),
+    });
+    this.gitSyncKey = JSON.stringify(settings.get().git);
+    this.gitSync.start();
     this.workspace = new WorkspaceService({
       root: projectPath,
       rg: async () => findExecutable('rg', await environment(), platform) ?? null,
@@ -561,6 +629,8 @@ export class ProjectWindow {
   }
 
   private stopWorkspace(): void {
+    this.gitSync?.dispose();
+    this.gitSync = null;
     this.git = null;
     const workspace = this.workspace;
     this.workspace = null;
@@ -733,6 +803,13 @@ export class WindowManager {
 
   all(): ProjectWindow[] {
     return [...this.windows];
+  }
+
+  settingsChanged(): void {
+    for (const w of this.windows) {
+      w.applyZoom();
+      w.applyGitSync();
+    }
   }
 
   rebuildKeybindings(): void {

@@ -148,7 +148,7 @@ export class AgentModeService {
     const threadId =
       request.target.type === 'thread'
         ? request.target.threadId
-        : agents.createThread(request.target.agentId, request.target.model).id;
+        : agents.createThread(request.target.agentId, { model: request.target.model }).id;
     const target = targetComponent({ components: stored.components, targetIndex: request.targetIndex });
     const screenshot = request.include.screenshot
       ? this.writeScreenshot(browser, stored, target?.rect ?? stored.raw.element.rect)

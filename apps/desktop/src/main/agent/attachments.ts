@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { statSync } from 'node:fs';
-import { basename, extname } from 'node:path';
+import { basename, extname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { Attachment, ContentBlock } from '@arbora/shared';
 
@@ -37,6 +37,24 @@ const MIME_TYPES: Readonly<Record<string, string>> = {
   '.go': 'text/x-go',
   '.sh': 'application/x-sh',
 };
+
+const PASTE_EXTENSIONS: Readonly<Record<string, string>> = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+};
+
+/** The clipboard type to save for a pasted image, PNG first; null when there is no image. */
+export function pickPastedImageType(types: readonly string[]): string | null {
+  return Object.keys(PASTE_EXTENSIONS).find((type) => types.includes(type)) ?? null;
+}
+
+/** Where a pasted clipboard image is saved: `.arbora/pasted/paste-<ISO time>.<ext>`. */
+export function pastedImagePath(projectPath: string, now: Date, mimeType = 'image/png'): string {
+  const stamp = now.toISOString().replace(/[:.]/g, '-');
+  return join(projectPath, '.arbora', 'pasted', `paste-${stamp}${PASTE_EXTENSIONS[mimeType] ?? '.png'}`);
+}
 
 /** Image types ACP agents accept as `image` blocks (SVG is text, so it goes as a file). */
 const IMAGE_BLOCK_TYPES: ReadonlySet<string> = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);

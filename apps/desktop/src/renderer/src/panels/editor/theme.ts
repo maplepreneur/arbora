@@ -2,12 +2,10 @@ import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { EditorView } from '@codemirror/view';
 import { tags as t } from '@lezer/highlight';
 
-const MONO = "ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', Menlo, Consolas, monospace";
-
 /** Chrome colours come from the app's CSS variables, so light and dark follow the app theme. */
 export const editorTheme = EditorView.theme({
   '&': { height: '100%', color: 'var(--fg)', backgroundColor: 'var(--bg)' },
-  '.cm-scroller': { fontFamily: MONO, lineHeight: '1.5' },
+  '.cm-scroller': { fontFamily: 'var(--font-mono)', lineHeight: '1.5' },
   '.cm-content': { caretColor: 'var(--fg)' },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--fg)' },
   '&.cm-focused': { outline: 'none' },
@@ -49,11 +47,35 @@ export const editorTheme = EditorView.theme({
   },
   '.cm-tooltip-lint': { maxWidth: '520px' },
   '.cm-diagnostic': { whiteSpace: 'pre-wrap', fontSize: '12px' },
-  // Merge view (diff viewer).
-  '.cm-changedLine': { backgroundColor: 'var(--syn-diff-line)' },
-  '.cm-deletedChunk': { backgroundColor: 'var(--syn-diff-deleted)' },
-  '.cm-changedText': { backgroundColor: 'var(--syn-diff-word)' },
-  '.cm-collapsedLines': { backgroundColor: 'var(--bg-subtle)', color: 'var(--fg-subtle)' },
+  // Merge view (diff viewer): tinted lines and darker changed words. The merge view's base theme
+  // underlines every changed character with a `background` gradient, so `background` replaces it.
+  '&.cm-merge-a .cm-changedLine, .cm-deletedChunk': { backgroundColor: 'var(--syn-diff-deleted)' },
+  '&.cm-merge-b .cm-changedLine, .cm-inlineChangedLine': { backgroundColor: 'var(--syn-diff-line)' },
+  '&.cm-merge-a .cm-changedText, .cm-deletedChunk .cm-deletedText': {
+    background: 'var(--syn-diff-deleted-word) !important',
+    borderRadius: '2px',
+  },
+  '&.cm-merge-b .cm-changedText, .cm-inlineChangedLine .cm-changedText': {
+    background: 'var(--syn-diff-word) !important',
+    borderRadius: '2px',
+  },
+  '.cm-insertedLine, .cm-deletedLine, .cm-deletedLine del': { textDecoration: 'none' },
+  '.cm-changeGutter': { width: '3px', paddingLeft: '0' },
+  '&.cm-merge-a .cm-changedLineGutter, .cm-deletedLineGutter': {
+    background: 'var(--syn-diff-deleted-gutter) !important',
+  },
+  '&.cm-merge-b .cm-changedLineGutter, .cm-inlineChangedLineGutter': {
+    background: 'var(--syn-diff-gutter) !important',
+  },
+  // The base theme keys these on `&light`/`&dark`, and the app theme is neither, so it always
+  // picked the light gradient.
+  '.cm-collapsedLines': {
+    background: 'var(--bg-muted) !important',
+    color: 'var(--fg-muted) !important',
+    borderBlock: '1px solid var(--border)',
+    fontFamily: 'var(--font-sans)',
+    fontSize: '11px',
+  },
 });
 
 const highlightStyle = HighlightStyle.define([

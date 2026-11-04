@@ -4,6 +4,8 @@ export interface PrefaceContext {
   readonly devUrl: string | null;
   /** Arbora's `arbora-browser` MCP server is attached to this session. */
   readonly browserTools?: boolean;
+  /** That server also has the Grove orchestration tools (a session that is not a helper). */
+  readonly groveTools?: boolean;
 }
 
 /** Agents read Windows paths fine either way, but prompts read better with forward slashes. */
@@ -54,12 +56,29 @@ export function firstPromptPreface(context: PrefaceContext): string {
       `Interaction tools take a \`ref\` from the latest \`browser_snapshot\`. The full guide is in ${project}/${SKILL_FILE}.`,
     );
   }
+  if (context.browserTools && context.groveTools) {
+    lines.push(
+      '',
+      'You can hand separate parts of a task to other agents with the Grove tools (`grove_list_agents`, `grove_start_agent`, `grove_wait`, `grove_read`, `grove_send`, `grove_stop`). Each helper is a new session that works next to you; the user can open and answer it in Grove. A helper cannot see this conversation, so give it a task that stands on its own. Delegate only independent work, wait for it, and read what it did before you report back.',
+    );
+  }
   return lines.join('\n');
 }
+
+const GROVE_SKILL = `
+## Grove helpers
+
+Sessions the user starts also have \`grove_*\` tools on this server: \`grove_list_agents\` (agents and
+sessions), \`grove_start_agent\` (a helper with a task that stands on its own; the first call asks the
+user), \`grove_wait\` (until your helpers are done or need the user; call it again after a timeout),
+\`grove_read\` (a helper's transcript), \`grove_send\` and \`grove_stop\`. Helpers do not get these
+tools. When a helper needs the user, tell the user; you cannot answer for it.
+`;
 
 /** `.arbora/SKILL.md`: how an agent uses Arbora's browser tools (kept under 400 words). */
 export function browserSkill(context: PrefaceContext): string {
   const dev = context.devUrl ?? 'the URL shown in the browser panel (`devserver_status` has it)';
+  const grove = context.groveTools ? GROVE_SKILL : '';
   return `# Arbora browser tools
 
 You are working inside Arbora, a desktop app that shows this project's running dev server
@@ -94,5 +113,5 @@ ${VERIFY_LOOP.join('\n')}
 - Leaving the dev server's origin, \`browser_evaluate\` and \`terminal_run\` ask the user first. If
   they decline, do not retry; explain what you needed instead.
 - Prefer editing source over \`browser_evaluate\`; changes made in the page are lost on reload.
-`;
+${grove}`;
 }

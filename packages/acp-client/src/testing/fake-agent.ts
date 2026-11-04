@@ -21,6 +21,9 @@
  * - "evaluate": `browser_evaluate` of `document.title` (needs the user's permission)
  * - "tool sweep": every other tool once against the vite-react fixture, one result line each
  * - "restart dev": `devserver_restart`, `browser_get_url`, `devserver_logs` and `terminal_run`
+ * - "list mcp servers": every server `session/new` passed, with its tool count or "not connected"
+ * - "grove delegate": `grove_list_agents`, `grove_start_agent` with "say hello from the helper",
+ *   `grove_wait` and `grove_read`, then quotes the helper's last message (the Stage 10 e2e)
  */
 import { Readable, Writable } from 'node:stream';
 import { basename, isAbsolute, join } from 'node:path';
@@ -49,6 +52,8 @@ interface SessionState {
   cancelled: boolean;
   /** Connected MCP clients by server name, with the tools each one listed. */
   mcp: Map<string, { client: Client; tools: string[] }>;
+  /** Every server name `session/new` passed, connected or not. */
+  mcpNames: string[];
 }
 
 const httpMcp = process.env['FAKE_AGENT_NO_HTTP_MCP'] !== '1';
@@ -199,6 +204,34 @@ async function browserCheck(cx: AgentContext, sessionId: string, state: SessionS
     `Before: ${count(before.text)}. After clicking ${ref}: ${count(after.text)}. Screenshot images: ${shot.images}.`,
     state,
   );
+}
+
+/** A lead's round trip through the Grove tools: start one helper, wait for it and quote its reply. */
+async function groveDelegate(cx: AgentContext, sessionId: string, state: SessionState): Promise<void> {
+  const listed = await callBrowserTool(cx, sessionId, state, 'grove_list_agents', {});
+  if (listed.isError) {
+    await say(cx, sessionId, `Grove tools failed: ${listed.text}`, state);
+    return;
+  }
+  const started = await callBrowserTool(cx, sessionId, state, 'grove_start_agent', {
+    task: 'say hello from the helper',
+  });
+  const helperId = /^Started helper (\S+)/.exec(started.text)?.[1];
+  if (started.isError || !helperId) {
+    await say(cx, sessionId, `Could not start a helper: ${started.text}`, state);
+    return;
+  }
+  const waited = await callBrowserTool(cx, sessionId, state, 'grove_wait', {
+    sessionIds: [helperId],
+    timeoutSeconds: 30,
+  });
+  const read = await callBrowserTool(cx, sessionId, state, 'grove_read', { sessionId: helperId });
+  const reply = read.text
+    .split('\n')
+    .filter((line) => line.startsWith('Agent: '))
+    .pop()
+    ?.slice('Agent: '.length);
+  await say(cx, sessionId, `${waited.text.split('\n')[0] ?? ''}\nThe helper said: "${reply ?? '(nothing)'}"`, state);
 }
 
 const sessions = new Map<string, SessionState>();
@@ -429,6 +462,13 @@ async function handlePrompt(cx: AgentContext, params: PromptRequest): Promise<Pr
   if (/plan/i.test(text)) await sendPlan(cx, sessionId, state);
   if (isCancelled(state)) return { stopReason: 'cancelled' };
   const browser = /browser check|tool sweep/i.test(text);
+  if (/list mcp servers/i.test(text)) {
+    const lines = state.mcpNames.map((name) => {
+      const tools = state.mcp.get(name)?.tools;
+      return `${name} (${tools ? `${tools.length} tools` : 'not connected'})`;
+    });
+    await say(cx, sessionId, `\n\nMCP servers: ${lines.join(', ') || 'none'}\n\n`, state);
+  }
   if (/browser check/i.test(text)) await browserCheck(cx, sessionId, state);
   if (/tool sweep/i.test(text)) await toolSweep(cx, sessionId, state);
   const restart = /restart dev/i.test(text);
@@ -450,6 +490,10 @@ async function handlePrompt(cx: AgentContext, params: PromptRequest): Promise<Pr
     await say(cx, sessionId, result.isError ? `Evaluate failed: ${result.text}` : `Page title: ${result.text}`, state);
   }
   if (browser || evaluate || restart) return { stopReason: 'end_turn' };
+  if (/grove delegate/i.test(text)) {
+    await groveDelegate(cx, sessionId, state);
+    return { stopReason: isCancelled(state) ? 'cancelled' : 'end_turn' };
+  }
   const edit = /comment to `?([^\s`]+)`?/i.exec(text);
   if (edit?.[1]) await editFile(cx, sessionId, state, edit[1]);
   if (isCancelled(state)) return { stopReason: 'cancelled' };
@@ -490,6 +534,7 @@ const app = agent({ name: 'arbora-fake-agent' })
       configOptions: configFor(),
       cancelled: false,
       mcp: await connectMcp(params.mcpServers),
+      mcpNames: params.mcpServers.map((server) => server.name),
     };
     sessions.set(sessionId, state);
     setTimeout(() => {

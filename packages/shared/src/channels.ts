@@ -25,8 +25,11 @@ import {
 import { designCommandSchema, designSessionSummarySchema, designStateSchema } from './design.js';
 import { agentModeIncludeSchema, agentModeSelectionSchema, agentModeTargetSchema } from './inspector.js';
 import {
+  generatedTextSchema,
   gitBranchSchema,
   gitCommitSchema,
+  gitGenerateKindSchema,
+  gitSyncResultSchema,
   gitHunkSchema,
   gitLineSchema,
   gitRemoteSchema,
@@ -63,7 +66,16 @@ import {
   projectSettingsSchema,
   recentProjectSchema,
   themeModeSchema,
+  workspaceKindSchema,
 } from './settings.js';
+import {
+  skillLibrarySchema,
+  skillNameSchema,
+  skillSearchResultSchema,
+  skillSourceSchema,
+  skillTargetIdSchema,
+} from './skills.js';
+import { mcpServerConfigSchema } from './mcp-servers.js';
 import { devServerStatusSchema, terminalInfoSchema, terminalKindSchema, terminalSizeSchema } from './terminal.js';
 import { installKindSchema, updateStateSchema } from './updates.js';
 
@@ -131,6 +143,7 @@ export const keybindingContextSchema = z.object({
   textEditing: z.boolean().default(false),
   /** The shortcut editor is recording a chord: main must let every key through to it. */
   recording: z.boolean().default(false),
+  workspace: workspaceKindSchema.default('browser'),
 });
 
 /** Request/response channels. Keep this the single registry of IPC surface. */
@@ -155,6 +168,38 @@ export const channels = {
   /** Opens an http(s) URL in the OS browser. */
   'app.openExternal': defineChannel('app.openExternal', z.object({ url: z.url({ protocol: /^https?$/ }) }), none),
 
+  /** Arbora's skill library (`~/.arbora/skills`) and which agents' skill folders link to each skill. */
+  'skills.list': defineChannel('skills.list', none, skillLibrarySchema),
+  /** Links the skill into exactly these agents' folders (symlinks) and unlinks it from the rest. */
+  'skills.setTargets': defineChannel(
+    'skills.setTargets',
+    z.object({ name: skillNameSchema, targets: z.array(skillTargetIdSchema) }),
+    skillLibrarySchema,
+  ),
+  /** Unlinks the skill everywhere and deletes it from the library. */
+  'skills.remove': defineChannel('skills.remove', z.object({ name: skillNameSchema }), skillLibrarySchema),
+  /** Moves a skill found in an agent folder into the library and links it back. */
+  'skills.adopt': defineChannel('skills.adopt', z.object({ name: skillNameSchema }), skillLibrarySchema),
+  'skills.reveal': defineChannel('skills.reveal', z.object({ name: skillNameSchema.nullable() }), none),
+  /** skills.sh search. */
+  'skills.search': defineChannel(
+    'skills.search',
+    z.object({ query: z.string().min(2).max(200) }),
+    z.array(skillSearchResultSchema),
+  ),
+  /** Clones the skill's GitHub repository, copies the skill into the library and links it. */
+  'skills.install': defineChannel(
+    'skills.install',
+    z.object({ source: skillSourceSchema, skillId: skillNameSchema, targets: z.array(skillTargetIdSchema) }),
+    skillLibrarySchema,
+  ),
+  /** MCP servers in other tools' config files (Claude Code, Cursor, Gemini, the project's `.mcp.json`). */
+  'mcp.importable': defineChannel(
+    'mcp.importable',
+    none,
+    z.array(z.object({ origin: z.string(), path: z.string(), servers: z.array(mcpServerConfigSchema) })),
+  ),
+
   /** Zips app info, redacted settings, logs and crash-dump names; `path` is null when cancelled. */
   'diagnostics.export': defineChannel('diagnostics.export', none, z.object({ path: z.string().nullable() })),
   'diagnostics.openCrashFolder': defineChannel('diagnostics.openCrashFolder', none, none),
@@ -168,6 +213,8 @@ export const channels = {
       version: z.string(),
       /** False for installs that only learn about new versions (deb, AUR, tarball, unsigned macOS). */
       selfUpdates: z.boolean(),
+      /** Started by `scripts/arbora-local`, which moves the checkout to the channel's branch. */
+      sourceLauncher: z.boolean(),
     }),
   ),
   'updates.check': defineChannel('updates.check', none, updateStateSchema),
@@ -326,10 +373,18 @@ export const channels = {
    */
   'agent.verify': defineChannel('agent.verify', z.object({ agentId: z.string() }), agentVerificationSchema),
   'agent.listThreads': defineChannel('agent.listThreads', none, z.array(threadSummarySchema)),
-  /** `model` is a value of the agent's `model` config option; it wins over the agent's default model. */
+  /**
+   * `model` is a value of the agent's `model` config option; it wins over the agent's default model.
+   * `title` names the thread before its first prompt (Grove's launcher titles it with the task).
+   */
   'agent.createThread': defineChannel(
     'agent.createThread',
-    z.object({ agentId: z.string(), model: z.string().max(300).optional(), groupId: z.string().nullable().optional() }),
+    z.object({
+      agentId: z.string(),
+      model: z.string().max(300).optional(),
+      groupId: z.string().nullable().optional(),
+      title: z.string().trim().min(1).max(200).optional(),
+    }),
     threadSummarySchema,
   ),
   'agent.getThread': defineChannel('agent.getThread', threadId, threadSchema.nullable()),
@@ -378,6 +433,13 @@ export const channels = {
   'agent.authenticate': defineChannel('agent.authenticate', threadId.extend({ methodId: z.string() }), none),
   /** Stops the agent process (if any) and starts it again on the next prompt. */
   'agent.restart': defineChannel('agent.restart', threadId, none),
+  /**
+   * Ends the agent process in any state (Grove's Stop). The thread shows as Stopped; the next
+   * prompt starts the agent again and restores the session when it can.
+   */
+  'agent.stopProcess': defineChannel('agent.stopProcess', threadId, none),
+  /** Moves a thread to Grove's Recent (stopping its process first) or back to the list. */
+  'agent.archiveThread': defineChannel('agent.archiveThread', threadId.extend({ archived: z.boolean() }), none),
   'agent.getLog': defineChannel('agent.getLog', threadId, z.array(acpLogEntrySchema)),
   /** Writes the redacted log as JSON; `path` is null when the save dialog was cancelled. */
   'agent.exportLog': defineChannel('agent.exportLog', threadId, z.object({ path: z.string().nullable() })),
@@ -389,6 +451,8 @@ export const channels = {
     z.object({ paths: z.array(z.string()).max(50) }),
     z.array(attachmentSchema),
   ),
+  /** Saves the clipboard image to `.arbora/pasted/` and describes it; null when there is none. */
+  'agent.pasteImage': defineChannel('agent.pasteImage', none, attachmentSchema.nullable()),
   'agent.listGroups': defineChannel('agent.listGroups', none, z.array(agentGroupSchema)),
   /** Replaces the project's groups (order, names, colours). Threads of a removed group are ungrouped. */
   'agent.saveGroups': defineChannel(
@@ -519,6 +583,10 @@ export const channels = {
   'git.pull': defineChannel('git.pull', none, gitResultSchema),
   'git.fetch': defineChannel('git.fetch', none, gitResultSchema),
   'git.stash': defineChannel('git.stash', none, z.array(gitStashSchema)),
+  /** How many `.arbora/` files are committed (ignored folders stay tracked until untracked). */
+  'git.arboraTracked': defineChannel('git.arboraTracked', none, z.object({ count: z.number().int().nonnegative() })),
+  /** `git rm -r --cached .arbora`: stop tracking it, keep the files. */
+  'git.untrackArbora': defineChannel('git.untrackArbora', none, gitResultSchema),
   'git.stashApply': defineChannel(
     'git.stashApply',
     z.object({ index: z.number().int().nonnegative(), pop: z.boolean() }),
@@ -538,6 +606,17 @@ export const channels = {
     z.object({ number: z.number().int().positive() }),
     z.array(githubCheckSchema),
   ),
+  /** `git add -A`. */
+  'git.stageAll': defineChannel('git.stageAll', none, none),
+  /** The branch pull requests target (`origin/HEAD`, else `main`/`master`). */
+  'git.defaultBranch': defineChannel('git.defaultBranch', none, z.string().nullable()),
+  /**
+   * A commit message for the staged changes, or pull request text for the current branch, from
+   * the Git task agent (`settings.tasks.git`) in a hidden session: nothing appears in a thread.
+   */
+  'git.generate': defineChannel('git.generate', z.object({ kind: gitGenerateKindSchema }), generatedTextSchema),
+  /** Runs the background sync now; null when sync is off or the repository has no remote. */
+  'git.syncNow': defineChannel('git.syncNow', none, gitSyncResultSchema.nullable()),
 } as const;
 
 /** Main -> renderer events. */
@@ -546,6 +625,8 @@ export const events = {
   'theme.changed': defineEvent('theme.changed', themeStateSchema),
   'project.changed': defineEvent('project.changed', projectInfoSchema.nullable()),
   'window.stateChanged': defineEvent('window.stateChanged', windowStateSchema),
+  /** The background git sync ran (`settings.git.autoSync`). */
+  'git.synced': defineEvent('git.synced', gitSyncResultSchema),
   /** A chord intercepted in main (or a menu action) asks the renderer to run a command. */
   'command.invoke': defineEvent('command.invoke', z.object({ commandId: z.string() })),
   'browser.stateChanged': defineEvent('browser.stateChanged', navigationStateSchema),

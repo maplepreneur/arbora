@@ -1,4 +1,4 @@
-import { resolveDefaultAgent, type AgentSettingsPatch } from '@arbora/shared';
+import { resolveDefaultAgent, resolveTaskAgent, type AgentSettingsPatch, type TaskId } from '@arbora/shared';
 import { useAgents } from './agent-store';
 import { showToast, useApp } from './store';
 
@@ -47,4 +47,29 @@ export function defaultAgentId(): string | undefined {
     project?.settings.defaultAgent,
     settings.agents.defaultAgent,
   );
+}
+
+/** The agent and model a task starts new threads with (Settings → Agents, "Defaults per task"). */
+export function taskAgent(task: TaskId): { agentId: string; model: string | null } | undefined {
+  const { project, settings } = useApp.getState();
+  return resolveTaskAgent(
+    settings.tasks,
+    task,
+    useAgents.getState().agents.map((a) => a.id),
+    settings.agents,
+    project?.settings.defaultAgent,
+  );
+}
+
+/** The agent a task picked itself, if it is still installed; undefined follows the thread default. */
+export function useTaskAgentId(task: TaskId): string | undefined {
+  const chosen = useApp((s) => s.settings.tasks[task].agentId);
+  const known = useAgents((s) => chosen !== null && s.agents.some((a) => a.id === chosen));
+  return known && chosen !== null ? chosen : undefined;
+}
+
+/** The model a task picked for `agentId`, when that agent is the task's own choice. */
+export function taskModelFor(task: TaskId, agentId: string): string | undefined {
+  const chosen = useApp.getState().settings.tasks[task];
+  return chosen.agentId === agentId && chosen.model !== null ? chosen.model : undefined;
 }

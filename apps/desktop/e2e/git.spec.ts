@@ -37,3 +37,24 @@ test('git panel lists the branch and an untracked file', async () => {
     await app.close();
   }
 });
+
+test('stage all with the shortcut, then commit from the message box', async () => {
+  const dir = repo();
+  writeFileSync(join(dir, 'other.txt'), 'two\n');
+  const { app, page } = await launch(tempUserData(), [dir]);
+  try {
+    await page.getByTestId('rail-git').click();
+    await expect(page.locator('[data-testid="git-file"][data-path="other.txt"]')).toBeVisible();
+    await page.keyboard.press('ControlOrMeta+Alt+s');
+    const staged = page.getByTestId('git-section-staged');
+    await expect(staged.locator('[data-testid="git-file"]')).toHaveCount(2);
+    await page.getByTestId('git-commit-message').fill('First commit');
+    await page.getByTestId('git-commit-message').press('ControlOrMeta+Enter');
+    const history = page.getByTestId('git-section-history');
+    await history.getByRole('button', { name: /History/ }).click();
+    await expect(history).toContainText('First commit');
+    await expect(page.locator('[data-testid="git-file"]')).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});

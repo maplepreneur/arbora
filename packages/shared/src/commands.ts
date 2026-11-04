@@ -103,16 +103,64 @@ export const CommandId = {
   openKeyboardShortcuts: 'arbora.openKeyboardShortcuts',
   toggleNotifications: 'arbora.toggleNotifications',
   toggleSounds: 'arbora.toggleSounds',
+  focusSidebarPanel: 'arbora.focus.sidebar',
+  focusCenterPanel: 'arbora.focus.center',
+  focusBottomPanel: 'arbora.focus.bottom',
+  focusAgentPanel: 'arbora.focus.agent',
+  focusPanelLeft: 'arbora.focus.left',
+  focusPanelRight: 'arbora.focus.right',
+  focusPanelUp: 'arbora.focus.up',
+  focusPanelDown: 'arbora.focus.down',
   focusNextPanel: 'arbora.focusNextPanel',
   focusPreviousPanel: 'arbora.focusPreviousPanel',
   browserResetData: 'arbora.browser.resetData',
   agentShowAttention: 'arbora.agent.showAttention',
   agentNewGroup: 'arbora.agent.newGroup',
+  gitStageAll: 'arbora.git.stageAll',
+  gitCommit: 'arbora.git.commit',
+  gitPush: 'arbora.git.push',
+  gitSync: 'arbora.git.sync',
+  gitAiCommit: 'arbora.git.aiCommit',
+  gitAiPullRequest: 'arbora.git.aiPullRequest',
+  toggleWorkspace: 'arbora.toggleWorkspace',
+  showBrowserWorkspace: 'arbora.showBrowserWorkspace',
+  showGrove: 'arbora.showGrove',
+  groveNewDefault: 'arbora.grove.newDefault',
+  groveLaunch: 'arbora.grove.launch',
+  groveNextSession: 'arbora.grove.nextSession',
+  grovePreviousSession: 'arbora.grove.previousSession',
+  groveSelectSession1: 'arbora.grove.selectSession1',
+  groveSelectSession2: 'arbora.grove.selectSession2',
+  groveSelectSession3: 'arbora.grove.selectSession3',
+  groveSelectSession4: 'arbora.grove.selectSession4',
+  groveSelectSession5: 'arbora.grove.selectSession5',
+  groveSelectSession6: 'arbora.grove.selectSession6',
+  groveSelectSession7: 'arbora.grove.selectSession7',
+  groveSelectSession8: 'arbora.grove.selectSession8',
+  groveSelectSession9: 'arbora.grove.selectSession9',
+  groveArchiveSession: 'arbora.grove.archiveSession',
+  groveStopSession: 'arbora.grove.stopSession',
+  groveRestartSession: 'arbora.grove.restartSession',
+  groveRenameSession: 'arbora.grove.renameSession',
+  groveSetDefaultAgent: 'arbora.grove.setDefaultAgent',
 } as const;
 
 export type CommandId = (typeof CommandId)[keyof typeof CommandId];
 
 export const commandIdSchema = z.enum(Object.values(CommandId) as [CommandId, ...CommandId[]]);
+
+/** `Mod+1`..`Mod+9` inside Grove, in row order. */
+export const GROVE_SELECT_COMMANDS = [
+  CommandId.groveSelectSession1,
+  CommandId.groveSelectSession2,
+  CommandId.groveSelectSession3,
+  CommandId.groveSelectSession4,
+  CommandId.groveSelectSession5,
+  CommandId.groveSelectSession6,
+  CommandId.groveSelectSession7,
+  CommandId.groveSelectSession8,
+  CommandId.groveSelectSession9,
+] as const;
 
 export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
   {
@@ -292,6 +340,57 @@ export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
   { id: CommandId.toggleNotifications, title: 'Toggle Agent Notifications', category: 'Preferences' },
   { id: CommandId.toggleSounds, title: 'Toggle Agent Sounds', category: 'Preferences' },
   // F6 cycles landmarks (title bar, sidebar, centre, agent panel, bottom drawer), as in browsers and VS Code.
+  // Mod+1..4 pick a panel and Mod+Alt+arrows move between neighbours, like a tiling window manager.
+  {
+    id: CommandId.focusSidebarPanel,
+    title: 'Focus Sidebar',
+    category: 'View',
+    keybinding: 'mod+1',
+    intercept: true,
+  },
+  {
+    id: CommandId.focusCenterPanel,
+    title: 'Focus Browser or Editor',
+    category: 'View',
+    keybinding: 'mod+2',
+    intercept: true,
+  },
+  {
+    id: CommandId.focusBottomPanel,
+    title: 'Focus Bottom Panel',
+    category: 'View',
+    keybinding: 'mod+3',
+    intercept: true,
+  },
+  { id: CommandId.focusAgentPanel, title: 'Focus Agent Panel', category: 'View', keybinding: 'mod+4', intercept: true },
+  {
+    id: CommandId.focusPanelLeft,
+    title: 'Focus Panel to the Left',
+    category: 'View',
+    keybinding: 'mod+alt+left',
+    intercept: true,
+  },
+  {
+    id: CommandId.focusPanelRight,
+    title: 'Focus Panel to the Right',
+    category: 'View',
+    keybinding: 'mod+alt+right',
+    intercept: true,
+  },
+  {
+    id: CommandId.focusPanelUp,
+    title: 'Focus Panel Above',
+    category: 'View',
+    keybinding: 'mod+alt+up',
+    intercept: true,
+  },
+  {
+    id: CommandId.focusPanelDown,
+    title: 'Focus Panel Below',
+    category: 'View',
+    keybinding: 'mod+alt+down',
+    intercept: true,
+  },
   { id: CommandId.focusNextPanel, title: 'Focus Next Panel', category: 'View', keybinding: 'f6', intercept: true },
   {
     id: CommandId.focusPreviousPanel,
@@ -309,7 +408,101 @@ export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
     intercept: true,
   },
   { id: CommandId.agentNewGroup, title: 'New Agent Group…', category: 'Agent' },
+  // Git chords are intercepted so they work from the page and the terminal too.
+  { id: CommandId.gitStageAll, title: 'Stage All Changes', category: 'Git', keybinding: 'mod+alt+s', intercept: true },
+  {
+    id: CommandId.gitCommit,
+    title: 'Commit Staged Changes',
+    category: 'Git',
+    keybinding: 'mod+alt+c',
+    intercept: true,
+  },
+  { id: CommandId.gitPush, title: 'Push', category: 'Git', keybinding: 'mod+alt+p', intercept: true },
+  { id: CommandId.gitSync, title: 'Fetch and Pull Now', category: 'Git' },
+  {
+    id: CommandId.gitAiCommit,
+    title: 'Stage All and Commit with AI',
+    category: 'Git',
+    keybinding: 'mod+alt+shift+c',
+    intercept: true,
+  },
+  {
+    id: CommandId.gitAiPullRequest,
+    title: 'AI Commit, Push and Open Pull Request',
+    category: 'Git',
+    keybinding: 'mod+alt+shift+p',
+    intercept: true,
+  },
+  {
+    id: CommandId.toggleWorkspace,
+    title: 'Toggle Browser / Grove',
+    category: 'View',
+    keybinding: 'mod+alt+g',
+    intercept: true,
+  },
+  { id: CommandId.showBrowserWorkspace, title: 'Show Browser Workspace', category: 'View', intercept: true },
+  { id: CommandId.showGrove, title: 'Show Grove', category: 'View', intercept: true },
+  // Grove chords only apply while Grove shows, so they beat the browser workspace's `always`
+  // bindings on the same keys there (Mod+1..9, Mod+Alt+Up/Down) and leave them alone elsewhere.
+  {
+    id: CommandId.groveNewDefault,
+    title: 'New Agent',
+    category: 'Grove',
+    keybinding: 'mod+alt+n',
+    when: 'grove',
+    intercept: true,
+  },
+  { id: CommandId.groveLaunch, title: 'New Agent with a Task…', category: 'Grove', intercept: true },
+  {
+    id: CommandId.groveNextSession,
+    title: 'Next Agent',
+    category: 'Grove',
+    keybinding: 'mod+alt+down',
+    when: 'grove',
+    intercept: true,
+  },
+  {
+    id: CommandId.grovePreviousSession,
+    title: 'Previous Agent',
+    category: 'Grove',
+    keybinding: 'mod+alt+up',
+    when: 'grove',
+    intercept: true,
+  },
+  ...GROVE_SELECT_COMMANDS.map((id, index): CommandDescriptor => ({
+    id,
+    title: `Agent ${index + 1}`,
+    category: 'Grove',
+    keybinding: `mod+${index + 1}`,
+    when: 'grove',
+    intercept: true,
+    hidden: true,
+  })),
+  {
+    id: CommandId.groveArchiveSession,
+    title: 'Archive Agent',
+    category: 'Grove',
+    keybinding: 'mod+alt+w',
+    when: 'grove',
+    intercept: true,
+  },
+  { id: CommandId.groveStopSession, title: 'Stop Agent Process', category: 'Grove', when: 'grove', intercept: true },
+  { id: CommandId.groveRestartSession, title: 'Restart Agent', category: 'Grove', when: 'grove', intercept: true },
+  { id: CommandId.groveRenameSession, title: 'Rename Agent…', category: 'Grove', when: 'grove', intercept: true },
+  {
+    id: CommandId.groveSetDefaultAgent,
+    title: 'Set as Default Agent',
+    category: 'Grove',
+    when: 'grove',
+    intercept: true,
+  },
 ];
+
+/** The zero-based Grove row a `groveSelectSession*` command selects, or `null` for any other command. */
+export function groveSessionIndex(commandId: string): number | null {
+  const index = (GROVE_SELECT_COMMANDS as readonly string[]).indexOf(commandId);
+  return index === -1 ? null : index;
+}
 
 /** Overrides map a command id to a chord string, or `null` to unbind it. */
 export type KeybindingOverrides = Readonly<Record<string, string | null>>;
@@ -389,5 +582,31 @@ export class CommandRegistry {
 
   private emit(): void {
     for (const listener of this.listeners) listener();
+  }
+}
+
+/** The four workspace panels `Mod+1`..`Mod+4` focus, in that order. */
+export const WORKSPACE_PANELS = ['sidebar', 'center', 'bottom', 'agent'] as const;
+export type WorkspacePanel = (typeof WORKSPACE_PANELS)[number];
+export type PanelDirection = 'left' | 'right' | 'up' | 'down';
+
+/**
+ * The panel next to `from` in the default layout: the sidebar on the left, the browser/editor above
+ * the bottom panel in the middle, the agent on the right. `null` at an edge.
+ */
+export function neighbourPanel(from: WorkspacePanel, direction: PanelDirection): WorkspacePanel | null {
+  switch (direction) {
+    case 'left':
+      return from === 'agent' ? 'center' : from === 'sidebar' ? null : 'sidebar';
+    case 'right':
+      return from === 'sidebar' ? 'center' : from === 'agent' ? null : 'agent';
+    case 'up':
+      return from === 'bottom' ? 'center' : null;
+    case 'down':
+      return from === 'center' ? 'bottom' : null;
+    default: {
+      const unreachable: never = direction;
+      throw new Error(`Unknown direction ${String(unreachable)}`);
+    }
   }
 }

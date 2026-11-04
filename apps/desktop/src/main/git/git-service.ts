@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
 import type { GitBranch, GitCommit, GitHunk, GitLine, GitRemote, GitResult, GitStash, GitStatus } from '@arbora/shared';
+import { ARBORA_DIR } from '../project-settings.js';
 import { changedLines, hunksOf, patchWithHunks } from './hunks.js';
 import { parsePorcelain } from './porcelain.js';
 import { GitError, runGit } from './run-git.js';
@@ -78,6 +79,60 @@ export class GitService {
     return this.enqueue(async (env) => {
       if (paths.length === 0) return;
       await runGit(this.options.root, env, ['add', '--', ...paths]);
+    });
+  }
+
+  /** `git add -A`: every change, new file and deletion in the repository. */
+  stageAll(): Promise<void> {
+    return this.enqueue(async (env) => {
+      await runGit(this.options.root, env, ['add', '-A']);
+    });
+  }
+
+  /** `--stat` and full patch of the staged changes, for generating a commit message. */
+  stagedSummary(): Promise<{ stat: string; diff: string }> {
+    return this.enqueue(async (env) => {
+      const stat = (await runGit(this.options.root, env, ['diff', '--cached', '--stat', '--no-color'])).stdout;
+      const diff = (await runGit(this.options.root, env, ['diff', '--cached', '--no-ext-diff', '--no-color'])).stdout;
+      return { stat, diff };
+    });
+  }
+
+  /**
+   * The branch pull requests target: the remote's HEAD (`origin/HEAD`), else `main` or `master`
+   * when either exists, else null.
+   */
+  defaultBranch(): Promise<string | null> {
+    return this.enqueue(async (env) => {
+      try {
+        const { stdout } = await runGit(this.options.root, env, [
+          'symbolic-ref',
+          '--quiet',
+          '--short',
+          'refs/remotes/origin/HEAD',
+        ]);
+        const name = stdout.trim().replace(/^origin\//, '');
+        if (name) return name;
+      } catch {
+        // No remote HEAD; look for the usual names.
+      }
+      for (const name of ['main', 'master']) {
+        if (await this.refExists(env, `refs/heads/${name}`)) return name;
+        if (await this.refExists(env, `refs/remotes/origin/${name}`)) return name;
+      }
+      return null;
+    });
+  }
+
+  /** Commits, `--stat` and patch of HEAD since it left `base` (remote branch when there is one). */
+  branchSummary(base: string): Promise<{ log: string; stat: string; diff: string }> {
+    return this.enqueue(async (env) => {
+      const ref = (await this.refExists(env, `refs/remotes/origin/${base}`)) ? `origin/${base}` : base;
+      const root = this.options.root;
+      const log = (await runGit(root, env, ['log', '--no-color', '--format=- %s%n%b', `${ref}..HEAD`])).stdout;
+      const stat = (await runGit(root, env, ['diff', '--stat', '--no-color', `${ref}...HEAD`])).stdout;
+      const diff = (await runGit(root, env, ['diff', '--no-ext-diff', '--no-color', `${ref}...HEAD`])).stdout;
+      return { log, stat, diff };
     });
   }
 
@@ -182,12 +237,35 @@ export class GitService {
     });
   }
 
+  /** Pushes; a branch without an upstream is published to `origin` (or the only remote) with `-u`. */
   push(): Promise<GitResult> {
-    return this.command(['push']);
+    return this.enqueue(async (env) => {
+      const root = this.options.root;
+      try {
+        let args = ['push'];
+        try {
+          await runGit(root, env, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']);
+        } catch {
+          const remotes = (await runGit(root, env, ['remote'])).stdout.split('\n').filter(Boolean);
+          const remote = remotes.includes('origin') ? 'origin' : remotes[0];
+          if (!remote) return { ok: false, output: 'This repository has no remote to push to.' };
+          args = ['push', '--set-upstream', remote, 'HEAD'];
+        }
+        const { stdout, stderr } = await runGit(root, env, args);
+        return { ok: true, output: (stdout || stderr).trim() };
+      } catch (error) {
+        return { ok: false, output: messageOf(error) };
+      }
+    });
   }
 
   pull(): Promise<GitResult> {
     return this.command(['pull']);
+  }
+
+  /** The background sync's pull: fast-forward only, so it never creates a merge. */
+  pullFastForward(): Promise<GitResult> {
+    return this.command(['pull', '--ff-only']);
   }
 
   fetch(): Promise<GitResult> {
@@ -217,6 +295,19 @@ export class GitService {
     return this.command(['stash', 'drop', `stash@{${index}}`]);
   }
 
+  /** Files under `.arbora/` that are already in the index (committed before it was ignored). */
+  trackedArboraFiles(): Promise<number> {
+    return this.enqueue(async (env) => {
+      const { stdout } = await runGit(this.options.root, env, ['ls-files', '--', ARBORA_DIR]);
+      return stdout.split('\n').filter((line) => line !== '').length;
+    });
+  }
+
+  /** Removes `.arbora/` from the index and keeps the files on disk; the next commit records it. */
+  untrackArbora(): Promise<GitResult> {
+    return this.command(['rm', '-r', '--cached', '--quiet', '--', ARBORA_DIR]);
+  }
+
   remotes(): Promise<GitRemote[]> {
     return this.enqueue(async (env) => {
       const { stdout } = await runGit(this.options.root, env, ['remote', '-v']);
@@ -238,6 +329,15 @@ export class GitService {
         return { ok: false, output: messageOf(error) };
       }
     });
+  }
+
+  private async refExists(env: NodeJS.ProcessEnv, ref: string): Promise<boolean> {
+    try {
+      await runGit(this.options.root, env, ['show-ref', '--verify', '--quiet', ref]);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private async show(env: NodeJS.ProcessEnv, rev: string, path: string): Promise<string> {

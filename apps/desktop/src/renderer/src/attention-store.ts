@@ -28,11 +28,18 @@ export function resetAttention(): void {
   syncCount();
 }
 
-/** The thread is on screen: the agent panel shows it and the window has focus. */
-export function isThreadVisible(threadId: string): boolean {
+/** The thread on screen in the workspace that shows: the Grove selection, or the docked panel's open thread. */
+export function visibleThreadId(): string | null {
+  const { settingsOpen, layout } = useApp.getState();
+  if (settingsOpen) return null;
+  if (layout.workspace === 'grove') return layout.groveThreadId;
   const { activeThreadId, view } = useAgents.getState();
-  const { windowState, settingsOpen } = useApp.getState();
-  return windowState.focused && !settingsOpen && view === 'thread' && activeThreadId === threadId;
+  return view === 'thread' ? activeThreadId : null;
+}
+
+/** The thread is on screen and the window has focus. */
+export function isThreadVisible(threadId: string): boolean {
+  return useApp.getState().windowState.focused && visibleThreadId() === threadId;
 }
 
 let lastSentCount = -1;
@@ -82,16 +89,26 @@ function announce(threadId: string, kind: AttentionKind, attention: ThreadAttent
   useAttention.setState({ lastCue: { kind, threadId, sound, notified } });
 }
 
+function isHelper(threadId: string): boolean {
+  return useAgents.getState().threads.some((t) => t.id === threadId && t.parentThreadId !== null);
+}
+
 function apply(threadId: string, input: AttentionInput): void {
   const current = useAttention.getState().threads[threadId];
   const { next, signal } = reduceAttention(current, input);
+  // A helper's finish is its lead's to read (`grove_wait`); its questions and failures still reach the user.
+  const helperFinish = signal === 'finished' && isHelper(threadId);
   let settled = next;
   // A finish on the thread the user is reading is already seen.
-  if (signal !== null && (signal === 'finished' || signal === 'failed') && isThreadVisible(threadId)) {
+  if (
+    signal !== null &&
+    (signal === 'finished' || signal === 'failed') &&
+    (helperFinish || isThreadVisible(threadId))
+  ) {
     settled = reduceAttention(next, { type: 'seen' }).next;
   }
   useAttention.setState((s) => ({ threads: { ...s.threads, [threadId]: settled } }));
-  if (signal !== null) announce(threadId, signal, next);
+  if (signal !== null && !helperFinish) announce(threadId, signal, next);
   syncCount();
 }
 
@@ -136,8 +153,8 @@ export function useThreadAttention(threadId: string): AttentionKind | null {
 /** Clears "finished" and "failed" once the open thread is on screen in a focused window. */
 export function initAttentionTracking(): () => void {
   const check = (): void => {
-    const { activeThreadId } = useAgents.getState();
-    if (activeThreadId && isThreadVisible(activeThreadId)) markSeen(activeThreadId);
+    const threadId = visibleThreadId();
+    if (threadId && isThreadVisible(threadId)) markSeen(threadId);
   };
   const offAgents = useAgents.subscribe(check);
   const offApp = useApp.subscribe(check);

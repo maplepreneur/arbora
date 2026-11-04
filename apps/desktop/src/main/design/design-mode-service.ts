@@ -314,7 +314,8 @@ export class DesignModeService {
    */
   private send(target: AgentModeTarget, input: DesignDelivery): string {
     const agents = this.checkTarget(target);
-    const threadId = target.type === 'thread' ? target.threadId : agents.createThread(target.agentId, target.model).id;
+    const threadId =
+      target.type === 'thread' ? target.threadId : agents.createThread(target.agentId, { model: target.model }).id;
     void this.deliver(agents, threadId, input).catch((error: unknown) => {
       console.warn(`[design] prompt failed: ${(error as Error).message}`);
     });

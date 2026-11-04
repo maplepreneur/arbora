@@ -2,8 +2,10 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileS
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { McpServer } from '@agentclientprotocol/sdk';
 import { AgentRegistry, FAKE_AGENT_PATH } from '@arbora/acp-client';
 import {
+  DEFAULT_THREAD_TITLE,
   toPlatform,
   type AcpLogEntry,
   type RememberedPermissions,
@@ -13,6 +15,7 @@ import {
 } from '@arbora/shared';
 import type { BrowserToolHost, Cdp } from '@arbora/mcp-browser-server';
 import { openBrowserTools } from '../mcp/browser-tools.js';
+import { GroveHost } from '../mcp/grove-tool-host.js';
 import { TerminalService } from '../terminal/terminal-service.js';
 import { AgentService, STOP_GRACE_MS, type McpAttachment } from './agent-service.js';
 import { threadsDir } from './thread-store.js';
@@ -61,6 +64,7 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
       permissions?: RememberedPermissions;
       defaultModel?: string;
       mcp?: (threadId: string) => Promise<McpAttachment>;
+      userMcpServers?: (agentId: string, http: boolean) => McpServer[];
     } = {},
   ): Harness {
     const h: Harness = {
@@ -94,6 +98,7 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
       devUrl: () => 'http://localhost:5173/',
       defaultModel: () => options.defaultModel,
       ...(options.mcp ? { mcp: options.mcp } : {}),
+      ...(options.userMcpServers ? { userMcpServers: options.userMcpServers } : {}),
       permissions: {
         get: () => h.permissions,
         remember: (key, decision) => {
@@ -118,6 +123,29 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
     return states?.[states.length - 1];
   }
 
+  function agentText(h: Harness, threadId: string): string {
+    return (h.service.getThread(threadId)?.events ?? [])
+      .flatMap((e) => (e.kind === 'agent_message' ? e.blocks : []))
+      .map((b) => (b.type === 'text' ? b.text : ''))
+      .join('');
+  }
+
+  function summaryOf(h: Harness, threadId: string): ThreadSummary | undefined {
+    return h.service.listThreads().find((t) => t.id === threadId);
+  }
+
+  it('runs a task in a hidden session that cannot write files', async () => {
+    root = makeRoot();
+    writeFileSync(join(root, 'App.tsx'), 'export {};\n');
+    const h = setup();
+    const reply = await h.service.runTask(FAKE, null, 'Please add a comment to App.tsx');
+    expect(reply).toContain('Working on: Please add a comment to App.tsx');
+    expect(readFileSync(join(root, 'App.tsx'), 'utf8')).toBe('export {};\n');
+    expect(h.service.listThreads()).toEqual([]);
+    expect(h.threads).toEqual([]);
+    expect(existsSync(threadsDir(root))).toBe(false);
+  });
+
   it('groups and pins threads, persists both, and ungroups threads of a removed group', async () => {
     root = makeRoot();
     const h = setup();
@@ -126,8 +154,8 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
       { id: 'ui', name: 'UI', color: 'blue', collapsed: false },
       { id: 'api', name: 'API', color: 'green', collapsed: false },
     ]);
-    const a = h.service.createThread(FAKE, undefined, 'ui');
-    const b = h.service.createThread(FAKE, undefined, 'missing');
+    const a = h.service.createThread(FAKE, { groupId: 'ui' });
+    const b = h.service.createThread(FAKE, { groupId: 'missing' });
     expect(a.groupId).toBe('ui');
     expect(b.groupId).toBeNull();
     h.service.setThreadGroup(b.id, 'api');
@@ -521,6 +549,27 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
     expect(JSON.stringify(log)).not.toMatch(/Bearer [A-Za-z0-9_-]{20,}/);
   });
 
+  it("passes the user's MCP servers to session/new", async () => {
+    root = makeRoot();
+    const asked: [string, boolean][] = [];
+    const h = setup({
+      userMcpServers: (agentId, http) => {
+        asked.push([agentId, http]);
+        return [{ name: 'docs', command: 'definitely-not-a-command', args: [], env: [] }];
+      },
+    });
+    const thread = h.service.createThread(FAKE);
+    await h.service.prompt(thread.id, [{ type: 'text', text: 'list mcp servers' }]);
+    expect(asked).toEqual([[FAKE, true]]);
+    const text = h.service
+      .getThread(thread.id)
+      ?.events.flatMap((e) => (e.kind === 'agent_message' ? e.blocks : []))
+      .map((b) => (b.type === 'text' ? b.text : ''))
+      .join('');
+    expect(text).toContain('MCP servers: docs (not connected)');
+    expect(h.service.getLog(thread.id).some((e) => String(e.message) === 'your MCP servers: docs')).toBe(true);
+  });
+
   it('warns once when the agent never lists the browser tools', async () => {
     root = makeRoot();
     const h = setup({
@@ -532,6 +581,172 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
     const notices = h.service.getThread(thread.id)?.events.filter((e) => e.kind === 'notice') ?? [];
     expect(notices).toHaveLength(1);
     expect(notices[0]).toMatchObject({ severity: 'warning', title: expect.stringMatching(/browser tools/) as unknown });
+  });
+
+  it('creates threads with a title, a lead and auto-approve edits', async () => {
+    root = makeRoot();
+    const h = setup();
+    const lead = h.service.createThread(FAKE, { title: '  fix the nav  ' });
+    expect(lead).toMatchObject({
+      title: 'fix the nav',
+      parentThreadId: null,
+      archivedAt: null,
+      autoApproveEdits: false,
+    });
+    const helper = h.service.createThread(FAKE, { parentThreadId: lead.id, autoApproveEdits: true });
+    expect(helper).toMatchObject({ title: DEFAULT_THREAD_TITLE, parentThreadId: lead.id, autoApproveEdits: true });
+    expect(h.service.createThread(FAKE, { parentThreadId: 'gone' }).parentThreadId).toBeNull();
+    await h.service.prompt(lead.id, [{ type: 'text', text: 'hello' }]);
+    expect(summaryOf(h, lead.id)?.title).toBe('fix the nav');
+  });
+
+  it('stops the process and starts it again on the next prompt', async () => {
+    root = makeRoot();
+    const h = setup();
+    const thread = h.service.createThread(FAKE);
+    await expect.poll(() => latestState(h, thread.id)?.status, { timeout: 15_000 }).toBe('ready');
+    await h.service.stopProcess(thread.id);
+    expect(latestState(h, thread.id)?.status).toBe('idle');
+    expect(h.service.isSettled(thread.id)).toBe(true);
+    expect((await h.service.prompt(thread.id, [{ type: 'text', text: 'hello' }])).stopReason).toBe('end_turn');
+
+    const turn = h.service.prompt(thread.id, [{ type: 'text', text: 'slow' }]);
+    await expect.poll(() => latestState(h, thread.id)?.status).toBe('prompting');
+    await h.service.stopProcess(thread.id);
+    expect(await turn).toEqual({ stopReason: 'cancelled' });
+    expect(latestState(h, thread.id)?.status).toBe('idle');
+  });
+
+  it('archives a thread, refuses prompts while archived, and restores it', async () => {
+    root = makeRoot();
+    const first = setup();
+    const thread = first.service.createThread(FAKE);
+    await first.service.prompt(thread.id, [{ type: 'text', text: 'hello' }]);
+    await first.service.setArchived(thread.id, true);
+    const archived = summaryOf(first, thread.id);
+    expect(archived?.archivedAt).toEqual(expect.any(Number));
+    expect(archived?.state.status).toBe('idle');
+    expect(first.service.isSettled(thread.id)).toBe(true);
+    await expect(first.service.prompt(thread.id, [{ type: 'text', text: 'again' }])).rejects.toThrow(/archived/);
+    await first.service.dispose();
+    first.terminals.dispose();
+    harnesses.splice(0);
+
+    const second = setup();
+    expect(summaryOf(second, thread.id)?.archivedAt).toBe(archived?.archivedAt);
+    await second.service.setArchived(thread.id, false);
+    expect(summaryOf(second, thread.id)?.archivedAt).toBeNull();
+    expect((await second.service.prompt(thread.id, [{ type: 'text', text: 'again' }])).stopReason).toBe('end_turn');
+  });
+
+  it('waits for threads to settle and gives up on a timeout, an abort or the end of the lead turn', async () => {
+    root = makeRoot();
+    const h = setup();
+    const a = h.service.createThread(FAKE);
+    const b = h.service.createThread(FAKE);
+    expect(h.service.isSettled(a.id)).toBe(false);
+    expect(await h.service.waitForSettled([a.id, b.id], { until: 'all', timeoutMs: 15_000 })).toBe(true);
+
+    const slowA = h.service.prompt(a.id, [{ type: 'text', text: 'slow' }]);
+    expect(h.service.isSettled(a.id)).toBe(false);
+    expect(await h.service.waitForSettled([a.id], { until: 'all', timeoutMs: 100 })).toBe(false);
+    const controller = new AbortController();
+    const aborted = h.service.waitForSettled([a.id], { until: 'all', timeoutMs: 15_000, signal: controller.signal });
+    controller.abort();
+    expect(await aborted).toBe(false);
+
+    const quick = h.service.prompt(b.id, [{ type: 'text', text: 'hello' }]);
+    expect(await h.service.waitForSettled([a.id, b.id], { until: 'any', timeoutMs: 15_000 })).toBe(true);
+    await quick;
+
+    await expect.poll(() => latestState(h, a.id)?.status).toBe('prompting');
+    const slowB = h.service.prompt(b.id, [{ type: 'text', text: 'slow' }]);
+    const leadWait = h.service.waitForSettled([b.id], { until: 'all', timeoutMs: 15_000, turnOf: a.id });
+    await h.service.cancel(a.id);
+    expect(await leadWait).toBe(false);
+    expect((await slowA).stopReason).toBe('cancelled');
+
+    const settled = h.service.waitForSettled([b.id], { until: 'all', timeoutMs: 15_000 });
+    await expect.poll(() => latestState(h, b.id)?.status).toBe('prompting');
+    await h.service.cancel(b.id);
+    expect(await settled).toBe(true);
+    expect((await slowB).stopReason).toBe('cancelled');
+  });
+
+  it('counts a thread that waits on the user, and a deleted thread, as settled', async () => {
+    root = makeRoot();
+    writeFileSync(join(root, 'App.tsx'), 'export {};\n');
+    const h = setup();
+    const a = h.service.createThread(FAKE);
+    const turn = h.service.prompt(a.id, [{ type: 'text', text: 'Please add a comment to App.tsx' }]);
+    expect(await h.service.waitForSettled([a.id], { until: 'all', timeoutMs: 15_000 })).toBe(true);
+    const permission = h.service.getThread(a.id)?.events.find((e) => e.kind === 'permission');
+    if (permission?.kind !== 'permission') throw new Error('no permission');
+    expect(permission.outcome).toBeNull();
+    h.service.respondPermission(a.id, permission.requestId, 'reject');
+    expect((await turn).stopReason).toBe('end_turn');
+
+    const b = h.service.createThread(FAKE);
+    const slow = h.service.prompt(b.id, [{ type: 'text', text: 'slow' }]);
+    const waiting = h.service.waitForSettled([b.id], { until: 'all', timeoutMs: 15_000 });
+    await h.service.deleteThread(b.id);
+    expect(await waiting).toBe(true);
+    await slow;
+  });
+
+  it('lets a lead start a helper with the Grove tools, wait for it and read its reply', async () => {
+    root = makeRoot();
+    let service: AgentService | null = null;
+    const h = setup({
+      mcp: (threadId) => {
+        const thread = service?.listThreads().find((t) => t.id === threadId);
+        const grove =
+          thread?.parentThreadId === null
+            ? new GroveHost({
+                threadId,
+                agents: () => service,
+                agentSettings: () => ({ defaultAgent: FAKE, hidden: [], verified: {} }),
+                projectDefaultAgent: () => undefined,
+                maxHelpers: () => 2,
+              })
+            : undefined;
+        return openBrowserTools(stubToolHost({}), { command: process.execPath, script: 'unused.js' }, '0.0.0', {
+          grove,
+        });
+      },
+    });
+    service = h.service;
+    h.service.saveGroups([{ id: 'ui', name: 'UI', color: 'blue', collapsed: false }]);
+    const lead = h.service.createThread(FAKE, { groupId: 'ui', autoApproveEdits: true });
+    const turn = h.service.prompt(lead.id, [{ type: 'text', text: 'grove delegate' }]);
+    await expect
+      .poll(() => h.service.getThread(lead.id)?.events.find((e) => e.kind === 'permission'), { timeout: 15_000 })
+      .toBeDefined();
+    const permission = h.service.getThread(lead.id)?.events.find((e) => e.kind === 'permission');
+    if (permission?.kind !== 'permission') throw new Error('no permission');
+    expect(permission.title).toBe('grove delegate wants to start helper agents');
+    expect(permission.options.map((o) => o.kind)).toEqual(['allow_once', 'reject_once']);
+    h.service.respondPermission(lead.id, permission.requestId, 'allow');
+    expect(await turn).toEqual({ stopReason: 'end_turn' });
+
+    const helper = h.service.listThreads().find((t) => t.parentThreadId === lead.id);
+    expect(helper).toMatchObject({ title: 'say hello from the helper', groupId: 'ui', autoApproveEdits: true });
+    if (!helper) throw new Error('no helper');
+    expect(agentText(h, helper.id)).toContain('Working on: say hello from the helper');
+    const reply = agentText(h, lead.id);
+    expect(reply).toContain('Settled:');
+    expect(reply).toContain('The helper said: "Working on: say hello from the helper');
+    const sentPrompt = (threadId: string): string =>
+      JSON.stringify(
+        h.service
+          .getLog(threadId)
+          .find((e) => e.direction === 'out' && (e.message as { method?: string }).method === 'session/prompt')
+          ?.message,
+      );
+    expect(sentPrompt(lead.id)).toContain('grove_start_agent');
+    // One level: a helper gets the browser tools but not the Grove tools.
+    expect(sentPrompt(helper.id)).toContain('arbora-browser');
+    expect(sentPrompt(helper.id)).not.toContain('grove_');
   });
 });
 

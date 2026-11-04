@@ -68,6 +68,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Only these builds check for updates. A local `pnpm package` build stays put (docs/RELEASING.md).
+          ARBORA_RELEASE_BUILD: 'true'
           # macOS: Developer ID Application certificate (.p12, base64) and App Store Connect API key.
           CSC_LINK: ${{ runner.os == 'macOS' && secrets.MAC_CSC_LINK || '' }}
           CSC_KEY_PASSWORD: ${{ runner.os == 'macOS' && secrets.MAC_CSC_KEY_PASSWORD || '' }}
@@ -93,6 +95,11 @@ jobs:
             echo "No Windows signing certificate: building unsigned."
           fi
           pnpm --filter @arbora/desktop release "${builder_args[@]}"
+      - name: The build checks for updates
+        shell: bash
+        run: |
+          grep -Eq '(var|let|const) RELEASE_BUILD = true;' apps/desktop/out/main/index.js ||
+            { echo "out/main/index.js was not built with ARBORA_RELEASE_BUILD=true; it would never update"; exit 1; }
       - name: Verify the macOS signature
         if: runner.os == 'macOS'
         run: |
@@ -163,7 +170,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: arbora-ubuntu-latest
           path: dist

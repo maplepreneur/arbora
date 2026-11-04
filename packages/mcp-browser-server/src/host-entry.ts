@@ -6,6 +6,14 @@
 export { ToolError, type Cdp } from './cdp.js';
 export { MCP_PATH, MCP_SERVER_NAME, SHIM_TOKEN_ENV } from './constants.js';
 export type {
+  GroveAgent,
+  GroveSession,
+  GroveStartRequest,
+  GroveStatus,
+  GroveToolHost,
+  GroveWaitRequest,
+} from './grove-host.js';
+export type {
   BrowserToolHost,
   DevServerInfo,
   GuardedTool,

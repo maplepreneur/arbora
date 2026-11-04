@@ -54,7 +54,13 @@ describe('projectSections', () => {
 
 describe('applyProjectMeta', () => {
   it('sets and clears fields without touching layout state', () => {
-    const layout = { groups: {}, sidebarView: 'files' as const, bottomTab: 'terminal' as const };
+    const layout = {
+      groups: {},
+      sidebarView: 'files' as const,
+      bottomTab: 'terminal' as const,
+      workspace: 'browser' as const,
+      groveThreadId: null,
+    };
     const next = applyProjectMeta({ layout, alias: 'x' }, { pinned: true, groupId: 'work', alias: null });
     expect(next).toEqual({ layout, pinned: true, groupId: 'work' });
     expect(applyProjectMeta(next, { pinned: false, groupId: null })).toEqual({ layout });

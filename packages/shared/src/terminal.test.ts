@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  agentCommandLabel,
   detectPackageManager,
   detectShell,
   findDevUrls,
@@ -182,5 +183,23 @@ describe('inferDevCommand', () => {
       'pnpm',
     );
     expect(detectPackageManager({ packageManagerField: 'weird@1', lockfiles: ['yarn.lock'] })).toBe('yarn');
+  });
+});
+
+describe('agentCommandLabel', () => {
+  it('drops the program directory', () => {
+    expect(agentCommandLabel('/usr/local/bin/node -e "console.log(1)"')).toBe('node -e "console.log(1)"');
+    expect(agentCommandLabel('C:\\tools\\rg.exe needle')).toBe('rg.exe needle');
+    expect(agentCommandLabel('pnpm test')).toBe('pnpm test');
+  });
+
+  it('unwraps a shell -c wrapper, quoted or not', () => {
+    expect(agentCommandLabel("/usr/bin/bash -lc 'pnpm test --run'")).toBe('pnpm test --run');
+    expect(agentCommandLabel('sh -c "/usr/bin/git status"')).toBe('git status');
+    expect(agentCommandLabel('zsh -c ls -la')).toBe('ls -la');
+  });
+
+  it('leaves a shell without -c alone', () => {
+    expect(agentCommandLabel('/bin/bash script.sh')).toBe('bash script.sh');
   });
 });

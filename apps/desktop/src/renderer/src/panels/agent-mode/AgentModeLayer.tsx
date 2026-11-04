@@ -16,8 +16,8 @@ import {
   type ResolvedComponent,
   type ViewportPresetId,
 } from '@arbora/shared';
-import { defaultAgentModeTarget, useAgents } from '../../agent-store';
-import { useDefaultAgentId } from '../../agent-defaults';
+import { defaultAgentModeTarget, isListed, useAgents } from '../../agent-store';
+import { taskModelFor, useDefaultAgentId, useTaskAgentId } from '../../agent-defaults';
 import { Picker } from '../../components/Picker';
 import { showAgentThread } from '../../commands';
 import { dispatchMode } from '../../store';
@@ -46,18 +46,23 @@ function useSize(ref: RefObject<HTMLElement | null>): { width: number; height: n
   return size;
 }
 
+/** A new thread gets the agent mode task's model when it uses that task's agent. */
 function parseTarget(key: string): AgentModeTarget | null {
   const [type, id] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
   if (!id) return null;
   if (type === 'thread') return { type: 'thread', threadId: id };
-  if (type === 'new') return { type: 'new', agentId: id };
+  if (type === 'new') {
+    const model = taskModelFor('agentMode', id);
+    return { type: 'new', agentId: id, ...(model ? { model } : {}) };
+  }
   return null;
 }
 
-/** The thread open in the agent panel, else a new thread with the default agent. */
+/** The thread open in the agent panel, else a new thread with agent mode's agent (or the default). */
 function useDefaultTarget(): string | null {
   const defaultAgent = useDefaultAgentId();
-  return useAgents((s) => defaultAgentModeTarget(s, defaultAgent));
+  const taskAgentId = useTaskAgentId('agentMode');
+  return useAgents((s) => defaultAgentModeTarget(s, taskAgentId ?? defaultAgent));
 }
 
 function TargetPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
@@ -67,7 +72,7 @@ function TargetPicker({ value, onChange }: { value: string; onChange: (value: st
   const options = useMemo(() => {
     const agentName = (id: string): string => agents.find((a) => a.id === id)?.name ?? id;
     return [
-      ...threads.map((thread) => ({
+      ...threads.filter(isListed).map((thread) => ({
         value: `thread:${thread.id}`,
         name: thread.title,
         description: agentName(thread.agentId),
@@ -247,7 +252,7 @@ function AgentModePopover({ selection, targetIndex, onTargetIndex }: PopoverProp
         placeholder="What should the agent change? (Enter to send, Shift+Enter for a new line)"
         onChange={(event) => setText(event.target.value)}
         onKeyDown={onKeyDown}
-        className="w-full resize-none rounded border border-border bg-bg px-2 py-1.5 text-[12.5px] outline-none select-text focus:border-accent"
+        className="w-full resize-none rounded border border-border bg-bg px-2 py-1.5 agent-text outline-none select-text focus:border-accent"
       />
       <div className="flex flex-wrap gap-1">
         <Toggle

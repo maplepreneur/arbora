@@ -1,17 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import {
   addRecentProject,
+  appearanceCssVariables,
   applySettingsPatch,
   appSettingsPatchSchema,
   defaultSettings,
+  fontFamily,
   isPickableAgent,
+  MONO_FONT_STACK,
   loadSettings,
   MAX_RECENT_PROJECTS,
   mergeAgentSettings,
   mergeEditorSettings,
   migrateSettings,
+  projectSettingsPatchSchema,
+  projectSettingsSchema,
   projectSettingsUpdates,
   resolveDefaultAgent,
+  resolveTaskAgent,
+  SANS_FONT_STACK,
   visibleModels,
   SETTINGS_VERSION,
   SettingsMigrationError,
@@ -73,10 +80,10 @@ describe('loadSettings', () => {
   });
 
   it('preserves per-project layout state', () => {
-    const projects = {
-      '/p': { layout: { groups: { main: { browser: 70, agent: 30 } }, sidebarView: 'git', bottomTab: 'problems' } },
-    };
-    expect(loadSettings({ version: 1, projects }).settings.projects).toEqual(projects);
+    const layout = { groups: { main: { browser: 70, agent: 30 } }, sidebarView: 'git', bottomTab: 'problems' };
+    expect(loadSettings({ version: 1, projects: { '/p': { layout } } }).settings.projects).toEqual({
+      '/p': { layout: { ...layout, workspace: 'browser', groveThreadId: null } },
+    });
   });
 
   it('upgrades a v1 file with browser defaults and keeps existing values', () => {
@@ -92,10 +99,79 @@ describe('loadSettings', () => {
     expect(settings.projects['/p']?.browser).toBeUndefined();
   });
 
+  it('moves the untouched v3 sound trio to the nature sounds and keeps chosen ones', () => {
+    const old = {
+      enabled: true,
+      volume: 40,
+      whenFocused: false,
+      permission: 'ping',
+      finished: 'chime',
+      failed: 'knock',
+    };
+    expect(loadSettings({ version: 3, sounds: old }).settings.sounds).toEqual({
+      ...old,
+      permission: 'chickadee',
+      finished: 'robin',
+      failed: 'woodpecker',
+    });
+    const chosen = { ...old, finished: 'bell' };
+    expect(loadSettings({ version: 3, sounds: chosen }).settings.sounds).toEqual(chosen);
+  });
+
+  it('moves 13px editor and terminal text to the new 14px default only', () => {
+    const { settings } = loadSettings({ version: 3, editor: { fontSize: 13 }, terminal: { fontSize: 16 } });
+    expect(settings.editor.fontSize).toBe(14);
+    expect(settings.terminal.fontSize).toBe(16);
+    expect(settings.appearance).toEqual({
+      uiScale: 100,
+      interfaceFont: '',
+      codeFont: '',
+      agentFont: '',
+      agentFontSize: 14,
+    });
+  });
+
+  it('builds font-family values with the fallback stack', () => {
+    expect(fontFamily('', MONO_FONT_STACK)).toBe(MONO_FONT_STACK);
+    expect(fontFamily('Dank Mono', 'monospace')).toBe("'Dank Mono', monospace");
+    expect(fontFamily('Inter, "IBM Plex Sans"', 'sans-serif')).toBe('Inter, "IBM Plex Sans", sans-serif');
+    expect(MONO_FONT_STACK.startsWith("'Dank Mono'")).toBe(true);
+  });
+
+  it('resolves a task agent from its own choice, then the defaults, then a signed-in agent', () => {
+    const tasks = defaultSettings().tasks;
+    const agents = {
+      ...defaultSettings().agents,
+      verified: { b: { status: 'ready' as const, checkedAt: 1, models: [] } },
+    };
+    expect(resolveTaskAgent(tasks, 'git', ['a', 'b'], agents, undefined)).toEqual({ agentId: 'b', model: null });
+    expect(resolveTaskAgent(tasks, 'git', ['a', 'b'], { ...agents, defaultAgent: 'a' }, undefined)).toEqual({
+      agentId: 'a',
+      model: null,
+    });
+    expect(resolveTaskAgent(tasks, 'git', ['a', 'b'], agents, 'a')).toEqual({ agentId: 'a', model: null });
+    const chosen = { ...tasks, git: { agentId: 'b', model: 'haiku' } };
+    expect(resolveTaskAgent(chosen, 'git', ['a', 'b'], agents, 'a')).toEqual({ agentId: 'b', model: 'haiku' });
+    expect(resolveTaskAgent(chosen, 'design', ['a'], { ...agents, verified: {} }, undefined)).toBeUndefined();
+  });
+
+  it('lets the agent font follow the interface font', () => {
+    const vars = appearanceCssVariables({ ...defaultSettings().appearance, interfaceFont: 'Inter', agentFontSize: 16 });
+    expect(vars['--font-sans']).toBe(`Inter, ${SANS_FONT_STACK}`);
+    expect(vars['--font-agent']).toBe(`Inter, ${SANS_FONT_STACK}`);
+    expect(vars['--font-mono']).toBe(MONO_FONT_STACK);
+    expect(vars['--agent-font-size']).toBe('16px');
+  });
+
+  it('patches appearance without resetting the other fields', () => {
+    const next = applySettingsPatch(defaultSettings(), { appearance: { uiScale: 120 } });
+    expect(next.appearance).toMatchObject({ uiScale: 120, agentFontSize: 14 });
+  });
+
   it('upgrades a v2 file with empty agent settings', () => {
     const { settings, warnings } = loadSettings({ version: 2, theme: 'light' });
     expect(warnings).toEqual([]);
-    expect(settings.version).toBe(3);
+    expect(settings.version).toBe(SETTINGS_VERSION);
     expect(settings.agents).toEqual({
       custom: [],
       permissions: {},
@@ -206,7 +282,7 @@ describe('loadSettings', () => {
   it('defaults editor settings for files written before Stage 7', () => {
     const { settings, warnings } = loadSettings({ version: 3, theme: 'dark' });
     expect(warnings).toEqual([]);
-    expect(settings.editor).toEqual({ formatOnSave: true, eslintOnSave: true, tscOnSave: false, fontSize: 13 });
+    expect(settings.editor).toEqual({ formatOnSave: true, eslintOnSave: true, tscOnSave: false, fontSize: 14 });
   });
 
   it('merges editor patches, leaving omitted fields alone', () => {
@@ -239,13 +315,21 @@ describe('Stage 9 settings', () => {
     const { settings, warnings } = loadSettings({ version: 3, theme: 'dark' });
     expect(warnings).toEqual([]);
     expect(settings.notifications).toMatchObject({ enabled: true, whenFocused: false, badge: true });
-    expect(settings.sounds).toMatchObject({ enabled: true, volume: 60, finished: 'chime' });
+    expect(settings.sounds).toMatchObject({ enabled: true, volume: 60, finished: 'robin' });
     expect(settings.updates).toEqual({ channel: 'latest', autoCheck: true, autoDownload: true });
     expect(settings.diagnostics).toEqual({ logToFile: true, crashDumps: true });
     expect(settings.onboarding).toEqual({ completed: false, checkedChords: [] });
     expect(settings.projectGroups).toEqual([]);
     expect(settings.agents.env).toEqual({});
     expect(settings.agents.adapterVersions).toEqual({});
+  });
+
+  it('accepts the Development update channel without a migration', () => {
+    const { settings, warnings } = loadSettings({ version: 3, updates: { channel: 'off', autoCheck: false } });
+    expect(warnings).toEqual([]);
+    expect(settings.updates).toEqual({ channel: 'off', autoCheck: false, autoDownload: true });
+    const patched = applySettingsPatch(settings, appSettingsPatchSchema.parse({ updates: { channel: 'beta' } }));
+    expect(patched.updates).toEqual({ channel: 'beta', autoCheck: false, autoDownload: true });
   });
 
   it('applies nested patches field by field', () => {
@@ -271,6 +355,12 @@ describe('Stage 9 settings', () => {
     expect(next.agents.adapterVersions).toEqual({ codex: 'latest' });
     expect(next.projectGroups).toHaveLength(1);
     expect(next.theme).toBe(current.theme);
+  });
+
+  it('replaces the MCP server list and rejects duplicate names', () => {
+    const mcp = { id: 'a', name: 'docs', command: 'npx' };
+    expect(appSettingsPatchSchema.safeParse({ mcpServers: [mcp, { ...mcp, id: 'b' }] }).success).toBe(false);
+    expect(appSettingsPatchSchema.parse({ mcpServers: [mcp] }).mcpServers?.[0]).toMatchObject({ transport: 'stdio' });
   });
 
   it('parses patches without filling in the defaults of the fields left out', () => {
@@ -301,5 +391,46 @@ describe('Stage 9 settings', () => {
       devCommand: 'pnpm dev',
       devUrl: undefined,
     });
+  });
+});
+
+describe('Stage 10 settings (Grove)', () => {
+  it('upgrades a v4 file to v5 with Grove defaults and the browser workspace', () => {
+    const layout = { groups: {}, sidebarView: 'files', bottomTab: 'terminal' };
+    const { settings, warnings } = loadSettings({ version: 4, theme: 'dark', projects: { '/p': { layout } } });
+    expect(warnings).toEqual([]);
+    expect(SETTINGS_VERSION).toBe(5);
+    expect(settings.version).toBe(5);
+    expect(settings.theme).toBe('dark');
+    expect(settings.grove).toEqual({ orchestration: true, maxChildren: 4 });
+    expect(settings.projects['/p']?.layout).toMatchObject({ workspace: 'browser', groveThreadId: null });
+    expect(migrateSettings({ version: 4, grove: { maxChildren: 2 } })).toEqual({
+      version: 5,
+      grove: { maxChildren: 2 },
+    });
+  });
+
+  it('keeps the Grove layout and patches Grove settings field by field', () => {
+    const projects = { '/p': { layout: { workspace: 'grove', groveThreadId: 't1' } } };
+    expect(loadSettings({ version: 5, projects }).settings.projects['/p']?.layout).toMatchObject({
+      workspace: 'grove',
+      groveThreadId: 't1',
+      groups: {},
+    });
+    const patch = appSettingsPatchSchema.parse({ grove: { maxChildren: 2 } });
+    expect(patch).toEqual({ grove: { maxChildren: 2 } });
+    expect(applySettingsPatch(defaultSettings(), patch).grove).toEqual({ orchestration: true, maxChildren: 2 });
+    expect(appSettingsPatchSchema.safeParse({ grove: { maxChildren: 0 } }).success).toBe(false);
+    expect(appSettingsPatchSchema.safeParse({ grove: { maxChildren: 11 } }).success).toBe(false);
+    expect(loadSettings({ version: 5, grove: { maxChildren: 50 } }).warnings).toEqual([
+      'settings.grove is invalid and was reset to its default',
+    ]);
+  });
+
+  it('accepts startDefaultOnOpen in project.json and clears it with null', () => {
+    expect(projectSettingsSchema.parse({ startDefaultOnOpen: false }).startDefaultOnOpen).toBe(false);
+    expect(projectSettingsSchema.parse({}).startDefaultOnOpen).toBeUndefined();
+    const patch = projectSettingsPatchSchema.parse({ startDefaultOnOpen: null, defaultAgent: 'codex' });
+    expect(projectSettingsUpdates(patch)).toEqual({ startDefaultOnOpen: undefined, defaultAgent: 'codex' });
   });
 });

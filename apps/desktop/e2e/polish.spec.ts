@@ -70,26 +70,46 @@ test.describe('Stage 9 onboarding', () => {
       await page.getByTestId('onboarding-next').click();
       await expect(page.getByTestId(`onboarding-agent-${FAKE_ID}`)).toContainText('Connected');
       await page.getByTestId('onboarding-next').click();
+      await expect(page.getByTestId('onboarding-step-tasks')).toBeVisible();
+      await page.getByTestId('task-agent-fix-agent').selectOption(FAKE_ID);
+      await page.getByTestId('onboarding-next').click();
+      await expect(page.getByTestId('onboarding-step-grove')).toBeVisible();
+      await page.getByTestId(`onboarding-grove-agent-${FAKE_ID}`).click();
+      await expect
+        .poll(() => JSON.parse(readFileSync(join(project, '.arbora', 'project.json'), 'utf8')) as object)
+        .toMatchObject({ defaultAgent: FAKE_ID });
+      await expect(page.getByTestId(`onboarding-grove-agent-${FAKE_ID}`)).toHaveAttribute('aria-checked', 'true');
+      // The workspace chord is checked, not run: the browser workspace stays behind the dialog.
+      await page.keyboard.press('ControlOrMeta+Alt+G');
+      await expect(page.getByTestId('onboarding-chord-arbora.toggleWorkspace')).toHaveAttribute('data-pressed', 'true');
+      await expect(page.getByTestId('workspace-browser')).toHaveAttribute('aria-pressed', 'true');
+      await page.getByTestId('onboarding-next').click();
       await expect(page.getByTestId('onboarding-step-keys')).toBeVisible();
       // Mode chords are intercepted in main; onboarding sees them instead of the modes starting.
       await page.keyboard.press('ControlOrMeta+K');
       await expect(page.getByTestId('onboarding-chord-arbora.agentMode')).toHaveAttribute('data-pressed', 'true');
       await page.keyboard.press('ControlOrMeta+D');
       await expect(page.getByTestId('onboarding-chord-arbora.designMode')).toHaveAttribute('data-pressed', 'true');
-      await expect(page.getByTestId('mode-indicator')).toHaveCount(0);
+      await expect(page.getByTestId('mode-pills')).toHaveAttribute('data-mode', 'idle');
       await page.getByTestId('onboarding-next').click();
       await page.getByTestId('onboarding-sounds').click();
       await page.getByTestId('onboarding-next').click();
       await page.getByTestId('onboarding-finish').click();
       await expect(page.getByTestId('onboarding')).toHaveCount(0);
       // Finishing tries agent mode right away.
-      await expect(page.getByTestId('mode-indicator')).toHaveText('Agent mode');
+      await expect(page.getByTestId('mode-pills')).toHaveAttribute('data-mode', 'agent');
       const settings = JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')) as {
         onboarding: { completed: boolean; checkedChords: string[] };
         sounds: { enabled: boolean };
+        tasks: { fix: { agentId: string | null } };
       };
+      expect(settings.tasks.fix.agentId).toBe(FAKE_ID);
       expect(settings.onboarding.completed).toBe(true);
-      expect(settings.onboarding.checkedChords.sort()).toEqual(['arbora.agentMode', 'arbora.designMode']);
+      expect(settings.onboarding.checkedChords.sort()).toEqual([
+        'arbora.agentMode',
+        'arbora.designMode',
+        'arbora.toggleWorkspace',
+      ]);
       expect(settings.sounds.enabled).toBe(false);
     } finally {
       await first.app.close();
@@ -259,7 +279,16 @@ test.describe('Stage 9 settings', () => {
     try {
       await page.keyboard.press('ControlOrMeta+,');
       await expect(page.getByTestId('settings-page')).toBeVisible();
-      for (const section of ['general', 'notifications', 'editor', 'browser', 'project', 'updates', 'agents']) {
+      for (const section of [
+        'general',
+        'appearance',
+        'notifications',
+        'editor',
+        'browser',
+        'project',
+        'updates',
+        'agents',
+      ]) {
         await page.getByTestId(`settings-nav-${section}`).click();
       }
       await page.getByTestId('settings-nav-project').click();
@@ -280,7 +309,7 @@ test.describe('Stage 9 settings', () => {
       // Ctrl+K is agent mode: main must not intercept it while recording.
       await page.keyboard.press('ControlOrMeta+K');
       await expect(page.getByTestId('shortcut-conflict')).toContainText('Toggle Agent Mode');
-      await expect(page.getByTestId('mode-indicator')).toHaveCount(0);
+      await expect(page.getByTestId('mode-pills')).toHaveAttribute('data-mode', 'idle');
       await page.getByTestId('shortcut-replace').click();
       await expect(row.getByTestId('shortcut-record')).toHaveText(process.platform === 'darwin' ? '⌘K' : 'Ctrl+K');
       const saved = JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')) as {
@@ -292,7 +321,52 @@ test.describe('Stage 9 settings', () => {
       await page.getByTestId('setting-notifications').click();
       await expect(page.getByTestId('setting-notifications')).toHaveAttribute('aria-checked', 'false');
       await page.getByTestId('settings-nav-updates').click();
-      await expect(page.getByTestId('updates-section')).toContainText('Development build');
+      const updates = page.getByTestId('updates-section');
+      await expect(updates).toContainText('Development build');
+      await expect(updates).toContainText('Updates are off in development builds.');
+      await expect(page.getByTestId('check-updates')).toBeDisabled();
+      const channel = page.getByTestId('update-channel');
+      await expect(channel.getByRole('radio')).toHaveText(['Stable', 'Beta', 'Development']);
+      await channel.getByRole('radio', { name: 'Development' }).click();
+      await expect(channel.getByRole('radio', { name: 'Development' })).toHaveAttribute('aria-checked', 'true');
+      await expect(updates).toContainText('Never checks, downloads or installs an update.');
+      await expect
+        .poll(() => (JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')) as { updates: object }).updates)
+        .toEqual({ channel: 'off', autoCheck: true, autoDownload: true });
+      // Still off for the build reason, not the channel: an unpackaged run never updates.
+      await expect(updates).toContainText('Updates are off in development builds.');
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('zooms the interface and sets the agent and code fonts from Appearance', async () => {
+    const userData = tempUserData();
+    const project = tempProject();
+    writeSettings(userData);
+    const { app, page } = await launch(userData, [project]);
+    try {
+      await page.keyboard.press('ControlOrMeta+,');
+      await page.getByTestId('settings-nav-appearance').click();
+      await page.getByTestId('ui-scale-125').click();
+      await expect
+        .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.webContents.getZoomFactor()))
+        .toBe(1.25);
+
+      await page.getByTestId('setting-agent-font-size').fill('17');
+      await page.getByTestId('setting-codeFont').fill('Fira Code');
+      await page.getByTestId('setting-codeFont').press('Enter');
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const style = document.documentElement.style;
+            const mono = style.getPropertyValue('--font-mono');
+            return [style.getPropertyValue('--agent-font-size'), mono.startsWith("'Fira Code', 'Dank Mono'")];
+          }),
+        )
+        .toEqual(['17px', true]);
+      const saved = JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')) as { appearance: object };
+      expect(saved.appearance).toMatchObject({ uiScale: 125, agentFontSize: 17, codeFont: 'Fira Code' });
     } finally {
       await app.close();
     }

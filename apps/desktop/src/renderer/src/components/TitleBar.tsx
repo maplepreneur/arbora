@@ -4,11 +4,15 @@ import {
   ChevronDown,
   Command as CommandIcon,
   Copy,
+  Crosshair,
   Minus,
+  MousePointer2,
   Moon,
   Monitor,
+  Palette,
   Square,
   Sun,
+  TreePine,
   X,
 } from 'lucide-react';
 import clsx from 'clsx';
@@ -17,6 +21,85 @@ import { useAttentionCount } from '../attention-store';
 import { executeCommand } from '../commands';
 import { useChordLabel } from '../keybindings';
 import { useApp } from '../store';
+import { WorkspaceSwitch } from './WorkspaceSwitch';
+
+type ModeKind = 'idle' | 'agent' | 'design';
+
+const MODE_PILLS: readonly {
+  kind: ModeKind;
+  label: string;
+  hint: string;
+  icon: typeof Crosshair;
+  command: CommandId | null;
+}[] = [
+  { kind: 'idle', label: 'Freestyle', hint: 'Use the page and editor normally', icon: MousePointer2, command: null },
+  {
+    kind: 'agent',
+    label: 'Agent',
+    hint: 'Point at the page and ask an agent',
+    icon: Crosshair,
+    command: CommandId.agentMode,
+  },
+  {
+    kind: 'design',
+    label: 'Design',
+    hint: 'Edit styles and text on the page',
+    icon: Palette,
+    command: CommandId.designMode,
+  },
+];
+
+/** Freestyle / Agent / Design: the current mode, and a click to switch (same as the chords). */
+function ModePills({ mode }: { mode: ModeKind }) {
+  const agentChord = useChordLabel(CommandId.agentMode);
+  const designChord = useChordLabel(CommandId.designMode);
+  const exitChord = useChordLabel(CommandId.exitMode);
+  const chordOf = (kind: ModeKind): string | undefined =>
+    kind === 'agent' ? agentChord : kind === 'design' ? designChord : mode === 'idle' ? undefined : exitChord;
+  const select = (kind: ModeKind): void => {
+    if (kind === mode) return;
+    // Leaving a mode goes through its own toggle, so design mode can ask about unsaved edits.
+    if (kind === 'idle') executeCommand(mode === 'agent' ? CommandId.agentMode : CommandId.designMode);
+    else executeCommand(kind === 'agent' ? CommandId.agentMode : CommandId.designMode);
+  };
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Mode"
+      data-testid="mode-pills"
+      data-mode={mode}
+      className="app-no-drag ml-3 flex h-6 shrink-0 items-center rounded-full border border-border bg-bg p-0.5"
+    >
+      {MODE_PILLS.map((pill) => {
+        const active = pill.kind === mode;
+        const chord = chordOf(pill.kind);
+        const Icon = pill.icon;
+        return (
+          <button
+            key={pill.kind}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            data-testid={`mode-pill-${pill.kind}`}
+            title={`${pill.label}: ${pill.hint}${chord ? ` (${chord})` : ''}`}
+            onClick={() => select(pill.kind)}
+            className={clsx(
+              'flex h-5 items-center gap-1 rounded-full px-2 text-[11px] font-medium transition-colors',
+              active
+                ? pill.kind === 'idle'
+                  ? 'bg-bg-muted text-fg'
+                  : 'bg-accent text-accent-fg'
+                : 'text-fg-subtle hover:text-fg',
+            )}
+          >
+            <Icon size={11} className="shrink-0" />
+            <span className="hidden @[40rem]:inline">{pill.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 function ThemeIcon() {
   const mode = useApp((s) => s.theme.mode);
@@ -119,16 +202,23 @@ export function TitleBar() {
       data-testid="title-bar"
       data-landmark="title-bar"
       aria-label="Title bar"
-      className="app-drag flex h-9 shrink-0 items-center border-b border-border bg-bg-subtle"
+      className="app-drag @container flex h-9 shrink-0 items-center border-b border-border bg-bg-subtle"
       onDoubleClick={(event) => {
         if (!isMac && event.target === event.currentTarget) {
           void window.arbora.invoke('window.control', { action: 'toggleMaximize' });
         }
       }}
     >
-      <div className={isMac && !fullScreen ? 'w-[78px] shrink-0' : 'w-3 shrink-0'} />
-      <div className="flex min-w-0 items-center gap-2 font-medium">
-        <span className="pointer-events-none inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-accent" aria-hidden />
+      {/* Room for the traffic lights, plus a gap so the logo does not read as a fourth button. */}
+      <div className={isMac && !fullScreen ? 'w-[88px] shrink-0' : 'w-3 shrink-0'} />
+      <div className="flex min-w-0 items-center gap-1.5 font-medium">
+        <TreePine
+          size={14}
+          strokeWidth={2.25}
+          className="pointer-events-none shrink-0 text-accent"
+          aria-hidden
+          data-testid="title-logo"
+        />
         <span className="pointer-events-none">Arbora</span>
         {project && (
           <>
@@ -147,16 +237,10 @@ export function TitleBar() {
             </button>
           </>
         )}
-        {mode !== 'idle' && (
-          <span
-            data-testid="mode-indicator"
-            className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold text-accent uppercase"
-          >
-            {mode === 'agent' ? 'Agent mode' : 'Design mode'}
-          </span>
-        )}
+        {project && <ModePills mode={mode} />}
       </div>
       <div className="flex-1" />
+      <WorkspaceSwitch />
       <AttentionButton />
       <button
         type="button"

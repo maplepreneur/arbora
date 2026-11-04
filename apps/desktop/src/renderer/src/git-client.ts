@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { FileChange, GitBranch, GitCommit, GitStash, GitStatus } from '@arbora/shared';
+import type { FileChange, GitBranch, GitCommit, GitStash, GitStatus, GitSyncResult } from '@arbora/shared';
 import { noteFileChanged, useAgents } from './agent-store';
 import { setGitDecorations, useFiles } from './files-store';
 import { applyGitLines } from './panels/editor/sessions';
@@ -9,7 +9,23 @@ export const useGit = create<{
   branches: GitBranch[];
   log: GitCommit[];
   stashes: GitStash[];
-}>(() => ({ status: null, branches: [], log: [], stashes: [] }));
+  /** The commit message box, shared by the panel and the Git commands. */
+  message: string;
+  /** What a running Git action is doing ("Pushing…"); null when idle. */
+  busy: string | null;
+  lastSync: GitSyncResult | null;
+  /** Bumped to move focus to the commit message box. */
+  focusMessage: number;
+}>(() => ({
+  status: null,
+  branches: [],
+  log: [],
+  stashes: [],
+  message: '',
+  busy: null,
+  lastSync: null,
+  focusMessage: 0,
+}));
 
 let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -31,8 +47,11 @@ export async function refreshGit(): Promise<GitStatus | null> {
       const lines = await window.arbora.invoke('git.lines', { path: active.path });
       applyGitLines(active.path, lines);
     }
-    useGit.setState({ status, branches: [], log: [], stashes: [] });
-    if (!status.repo) return status;
+    if (!status.repo) {
+      useGit.setState({ status, branches: [], log: [], stashes: [] });
+      return status;
+    }
+    useGit.setState({ status });
     const [branches, log, stashes] = await Promise.all([
       window.arbora.invoke('git.branches'),
       window.arbora.invoke('git.log'),

@@ -6,19 +6,29 @@ import { executeCommand } from '../../commands';
 import { updateSettings } from '../../settings-client';
 import { useApp, type SettingsSection } from '../../store';
 import { AgentsSection } from './AgentsSection';
+import { AppearanceSection } from './AppearanceSection';
+import { GitSection } from './GitSection';
+import { GroveSection } from './GroveSection';
 import { inputClass, Segmented, SettingRow, Toggle } from './controls';
 import { KeyboardSection } from './KeyboardSection';
+import { McpSection } from './McpSection';
 import { NotificationsSection } from './NotificationsSection';
 import { ProjectSection } from './ProjectSection';
+import { SkillsSection } from './SkillsSection';
 import { UpdatesSection } from './UpdatesSection';
 
 type Section = SettingsSection;
 
 const SECTIONS: readonly { id: Section; label: string }[] = [
   { id: 'agents', label: 'Agents' },
+  { id: 'grove', label: 'Grove' },
   { id: 'general', label: 'General' },
+  { id: 'appearance', label: 'Appearance' },
   { id: 'notifications', label: 'Notifications & sounds' },
   { id: 'editor', label: 'Editor' },
+  { id: 'git', label: 'Git' },
+  { id: 'skills', label: 'Skills' },
+  { id: 'mcp', label: 'MCP servers' },
   { id: 'browser', label: 'Browser' },
   { id: 'project', label: 'Project' },
   { id: 'keyboard', label: 'Keyboard' },
@@ -39,7 +49,8 @@ const THEMES: readonly { value: ThemeMode; label: string }[] = [
 
 function GeneralSection() {
   const theme = useApp((s) => s.theme.mode);
-  const fontSize = useApp((s) => s.settings.terminal.fontSize);
+  const isMac = useApp((s) => s.info.platform === 'darwin');
+  const quitOnLastWindowClose = useApp((s) => s.settings.quitOnLastWindowClose);
   return (
     <div>
       <SettingRow title="Theme">
@@ -65,20 +76,19 @@ function GeneralSection() {
           ))}
         </div>
       </SettingRow>
-      <SettingRow title="Terminal font size">
-        <input
-          type="number"
-          min={8}
-          max={32}
-          value={fontSize}
-          onChange={(event) => {
-            const value = Number(event.target.value);
-            if (Number.isInteger(value) && value >= 8 && value <= 32)
-              void updateSettings({ terminal: { fontSize: value } });
-          }}
-          className="h-7 w-16 rounded border border-border bg-bg px-2 text-xs"
-        />
-      </SettingRow>
+      {isMac && (
+        <SettingRow
+          title="Quit when the last window closes"
+          detail="Stops dev servers and agents. Off keeps Arbora running in the dock with no window."
+        >
+          <Toggle
+            on={quitOnLastWindowClose}
+            label="Quit when the last window closes"
+            testId="setting-quit-on-last-window-close"
+            onChange={(on) => void updateSettings({ quitOnLastWindowClose: on })}
+          />
+        </SettingRow>
+      )}
     </div>
   );
 }
@@ -115,20 +125,6 @@ function EditorSection() {
           label="Type-check on save"
           testId="setting-tsc-on-save"
           onChange={(on) => void updateSettings({ editor: { tscOnSave: on } })}
-        />
-      </SettingRow>
-      <SettingRow title="Editor font size">
-        <input
-          type="number"
-          min={8}
-          max={32}
-          value={editor.fontSize}
-          onChange={(event) => {
-            const value = Number(event.target.value);
-            if (Number.isInteger(value) && value >= 8 && value <= 32)
-              void updateSettings({ editor: { fontSize: value } });
-          }}
-          className="h-7 w-16 rounded border border-border bg-bg px-2 text-xs"
         />
       </SettingRow>
       <SettingRow title="Terminal shell" detail="Empty uses $SHELL (macOS, Linux) or PowerShell (Windows).">
@@ -260,8 +256,13 @@ export default function SettingsPage() {
         </header>
         <div className="mx-auto max-w-3xl px-6 py-5">
           {section === 'agents' && <AgentsSection />}
+          {section === 'grove' && <GroveSection />}
           {section === 'general' && <GeneralSection />}
+          {section === 'appearance' && <AppearanceSection />}
           {section === 'editor' && <EditorSection />}
+          {section === 'git' && <GitSection />}
+          {section === 'skills' && <SkillsSection />}
+          {section === 'mcp' && <McpSection />}
           {section === 'browser' && <BrowserSection />}
           {section === 'notifications' && <NotificationsSection />}
           {section === 'project' && <ProjectSection />}

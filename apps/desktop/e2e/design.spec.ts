@@ -309,13 +309,33 @@ test.describe('Stage 6 design mode', () => {
         .poll(() => inPage<string>(app, `document.querySelector(${JSON.stringify(CARD)}).style.paddingTop`))
         .toBe('40px');
 
+      // Grove would leave the edit behind on a parked page, so the switch asks first; Keep editing stays.
+      await page.keyboard.press('ControlOrMeta+Alt+G');
+      const confirm = page.getByTestId('design-confirm');
+      await expect(confirm).toContainText('before opening Grove');
+      await expect(page.getByTestId('grove')).toHaveCount(0);
+      await page.getByTestId('design-stay').click();
+      await expect(confirm).toHaveCount(0);
+      await expect(page.getByTestId('design-panel')).toBeVisible();
+      await page.keyboard.press('ControlOrMeta+Alt+G');
+      await expect(confirm).toBeVisible();
+
+      // Discard reverts the page, then goes where the user was heading.
       await page.getByTestId('design-discard').click();
+      await expect(page.getByTestId('grove')).toBeVisible();
       await expect(page.getByTestId('mode-banner')).toHaveCount(0);
       await expect
         .poll(() => inPage<string>(app, `document.querySelector(${JSON.stringify(CARD)}).style.backgroundColor`))
         .toBe('');
+      await expect
+        .poll(() => inPage<string>(app, `document.querySelector(${JSON.stringify(CARD)}).style.paddingTop`))
+        .toBe('');
       await expect.poll(() => inPage<boolean>(app, OVERLAY)).toBe(false);
+      await page.getByTestId('workspace-browser').click();
+      await expect(page.getByTestId('browser-panel')).toBeVisible();
+      await expect(page.getByTestId('mode-banner')).toHaveCount(0);
     } finally {
+      await deleteThreads(page).catch(() => undefined);
       await app.close();
     }
   });

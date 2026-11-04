@@ -2,33 +2,41 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { app, BrowserWindow, clipboard, crashReporter, dialog, Menu, shell, type WebContents } from 'electron';
 import { AgentRegistry } from '@arbora/acp-client';
 import {
   applyProjectMeta,
   applySettingsPatch,
   buildProjectLibrary,
+  commitMessagePrompt,
   detectInstallKind,
+  parseGeneratedText,
   projectSettingsUpdates,
+  pullRequestPrompt,
+  resolveTaskAgent,
   toPlatform,
+  updatePolicy,
   type AgentVerification,
   type ProjectLibrary,
+  type UpdatePolicy,
 } from '@arbora/shared';
 import { probeAgent } from './agent/agent-probe.js';
 import { AttentionService } from './attention-service.js';
 import { buildDiagnosticsZip, MainLog } from './diagnostics.js';
 import { UpdateService } from './update-service.js';
 import type { AgentService } from './agent/agent-service.js';
-import { describeAttachment } from './agent/attachments.js';
+import { describeAttachment, pastedImagePath, pickPastedImageType } from './agent/attachments.js';
 import { BrowserSessions } from './browser/browser-sessions.js';
 import type { BrowserService } from './browser/browser-service.js';
 import { registerPageIpc } from './browser/page-ipc.js';
 import { defineHandler, sendEvent } from './ipc.js';
 import { buildMacMenu } from './menu.js';
-import { ensureProjectSettingsFile, updateProjectSettingsFile } from './project-settings.js';
+import { ensureArboraGitignore, ensureProjectSettingsFile, updateProjectSettingsFile } from './project-settings.js';
 import { SettingsStore } from './settings-store.js';
-import { detectTilingCompositor, parseProjectArg, startupSwitches } from './startup.js';
+import { importableMcpServers } from './skills/mcp-import.js';
+import { SkillLibrary } from './skills/skill-library.js';
+import { detectTilingCompositor, parseProjectArg, shouldQuitWhenAllWindowsClosed, startupSwitches } from './startup.js';
 import { inferProjectDevCommand } from './terminal/dev-command.js';
 import type { DevServer } from './terminal/dev-server.js';
 import { findExecutable, ShellEnvironment } from './terminal/shell-env.js';
@@ -51,6 +59,9 @@ for (const flag of startupSwitches(platform, process.env['ARBORA_FLAGS'])) {
   else app.commandLine.appendSwitch(flag.name, flag.value);
 }
 
+// release.yml greps the bundle for `RELEASE_BUILD = true;`, so keep this name and keep it top-level.
+const RELEASE_BUILD: boolean = __ARBORA_RELEASE_BUILD__;
+
 // Typed as boolean but undefined in packaged builds; both falsy values mean "packaged".
 const isDefaultApp: boolean = process.defaultApp;
 
@@ -61,6 +72,7 @@ function main(): void {
   }
 
   let windows: WindowManager | undefined;
+  let quitOnLastWindowClose = (): boolean => true;
   const pendingPaths: string[] = [];
   const initialProject = parseProjectArg(process.argv, process.cwd(), isDefaultApp);
 
@@ -100,6 +112,7 @@ function main(): void {
   void app.whenReady().then(() => {
     const shellEnvironment = new ShellEnvironment(platform);
     const settings = new SettingsStore(join(app.getPath('userData'), 'settings.json'));
+    quitOnLastWindowClose = () => settings.get().quitOnLastWindowClose;
     const mainLog = new MainLog(join(app.getPath('userData'), 'logs'));
     mainLog.setEnabled(settings.get().diagnostics.logToFile);
     mainLog.install();
@@ -182,11 +195,19 @@ function main(): void {
       onCountsChanged: broadcastLibrary,
     });
 
+    const policy = (): UpdatePolicy =>
+      updatePolicy({
+        kind: installKind,
+        releaseBuild: RELEASE_BUILD,
+        env: process.env['ARBORA_UPDATES'],
+        channel: settings.get().updates.channel,
+      });
     const updates = new UpdateService({
       kind: installKind,
       macSigned: platform === 'darwin' && installKind === 'dmg' && macSignedWithTeam(),
       version: app.getVersion(),
       settings: () => settings.get().updates,
+      policy,
       emit: (state) => {
         for (const w of manager.all()) sendEvent(w.contents, 'updates.state', state);
       },
@@ -216,7 +237,9 @@ function main(): void {
       theme.setMode(next.theme);
       void browserSessions.applySettings();
       manager.rebuildKeybindings();
+      manager.settingsChanged();
       mainLog.setEnabled(next.diagnostics.logToFile);
+      updates.refresh();
       attention.applyBadge();
       for (const w of manager.all()) sendEvent(w.contents, 'settings.changed', next);
       broadcastLibrary();
@@ -299,6 +322,7 @@ function main(): void {
       installKind,
       version: app.getVersion(),
       selfUpdates: updates.selfUpdates,
+      sourceLauncher: process.env['ARBORA_LAUNCHER'] === '1',
     }));
     defineHandler('updates.check', isTrusted, () => updates.check());
     defineHandler('updates.download', isTrusted, async () => {
@@ -336,6 +360,37 @@ function main(): void {
       shell.showItemInFolder(path);
       return undefined;
     });
+
+    const skillsHome = process.env['ARBORA_SKILLS_HOME'] || homedir();
+    const skills = new SkillLibrary({
+      home: skillsHome,
+      platform: process.platform,
+      env: async () => {
+        await shellEnvironment.ready;
+        return shellEnvironment.env();
+      },
+      searchUrl: process.env['ARBORA_SKILLS_API'] || undefined,
+      gitBase: process.env['ARBORA_SKILLS_GIT_BASE'] || undefined,
+    });
+    defineHandler('skills.list', isTrusted, () => skills.list());
+    defineHandler('skills.setTargets', isTrusted, ({ name, targets }) => skills.setTargets(name, targets));
+    defineHandler('skills.remove', isTrusted, ({ name }) => skills.remove(name));
+    defineHandler('skills.adopt', isTrusted, ({ name }) => skills.adopt(name));
+    defineHandler('skills.reveal', isTrusted, async ({ name }) => {
+      if (name) shell.showItemInFolder(join(skills.libraryPath, name, 'SKILL.md'));
+      else {
+        mkdirSync(skills.libraryPath, { recursive: true });
+        await shell.openPath(skills.libraryPath);
+      }
+      return undefined;
+    });
+    defineHandler('skills.search', isTrusted, ({ query }) => skills.search(query));
+    defineHandler('skills.install', isTrusted, ({ source, skillId, targets }) =>
+      skills.install(source, skillId, targets),
+    );
+    defineHandler('mcp.importable', isTrusted, (_req, event) =>
+      importableMcpServers(skillsHome, windowFor(event.sender).project?.path ?? null),
+    );
 
     defineHandler('window.getState', isTrusted, (_req, event) => windowFor(event.sender).state());
     defineHandler('window.control', isTrusted, ({ action }, event) => {
@@ -627,8 +682,8 @@ function main(): void {
       return probe;
     });
     defineHandler('agent.listThreads', isTrusted, (_req, event) => windowFor(event.sender).agents?.listThreads() ?? []);
-    defineHandler('agent.createThread', isTrusted, ({ agentId, model, groupId }, event) =>
-      requireAgents(event.sender).createThread(agentId, model, groupId),
+    defineHandler('agent.createThread', isTrusted, ({ agentId, model, groupId, title }, event) =>
+      requireAgents(event.sender).createThread(agentId, { model, groupId, title }),
     );
     defineHandler('agent.listGroups', isTrusted, (_req, event) => windowFor(event.sender).agents?.listGroups() ?? []);
     defineHandler('agent.saveGroups', isTrusted, ({ groups }, event) => requireAgents(event.sender).saveGroups(groups));
@@ -660,6 +715,14 @@ function main(): void {
     });
     defineHandler('agent.stop', isTrusted, async ({ threadId }, event) => {
       await requireAgents(event.sender).stop(threadId);
+      return undefined;
+    });
+    defineHandler('agent.stopProcess', isTrusted, async ({ threadId }, event) => {
+      await requireAgents(event.sender).stopProcess(threadId);
+      return undefined;
+    });
+    defineHandler('agent.archiveThread', isTrusted, async ({ threadId, archived }, event) => {
+      await requireAgents(event.sender).setArchived(threadId, archived);
       return undefined;
     });
     defineHandler('agent.respondPermission', isTrusted, ({ threadId, requestId, optionId }, event) => {
@@ -718,6 +781,22 @@ function main(): void {
         return attachment ? [attachment] : [];
       }),
     );
+    defineHandler('agent.pasteImage', isTrusted, async (_req, event) => {
+      const project = windowFor(event.sender).project;
+      if (!project) throw new Error('Open a project first');
+      for (const item of await clipboard.read()) {
+        const type = pickPastedImageType(item.types);
+        if (!type) continue;
+        const blob = await item.getType(type);
+        if (!(blob instanceof Blob)) continue;
+        const file = pastedImagePath(project.path, new Date(), type);
+        mkdirSync(dirname(file), { recursive: true });
+        ensureArboraGitignore(project.path);
+        await writeFile(file, Buffer.from(await blob.arrayBuffer()));
+        return describeAttachment(file);
+      }
+      return null;
+    });
     defineHandler('agent.forgetPermissions', isTrusted, ({ agentId }) => {
       settings.update((s) => ({
         ...s,
@@ -859,6 +938,10 @@ function main(): void {
       requireGit(event.sender).stashApply(index, pop),
     );
     defineHandler('git.stashDrop', isTrusted, ({ index }, event) => requireGit(event.sender).stashDrop(index));
+    defineHandler('git.arboraTracked', isTrusted, async (_req, event) => ({
+      count: await requireGit(event.sender).trackedArboraFiles(),
+    }));
+    defineHandler('git.untrackArbora', isTrusted, (_req, event) => requireGit(event.sender).untrackArbora());
     defineHandler('git.remotes', isTrusted, (_req, event) => requireGit(event.sender).remotes());
     defineHandler('git.github', isTrusted, async () => githubAuth(await gitEnv()));
     defineHandler('git.pullRequests', isTrusted, async (_req, event) => {
@@ -870,6 +953,39 @@ function main(): void {
       const project = windowFor(event.sender).project;
       if (!project) throw new Error('Open a project first');
       return { url: await createPullRequest(project.path, await gitEnv(), title, body) };
+    });
+    defineHandler('git.stageAll', isTrusted, async (_req, event) => {
+      await requireGit(event.sender).stageAll();
+      return undefined;
+    });
+    defineHandler('git.defaultBranch', isTrusted, (_req, event) => requireGit(event.sender).defaultBranch());
+    defineHandler('git.syncNow', isTrusted, async (_req, event) => {
+      const sync = windowFor(event.sender).gitSync;
+      if (!sync) throw new Error('Open a project first');
+      return sync.sync();
+    });
+    defineHandler('git.generate', isTrusted, async ({ kind }, event) => {
+      const w = windowFor(event.sender);
+      const git = requireGit(event.sender);
+      if (!w.project || !w.agents) throw new Error('Open a project first');
+      const current = settings.get();
+      const known = w.agents.listAgents().agents.map((agent) => agent.id);
+      const task = resolveTaskAgent(current.tasks, 'git', known, current.agents, w.project.settings.defaultAgent);
+      if (!task) throw new Error('Choose an agent for Git in Settings → Agents.');
+      let prompt: string;
+      if (kind === 'commit') {
+        const { stat, diff } = await git.stagedSummary();
+        if (diff.trim() === '') throw new Error('Stage changes before generating a message.');
+        prompt = commitMessagePrompt(stat, diff);
+      } else {
+        const status = await git.status();
+        const base = (await git.defaultBranch()) ?? 'main';
+        const summary = await git.branchSummary(base);
+        prompt = pullRequestPrompt(status.branch ?? 'HEAD', base, summary.log, summary.stat, summary.diff);
+      }
+      const text = parseGeneratedText(await w.agents.runTask(task.agentId, task.model, prompt));
+      if (text.title === '') throw new Error('The agent did not return any text.');
+      return text;
     });
     defineHandler('git.checks', isTrusted, async ({ number }, event) => {
       const project = windowFor(event.sender).project;
@@ -903,7 +1019,7 @@ function main(): void {
   });
 
   app.on('window-all-closed', () => {
-    if (platform !== 'darwin') app.quit();
+    if (shouldQuitWhenAllWindowsClosed(platform, quitOnLastWindowClose())) app.quit();
   });
 }
 

@@ -63,6 +63,11 @@ export function detectTilingCompositor(platform: Platform, env: NodeJS.ProcessEn
   return null;
 }
 
+/** macOS keeps a windowless app in the dock unless the user asked it to quit. */
+export function shouldQuitWhenAllWindowsClosed(platform: Platform, quitOnLastWindowClose: boolean): boolean {
+  return platform !== 'darwin' || quitOnLastWindowClose;
+}
+
 export function shouldRestoreBounds(platform: Platform, tilingCompositor: string | null): boolean {
   return !(platform === 'linux' && tilingCompositor !== null);
 }

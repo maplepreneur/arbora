@@ -1,10 +1,35 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { PROJECT_SETTINGS_VERSION, projectSettingsSchema, type ProjectSettings } from '@arbora/shared';
 import { writeJsonAtomic } from './settings-store.js';
 
 export const ARBORA_DIR = '.arbora';
+
+export const ARBORA_GITIGNORE = [
+  '# Written by Arbora: threads, screenshots, design drafts and the agent guide stay local.',
+  '# To share project settings with your team, add a line with: !project.json',
+  '*',
+  '',
+].join('\n');
+
+/**
+ * Keeps `.arbora/` out of git with its own `.gitignore`, so the project's `.gitignore` is never
+ * edited. An existing file is the user's and is left alone. `create` makes the folder first;
+ * otherwise nothing happens until something else creates it.
+ */
+export function ensureArboraGitignore(projectPath: string, create = false): void {
+  const dir = join(projectPath, ARBORA_DIR);
+  const file = join(dir, '.gitignore');
+  try {
+    if (existsSync(file)) return;
+    if (!create && !existsSync(dir)) return;
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(file, ARBORA_GITIGNORE, 'utf8');
+  } catch (error) {
+    console.warn(`[project] could not write ${ARBORA_DIR}/.gitignore: ${(error as Error).message}`);
+  }
+}
 
 export function projectSettingsPath(projectPath: string): string {
   return join(projectPath, ARBORA_DIR, 'project.json');
@@ -44,6 +69,7 @@ export function updateProjectSettingsFile(projectPath: string, patch: Readonly<R
     current = parsed as Record<string, unknown>;
   }
   writeJsonAtomic(file, { ...current, ...patch });
+  ensureArboraGitignore(projectPath);
 }
 
 /** Creates `.arbora/project.json` with defaults if it does not exist yet. Returns its path. */
@@ -52,5 +78,6 @@ export function ensureProjectSettingsFile(projectPath: string): string {
   if (!existsSync(file)) {
     writeJsonAtomic(file, { version: PROJECT_SETTINGS_VERSION });
   }
+  ensureArboraGitignore(projectPath);
   return file;
 }

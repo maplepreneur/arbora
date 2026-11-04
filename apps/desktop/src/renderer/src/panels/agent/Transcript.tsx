@@ -32,8 +32,7 @@ import type {
   ToolCallStatus,
   ToolKind,
 } from '@arbora/shared';
-import { openFileAtLocation } from '../../commands';
-import { openDiff } from '../../files-store';
+import { openDiffTab, openFileAtLocation } from '../../commands';
 import { Markdown } from './Markdown';
 import { UnifiedDiff } from './UnifiedDiff';
 
@@ -72,7 +71,7 @@ function StatusIcon({ status }: { status: ToolCallStatus }) {
   }
 }
 
-function relativePath(path: string, projectPath: string): string {
+export function relativePath(path: string, projectPath: string): string {
   const normalized = path.replace(/\\/g, '/');
   const root = projectPath.replace(/\\/g, '/').replace(/\/$/, '');
   return normalized.startsWith(`${root}/`) ? normalized.slice(root.length + 1) : path;
@@ -181,6 +180,19 @@ function LocationLink({
   );
 }
 
+/** An agent's edit in the editor's diff viewer (in the browser workspace). */
+export function openAgentDiff(path: string, oldText: string | null | undefined, newText: string): void {
+  const name = path.slice(path.lastIndexOf('/') + 1);
+  openDiffTab({
+    path,
+    title: `${name} (agent edit)`,
+    left: oldText ?? '',
+    right: newText,
+    leftLabel: oldText == null ? 'New file' : `${name} (before)`,
+    rightLabel: `${name} (after)`,
+  });
+}
+
 function ToolCard({ event, projectPath }: { event: ToolCallEvent; projectPath: string }) {
   const [open, setOpen] = useState(true);
   const diffs = event.content.filter((c) => c.type === 'diff');
@@ -222,18 +234,7 @@ function ToolCard({ event, projectPath }: { event: ToolCallEvent; projectPath: s
               oldText={diff.oldText}
               newText={diff.newText}
               path={relativePath(diff.path, projectPath)}
-              onOpen={() => {
-                const path = relativePath(diff.path, projectPath);
-                const name = path.slice(path.lastIndexOf('/') + 1);
-                openDiff({
-                  path,
-                  title: `${name} (agent edit)`,
-                  left: diff.oldText ?? '',
-                  right: diff.newText,
-                  leftLabel: diff.oldText == null ? 'New file' : `${name} (before)`,
-                  rightLabel: `${name} (after)`,
-                });
-              }}
+              onOpen={() => openAgentDiff(relativePath(diff.path, projectPath), diff.oldText, diff.newText)}
             />
           ))}
           {texts.map((item, index) => (
@@ -380,13 +381,13 @@ function EventView({
   switch (event.kind) {
     case 'user_message':
       return (
-        <div className="ml-6 rounded-lg bg-accent-soft px-3 py-2 text-[12.5px]" data-testid="user-message">
+        <div className="ml-6 agent-text rounded-lg bg-accent-soft px-3 py-2" data-testid="user-message">
           <Blocks blocks={event.blocks} projectPath={projectPath} />
         </div>
       );
     case 'agent_message':
       return (
-        <div className="px-1 text-[12.5px]" data-testid="agent-message">
+        <div className="agent-text px-1" data-testid="agent-message">
           <Blocks blocks={event.blocks} projectPath={projectPath} />
         </div>
       );
@@ -469,19 +470,59 @@ function EventView({
   }
 }
 
+/** Unanswered permission requests. */
+export function pendingPermissions(events: readonly ThreadEvent[]): PermissionEvent[] {
+  return events.filter((event): event is PermissionEvent => event.kind === 'permission' && event.outcome === null);
+}
+
+/**
+ * The unanswered requests of a running turn, between the transcript and the composer, so a long
+ * scrollback cannot hide them. Once answered, a card is back in the scrollback (`Transcript`).
+ */
+export function PinnedPermissions({
+  events,
+  projectPath,
+  onRespond,
+}: {
+  events: readonly PermissionEvent[];
+  projectPath: string;
+  onRespond: (requestId: string, optionId: string) => void;
+}) {
+  if (events.length === 0) return null;
+  return (
+    <div
+      className="flex max-h-[40%] shrink-0 flex-col gap-1.5 overflow-y-auto border-t border-border bg-bg-subtle px-2 py-1.5"
+      data-testid="pinned-permissions"
+    >
+      {events.map((event) => (
+        <PermissionCard
+          key={event.id}
+          event={event}
+          projectPath={projectPath}
+          onRespond={(optionId) => onRespond(event.requestId, optionId)}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function Transcript({
   events,
   projectPath,
   busy,
+  hidePending = false,
   onRespond,
 }: {
   events: readonly ThreadEvent[];
   projectPath: string;
   busy: boolean;
+  /** Leave unanswered permission cards out: `PinnedPermissions` shows them. */
+  hidePending?: boolean;
   onRespond: (requestId: string, optionId: string) => void;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
+  const shown = hidePending ? events.filter((event) => event.kind !== 'permission' || event.outcome !== null) : events;
 
   useEffect(() => {
     const element = scroller.current;
@@ -504,7 +545,7 @@ export function Transcript({
         </div>
       ) : (
         <div className="flex flex-col gap-2">
-          {events.map((event) => (
+          {shown.map((event) => (
             <EventView key={event.id} event={event} projectPath={projectPath} onRespond={onRespond} />
           ))}
           {busy && (

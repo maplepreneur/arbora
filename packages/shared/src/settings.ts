@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { customAgentSchema, rememberedPermissionsSchema } from './agent.js';
 import { viewportPresetIdSchema } from './browser.js';
+import type { WorkspaceKind } from './keybindings.js';
+import { mcpServerConfigSchema } from './mcp-servers.js';
 
 export const themeModeSchema = z.enum(['system', 'light', 'dark']);
 export type ThemeMode = z.infer<typeof themeModeSchema>;
@@ -29,10 +31,15 @@ export type SidebarView = z.infer<typeof sidebarViewSchema>;
 export const bottomTabSchema = z.enum(['terminal', 'git', 'problems']);
 export type BottomTab = z.infer<typeof bottomTabSchema>;
 
+export const workspaceKindSchema = z.enum(['browser', 'grove']) satisfies z.ZodType<WorkspaceKind>;
+
 export const layoutStateSchema = z.object({
   groups: z.record(z.string(), panelGroupLayoutSchema).default({}),
   sidebarView: sidebarViewSchema.default('files'),
   bottomTab: bottomTabSchema.default('terminal'),
+  workspace: workspaceKindSchema.default('browser'),
+  /** The session Grove shows; the docked agent panel keeps its own open thread. */
+  groveThreadId: z.string().nullable().default(null),
 });
 export type LayoutState = z.infer<typeof layoutStateSchema>;
 
@@ -99,7 +106,10 @@ export const notificationSettingsSchema = z.object({
 });
 export type NotificationSettings = z.infer<typeof notificationSettingsSchema>;
 
-export const SOUND_IDS = ['none', 'chime', 'ping', 'pop', 'knock', 'bell'] as const;
+/** Nature cues (the tree in the logo) first, then the original synth cues. */
+export const NATURE_SOUND_IDS = ['chickadee', 'robin', 'songbird', 'woodpecker', 'owl', 'droplet', 'leaves'] as const;
+export const CLASSIC_SOUND_IDS = ['chime', 'ping', 'pop', 'knock', 'bell'] as const;
+export const SOUND_IDS = ['none', ...NATURE_SOUND_IDS, ...CLASSIC_SOUND_IDS] as const;
 export const soundIdSchema = z.enum(SOUND_IDS);
 export type SoundId = z.infer<typeof soundIdSchema>;
 
@@ -109,13 +119,22 @@ export const soundSettingsSchema = z.object({
   volume: z.number().int().min(0).max(100).default(60),
   /** Play while the thread is already on screen in a focused window. */
   whenFocused: z.boolean().default(false),
-  permission: soundIdSchema.default('ping'),
-  finished: soundIdSchema.default('chime'),
-  failed: soundIdSchema.default('knock'),
+  permission: soundIdSchema.default('chickadee'),
+  finished: soundIdSchema.default('robin'),
+  failed: soundIdSchema.default('woodpecker'),
 });
 export type SoundSettings = z.infer<typeof soundSettingsSchema>;
 
-export const updateChannelSchema = z.enum(['latest', 'beta']);
+/** Where published versions go: `x.y.z` on `latest`, `x.y.z-beta.n` on `beta`. */
+export const releaseChannelSchema = z.enum(['latest', 'beta']);
+export type ReleaseChannel = z.infer<typeof releaseChannelSchema>;
+
+/**
+ * What this copy follows. `latest` (Stable) and `beta` (Beta, which also gets stable releases) read
+ * GitHub Releases, and a source checkout started by `scripts/arbora-local` tracks `origin/main` or
+ * `origin/beta`. `off` (Development) never checks, downloads or moves the checkout.
+ */
+export const updateChannelSchema = z.enum(['latest', 'beta', 'off']);
 export type UpdateChannel = z.infer<typeof updateChannelSchema>;
 
 export const updateSettingsSchema = z.object({
@@ -142,9 +161,17 @@ export const onboardingSettingsSchema = z.object({
 });
 export type OnboardingSettings = z.infer<typeof onboardingSettingsSchema>;
 
+export const groveSettingsSchema = z.object({
+  /** Sessions that are not helpers get the `grove_*` tools to start and steer helper sessions. */
+  orchestration: z.boolean().default(true),
+  /** Running helpers one lead may have at once. */
+  maxChildren: z.number().int().min(1).max(10).default(4),
+});
+export type GroveSettings = z.infer<typeof groveSettingsSchema>;
+
 export const MAX_RECENT_PROJECTS = 10;
 
-export const SETTINGS_VERSION = 3;
+export const SETTINGS_VERSION = 5;
 
 export const browserSettingsSchema = z.object({
   /** Load the bundled React and Vue DevTools into the browser panel's session. */
@@ -160,10 +187,56 @@ export const browserSettingsSchema = z.object({
 });
 export type BrowserSettings = z.infer<typeof browserSettingsSchema>;
 
+export const SANS_FONT_STACK = "system-ui, -apple-system, 'Segoe UI', Ubuntu, Cantarell, 'Noto Sans', sans-serif";
+/**
+ * Dank Mono is the preferred code font. Its licence does not allow Arbora to bundle it, so it
+ * is used when installed and the stack falls back to the platform's monospace fonts.
+ */
+export const MONO_FONT_STACK =
+  "'Dank Mono', ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', Menlo, Consolas, monospace";
+
+export const UI_SCALE_MIN = 80;
+export const UI_SCALE_MAX = 150;
+
+export const appearanceSettingsSchema = z.object({
+  /** Interface zoom in percent: everything in the app window grows, not the page in the browser. */
+  uiScale: z.number().int().min(UI_SCALE_MIN).max(UI_SCALE_MAX).default(100),
+  /** CSS font families; empty uses the default stack (`SANS_FONT_STACK`, `MONO_FONT_STACK`). */
+  interfaceFont: z.string().max(300).default(''),
+  /** Editor, terminal and code blocks. */
+  codeFont: z.string().max(300).default(''),
+  /** Agent messages and the composer; empty follows the interface font. */
+  agentFont: z.string().max(300).default(''),
+  agentFontSize: z.number().int().min(10).max(24).default(14),
+});
+export type AppearanceSettings = z.infer<typeof appearanceSettingsSchema>;
+
+/** A font setting as a CSS `font-family` value: the user's choice first, then the fallback stack. */
+export function fontFamily(choice: string, fallback: string): string {
+  const trimmed = choice.trim();
+  if (!trimmed) return fallback;
+  const families = trimmed.split(',').map((family) => {
+    const name = family.trim();
+    return /^['"]|^[\w-]+$/.test(name) ? name : `'${name.replace(/'/g, '')}'`;
+  });
+  return [...families, fallback].join(', ');
+}
+
+/** The renderer's font variables (`styles.css`) for the appearance settings. */
+export function appearanceCssVariables(appearance: AppearanceSettings): Record<string, string> {
+  const sans = fontFamily(appearance.interfaceFont, SANS_FONT_STACK);
+  return {
+    '--font-sans': sans,
+    '--font-mono': fontFamily(appearance.codeFont, MONO_FONT_STACK),
+    '--font-agent': fontFamily(appearance.agentFont, sans),
+    '--agent-font-size': `${appearance.agentFontSize}px`,
+  };
+}
+
 export const terminalSettingsSchema = z.object({
   /** Shell executable; defaults to `$SHELL` (macOS/Linux) or pwsh/PowerShell/cmd (Windows). */
   shell: z.string().min(1).optional(),
-  fontSize: z.number().int().min(8).max(32).default(13),
+  fontSize: z.number().int().min(8).max(32).default(14),
 });
 export type TerminalSettings = z.infer<typeof terminalSettingsSchema>;
 
@@ -174,7 +247,7 @@ export const editorSettingsSchema = z.object({
   eslintOnSave: z.boolean().default(true),
   /** Run `tsc --noEmit` after saving a TypeScript file. Off by default: slow on large projects. */
   tscOnSave: z.boolean().default(false),
-  fontSize: z.number().int().min(8).max(32).default(13),
+  fontSize: z.number().int().min(8).max(32).default(14),
 });
 export type EditorSettings = z.infer<typeof editorSettingsSchema>;
 
@@ -308,6 +381,64 @@ export function resolveDefaultAgent(
   return [projectDefault, appDefault].find((id) => id !== undefined && knownAgentIds.includes(id));
 }
 
+export const GIT_SYNC_MODES = ['off', 'fetch', 'pull'] as const;
+export type GitSyncMode = (typeof GIT_SYNC_MODES)[number];
+
+export const gitSettingsSchema = z.object({
+  /**
+   * Background sync of the open project: `fetch` updates the ahead/behind counts, `pull` also
+   * fast-forwards a clean branch that is only behind. Never merges or rebases.
+   */
+  autoSync: z.enum(GIT_SYNC_MODES).default('fetch'),
+  autoSyncMinutes: z.number().int().min(1).max(240).default(5),
+});
+export type GitSettings = z.infer<typeof gitSettingsSchema>;
+
+/** Trigger points that can use their own agent and model instead of the thread default. */
+export const TASK_IDS = ['git', 'agentMode', 'design', 'fix'] as const;
+export type TaskId = (typeof TASK_IDS)[number];
+
+export const taskAgentSchema = z.object({
+  /** Null uses the project's or the app's default agent. */
+  agentId: z.string().min(1).nullable().default(null),
+  /** A value of the agent's `model` config option; null keeps the agent's default model. */
+  model: z.string().min(1).nullable().default(null),
+});
+export type TaskAgent = z.infer<typeof taskAgentSchema>;
+
+export const taskAgentsSchema = z.object({
+  /** Commit messages, pull request text and AI commit + PR. A small, fast model fits. */
+  git: taskAgentSchema.default(taskAgentSchema.parse({})),
+  /** `Mod+K` agent mode prompts. */
+  agentMode: taskAgentSchema.default(taskAgentSchema.parse({})),
+  /** Design mode batches. */
+  design: taskAgentSchema.default(taskAgentSchema.parse({})),
+  /** "Fix" and "Fix all" in the Problems panel. */
+  fix: taskAgentSchema.default(taskAgentSchema.parse({})),
+});
+export type TaskAgents = z.infer<typeof taskAgentsSchema>;
+
+/**
+ * The agent and model for a task: the task's own choice, else the project's or the app's default
+ * agent with its default model, else the first signed-in agent. Undefined when none is known.
+ */
+export function resolveTaskAgent(
+  tasks: TaskAgents,
+  task: TaskId,
+  knownAgentIds: readonly string[],
+  agents: Pick<AgentSettings, 'defaultAgent' | 'verified' | 'hidden'>,
+  projectDefault: string | undefined,
+): { agentId: string; model: string | null } | undefined {
+  const chosen = tasks[task];
+  if (chosen.agentId !== null && knownAgentIds.includes(chosen.agentId)) {
+    return { agentId: chosen.agentId, model: chosen.model };
+  }
+  const fallback =
+    resolveDefaultAgent(knownAgentIds, projectDefault, agents.defaultAgent) ??
+    knownAgentIds.find((id) => isPickableAgent(agents, id));
+  return fallback ? { agentId: fallback, model: null } : undefined;
+}
+
 /**
  * User settings stored in `<userData>/settings.json`. Every field has a default so a partially
  * written or hand-edited file still loads.
@@ -319,15 +450,26 @@ export const appSettingsSchema = z.object({
   keybindings: keybindingOverridesSchema.default({}),
   /** When a terminal is focused, plain `Ctrl+<key>` chords go to the shell. */
   terminalPassthrough: z.boolean().default(true),
+  /**
+   * macOS only: quit when the last window closes, which also stops dev servers and agents. Off
+   * keeps Arbora in the dock with no window, as most Mac apps do. Other platforms always quit.
+   */
+  quitOnLastWindowClose: z.boolean().default(true),
+  appearance: appearanceSettingsSchema.default(appearanceSettingsSchema.parse({})),
   browser: browserSettingsSchema.default(browserSettingsSchema.parse({})),
   terminal: terminalSettingsSchema.default(terminalSettingsSchema.parse({})),
   editor: editorSettingsSchema.default(editorSettingsSchema.parse({})),
   agents: agentSettingsSchema.default(agentSettingsSchema.parse({})),
+  tasks: taskAgentsSchema.default(taskAgentsSchema.parse({})),
+  git: gitSettingsSchema.default(gitSettingsSchema.parse({})),
+  /** MCP servers Arbora passes to every agent session (`session/new`), next to its browser tools. */
+  mcpServers: z.array(mcpServerConfigSchema).max(100).default([]),
   notifications: notificationSettingsSchema.default(notificationSettingsSchema.parse({})),
   sounds: soundSettingsSchema.default(soundSettingsSchema.parse({})),
   updates: updateSettingsSchema.default(updateSettingsSchema.parse({})),
   diagnostics: diagnosticsSettingsSchema.default(diagnosticsSettingsSchema.parse({})),
   onboarding: onboardingSettingsSchema.default(onboardingSettingsSchema.parse({})),
+  grove: groveSettingsSchema.default(groveSettingsSchema.parse({})),
   recentProjects: z.array(recentProjectSchema).max(MAX_RECENT_PROJECTS).default([]),
   projectGroups: z.array(projectGroupSchema).max(100).default([]),
   projects: z.record(z.string(), projectStateSchema).default({}),
@@ -358,15 +500,27 @@ export const appSettingsPatchSchema = z
     theme: themeModeSchema,
     keybindings: keybindingOverridesSchema,
     terminalPassthrough: z.boolean(),
+    quitOnLastWindowClose: z.boolean(),
+    appearance: patchSchema(appearanceSettingsSchema),
     browser: patchSchema(browserSettingsSchema),
     terminal: patchSchema(terminalSettingsSchema),
     editor: patchSchema(editorSettingsSchema),
     agents: agentSettingsPatchSchema,
+    tasks: patchSchema(taskAgentsSchema),
+    git: patchSchema(gitSettingsSchema),
+    mcpServers: z
+      .array(mcpServerConfigSchema)
+      .max(100)
+      .refine(
+        (list) => new Set(list.map((server) => server.name)).size === list.length,
+        'MCP server names must be unique',
+      ),
     notifications: patchSchema(notificationSettingsSchema),
     sounds: patchSchema(soundSettingsSchema),
     updates: patchSchema(updateSettingsSchema),
     diagnostics: patchSchema(diagnosticsSettingsSchema),
     onboarding: patchSchema(onboardingSettingsSchema),
+    grove: patchSchema(groveSettingsSchema),
     projectGroups: z.array(projectGroupSchema).max(100),
   })
   .partial();
@@ -389,10 +543,15 @@ export function applySettingsPatch(current: AppSettings, patch: AppSettingsPatch
     ...(patch.theme !== undefined ? { theme: patch.theme } : {}),
     ...(patch.keybindings !== undefined ? { keybindings: patch.keybindings } : {}),
     ...(patch.terminalPassthrough !== undefined ? { terminalPassthrough: patch.terminalPassthrough } : {}),
+    ...(patch.quitOnLastWindowClose !== undefined ? { quitOnLastWindowClose: patch.quitOnLastWindowClose } : {}),
+    ...(patch.appearance !== undefined ? { appearance: mergeDefined(current.appearance, patch.appearance) } : {}),
     ...(patch.browser !== undefined ? { browser: mergeDefined(current.browser, patch.browser) } : {}),
     ...(patch.terminal !== undefined ? { terminal: mergeDefined(current.terminal, patch.terminal) } : {}),
     ...(patch.editor !== undefined ? { editor: mergeEditorSettings(current.editor, patch.editor) } : {}),
     ...(patch.agents !== undefined ? { agents: mergeAgentSettings(current.agents, patch.agents) } : {}),
+    ...(patch.tasks !== undefined ? { tasks: mergeDefined(current.tasks, patch.tasks) } : {}),
+    ...(patch.git !== undefined ? { git: mergeDefined(current.git, patch.git) } : {}),
+    ...(patch.mcpServers !== undefined ? { mcpServers: patch.mcpServers } : {}),
     ...(patch.notifications !== undefined
       ? { notifications: mergeDefined(current.notifications, patch.notifications) }
       : {}),
@@ -400,6 +559,7 @@ export function applySettingsPatch(current: AppSettings, patch: AppSettingsPatch
     ...(patch.updates !== undefined ? { updates: mergeDefined(current.updates, patch.updates) } : {}),
     ...(patch.diagnostics !== undefined ? { diagnostics: mergeDefined(current.diagnostics, patch.diagnostics) } : {}),
     ...(patch.onboarding !== undefined ? { onboarding: mergeDefined(current.onboarding, patch.onboarding) } : {}),
+    ...(patch.grove !== undefined ? { grove: mergeDefined(current.grove, patch.grove) } : {}),
     ...(patch.projectGroups !== undefined ? { projectGroups: patch.projectGroups } : {}),
   };
 }
@@ -420,7 +580,29 @@ export const SETTINGS_MIGRATIONS: Readonly<Record<number, Migration>> = {
   1: (input) => ({ ...input, version: 2 }),
   // v3 added `agents` (custom agents and remembered permissions), defaulted by the schema.
   2: (input) => ({ ...input, version: 3 }),
+  // v4 made nature sounds the default and code text 14px; settings still on the v3 defaults move.
+  3: (input) => {
+    const next: Record<string, unknown> = { ...input, version: 4 };
+    const sounds = objectField(input, 'sounds');
+    if (sounds?.['permission'] === 'ping' && sounds['finished'] === 'chime' && sounds['failed'] === 'knock') {
+      next['sounds'] = { ...sounds, permission: 'chickadee', finished: 'robin', failed: 'woodpecker' };
+    }
+    for (const key of ['editor', 'terminal']) {
+      const section = objectField(input, key);
+      if (section?.['fontSize'] === 13) next[key] = { ...section, fontSize: 14 };
+    }
+    return next;
+  },
+  // v5 added `grove` (orchestration and the helper cap), defaulted by the schema.
+  4: (input) => ({ ...input, version: 5 }),
 };
+
+function objectField(input: Record<string, unknown>, key: string): Record<string, unknown> | null {
+  const value = input[key];
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
 
 export class SettingsMigrationError extends Error {
   constructor(message: string) {
@@ -491,7 +673,10 @@ export function loadSettings(raw: unknown): LoadSettingsResult {
 
 export const PROJECT_SETTINGS_VERSION = 1;
 
-/** Committed per-project settings in `<project>/.arbora/project.json`. */
+/**
+ * Per-project settings in `<project>/.arbora/project.json`. `.arbora/.gitignore` keeps them local
+ * unless the team un-ignores `project.json`.
+ */
 export const browserToolPolicySchema = z.enum(['ask', 'allow', 'deny']);
 export type BrowserToolPolicy = z.infer<typeof browserToolPolicySchema>;
 
@@ -503,6 +688,8 @@ export const projectSettingsSchema = z.object({
   /** Load a dev-server URL printed in a terminal when the browser panel is empty (default on). */
   autoOpenDevUrl: z.boolean().optional(),
   defaultAgent: z.string().optional(),
+  /** Start one session of the default agent when Grove opens with none listed (default on). */
+  startDefaultOnOpen: z.boolean().optional(),
   keybindings: keybindingOverridesSchema.optional(),
   /**
    * Standing answers for the agent browser tools that can do more than look: `browser_evaluate`
@@ -521,6 +708,7 @@ export const projectSettingsPatchSchema = z
     devUrl: z.string().min(1).max(2000).nullable(),
     autoOpenDevUrl: z.boolean().nullable(),
     defaultAgent: z.string().min(1).nullable(),
+    startDefaultOnOpen: z.boolean().nullable(),
     browserTools: z
       .object({ evaluate: browserToolPolicySchema.optional(), terminalRun: browserToolPolicySchema.optional() })
       .nullable(),

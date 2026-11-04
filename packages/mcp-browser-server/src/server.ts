@@ -3,6 +3,8 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import type { GroveToolHost } from './grove-host.js';
+import { GroveContext, registerGroveTools } from './grove-tools.js';
 import type { BrowserToolHost } from './host.js';
 import { registerBrowserTools, ToolContext } from './tools.js';
 
@@ -20,6 +22,8 @@ export interface McpActivity {
 
 export interface BrowserMcpServerOptions {
   readonly host: BrowserToolHost;
+  /** Adds the `grove_*` orchestration tools for a lead session (never for a helper). */
+  readonly grove?: GroveToolHost | undefined;
   readonly version?: string;
   readonly onActivity?: (activity: McpActivity) => void;
 }
@@ -60,13 +64,37 @@ function sendJsonError(res: ServerResponse, status: number, message: string): vo
   res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message }, id: null }));
 }
 
+type RequestId = string | number;
+
+interface RawMessage {
+  method?: unknown;
+  id?: unknown;
+  params?: { name?: unknown; requestId?: unknown };
+}
+
+function messagesOf(body: unknown): (RawMessage | null)[] {
+  return (Array.isArray(body) ? body : [body]) as (RawMessage | null)[];
+}
+
+function isRequestId(value: unknown): value is RequestId {
+  return typeof value === 'string' || typeof value === 'number';
+}
+
 function activitiesOf(body: unknown): McpActivity[] {
-  const messages = Array.isArray(body) ? body : [body];
-  return messages.flatMap((message): McpActivity[] => {
-    const m = message as { method?: unknown; params?: { name?: unknown } } | null;
+  return messagesOf(body).flatMap((m): McpActivity[] => {
     if (typeof m?.method !== 'string') return [];
     return [{ method: m.method, ...(typeof m.params?.name === 'string' ? { tool: m.params.name } : {}) }];
   });
+}
+
+function requestIdsOf(body: unknown): RequestId[] {
+  return messagesOf(body).flatMap((m) => (typeof m?.method === 'string' && isRequestId(m.id) ? [m.id] : []));
+}
+
+function cancelledIdsOf(body: unknown): RequestId[] {
+  return messagesOf(body).flatMap((m) =>
+    m?.method === 'notifications/cancelled' && isRequestId(m.params?.requestId) ? [m.params.requestId] : [],
+  );
 }
 
 /**
@@ -79,9 +107,16 @@ export class BrowserMcpServer {
   private endpoint: McpEndpoint | null = null;
   private readonly token = randomBytes(32).toString('base64url');
   private readonly context: ToolContext;
+  private readonly grove: GroveContext | null;
+  /**
+   * In-flight requests by JSON-RPC id. Stateless mode gives every POST its own `McpServer`, so a
+   * client's `notifications/cancelled` never reaches the server running that request; this does.
+   */
+  private readonly inflight = new Map<RequestId, AbortController>();
 
   constructor(private readonly options: BrowserMcpServerOptions) {
     this.context = new ToolContext(options.host);
+    this.grove = options.grove ? new GroveContext(options.grove) : null;
   }
 
   async start(): Promise<McpEndpoint> {
@@ -102,6 +137,8 @@ export class BrowserMcpServer {
     this.http = null;
     this.endpoint = null;
     this.context.dispose();
+    for (const controller of this.inflight.values()) controller.abort();
+    this.inflight.clear();
     if (!http) return;
     http.closeAllConnections();
     await new Promise<void>((resolveClose) => http.close(() => resolveClose()));
@@ -137,15 +174,20 @@ export class BrowserMcpServer {
       return;
     }
     for (const activity of activitiesOf(body)) this.options.onActivity?.(activity);
+    for (const id of cancelledIdsOf(body)) this.inflight.get(id)?.abort();
+    const requests = requestIdsOf(body).map((id) => [id, new AbortController()] as const);
+    for (const [id, controller] of requests) this.inflight.set(id, controller);
 
     const server = new McpServer(
       { name: MCP_SERVER_NAME, version: this.options.version ?? '0.0.1' },
       { capabilities: { tools: {} } },
     );
     registerBrowserTools(server, this.context);
-    // No `sessionIdGenerator`: stateless mode.
+    if (this.grove) registerGroveTools(server, this.grove, (id) => this.inflight.get(id)?.signal);
+    // No `sessionIdGenerator`: stateless mode. Closing the transport aborts the request's handler.
     const transport = new StreamableHTTPServerTransport({ enableJsonResponse: true });
     res.on('close', () => {
+      for (const [id, controller] of requests) if (this.inflight.get(id) === controller) this.inflight.delete(id);
       void transport.close();
       void server.close();
     });

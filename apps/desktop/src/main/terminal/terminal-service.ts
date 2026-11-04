@@ -55,6 +55,8 @@ export interface CreateTerminalOptions extends Partial<TerminalSize> {
   /** Extra environment variables merged over the login-shell environment. */
   readonly env?: Readonly<Record<string, string>>;
   readonly readOnly?: boolean;
+  /** The agent thread that owns this terminal, shown next to its command. */
+  readonly thread?: string;
   /** Receives raw process output from the first byte (registered before the process starts). */
   readonly onData?: (data: string) => void;
 }
@@ -123,6 +125,7 @@ export class TerminalService {
         pid: null,
         exitCode: null,
         readOnly: request.readOnly ?? kind === 'agent',
+        ...(request.thread !== undefined ? { thread: request.thread } : {}),
       },
       command,
       args: request.args,

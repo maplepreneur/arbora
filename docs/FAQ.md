@@ -47,10 +47,13 @@ Electron needs a notification daemon (mako, dunst, swaync; Omarchy ships mako). 
 
 ## Does Arbora send anything anywhere?
 
-No telemetry, no crash upload. Crash dumps and `logs/main.log` stay in the user-data folder. **Export Diagnostics…** writes a zip you can attach to a bug report yourself; it removes agent environment values, tokens and your home folder path. Update checks ask GitHub Releases on `maplepreneur/arbora` and can be turned off in Settings → Updates & diagnostics.
+No telemetry, no crash upload. Crash dumps and `logs/main.log` stay in the user-data folder. **Export Diagnostics…** writes a zip you can attach to a bug report yourself; it removes agent environment values, tokens and your home folder path. Update checks ask GitHub Releases on `maplepreneur/arbora`. Pick the **Development** channel in Settings → Updates & diagnostics (or start Arbora with `ARBORA_UPDATES=off`) and Arbora never checks.
+
+## How do I try betas, or stop updates while I build Arbora?
+
+Settings → Updates & diagnostics → **Channel**. **Beta** installs prereleases (`x.y.z-beta.n`) built from the `beta` branch as they are published, and then each stable release. **Stable** gets only `x.y.z`. **Development** turns updates off. Copies you build yourself never update or get replaced: `pnpm dev`, `pnpm e2e`, the checkout launcher (`scripts/install-local.sh`) and local `pnpm package` builds. For the launcher, the channel decides which branch a clean checkout follows: `main`, `beta`, or none on Development. A feature branch is never switched.
 
 ## Where are settings, threads and screenshots?
 
 - App settings: `settings.json` in the user-data folder (`~/.config/arbora`, `~/Library/Application Support/arbora`, `%APPDATA%\arbora`).
-- Per project, committed: `.arbora/project.json` (dev command, default agent, MCP tool permissions, keybinding overrides).
-- Per project, machine-local (keep them out of git, for example with `.arbora/*` and `!.arbora/project.json` in `.gitignore`): `.arbora/threads/`, `.arbora/agent-groups.json`, `.arbora/screenshots/`, `.arbora/design-sessions/`.
+- Per project: the `.arbora/` folder. Arbora writes `.arbora/.gitignore` (containing `*`) the first time it uses the folder, so none of it shows up in git: `.arbora/project.json` (dev command, default agent, MCP tool permissions, keybinding overrides), `.arbora/threads/`, `.arbora/agent-groups.json`, `.arbora/screenshots/`, `.arbora/design-sessions/` and `.arbora/SKILL.md`. To share `project.json` with your team, add `!project.json` to `.arbora/.gitignore`. Arbora never overwrites that file once it exists.
