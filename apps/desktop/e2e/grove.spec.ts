@@ -448,6 +448,10 @@ test.describe('Stage 10 Grove', () => {
         { timeout: 30_000 },
       );
       await expect(pane.getByTestId('permission-card')).toHaveCount(1);
+      // The helper's finish was the lead's to read, so once the lead's own is seen the bell is clear.
+      await focusWindow(app);
+      await expect(page.getByTestId('attention-badge')).toHaveCount(0);
+      await expect(helper).toHaveAttribute('data-status', 'idle');
       const helperId = await helper.getAttribute('data-thread-id');
       if (!helperId) throw new Error('no helper');
       expect(await rows.evaluateAll((all) => all.map((row) => row.getAttribute('data-thread-id')))).toEqual([

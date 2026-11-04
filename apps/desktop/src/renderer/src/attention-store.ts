@@ -89,16 +89,26 @@ function announce(threadId: string, kind: AttentionKind, attention: ThreadAttent
   useAttention.setState({ lastCue: { kind, threadId, sound, notified } });
 }
 
+function isHelper(threadId: string): boolean {
+  return useAgents.getState().threads.some((t) => t.id === threadId && t.parentThreadId !== null);
+}
+
 function apply(threadId: string, input: AttentionInput): void {
   const current = useAttention.getState().threads[threadId];
   const { next, signal } = reduceAttention(current, input);
+  // A helper's finish is its lead's to read (`grove_wait`); its questions and failures still reach the user.
+  const helperFinish = signal === 'finished' && isHelper(threadId);
   let settled = next;
   // A finish on the thread the user is reading is already seen.
-  if (signal !== null && (signal === 'finished' || signal === 'failed') && isThreadVisible(threadId)) {
+  if (
+    signal !== null &&
+    (signal === 'finished' || signal === 'failed') &&
+    (helperFinish || isThreadVisible(threadId))
+  ) {
     settled = reduceAttention(next, { type: 'seen' }).next;
   }
   useAttention.setState((s) => ({ threads: { ...s.threads, [threadId]: settled } }));
-  if (signal !== null) announce(threadId, signal, next);
+  if (signal !== null && !helperFinish) announce(threadId, signal, next);
   syncCount();
 }
 
