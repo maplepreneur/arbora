@@ -5,9 +5,11 @@ import {
   commandIdSchema,
   DEFAULT_COMMANDS,
   isPickableAgent,
+  neighbourPanel,
   parentPath,
   toProjectPath,
   visibleModels,
+  WORKSPACE_PANELS,
   type AgentModeTarget,
   type BottomTab,
   type BrowserAction,
@@ -16,6 +18,7 @@ import {
   type SidebarView,
   type ThemeMode,
   type ViewportPresetId,
+  type WorkspacePanel,
 } from '@arbora/shared';
 import {
   activeThread,
@@ -189,6 +192,8 @@ export interface WorkspaceController {
   toggleBottomPanel(): void;
   showSidebarView(view: SidebarView): void;
   showBottomTab(tab: BottomTab): void;
+  /** Expands a collapsed panel. */
+  revealPanel(panel: Exclude<WorkspacePanel, 'center'>): void;
 }
 
 let workspace: WorkspaceController | null = null;
@@ -478,6 +483,19 @@ const LANDMARK_SELECTOR = '[data-landmark]';
 const FOCUSABLE =
   'input:not([disabled]), textarea:not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
+/** Focuses a panel's `data-panel-focus` element (the file tree, the commit box), else its first control. */
+function focusWithin(target: HTMLElement): void {
+  const visible = (el: HTMLElement): boolean => el.offsetParent !== null;
+  const inner =
+    [...target.querySelectorAll<HTMLElement>('[data-panel-focus]')].find(visible) ??
+    [...target.querySelectorAll<HTMLElement>(FOCUSABLE)].find(visible);
+  if (inner) inner.focus();
+  else {
+    if (!target.hasAttribute('tabindex')) target.tabIndex = -1;
+    target.focus();
+  }
+}
+
 /** F6 / Shift+F6: moves focus to the next visible landmark (title bar, sidebar, centre, agent, bottom). */
 export function focusLandmark(direction: 1 | -1): void {
   const landmarks = [...document.querySelectorAll<HTMLElement>(LANDMARK_SELECTOR)].filter(
@@ -487,13 +505,65 @@ export function focusLandmark(direction: 1 | -1): void {
   const current = landmarks.findIndex((el) => el.contains(document.activeElement));
   const start = current === -1 ? (direction === 1 ? -1 : 0) : current;
   const target = landmarks[(start + direction + landmarks.length) % landmarks.length];
-  if (!target) return;
-  const inner = [...target.querySelectorAll<HTMLElement>(FOCUSABLE)].find((el) => el.offsetParent !== null);
-  if (inner) inner.focus();
-  else {
-    if (!target.hasAttribute('tabindex')) target.tabIndex = -1;
-    target.focus();
+  if (target) focusWithin(target);
+}
+
+/** The panel that has focus; the embedded page counts as the centre. */
+function focusedPanel(): WorkspacePanel | null {
+  if (!document.hasFocus()) return 'center';
+  const landmark = document.activeElement?.closest<HTMLElement>(LANDMARK_SELECTOR)?.dataset['landmark'];
+  return WORKSPACE_PANELS.find((panel) => panel === landmark) ?? null;
+}
+
+function focusAgentComposer(): void {
+  const thread = activeThread();
+  if (thread) {
+    useAgents.setState({ view: 'thread' });
+    focusComposer();
+  } else if (useAgents.getState().threads.length > 0) {
+    showThreads();
+  } else {
+    showPicker();
   }
+}
+
+/** `Mod+1`..`Mod+4`: expands the panel if it is collapsed and puts the keyboard in it. */
+export function focusPanel(panel: WorkspacePanel): void {
+  if (!hasProject() || !workspace) return;
+  if (panel !== 'center') workspace.revealPanel(panel);
+  // Let an expanded panel lay out before focusing inside it.
+  requestAnimationFrame(() => {
+    const landmark = document.querySelector<HTMLElement>(`[data-landmark="${panel}"]`);
+    switch (panel) {
+      case 'sidebar':
+        if (landmark) focusWithin(landmark);
+        return;
+      case 'center': {
+        const { settingsOpen, browser } = useApp.getState();
+        if (!settingsOpen && useFiles.getState().active !== null) editorController()?.focus();
+        else if (!settingsOpen && browser?.url) void window.arbora.invoke('browser.action', { action: 'focusPage' });
+        else if (landmark) focusWithin(landmark);
+        return;
+      }
+      case 'bottom':
+        if (useApp.getState().layout.bottomTab === 'terminal') focusActiveTerminal();
+        else if (landmark) focusWithin(landmark);
+        return;
+      case 'agent':
+        if (useApp.getState().mode.kind !== 'design' && activeThread()) focusAgentComposer();
+        else if (landmark) focusWithin(landmark);
+        return;
+      default: {
+        const unreachable: never = panel;
+        throw new Error(`Unknown panel ${String(unreachable)}`);
+      }
+    }
+  });
+}
+
+function focusNeighbour(direction: 'left' | 'right' | 'up' | 'down'): void {
+  const next = neighbourPanel(focusedPanel() ?? 'center', direction);
+  if (next) focusPanel(next);
 }
 
 function showAttentionThread(): void {
@@ -754,17 +824,7 @@ async function runCommand(id: CommandId): Promise<void> {
       withAgentPanel(() => showPicker());
       return;
     case CommandId.agentFocusComposer:
-      withAgentPanel(() => {
-        const thread = activeThread();
-        if (thread) {
-          useAgents.setState({ view: 'thread' });
-          focusComposer();
-        } else if (useAgents.getState().threads.length > 0) {
-          showThreads();
-        } else {
-          showPicker();
-        }
-      });
+      withAgentPanel(focusAgentComposer);
       return;
     case CommandId.agentCancel: {
       const thread = activeThread();
@@ -829,6 +889,30 @@ async function runCommand(id: CommandId): Promise<void> {
       return;
     case CommandId.toggleSounds:
       await toggleSetting('sounds');
+      return;
+    case CommandId.focusSidebarPanel:
+      focusPanel('sidebar');
+      return;
+    case CommandId.focusCenterPanel:
+      focusPanel('center');
+      return;
+    case CommandId.focusBottomPanel:
+      focusPanel('bottom');
+      return;
+    case CommandId.focusAgentPanel:
+      focusPanel('agent');
+      return;
+    case CommandId.focusPanelLeft:
+      focusNeighbour('left');
+      return;
+    case CommandId.focusPanelRight:
+      focusNeighbour('right');
+      return;
+    case CommandId.focusPanelUp:
+      focusNeighbour('up');
+      return;
+    case CommandId.focusPanelDown:
+      focusNeighbour('down');
       return;
     case CommandId.focusNextPanel:
       focusLandmark(1);

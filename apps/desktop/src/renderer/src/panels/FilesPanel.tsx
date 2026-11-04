@@ -466,6 +466,7 @@ export default function FilesPanel() {
         role="tree"
         aria-label="Files"
         tabIndex={0}
+        data-panel-focus
         data-testid="explorer-tree"
         onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
         onKeyDown={onKeyDown}

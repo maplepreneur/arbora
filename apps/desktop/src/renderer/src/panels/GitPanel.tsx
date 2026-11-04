@@ -346,6 +346,7 @@ function CommitBox({
           ref={input}
           value={message}
           data-testid="git-commit-message"
+          data-panel-focus
           onChange={(event) => useGit.setState({ message: event.target.value })}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {

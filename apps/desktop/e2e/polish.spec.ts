@@ -76,14 +76,14 @@ test.describe('Stage 9 onboarding', () => {
       await expect(page.getByTestId('onboarding-chord-arbora.agentMode')).toHaveAttribute('data-pressed', 'true');
       await page.keyboard.press('ControlOrMeta+D');
       await expect(page.getByTestId('onboarding-chord-arbora.designMode')).toHaveAttribute('data-pressed', 'true');
-      await expect(page.getByTestId('mode-indicator')).toHaveCount(0);
+      await expect(page.getByTestId('mode-pills')).toHaveAttribute('data-mode', 'idle');
       await page.getByTestId('onboarding-next').click();
       await page.getByTestId('onboarding-sounds').click();
       await page.getByTestId('onboarding-next').click();
       await page.getByTestId('onboarding-finish').click();
       await expect(page.getByTestId('onboarding')).toHaveCount(0);
       // Finishing tries agent mode right away.
-      await expect(page.getByTestId('mode-indicator')).toHaveText('Agent mode');
+      await expect(page.getByTestId('mode-pills')).toHaveAttribute('data-mode', 'agent');
       const settings = JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')) as {
         onboarding: { completed: boolean; checkedChords: string[] };
         sounds: { enabled: boolean };
@@ -289,7 +289,7 @@ test.describe('Stage 9 settings', () => {
       // Ctrl+K is agent mode: main must not intercept it while recording.
       await page.keyboard.press('ControlOrMeta+K');
       await expect(page.getByTestId('shortcut-conflict')).toContainText('Toggle Agent Mode');
-      await expect(page.getByTestId('mode-indicator')).toHaveCount(0);
+      await expect(page.getByTestId('mode-pills')).toHaveAttribute('data-mode', 'idle');
       await page.getByTestId('shortcut-replace').click();
       await expect(row.getByTestId('shortcut-record')).toHaveText(process.platform === 'darwin' ? '⌘K' : 'Ctrl+K');
       const saved = JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')) as {
