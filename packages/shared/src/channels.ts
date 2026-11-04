@@ -55,6 +55,7 @@ import {
 } from './files.js';
 import { defineChannel, defineEvent, type IpcClient } from './ipc.js';
 import { platformSchema } from './platform.js';
+import { PROJECT_FRAMEWORKS } from './project-framework.js';
 import { projectLibrarySchema, projectMetaPatchSchema } from './projects.js';
 import {
   agentVerificationSchema,
@@ -123,6 +124,11 @@ export const windowStateSchema = z.object({
   maximized: z.boolean(),
   fullScreen: z.boolean(),
   focused: z.boolean(),
+  /**
+   * Set when this window opened into Grove with no browser project. Absent on the projects home
+   * and once a project is open (that project's layout decides the workspace).
+   */
+  workspace: workspaceKindSchema.optional(),
 });
 export type WindowState = z.infer<typeof windowStateSchema>;
 
@@ -250,11 +256,19 @@ export const channels = {
   'keybindings.setContext': defineChannel('keybindings.setContext', keybindingContextSchema, none),
 
   'project.getCurrent': defineChannel('project.getCurrent', none, projectInfoSchema.nullable()),
-  /** Opens `path`, or shows the native folder dialog when omitted. */
+  /**
+   * Opens `path`, or shows the native folder dialog when omitted.
+   * `onThisWindow` attaches that folder on the calling window (the shared runtime, not a second one).
+   * A window that already has it is focused instead; `url` is then loaded in that window's browser.
+   */
   'project.open': defineChannel(
     'project.open',
-    z.object({ path: z.string().min(1).optional() }),
-    z.object({ opened: z.boolean(), error: z.string().optional() }),
+    z.object({
+      path: z.string().min(1).optional(),
+      onThisWindow: z.boolean().optional(),
+      url: z.string().optional(),
+    }),
+    z.object({ opened: z.boolean(), error: z.string().optional(), focusedElsewhere: z.boolean().optional() }),
   ),
   'project.close': defineChannel('project.close', none, none),
   'project.recents': defineChannel('project.recents', none, z.array(recentProjectSchema)),
@@ -360,6 +374,103 @@ export const channels = {
   ),
   'devServer.stop': defineChannel('devServer.stop', none, none),
   'devServer.status': defineChannel('devServer.status', none, devServerStatusSchema),
+
+  /** Points this window's Grove terminal and agent calls at a project, or back at the window's project. */
+  'grove.focusProject': defineChannel('grove.focusProject', z.object({ path: z.string().nullable() }), none),
+  /** Adds a folder to Grove. With no path, asks for one. The folder is not opened as this window's project. */
+  'grove.addProject': defineChannel(
+    'grove.addProject',
+    z.object({ path: z.string().optional() }),
+    z.object({ added: z.boolean(), path: z.string().optional(), error: z.string().optional() }),
+  ),
+  /**
+   * Removes a folder from Grove. When something is running and `confirm` is not set, nothing is
+   * removed and `running` is true so the renderer can ask first.
+   */
+  'grove.removeProject': defineChannel(
+    'grove.removeProject',
+    z.object({ path: z.string(), confirm: z.boolean().optional() }),
+    z.object({ removed: z.boolean(), running: z.boolean().optional() }),
+  ),
+  'grove.setCollapsed': defineChannel(
+    'grove.setCollapsed',
+    z.object({ path: z.string(), collapsed: z.boolean() }),
+    none,
+  ),
+  'grove.commands': defineChannel(
+    'grove.commands',
+    z.object({ path: z.string() }),
+    z.object({
+      commands: z.array(
+        z.object({
+          id: z.string(),
+          title: z.string(),
+          command: z.string(),
+          source: z.enum(['package.json', 'rails', 'procfile', 'makefile', 'composer', 'cargo', 'go']),
+          trusted: z.boolean(),
+        }),
+      ),
+      framework: z.enum(PROJECT_FRAMEWORKS),
+    }),
+  ),
+  'grove.trustCommand': defineChannel('grove.trustCommand', z.object({ path: z.string(), command: z.string() }), none),
+  /**
+   * Every runtime's terminals, so Grove can show a command's running count for a project that is
+   * not the one this window is focused on.
+   */
+  'grove.terminals': defineChannel(
+    'grove.terminals',
+    none,
+    z.object({
+      projects: z.array(z.object({ path: z.string(), terminals: z.array(terminalInfoSchema) })),
+    }),
+  ),
+  /**
+   * Every runtime's threads, so Grove can list agents under projects that are not focused.
+   * `waiting` is a permission or sign-in still open in the transcript. Finishes are not included:
+   * those are live attention, cleared once the user looks.
+   */
+  'grove.agents': defineChannel(
+    'grove.agents',
+    none,
+    z.object({
+      projects: z.array(
+        z.object({
+          path: z.string(),
+          threads: z.array(threadSummarySchema),
+          waiting: z.array(
+            z.object({
+              threadId: z.string(),
+              permissionIds: z.array(z.string()),
+              permissionTitle: z.string().nullable(),
+              auth: z.boolean(),
+            }),
+          ),
+        }),
+      ),
+    }),
+  ),
+  /**
+   * Starts an agent in a new git worktree of `parentPath`. The worktree is registered as its own
+   * Grove project only after `git worktree add` succeeds. A failure leaves the Grove list unchanged.
+   */
+  'grove.createWorktree': defineChannel(
+    'grove.createWorktree',
+    z.object({
+      parentPath: z.string(),
+      title: z.string().trim().min(1).max(200),
+      agentId: z.string(),
+      model: z.string().max(300).optional(),
+    }),
+    z.object({ path: z.string().optional(), threadId: z.string().optional(), error: z.string().optional() }),
+  ),
+  'grove.runCommand': defineChannel(
+    'grove.runCommand',
+    z
+      .object({ path: z.string(), command: z.string(), title: z.string().optional() })
+      .extend(terminalSizeSchema.partial().shape),
+    terminalInfoSchema,
+  ),
 
   /** Built-in and custom agents with whether their executable resolves on the login-shell PATH. */
   'agent.listAgents': defineChannel(
@@ -635,20 +746,32 @@ export const events = {
   'browser.problemsCleared': defineEvent('browser.problemsCleared', z.object({})),
   'browser.urlSuggested': defineEvent('browser.urlSuggested', z.object({ url: z.string() })),
   /** Output from one terminal, batched per animation frame or so. */
-  'terminal.data': defineEvent('terminal.data', z.object({ id: z.string(), data: z.string() })),
+  'terminal.data': defineEvent(
+    'terminal.data',
+    z.object({ projectPath: z.string(), id: z.string(), data: z.string() }),
+  ),
   /** The set of terminals or one terminal's title, pid or exit code changed. */
-  'terminal.changed': defineEvent('terminal.changed', z.object({ terminals: z.array(terminalInfoSchema) })),
+  'terminal.changed': defineEvent(
+    'terminal.changed',
+    z.object({ projectPath: z.string(), terminals: z.array(terminalInfoSchema) }),
+  ),
   /**
    * A terminal printed a local dev-server URL it had not printed before. `opened` is true when the
    * empty browser panel loaded it (`autoOpenDevUrl`).
    */
   'terminal.urlDetected': defineEvent(
     'terminal.urlDetected',
-    z.object({ id: z.string(), url: z.string(), opened: z.boolean() }),
+    z.object({ projectPath: z.string(), id: z.string(), url: z.string(), opened: z.boolean() }),
   ),
   /** The thread list or a thread's metadata/state changed. */
-  'agent.threadsChanged': defineEvent('agent.threadsChanged', z.object({ threads: z.array(threadSummarySchema) })),
-  'agent.groupsChanged': defineEvent('agent.groupsChanged', z.object({ groups: z.array(agentGroupSchema) })),
+  'agent.threadsChanged': defineEvent(
+    'agent.threadsChanged',
+    z.object({ projectPath: z.string(), threads: z.array(threadSummarySchema) }),
+  ),
+  'agent.groupsChanged': defineEvent(
+    'agent.groupsChanged',
+    z.object({ projectPath: z.string(), groups: z.array(agentGroupSchema) }),
+  ),
   /** A desktop notification from `app.notify` was clicked. */
   'notification.clicked': defineEvent('notification.clicked', z.object({ threadId: z.string().nullable() })),
   'updates.state': defineEvent('updates.state', updateStateSchema),
@@ -657,12 +780,37 @@ export const events = {
   /** Transcript updates for one thread, in order. */
   'agent.threadEvents': defineEvent(
     'agent.threadEvents',
-    z.object({ threadId: z.string(), changes: z.array(threadChangeSchema).min(1) }),
+    z.object({ projectPath: z.string(), threadId: z.string(), changes: z.array(threadChangeSchema).min(1) }),
   ),
-  'agent.threadState': defineEvent('agent.threadState', z.object({ threadId: z.string(), state: threadStateSchema })),
-  'agent.log': defineEvent('agent.log', z.object({ threadId: z.string(), entry: acpLogEntrySchema })),
+  'agent.threadState': defineEvent(
+    'agent.threadState',
+    z.object({ projectPath: z.string(), threadId: z.string(), state: threadStateSchema }),
+  ),
+  'agent.log': defineEvent(
+    'agent.log',
+    z.object({ projectPath: z.string(), threadId: z.string(), entry: acpLogEntrySchema }),
+  ),
   /** An agent wrote a file through `fs/write_text_file` (Stage 8's "Agent changes" group). */
-  'agent.fileChanged': defineEvent('agent.fileChanged', z.object({ threadId: z.string(), path: z.string() })),
+  'agent.fileChanged': defineEvent(
+    'agent.fileChanged',
+    z.object({ projectPath: z.string(), threadId: z.string(), path: z.string() }),
+  ),
+  /** Memory and CPU of the agent and terminal process trees, while Grove is showing. */
+  'grove.usage': defineEvent(
+    'grove.usage',
+    z.object({
+      samples: z.array(
+        z.object({
+          projectPath: z.string(),
+          kind: z.enum(['terminal', 'agent']),
+          id: z.string(),
+          rssKb: z.number(),
+          cpuPercent: z.number(),
+          agentCli: z.string().nullable(),
+        }),
+      ),
+    }),
+  ),
   /** Agent mode: the user clicked an element; main is taking the screenshot and resolving sources. */
   'agentMode.picked': defineEvent('agentMode.picked', z.object({})),
   'agentMode.selected': defineEvent('agentMode.selected', agentModeSelectionSchema),

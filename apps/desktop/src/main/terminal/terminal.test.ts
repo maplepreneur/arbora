@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -81,6 +82,34 @@ describe('waitForPortFree', () => {
 describe('TerminalService', { timeout: 20_000 }, () => {
   let service: TerminalService | undefined;
   afterEach(() => service?.dispose());
+
+  it('shows an adopted process without spawning a pty', async () => {
+    const running = setup();
+    const gone = running.service.adopt({
+      id: 'old',
+      title: 'npm:test',
+      command: 'npm run test',
+      cwd: '/tmp',
+      pid: null,
+      recovered: 'gone',
+    });
+    expect(gone).toMatchObject({ recovered: 'gone', exitCode: -1, pid: null, readOnly: true });
+    const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+    const pid = child.pid;
+    if (!pid) throw new Error('no pid');
+    const live = running.service.adopt({
+      id: 'live',
+      title: 'npm:dev',
+      command: 'npm run dev',
+      cwd: process.cwd(),
+      pid,
+      recovered: 'running',
+    });
+    expect(live.pid).toBe(pid);
+    expect(live.recovered).toBe('running');
+    running.service.dispose();
+    await expect.poll(() => isAlive(pid), { timeout: 4000 }).toBe(false);
+  });
 
   function setup(cwd = tempDir(), onUrl?: (id: string, url: string) => void) {
     const data = new Map<string, string>();

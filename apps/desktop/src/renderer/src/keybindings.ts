@@ -73,7 +73,7 @@ export function bindingForEvent(event: KeyboardEvent): ReturnType<KeybindingTabl
     alt: event.altKey,
     shift: event.shiftKey,
   });
-  const { mode, terminalFocused, settings, design, layout, project } = useApp.getState();
+  const { mode, terminalFocused, settings, design, layout } = useApp.getState();
   const binding = activeTable.match(chord, {
     modeActive: modeActive(mode),
     terminalFocused,
@@ -81,7 +81,7 @@ export function bindingForEvent(event: KeyboardEvent): ReturnType<KeybindingTabl
     designActive: mode.kind === 'design',
     textEditing: design.textEditing,
     agentFocused: event.target instanceof Element && event.target.closest(AGENT_THREAD_SELECTOR) !== null,
-    workspace: project ? layout.workspace : 'browser',
+    workspace: layout.workspace,
   });
   if (binding && design.textEditing && binding.commandId !== 'arbora.exitMode') return undefined;
   return binding;
@@ -94,7 +94,7 @@ export function useKeybindingContextSync(): void {
   const designActive = useApp((s) => s.mode.kind === 'design');
   const textEditing = useApp((s) => s.design.textEditing);
   const recording = useApp((s) => s.recordingShortcut);
-  const workspace = useApp((s) => (s.project ? s.layout.workspace : 'browser'));
+  const workspace = useApp((s) => s.layout.workspace);
   useEffect(() => {
     void window.arbora.invoke('keybindings.setContext', {
       modeActive: active,

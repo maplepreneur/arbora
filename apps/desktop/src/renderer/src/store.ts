@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   defaultSettings,
+  layoutForAppLaunch,
   layoutStateSchema,
   type AppInfo,
   type AppSettings,
@@ -86,7 +87,7 @@ export type SettingsSection =
   | 'keyboard'
   | 'updates';
 
-export type Overlay = 'onboarding' | 'switcher' | 'update';
+export type Overlay = 'onboarding' | 'switcher' | 'update' | 'keybindings';
 
 export function openOverlay(overlay: Overlay): void {
   useApp.setState({ overlay, paletteOpen: false });
@@ -177,7 +178,11 @@ export const useApp = create<AppState>()(() => ({
 export const MAX_PROBLEMS = 1000;
 
 export function initStore(initial: InitialState): void {
-  useApp.setState({ ...initial, layout: initial.project?.layout ?? DEFAULT_LAYOUT });
+  const launchedGrove = !initial.project && initial.windowState.workspace === 'grove';
+  useApp.setState({
+    ...initial,
+    layout: initial.project?.layout ?? (launchedGrove ? layoutForAppLaunch(undefined, 'grove') : DEFAULT_LAYOUT),
+  });
 }
 
 export function setProject(project: ProjectInfo | null): void {

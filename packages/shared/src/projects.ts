@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   groupColorSchema,
   type AppSettings,
+  type GroupColor,
   type ProjectGroup,
   type ProjectState,
   type RecentProject,
@@ -104,6 +105,45 @@ export function applyProjectMeta(state: ProjectState | undefined, patch: Project
     else next.alias = patch.alias;
   }
   return next;
+}
+
+export interface GroveListSection {
+  readonly id: string;
+  readonly title: string | null;
+  readonly color: GroupColor | null;
+  readonly collapsed: boolean;
+  readonly paths: readonly string[];
+}
+
+/**
+ * Grove's project list, sectioned by the machine-local `projectGroups`. A path is in a group when
+ * `states[path].groupId` matches. Unknown ids stay ungrouped. With no grouped path, one untitled
+ * section keeps the list flat. Empty groups are omitted. Ungrouped paths are the last section.
+ */
+export function groveProjectSections(
+  paths: readonly string[],
+  groups: readonly ProjectGroup[],
+  states: Readonly<Record<string, { groupId?: string | undefined } | undefined>>,
+): GroveListSection[] {
+  const known = new Set(groups.map((group) => group.id));
+  const grouped = groups
+    .map((group) => ({
+      id: group.id,
+      title: group.name,
+      color: group.color,
+      collapsed: group.collapsed,
+      paths: paths.filter((path) => states[path]?.groupId === group.id),
+    }))
+    .filter((section) => section.paths.length > 0);
+  if (grouped.length === 0) {
+    return [{ id: 'all', title: null, color: null, collapsed: false, paths }];
+  }
+  const ungrouped = paths.filter((path) => {
+    const id = states[path]?.groupId;
+    return id === undefined || !known.has(id);
+  });
+  if (ungrouped.length === 0) return grouped;
+  return [...grouped, { id: 'ungrouped', title: 'Ungrouped', color: null, collapsed: false, paths: ungrouped }];
 }
 
 /** A group id that is unused, derived from the name so `settings.json` stays readable. */

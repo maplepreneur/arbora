@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import type { Platform } from '@arbora/shared';
+import { terminalAgentName, type Platform } from '@arbora/shared';
 
 /** Parses `ps -A -o pid= -o ppid=` output into child lists keyed by parent pid. */
 export function parseProcessTable(output: string): Map<number, number[]> {
@@ -79,4 +79,75 @@ export function killProcessTree(pid: number, platform: Platform): void {
     for (const target of tree) if (isAlive(target)) signal(target, 'SIGKILL');
     signal(-pid, 'SIGKILL');
   }, KILL_GRACE_MS).unref();
+}
+
+export interface ProcessSample {
+  readonly rssKb: number;
+  readonly cpuPercent: number;
+  /** An agent CLI running somewhere in this process tree, when one is. */
+  readonly agentCli: string | null;
+}
+
+interface SampleRow {
+  readonly pid: number;
+  readonly ppid: number;
+  readonly rssKb: number;
+  readonly cpu: number;
+  readonly command: string;
+}
+
+/** Parses `ps -A -o pid= -o ppid= -o rss= -o pcpu= -o command=`. */
+export function parseProcessSamples(output: string): SampleRow[] {
+  const rows: SampleRow[] = [];
+  for (const line of output.split('\n')) {
+    const match = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+([\d.]+)\s+(.*)$/.exec(line);
+    if (!match?.[1] || !match[2] || !match[3] || !match[4]) continue;
+    rows.push({
+      pid: Number(match[1]),
+      ppid: Number(match[2]),
+      rssKb: Number(match[3]),
+      cpu: Number(match[4]),
+      command: match[5] ?? '',
+    });
+  }
+  return rows;
+}
+
+/** Resident memory and CPU of `root` plus everything it started, and any agent CLI in that tree. */
+export function treeSample(root: number, rows: readonly SampleRow[]): ProcessSample {
+  const children = new Map<number, number[]>();
+  const byPid = new Map<number, SampleRow>();
+  for (const row of rows) {
+    byPid.set(row.pid, row);
+    const list = children.get(row.ppid);
+    if (list) list.push(row.pid);
+    else children.set(row.ppid, [row.pid]);
+  }
+  const pids = [root, ...descendantsOf(root, children)];
+  let rssKb = 0;
+  let cpuPercent = 0;
+  let agentCli: string | null = null;
+  for (const pid of pids) {
+    const row = byPid.get(pid);
+    if (!row) continue;
+    rssKb += row.rssKb;
+    cpuPercent += row.cpu;
+    agentCli ??= terminalAgentName(row.command);
+  }
+  return { rssKb, cpuPercent, agentCli };
+}
+
+/** One `ps` of the machine. An empty list when `ps` is missing or slow. */
+export function readProcessSamples(platform: Platform): SampleRow[] {
+  if (platform === 'win32') return [];
+  try {
+    return parseProcessSamples(
+      execFileSync('ps', ['-A', '-o', 'pid=', '-o', 'ppid=', '-o', 'rss=', '-o', 'pcpu=', '-o', 'command='], {
+        encoding: 'utf8',
+        timeout: 2000,
+      }),
+    );
+  } catch {
+    return [];
+  }
 }

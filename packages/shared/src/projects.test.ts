@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { applyProjectMeta, buildProjectLibrary, folderName, newGroupId, projectSections } from './projects.js';
+import {
+  applyProjectMeta,
+  buildProjectLibrary,
+  folderName,
+  groveProjectSections,
+  newGroupId,
+  projectSections,
+} from './projects.js';
 import { defaultSettings } from './settings.js';
 
 function settings() {
@@ -64,6 +71,32 @@ describe('applyProjectMeta', () => {
     const next = applyProjectMeta({ layout, alias: 'x' }, { pinned: true, groupId: 'work', alias: null });
     expect(next).toEqual({ layout, pinned: true, groupId: 'work' });
     expect(applyProjectMeta(next, { pinned: false, groupId: null })).toEqual({ layout });
+  });
+});
+
+describe('groveProjectSections', () => {
+  const groups = [
+    { id: 'work', name: 'Work', color: 'blue' as const, collapsed: false },
+    { id: 'client', name: 'Client', color: 'pink' as const, collapsed: true },
+  ];
+
+  it('stays a flat list when nothing is grouped', () => {
+    expect(groveProjectSections(['/a', '/b'], groups, {})).toEqual([
+      { id: 'all', title: null, color: null, collapsed: false, paths: ['/a', '/b'] },
+    ]);
+  });
+
+  it('sections by the existing groups and leaves unknown ids ungrouped', () => {
+    const sections = groveProjectSections(['/a', '/b', '/c'], groups, {
+      '/a': { groupId: 'client' },
+      '/b': { groupId: 'missing' },
+      '/c': { groupId: 'work' },
+    });
+    expect(sections.map((section) => [section.id, section.collapsed, section.paths])).toEqual([
+      ['work', false, ['/c']],
+      ['client', true, ['/a']],
+      ['ungrouped', false, ['/b']],
+    ]);
   });
 });
 

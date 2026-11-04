@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import clsx from 'clsx';
 import { ChevronDown, ChevronRight, MoreHorizontal, Pin, Plus, TriangleAlert } from 'lucide-react';
 import {
@@ -27,21 +27,12 @@ import { useChordLabel } from '../../keybindings';
 import { openSettings, useApp } from '../../store';
 import { formatWhen, groupColor, showMenu } from '../agent/ThreadList';
 import { sessionStats, type EditStats } from './changes';
+import { onAgentListKeyDown } from './agent-list-keys';
 import { openRowMenu } from './session-actions';
+import { AgentMark } from './AgentMark';
 import { StatusDot } from './StatusDot';
 
 const ROW_SELECTOR = '[data-testid="grove-row"], [data-testid="grove-recent-row"]';
-
-/** Arrow keys move between rows; Enter (the button's click) selects one. */
-function moveRowFocus(event: KeyboardEvent<HTMLElement>): void {
-  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-  if (event.altKey || event.ctrlKey || event.metaKey) return;
-  const rows = [...event.currentTarget.querySelectorAll<HTMLElement>(ROW_SELECTOR)];
-  const index = rows.findIndex((row) => row === document.activeElement);
-  if (index === -1) return;
-  event.preventDefault();
-  rows[(index + (event.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length]?.focus();
-}
 
 /** Takes `listFocusRequest` once: the selected row, else the first one. */
 function useListFocus(container: RefObject<HTMLElement | null>, rowSelector: string): void {
@@ -163,18 +154,27 @@ const LINE_TONE: Partial<Record<GroveSession['status'], string>> = {
   failed: 'text-danger',
 };
 
-function SessionRow({
+export function SessionRow({
   session,
   helper,
   selected,
+  tabStop,
   groups,
   nameOf,
+  navId,
+  kbd = false,
+  onNavigate,
 }: {
   session: GroveSession;
   helper: boolean;
   selected: boolean;
+  /** Roving tabindex: one listed row is in the tab order. */
+  tabStop: boolean;
   groups: readonly AgentGroup[];
   nameOf: (threadId: string) => string;
+  navId?: string;
+  kbd?: boolean;
+  onNavigate?: () => void;
 }) {
   const stats = sessionStats(session.activity);
   const since = session.status === 'working' ? session.activity.turnStartedAt : null;
@@ -205,7 +205,13 @@ function SessionRow({
         aria-current={selected ? 'true' : undefined}
         aria-description={`${status}. ${session.line}`}
         title={title}
-        onClick={() => selectSession(session.id)}
+        tabIndex={tabStop ? 0 : -1}
+        data-nav-id={navId}
+        data-kbd={kbd || undefined}
+        onClick={() => {
+          onNavigate?.();
+          selectSession(session.id, { focus: false });
+        }}
         onContextMenu={(event) => {
           event.preventDefault();
           void openRowMenu(session, groups);
@@ -214,9 +220,11 @@ function SessionRow({
           'flex w-full flex-col gap-0.5 py-1.5 pr-7 text-left outline-none focus-visible:ring-1 focus-visible:ring-accent focus-visible:ring-inset',
           helper ? 'pl-7' : 'pl-3',
           selected ? 'bg-bg-muted' : 'hover:bg-bg-muted/60',
+          kbd && 'ring-1 ring-inset ring-accent',
         )}
       >
         <span className="flex min-w-0 items-center gap-2">
+          <AgentMark name={session.agentName} agentId={session.agentId} />
           <StatusDot status={session.status} />
           <span className="min-w-0 flex-1 truncate text-[12.5px]" data-testid="grove-row-name">
             {session.name}
@@ -244,6 +252,7 @@ function SessionRow({
         type="button"
         aria-label={`${session.name} actions`}
         data-testid="grove-row-menu"
+        tabIndex={-1}
         onClick={() => void openRowMenu(session, groups)}
         className="absolute top-1.5 right-1 flex h-5 w-5 items-center justify-center rounded text-fg-subtle opacity-0 group-hover/row:opacity-100 hover:bg-bg hover:text-fg focus-visible:opacity-100"
       >
@@ -253,7 +262,7 @@ function SessionRow({
   );
 }
 
-function RecentSection({ recent, selectedId }: { recent: readonly GroveSession[]; selectedId: string | null }) {
+export function RecentSection({ recent, selectedId }: { recent: readonly GroveSession[]; selectedId: string | null }) {
   const open = useGrove((s) => s.recentOpen);
   const showAll = useGrove((s) => s.showAllRecent);
   if (recent.length === 0) return null;
@@ -315,7 +324,7 @@ function RecentSection({ recent, selectedId }: { recent: readonly GroveSession[]
 }
 
 /** The project's default agent, **Change**, and whether an empty Grove starts it. */
-function ListFooter() {
+export function ListFooter() {
   const defaultId = useDefaultAgentId();
   const defaultName = useAgents((s) => s.agents.find((agent) => agent.id === defaultId)?.name);
   const startOnOpen = useApp((s) => s.project?.settings.startDefaultOnOpen !== false);
@@ -371,6 +380,7 @@ export function SessionList({ model, selectedId }: { model: GroveModel; selected
   useListFocus(scroller, ROW_SELECTOR);
   const nameOf = (threadId: string): string => model.byId.get(threadId)?.name ?? 'another agent';
   const headings = model.sections.length > 1;
+  const tabId = model.order.some((session) => session.id === selectedId) ? selectedId : (model.order[0]?.id ?? null);
   return (
     <nav aria-label="Agent sessions" data-testid="grove-sessions" className="flex h-full min-w-0 flex-col bg-bg-subtle">
       <ListHeader summary={model.summary} />
@@ -378,7 +388,7 @@ export function SessionList({ model, selectedId }: { model: GroveModel; selected
         ref={scroller}
         tabIndex={-1}
         className="min-h-0 flex-1 overflow-y-auto py-1 outline-none"
-        onKeyDown={moveRowFocus}
+        onKeyDown={(event) => onAgentListKeyDown(event, { order: model.order, selectedId, rowTestId: 'grove-row' })}
       >
         {model.listed.length === 0 && (
           <p className="px-3 py-2 text-[11px] text-fg-subtle">No agents yet. Start one above.</p>
@@ -395,6 +405,7 @@ export function SessionList({ model, selectedId }: { model: GroveModel; selected
                       session={row.thread}
                       helper={row.helper}
                       selected={row.thread.id === selectedId}
+                      tabStop={row.thread.id === tabId}
                       groups={groups}
                       nameOf={nameOf}
                     />
@@ -412,10 +423,16 @@ export function SessionList({ model, selectedId }: { model: GroveModel; selected
 }
 
 /** Under 520px of content width: one status dot per session, with the name and line as its tooltip. */
-export function SessionRail({ model, selectedId }: { model: GroveModel; selectedId: string | null }) {
+export function SessionRail({
+  sessions,
+  selectedId,
+}: {
+  sessions: readonly GroveSession[];
+  selectedId: string | null;
+}) {
   const rail = useRef<HTMLElement>(null);
   useListFocus(rail, '[data-testid="grove-rail-row"]');
-  const sessions = model.sections.flatMap((section) => section.rows.map((row) => row.thread));
+  const tabId = sessions.some((session) => session.id === selectedId) ? selectedId : (sessions[0]?.id ?? null);
   return (
     <nav
       ref={rail}
@@ -423,6 +440,7 @@ export function SessionRail({ model, selectedId }: { model: GroveModel; selected
       data-testid="grove-rail"
       tabIndex={-1}
       className="flex w-11 shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-border bg-bg-subtle py-2 outline-none"
+      onKeyDown={(event) => onAgentListKeyDown(event, { order: sessions, selectedId, rowTestId: 'grove-rail-row' })}
     >
       <button
         type="button"
@@ -444,9 +462,10 @@ export function SessionRail({ model, selectedId }: { model: GroveModel; selected
           aria-current={session.id === selectedId ? 'true' : undefined}
           aria-label={`${session.name}: ${SESSION_STATUS_LABEL[session.status]}`}
           title={`${session.name}: ${SESSION_STATUS_LABEL[session.status]}. ${session.line}`}
-          onClick={() => selectSession(session.id)}
+          tabIndex={session.id === tabId ? 0 : -1}
+          onClick={() => selectSession(session.id, { focus: false })}
           className={clsx(
-            'flex h-8 w-8 shrink-0 items-center justify-center rounded-md',
+            'flex h-8 w-8 shrink-0 items-center justify-center rounded-md outline-none focus-visible:ring-1 focus-visible:ring-accent',
             session.id === selectedId ? 'bg-bg-muted' : 'hover:bg-bg-muted/60',
           )}
         >

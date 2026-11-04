@@ -441,6 +441,34 @@ export function transcriptLines(events: readonly ThreadEvent[], limit: number): 
   return lines.slice(-Math.max(1, limit));
 }
 
+/**
+ * A website opened from a Grove terminal or a Grove dev-server confirmation.
+ * A browser-workspace link is not this action.
+ */
+export interface GroveWebsiteAction {
+  /** Show the browser workspace (`showWorkspace`). */
+  readonly switchWorkspace: 'browser';
+  /** Open this folder on the window. Null keeps the project the window already has. */
+  readonly openProject: string | null;
+  /** Load this URL in that project's browser. */
+  readonly navigate: string;
+}
+
+/**
+ * Given Grove, the project that owns the terminal or dev server, and a URL: switch to the browser
+ * workspace, open that project, and navigate to the URL. A missing project keeps the window's
+ * current one. A browser-workspace click stays on its existing path.
+ */
+export function groveWebsiteAction(input: {
+  readonly workspace: 'browser' | 'grove';
+  /** Project that owns the terminal or dev server, or null when none is known. */
+  readonly projectPath: string | null;
+  readonly url: string;
+}): GroveWebsiteAction | null {
+  if (input.workspace !== 'grove') return null;
+  return { switchWorkspace: 'browser', openProject: input.projectPath, navigate: input.url };
+}
+
 /** `40s`, `2m`, `1h 5m`. */
 export function formatElapsed(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000));
@@ -450,4 +478,15 @@ export function formatElapsed(ms: number): string {
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
+}
+
+/**
+ * The project Ctrl+Tab lands on. The first step leaves `current`, the way Alt+Tab skips the
+ * window you are already in. Fewer than two projects does nothing.
+ */
+export function cycleListedProject(paths: readonly string[], current: string | null, delta: 1 | -1): string | null {
+  if (paths.length < 2) return null;
+  const index = current == null ? -1 : paths.indexOf(current);
+  const start = index < 0 ? (delta > 0 ? -1 : 0) : index;
+  return paths[(start + delta + paths.length) % paths.length] ?? null;
 }

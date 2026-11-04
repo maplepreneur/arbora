@@ -15,6 +15,7 @@ import {
   type BottomTab,
   type BrowserAction,
   type DesignCommand,
+  type GroveWebsiteAction,
   type ScreenshotRequest,
   type SidebarView,
   type ThemeMode,
@@ -52,8 +53,13 @@ import { aiCommit, aiPullRequest, commitStaged, push, stageAll, syncNow } from '
 import {
   archiveSession,
   currentSession,
+  cycleGroveProject,
   focusSessionList,
   isGroveShowing,
+  openGroveSearch,
+  stepProjectSwitch,
+  showBrowserForGroveSelection,
+  showGroveForBrowserProject,
   openLauncher,
   renameSession,
   restartSession,
@@ -285,9 +291,10 @@ function withAgentPanel(action: () => void): void {
 
 const THEME_CYCLE: Readonly<Record<ThemeMode, ThemeMode>> = { system: 'light', light: 'dark', dark: 'system' };
 
-/** Runs `action` in Grove, switching to it first. */
+/** Runs `action` in Grove, switching to it first. A Grove launch has projects without a browser project. */
 function withGrove(action: () => void): void {
-  if (hasProject() && showWorkspace('grove')) action();
+  if (!isGroveShowing() && !showWorkspace('grove')) return;
+  action();
 }
 
 /** The ACP log below the Grove selection's transcript; fetched the first time it opens. */
@@ -324,14 +331,22 @@ export function setChordProbe(probe: ((commandId: string) => boolean) | null): v
 
 export function toggleMode(mode: 'agent' | 'design'): void {
   if (chordProbe?.(mode === 'agent' ? CommandId.agentMode : CommandId.designMode)) return;
-  if (!useApp.getState().project) {
-    showToast('Open a project first');
+  const enter = (): void => {
+    if (!useApp.getState().project) {
+      showToast('Open a project first');
+      return;
+    }
+    showBrowserTab();
+    dispatchMode({ type: mode === 'agent' ? 'toggleAgent' : 'toggleDesign' });
+  };
+  // Both modes act on the page. From Grove, that page is the project selected there.
+  if (isGroveShowing()) {
+    void showBrowserForGroveSelection().then((shown) => {
+      if (shown) enter();
+    });
     return;
   }
-  // Both modes act on the page, so it has to be on screen.
-  if (isGroveShowing() && !showWorkspace('browser')) return;
-  showBrowserTab();
-  dispatchMode({ type: mode === 'agent' ? 'toggleAgent' : 'toggleDesign' });
+  enter();
 }
 
 function designPending(): DesignPending {
@@ -348,7 +363,7 @@ function continueAfterDesign(pending: DesignPending): void {
       dispatchMode({ type: 'toggleAgent' });
       return;
     case 'grove':
-      showWorkspace('grove');
+      void showGroveForBrowserProject();
       return;
     default: {
       const unreachable: never = pending;
@@ -383,7 +398,7 @@ export async function saveDesignTo(target: AgentModeTarget | null): Promise<void
     const { threadId } = await window.arbora.invoke('design.save', { target });
     dispatchMode({ type: 'designLeave' });
     // Grove first, so the thread that got the edits opens there and you can watch it work.
-    if (pending === 'grove') continueAfterDesign(pending);
+    if (pending === 'grove') await showGroveForBrowserProject();
     await showAgentThread(threadId);
     if (pending !== 'grove') continueAfterDesign(pending);
   } catch (error) {
@@ -589,6 +604,30 @@ export async function navigateBrowser(url: string): Promise<void> {
   const result = await window.arbora.invoke('browser.navigate', { url });
   if (!result.ok) showToast(result.error ?? `Could not open ${url}`);
   else useApp.setState({ suggestedUrl: null });
+}
+
+/**
+ * Grove terminal link or dev-server confirmation: `showWorkspace('browser')`, open that project on
+ * this window, then load the URL. The same project still switches and navigates. No project path
+ * keeps the window's current project.
+ */
+export async function openGroveWebsite(action: GroveWebsiteAction): Promise<void> {
+  const current = useApp.getState().project?.path ?? null;
+  if (action.openProject && action.openProject !== current) {
+    try {
+      const result = await window.arbora.invoke('project.open', {
+        path: action.openProject,
+        onThisWindow: true,
+        url: action.navigate,
+      });
+      if (result.focusedElsewhere) return;
+      if (!result.opened) showToast(result.error ?? 'Could not open that project');
+    } catch (error) {
+      showToast(ipcError(error));
+    }
+  }
+  if (!showWorkspace(action.switchWorkspace)) return;
+  await navigateBrowser(action.navigate);
 }
 
 async function takeScreenshot(mode: ScreenshotRequest['mode']): Promise<void> {
@@ -1044,6 +1083,10 @@ async function runCommand(id: CommandId): Promise<void> {
     case CommandId.exportDiagnostics:
       await exportDiagnostics();
       return;
+    case CommandId.showKeybindings:
+      if (useApp.getState().overlay === 'keybindings') closeOverlay('keybindings');
+      else openOverlay('keybindings');
+      return;
     case CommandId.openKeyboardShortcuts:
       openSettings('keyboard');
       return;
@@ -1137,6 +1180,9 @@ async function runCommand(id: CommandId): Promise<void> {
     case CommandId.groveLaunch:
       openLauncher();
       return;
+    case CommandId.groveFocusAgents:
+      withGrove(() => focusSessionList());
+      return;
     case CommandId.groveNextSession:
       withGrove(() => selectRelative(1));
       return;
@@ -1155,7 +1201,16 @@ async function runCommand(id: CommandId): Promise<void> {
       withGrove(() => selectIndex(groveSessionIndex(id) ?? 0));
       return;
     case CommandId.groveArchiveSession:
-      withGroveSession((session) => archiveSession(session.id), true);
+      withGrove(() => {
+        const session = currentSession();
+        // Nothing selected: no toast and no confirm. A running process still asks inside archiveSession.
+        if (!session) return;
+        if (!isListed(session)) {
+          showToast(`${session.name} is archived. Restore it first.`);
+          return;
+        }
+        archiveSession(session.id);
+      });
       return;
     case CommandId.groveStopSession:
       withGroveSession((session) => void stopSession(session.id), true);
@@ -1168,6 +1223,21 @@ async function runCommand(id: CommandId): Promise<void> {
       return;
     case CommandId.groveSetDefaultAgent:
       withGroveSession((session) => void setProjectDefaultAgent(session.agentId));
+      return;
+    case CommandId.groveSearch:
+      openGroveSearch();
+      return;
+    case CommandId.groveNextProject:
+      withGrove(() => cycleGroveProject(1));
+      return;
+    case CommandId.grovePreviousProject:
+      withGrove(() => cycleGroveProject(-1));
+      return;
+    case CommandId.groveSwitchProject:
+      withGrove(() => stepProjectSwitch(1));
+      return;
+    case CommandId.groveSwitchProjectBack:
+      withGrove(() => stepProjectSwitch(-1));
       return;
     default: {
       const unreachable: never = id;

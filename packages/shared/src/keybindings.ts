@@ -205,7 +205,7 @@ export function formatChord(chord: Chord, platform: Platform): string {
  * is not a line-editing key, so it stays with Arbora (panel focus).
  */
 export function isTerminalPassthroughChord(chord: Chord): boolean {
-  return chord.ctrl && !chord.meta && !chord.alt && !chord.shift && !/^[0-9]$/.test(chord.key);
+  return chord.ctrl && !chord.meta && !chord.alt && !chord.shift && chord.key !== 'tab' && !/^[0-9]$/.test(chord.key);
 }
 
 /** Context the dispatcher needs to decide whether a binding applies. */

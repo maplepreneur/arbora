@@ -194,7 +194,13 @@ test.describe('Stage 10 Grove', () => {
       await expect(reply).toContainText(/After clicking e\d+: Clicked 1 times/);
       expect(await viewVisible(app)).toBe(false);
 
-      // Agent mode needs the page, so Mod+K goes back to the browser workspace first.
+      // Inside Grove, Mod+Shift+K searches. Mod+K leaves for agent mode on this project.
+      await page.keyboard.press('ControlOrMeta+Shift+K');
+      await expect(page.getByTestId('grove-search')).toBeVisible();
+      await expect(page.getByTestId('grove')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('grove-search')).toHaveCount(0);
+
       await page.keyboard.press('ControlOrMeta+K');
       await expect(page.getByTestId('workspace')).toBeVisible();
       await expect(page.getByTestId('grove')).toHaveCount(0);
@@ -343,7 +349,7 @@ test.describe('Stage 10 Grove', () => {
       await page.getByTestId('grove-tab-transcript').click();
 
       // Archiving a live session asks first, then moves it to Recent and selects the next row.
-      await page.keyboard.press('ControlOrMeta+Alt+W');
+      await page.keyboard.press('ControlOrMeta+W');
       const ask = page.getByTestId('toast').filter({ hasText: 'and archive it?' });
       await expect(ask).toBeVisible();
       await ask.getByTestId('toast-action').click();
@@ -424,7 +430,18 @@ test.describe('Stage 10 Grove', () => {
       await expect(page.getByTestId('setting-grove-start-on-open')).toHaveAttribute('aria-checked', 'false');
       await expect(page.getByTestId('grove-chords')).toContainText(isMac ? '⌥⌘G' : 'Ctrl+Alt+G');
       await page.getByTestId('setting-grove-max-children').selectOption('2');
-      await expect.poll(() => savedSettings(userData).grove).toEqual({ orchestration: true, maxChildren: 2 });
+      await expect
+        .poll(() => savedSettings(userData).grove)
+        .toEqual({
+          orchestration: true,
+          maxChildren: 2,
+          projects: [{ path: project, collapsed: false }],
+          trustedCommands: [],
+          launch: 'browser',
+        });
+      await page.getByTestId('settings-nav-general').click();
+      await expect(page.getByTestId('setting-grove-launch')).toHaveValue('browser');
+      await page.getByTestId('settings-nav-grove').click();
       await page.getByTestId('setting-grove-orchestration').click();
       await expect.poll(() => savedSettings(userData).grove.orchestration).toBe(false);
       await expect(page.getByTestId('setting-grove-max-children')).toBeDisabled();
@@ -467,6 +484,60 @@ test.describe('Stage 10 Grove', () => {
       await pane.getByTestId('grove-lead-link').click();
       await expect(pane).toHaveAttribute('data-thread-id', leadId);
       await deleteThreads(page);
+    } finally {
+      await app.close();
+      rmSync(project, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    }
+  });
+
+  test('lists detected commands and forgets a project only when it is closed', async () => {
+    const project = tempProject({ startDefaultOnOpen: false, defaultAgent: FAKE_ID });
+    writeFileSync(
+      join(project, 'package.json'),
+      JSON.stringify({
+        name: 'grove-fixture',
+        private: true,
+        scripts: {
+          dev: 'vite',
+          build: 'vite build',
+          preview: 'vite preview',
+          format: 'prettier',
+          pretest: 'echo no',
+          generate: 'nuxt generate',
+        },
+      }),
+    );
+    writeFileSync(join(project, 'Procfile.dev'), 'web: npm run dev\nworker: php artisan queue:work\n');
+    mkdirSync(join(project, 'bin'));
+    mkdirSync(join(project, 'config'));
+    writeFileSync(join(project, 'bin', 'rails'), '#!/bin/sh\n');
+    writeFileSync(join(project, 'bin', 'dev'), '#!/bin/sh\n');
+    writeFileSync(join(project, 'bin', 'jobs'), '#!/bin/sh\n');
+    writeFileSync(join(project, 'config', 'application.rb'), 'module App\nend\n');
+    const userData = userDataWithFakeAgent();
+    const { app, page } = await launch(userData, [project]);
+    try {
+      await page.getByTestId('workspace-grove').click();
+      await expect(page.getByTestId('grove')).toBeVisible();
+      const before = (await terminals(page)).length;
+      const added = await page.evaluate((path) => window.arbora.invoke('grove.addProject', { path }), project);
+      expect(added.added).toBe(true);
+      if (!added.path) throw new Error('project was not added');
+      await expect(page.getByTestId('grove-project')).toHaveAttribute('data-path', added.path);
+      for (const title of ['npm:dev', 'npm:build', 'npm:preview', 'npm:generate', 'Dev server', 'Jobs', 'web']) {
+        await expect(page.getByTestId('grove-command').filter({ hasText: title }).first()).toBeVisible();
+      }
+      await expect(page.getByTestId('grove-command').filter({ hasText: 'format' })).toHaveCount(0);
+      await expect(page.getByTestId('grove-command').filter({ hasText: 'pretest' })).toHaveCount(0);
+      await expect(page.getByTestId('grove-commands')).toHaveAttribute('data-count', '0/11');
+      expect(await terminals(page)).toHaveLength(before);
+      await page.getByTestId('grove-close-project').click();
+      const ask = page.getByTestId('toast').filter({ hasText: 'Close' });
+      const projectRow = page.getByTestId('grove-project');
+      if (await ask.isVisible().catch(() => false)) await ask.getByTestId('toast-action').click();
+      await expect(projectRow).toHaveCount(0);
+      await expect.poll(() => savedSettings(userData).grove.projects).toEqual([]);
+      expect(savedSettings(userData).grove.launch).toBe('browser');
     } finally {
       await app.close();
       rmSync(project, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });

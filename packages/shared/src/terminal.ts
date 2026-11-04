@@ -18,6 +18,11 @@ export const terminalInfoSchema = z.object({
   readOnly: z.boolean(),
   /** For agent terminals: the title of the thread that ran the command. */
   thread: z.string().optional(),
+  /**
+   * Set when a process recorded before the last launch was adopted. `running` still has a pid.
+   * `gone` means that pid was not alive, or it was a different process.
+   */
+  recovered: z.enum(['running', 'gone']).optional(),
 });
 export type TerminalInfo = z.infer<typeof terminalInfoSchema>;
 
