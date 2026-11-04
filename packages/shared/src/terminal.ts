@@ -16,6 +16,8 @@ export const terminalInfoSchema = z.object({
   exitCode: z.number().int().nullable(),
   /** Agent terminals (Stage 3) are output-only. */
   readOnly: z.boolean(),
+  /** For agent terminals: the title of the thread that ran the command. */
+  thread: z.string().optional(),
 });
 export type TerminalInfo = z.infer<typeof terminalInfoSchema>;
 
@@ -43,6 +45,23 @@ const ANSI_PATTERN =
   /\u001b\[[0-?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b[@-Z\\-_]|[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
 
 /** Removes ANSI escape sequences and control characters (keeps `\n`, `\r` and `\t`). */
+/**
+ * A short label for a command an agent ran: the program without its directory, and the inner
+ * command of a shell wrapper (`/usr/bin/bash -lc 'pnpm test'` reads `pnpm test`).
+ */
+export function agentCommandLabel(commandLine: string): string {
+  const text = commandLine.trim();
+  const wrapper = /^(?:\S*[\\/])?(?:ba|z|da|fi)?sh(?:\.exe)?\s+-[a-z]*c\s+(.+)$/is.exec(text);
+  if (wrapper?.[1]) {
+    const inner = wrapper[1].trim();
+    const quoted = /^(['"])([\s\S]*)\1$/.exec(inner);
+    return agentCommandLabel(quoted?.[2] ?? inner);
+  }
+  const program = /^(\S+)([\s\S]*)$/.exec(text);
+  if (!program?.[1]) return text;
+  return `${program[1].replace(/^.*[\\/]/, '')}${program[2] ?? ''}`;
+}
+
 export function stripAnsi(text: string): string {
   return text.replace(ANSI_PATTERN, '');
 }

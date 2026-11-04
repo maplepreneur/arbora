@@ -4,7 +4,11 @@ import { Group, Panel, Separator } from 'react-resizable-panels';
 import {
   ArrowDown,
   ArrowUp,
+  Bot,
+  BrushCleaning,
+  Check,
   Columns2,
+  LoaderCircle,
   Play,
   Plus,
   RotateCw,
@@ -15,10 +19,17 @@ import {
   X,
 } from 'lucide-react';
 import clsx from 'clsx';
-import { CommandId, type ContextMenuItem, type TerminalInfo } from '@arbora/shared';
+import { agentCommandLabel, CommandId, type ContextMenuItem, type TerminalInfo } from '@arbora/shared';
 import { executeCommand, setTerminalPanelController } from '../commands';
 import { useChordLabel } from '../keybindings';
-import { activateTerminal, createTerminal, useTerminals, type TerminalTab } from '../terminal-store';
+import {
+  activateTerminal,
+  AGENT_TAB_ID,
+  clearFinishedAgentTerminals,
+  createTerminal,
+  useTerminals,
+  type TerminalTab,
+} from '../terminal-store';
 import { copySelection, ensureSession, getSession, initTerminalSessions, pasteClipboard } from './terminal/sessions';
 
 async function showMenu(items: ContextMenuItem[]): Promise<string | null> {
@@ -236,6 +247,59 @@ function RenameInput({ terminal }: { terminal: TerminalInfo }) {
   );
 }
 
+function exitLabel(terminal: TerminalInfo): string {
+  if (terminal.exitCode === null) return 'Running';
+  return terminal.exitCode === 0 ? 'Finished' : `Exited with code ${terminal.exitCode}`;
+}
+
+function selectTab(tab: TerminalTab, paneId: string): void {
+  useTerminals.setState({ activeTabId: tab.id, activePaneId: paneId });
+  getSession(paneId)?.focus();
+}
+
+function AgentTab({ tab, terminals, active }: { tab: TerminalTab; terminals: TerminalInfo[]; active: boolean }) {
+  const members = terminals.filter((t) => tab.panes.includes(t.id));
+  const running = members.filter((t) => t.exitCode === null).length;
+  const finished = members.length - running;
+  const onContextMenu = async (event: MouseEvent): Promise<void> => {
+    event.preventDefault();
+    const choice = await showMenu([
+      { id: 'clear', label: 'Clear Finished Commands', enabled: finished > 0 },
+      { id: 'kill', label: 'Stop Running Commands', enabled: running > 0 },
+    ]);
+    if (choice === 'clear') clearFinishedAgentTerminals();
+    if (choice === 'kill') {
+      for (const t of members) if (t.exitCode === null) void window.arbora.invoke('terminal.kill', { id: t.id });
+    }
+  };
+  return (
+    <div
+      role="tab"
+      aria-selected={active}
+      data-testid="terminal-tab"
+      data-kind="agent"
+      data-tab-id={tab.id}
+      title={`Commands run by agents: ${running} running, ${finished} finished`}
+      onClick={() => selectTab(tab, useTerminals.getState().activePaneId ?? tab.panes.at(-1) ?? tab.panes[0] ?? '')}
+      onContextMenu={(e) => void onContextMenu(e)}
+      className={clsx(
+        'flex h-6 shrink-0 cursor-default items-center gap-1.5 rounded px-2 text-xs',
+        active ? 'bg-bg-muted text-fg' : 'text-fg-subtle hover:text-fg',
+      )}
+    >
+      {running > 0 ? (
+        <LoaderCircle size={13} className="shrink-0 animate-spin text-accent motion-reduce:animate-none" />
+      ) : (
+        <Bot size={13} className="shrink-0" />
+      )}
+      <span>Agent</span>
+      <span className="rounded-full bg-bg-subtle px-1.5 text-[10px] leading-4 text-fg-muted tabular-nums">
+        {members.length}
+      </span>
+    </div>
+  );
+}
+
 function Tab({ tab, terminals, active }: { tab: TerminalTab; terminals: TerminalInfo[]; active: boolean }) {
   const members = tab.panes.map((id) => terminals.find((t) => t.id === id)).filter((t) => t !== undefined);
   const first = members[0];
@@ -262,19 +326,23 @@ function Tab({ tab, terminals, active }: { tab: TerminalTab; terminals: Terminal
       aria-selected={active}
       data-testid="terminal-tab"
       data-kind={first.kind}
-      onClick={() => {
-        useTerminals.setState({ activeTabId: tab.id, activePaneId: first.id });
-        getSession(first.id)?.focus();
-      }}
+      data-tab-id={tab.id}
+      title={`${members.map((t) => t.title).join(' | ')}${exited ? ` (${exitLabel(first).toLowerCase()})` : ''}`}
+      onClick={() => selectTab(tab, first.id)}
       onDoubleClick={() => useTerminals.setState({ renamingId: first.id })}
       onAuxClick={(e) => e.button === 1 && close()}
       onContextMenu={(e) => void onContextMenu(e)}
       className={clsx(
-        'group flex h-6 max-w-48 shrink-0 cursor-default items-center gap-1.5 rounded px-2 text-xs',
+        'group flex h-6 max-w-44 shrink-0 cursor-default items-center gap-1.5 rounded pr-1 pl-2 text-xs',
         active ? 'bg-bg-muted text-fg' : 'text-fg-subtle hover:text-fg',
+        exited && 'opacity-60',
       )}
     >
-      <SquareTerminal size={13} className={clsx('shrink-0', exited && 'opacity-50')} />
+      {members.length > 1 ? (
+        <Columns2 size={13} className="shrink-0" />
+      ) : (
+        <SquareTerminal size={13} className="shrink-0" />
+      )}
       {members.map((t, index) => (
         <Fragment key={t.id}>
           {index > 0 && <span className="text-fg-subtle">|</span>}
@@ -284,8 +352,6 @@ function Tab({ tab, terminals, active }: { tab: TerminalTab; terminals: Terminal
       {first.kind === 'dev' && (
         <span className="rounded bg-accent-soft px-1 text-[10px] font-medium text-accent">dev</span>
       )}
-      {first.readOnly && <span className="rounded bg-bg-muted px-1 text-[10px] text-fg-muted">agent</span>}
-      {exited && <span className="text-[10px] text-fg-subtle">exited</span>}
       <button
         type="button"
         aria-label={`Close ${first.title}`}
@@ -294,10 +360,83 @@ function Tab({ tab, terminals, active }: { tab: TerminalTab; terminals: Terminal
           e.stopPropagation();
           close();
         }}
-        className="ml-0.5 flex h-4 w-4 items-center justify-center rounded opacity-0 group-hover:opacity-100 hover:bg-bg-subtle aria-selected:opacity-100"
+        className="flex h-4 w-4 shrink-0 items-center justify-center rounded opacity-0 group-hover:opacity-100 group-aria-selected:opacity-100 hover:bg-bg-subtle focus-visible:opacity-100"
       >
         <X size={11} />
       </button>
+    </div>
+  );
+}
+
+/** The agent tab: every command an agent ran, newest last, beside the selected command's output. */
+function AgentCommands({
+  tab,
+  terminals,
+  activePaneId,
+}: {
+  tab: TerminalTab;
+  terminals: TerminalInfo[];
+  activePaneId: string | null;
+}) {
+  const commands = tab.panes.map((id) => terminals.find((t) => t.id === id)).filter((t) => t !== undefined);
+  const selected = commands.find((t) => t.id === activePaneId) ?? commands.at(-1);
+  const finished = commands.some((t) => t.exitCode !== null);
+  return (
+    <div className="flex h-full" data-testid="agent-commands">
+      <div className="flex w-64 shrink-0 flex-col border-r border-border">
+        <div className="flex h-7 shrink-0 items-center gap-1 border-b border-border pr-1 pl-2 text-[11px] text-fg-subtle">
+          <span className="flex-1">
+            {commands.length} command{commands.length === 1 ? '' : 's'}
+          </span>
+          {finished && (
+            <IconButton
+              label="Clear finished commands"
+              testId="agent-commands-clear"
+              onClick={clearFinishedAgentTerminals}
+            >
+              <BrushCleaning size={13} />
+            </IconButton>
+          )}
+        </div>
+        <ul className="min-h-0 flex-1 overflow-y-auto py-0.5" aria-label="Agent commands">
+          {[...commands].reverse().map((terminal) => (
+            <li key={terminal.id}>
+              <button
+                type="button"
+                data-testid="agent-command"
+                data-terminal-id={terminal.id}
+                aria-current={terminal.id === selected?.id}
+                title={`${terminal.title}\n${terminal.thread ? `${terminal.thread} · ` : ''}${exitLabel(terminal)}`}
+                onClick={() => activateTerminal(terminal.id)}
+                className={clsx(
+                  'flex w-full items-start gap-2 px-2 py-1 text-left',
+                  terminal.id === selected?.id ? 'bg-bg-muted' : 'hover:bg-bg-muted/60',
+                )}
+              >
+                <span className="mt-0.5 shrink-0">
+                  {terminal.exitCode === null ? (
+                    <LoaderCircle size={12} className="animate-spin text-accent motion-reduce:animate-none" />
+                  ) : terminal.exitCode === 0 ? (
+                    <Check size={12} className="text-fg-subtle" />
+                  ) : (
+                    <X size={12} className="text-danger" />
+                  )}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-mono text-[11px] text-fg">
+                    {agentCommandLabel(terminal.title)}
+                  </span>
+                  <span className="block truncate text-[10px] text-fg-subtle">
+                    {terminal.thread ?? 'Agent'}
+                    {terminal.exitCode !== null && terminal.exitCode !== 0 && ` · exit ${terminal.exitCode}`}
+                  </span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="min-w-0 flex-1">{selected && <TerminalPane key={selected.id} terminal={selected} active />}</div>
     </div>
   );
 }
@@ -337,6 +476,38 @@ function DevServerButtons({ terminals }: { terminals: TerminalInfo[] }) {
   );
 }
 
+/** Tabs scroll sideways with the wheel and keep the active tab in view; no scrollbar. */
+function TabStrip({ activeTabId, children }: { activeTabId: string | null; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const strip = ref.current;
+    if (!strip) return;
+    const onWheel = (event: WheelEvent): void => {
+      if (strip.scrollWidth <= strip.clientWidth || event.deltaX !== 0) return;
+      event.preventDefault();
+      strip.scrollLeft += event.deltaY;
+    };
+    strip.addEventListener('wheel', onWheel, { passive: false });
+    return () => strip.removeEventListener('wheel', onWheel);
+  }, []);
+  useEffect(() => {
+    if (!activeTabId) return;
+    ref.current
+      ?.querySelector(`[data-tab-id="${CSS.escape(activeTabId)}"]`)
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [activeTabId]);
+  return (
+    <div
+      ref={ref}
+      role="tablist"
+      aria-label="Terminals"
+      className="no-scrollbar flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto"
+    >
+      {children}
+    </div>
+  );
+}
+
 function TabContent({
   tab,
   terminals,
@@ -346,6 +517,7 @@ function TabContent({
   terminals: TerminalInfo[];
   activePaneId: string | null;
 }) {
+  if (tab.id === AGENT_TAB_ID) return <AgentCommands tab={tab} terminals={terminals} activePaneId={activePaneId} />;
   const panes = tab.panes.map((id) => terminals.find((t) => t.id === id)).filter((t) => t !== undefined);
   if (panes.length === 1 && panes[0]) {
     return <TerminalPane terminal={panes[0]} active />;
@@ -415,11 +587,16 @@ export default function TerminalPanel() {
   return (
     <div className="flex h-full flex-col" data-testid="terminal-panel">
       <div className="flex h-7 shrink-0 items-center gap-1 border-b border-border px-1">
-        <div role="tablist" aria-label="Terminals" className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
-          {tabs.map((tab) => (
-            <Tab key={tab.id} tab={tab} terminals={terminals} active={tab.id === activeTabId} />
-          ))}
-        </div>
+        <TabStrip activeTabId={activeTabId}>
+          {tabs.map((tab) =>
+            tab.id === AGENT_TAB_ID ? (
+              <AgentTab key={tab.id} tab={tab} terminals={terminals} active={tab.id === activeTabId} />
+            ) : (
+              <Tab key={tab.id} tab={tab} terminals={terminals} active={tab.id === activeTabId} />
+            ),
+          )}
+        </TabStrip>
+        <div className="mx-0.5 h-4 w-px shrink-0 bg-border" />
         <DevServerButtons terminals={terminals} />
         <IconButton label="Find in Terminal" onClick={() => executeCommand(CommandId.terminalFind)}>
           <Search size={13} />

@@ -93,7 +93,7 @@ test.describe('Stage 3 agent panel', () => {
         '// Arbora fake agent was here\nexport const App = () => null;\n',
       );
 
-      // Agent-run commands show up as read-only "agent" terminal tabs.
+      // Agent-run commands are read-only terminals, listed together in one "Agent" tab.
       await send(page, 'run echo');
       await expect(page.getByTestId('agent-message').last()).toContainText('hello from fake agent', {
         timeout: 20_000,
@@ -101,7 +101,16 @@ test.describe('Stage 3 agent panel', () => {
       const agentTerminals = (await terminals(page)).filter((t) => t.kind === 'agent');
       expect(agentTerminals).toHaveLength(1);
       expect(agentTerminals[0]?.readOnly).toBe(true);
-      await expect(page.getByTestId('terminal-tab').filter({ hasText: 'agent' })).toBeVisible();
+      expect(agentTerminals[0]?.thread).toBeTruthy();
+      const agentTab = page.locator('[data-testid="terminal-tab"][data-kind="agent"]');
+      await expect(agentTab).toHaveCount(1);
+      await agentTab.click();
+      const command = page.getByTestId('agent-command');
+      await expect(command).toHaveCount(1);
+      await expect(command).toContainText(agentTerminals[0]?.thread ?? '');
+      await expect(page.getByTestId('agent-commands-clear')).toBeVisible({ timeout: 10_000 });
+      await page.getByTestId('agent-commands-clear').click();
+      await expect(agentTab).toHaveCount(0);
 
       // Mode and model changes round-trip through the agent.
       await page.getByTestId('mode-select').click();
