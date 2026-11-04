@@ -322,6 +322,14 @@ describe('Stage 9 settings', () => {
     expect(settings.agents.adapterVersions).toEqual({});
   });
 
+  it('accepts the Development update channel without a migration', () => {
+    const { settings, warnings } = loadSettings({ version: 3, updates: { channel: 'off', autoCheck: false } });
+    expect(warnings).toEqual([]);
+    expect(settings.updates).toEqual({ channel: 'off', autoCheck: false, autoDownload: true });
+    const patched = applySettingsPatch(settings, appSettingsPatchSchema.parse({ updates: { channel: 'beta' } }));
+    expect(patched.updates).toEqual({ channel: 'beta', autoCheck: false, autoDownload: true });
+  });
+
   it('applies nested patches field by field', () => {
     const current = defaultSettings();
     const next = applySettingsPatch(current, {
