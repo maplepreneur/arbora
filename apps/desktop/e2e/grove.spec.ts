@@ -175,8 +175,11 @@ test.describe('Stage 10 Grove', () => {
       await focusChrome(page);
       await page.keyboard.press('ControlOrMeta+Shift+K');
       await expect(page.getByTestId('grove-search')).toBeVisible();
+      // The page is a native view above the DOM, so it steps aside while the search is open.
+      await expect.poll(() => viewVisible(app)).toBe(false);
       await page.keyboard.press('Escape');
       await expect(page.getByTestId('grove-search')).toHaveCount(0);
+      await expect.poll(() => viewVisible(app)).toBe(true);
       await focusChrome(page);
       await page.keyboard.press('ControlOrMeta+K');
       await expect(page.getByTestId('mode-pills')).toHaveAttribute('data-mode', 'agent');
