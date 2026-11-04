@@ -214,6 +214,10 @@ export function Workspace() {
         updateLayout({ bottomTab: tab });
         if (isCollapsed(bottomRef)) bottomRef.current?.expand();
       },
+      revealPanel: (panel) => {
+        const ref = panel === 'sidebar' ? sidebarRef : panel === 'agent' ? agentRef : bottomRef;
+        if (isCollapsed(ref)) ref.current?.expand();
+      },
     });
     return () => setWorkspaceController(null);
     // Refs are stable objects; registering once per mount is enough.

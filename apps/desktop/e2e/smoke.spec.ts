@@ -75,6 +75,46 @@ test.describe('Stage 0 smoke', () => {
     }
   });
 
+  test('mode pills switch modes, and Mod+1..4 / Mod+Alt+arrows move focus between panels', async () => {
+    const { app, page } = await launch(userData, [VITE_REACT]);
+    const focused = () =>
+      page.evaluate(() => document.activeElement?.closest('[data-landmark]')?.getAttribute('data-landmark') ?? null);
+    try {
+      const pills = page.getByTestId('mode-pills');
+      await expect(pills).toHaveAttribute('data-mode', 'idle');
+      await page.getByTestId('mode-pill-agent').click();
+      await expect(page.getByTestId('mode-banner')).toHaveAttribute('data-mode', 'agent');
+      await expect(pills).toHaveAttribute('data-mode', 'agent');
+      await page.getByTestId('mode-pill-design').click();
+      await expect(page.getByTestId('mode-banner')).toHaveAttribute('data-mode', 'design');
+      await page.getByTestId('mode-pill-idle').click();
+      await expect(page.getByTestId('mode-banner')).toBeHidden();
+      await expect(pills).toHaveAttribute('data-mode', 'idle');
+
+      await page.keyboard.press('ControlOrMeta+3');
+      await expect(page.locator('[data-testid="terminal-pane"] textarea').first()).toBeFocused();
+      // Ctrl+digit is not a shell key, so it leaves the terminal even with passthrough on.
+      await page.keyboard.press('ControlOrMeta+1');
+      await expect(page.getByTestId('explorer-tree')).toBeFocused();
+      await page.keyboard.press('ControlOrMeta+4');
+      await expect.poll(focused).toBe('agent');
+      await page.keyboard.press('ControlOrMeta+Alt+ArrowLeft');
+      await expect.poll(focused).toBe('center');
+      await page.keyboard.press('ControlOrMeta+Alt+ArrowDown');
+      await expect(page.locator('[data-testid="terminal-pane"] textarea').first()).toBeFocused();
+      await page.keyboard.press('ControlOrMeta+Alt+ArrowLeft');
+      await expect(page.getByTestId('explorer-tree')).toBeFocused();
+
+      // A collapsed panel opens when its number is pressed.
+      await page.keyboard.press('ControlOrMeta+B');
+      await expect.poll(async () => (await page.getByTestId('panel-sidebar').boundingBox())?.width ?? 0).toBe(0);
+      await page.keyboard.press('ControlOrMeta+1');
+      await expect(page.getByTestId('explorer-tree')).toBeFocused();
+    } finally {
+      await app.close();
+    }
+  });
+
   test('main intercepts mode chords before the renderer sees them', async () => {
     const { app, page } = await launch(userData, [VITE_REACT]);
     try {

@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { CommandRegistry, DEFAULT_COMMANDS, commandIdSchema, resolveKeybindingSpecs } from './commands.js';
+import {
+  CommandRegistry,
+  DEFAULT_COMMANDS,
+  commandIdSchema,
+  neighbourPanel,
+  resolveKeybindingSpecs,
+  WORKSPACE_PANELS,
+} from './commands.js';
 import { chordId, KeybindingTable } from './keybindings.js';
 
 describe('CommandRegistry', () => {
@@ -38,5 +45,31 @@ describe('DEFAULT_COMMANDS', () => {
       const ids = table.bindings.map((b) => `${chordId(b.chord)}|${b.when}`);
       expect(new Set(ids).size).toBe(ids.length);
     }
+  });
+});
+
+describe('neighbourPanel', () => {
+  it('moves left and right across sidebar, middle and agent', () => {
+    expect(neighbourPanel('sidebar', 'right')).toBe('center');
+    expect(neighbourPanel('center', 'right')).toBe('agent');
+    expect(neighbourPanel('bottom', 'right')).toBe('agent');
+    expect(neighbourPanel('agent', 'left')).toBe('center');
+    expect(neighbourPanel('bottom', 'left')).toBe('sidebar');
+  });
+
+  it('moves up and down only in the middle column, and stops at edges', () => {
+    expect(neighbourPanel('center', 'down')).toBe('bottom');
+    expect(neighbourPanel('bottom', 'up')).toBe('center');
+    expect(neighbourPanel('sidebar', 'left')).toBeNull();
+    expect(neighbourPanel('agent', 'right')).toBeNull();
+    expect(neighbourPanel('center', 'up')).toBeNull();
+    expect(neighbourPanel('agent', 'down')).toBeNull();
+  });
+
+  it('has a Mod+digit chord for every panel, in order', () => {
+    const chords = WORKSPACE_PANELS.map(
+      (panel) => DEFAULT_COMMANDS.find((c) => c.id === `arbora.focus.${panel}`)?.keybinding,
+    );
+    expect(chords).toEqual(['mod+1', 'mod+2', 'mod+3', 'mod+4']);
   });
 });

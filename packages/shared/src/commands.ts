@@ -103,6 +103,14 @@ export const CommandId = {
   openKeyboardShortcuts: 'arbora.openKeyboardShortcuts',
   toggleNotifications: 'arbora.toggleNotifications',
   toggleSounds: 'arbora.toggleSounds',
+  focusSidebarPanel: 'arbora.focus.sidebar',
+  focusCenterPanel: 'arbora.focus.center',
+  focusBottomPanel: 'arbora.focus.bottom',
+  focusAgentPanel: 'arbora.focus.agent',
+  focusPanelLeft: 'arbora.focus.left',
+  focusPanelRight: 'arbora.focus.right',
+  focusPanelUp: 'arbora.focus.up',
+  focusPanelDown: 'arbora.focus.down',
   focusNextPanel: 'arbora.focusNextPanel',
   focusPreviousPanel: 'arbora.focusPreviousPanel',
   browserResetData: 'arbora.browser.resetData',
@@ -298,6 +306,57 @@ export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
   { id: CommandId.toggleNotifications, title: 'Toggle Agent Notifications', category: 'Preferences' },
   { id: CommandId.toggleSounds, title: 'Toggle Agent Sounds', category: 'Preferences' },
   // F6 cycles landmarks (title bar, sidebar, centre, agent panel, bottom drawer), as in browsers and VS Code.
+  // Mod+1..4 pick a panel and Mod+Alt+arrows move between neighbours, like a tiling window manager.
+  {
+    id: CommandId.focusSidebarPanel,
+    title: 'Focus Sidebar',
+    category: 'View',
+    keybinding: 'mod+1',
+    intercept: true,
+  },
+  {
+    id: CommandId.focusCenterPanel,
+    title: 'Focus Browser or Editor',
+    category: 'View',
+    keybinding: 'mod+2',
+    intercept: true,
+  },
+  {
+    id: CommandId.focusBottomPanel,
+    title: 'Focus Bottom Panel',
+    category: 'View',
+    keybinding: 'mod+3',
+    intercept: true,
+  },
+  { id: CommandId.focusAgentPanel, title: 'Focus Agent Panel', category: 'View', keybinding: 'mod+4', intercept: true },
+  {
+    id: CommandId.focusPanelLeft,
+    title: 'Focus Panel to the Left',
+    category: 'View',
+    keybinding: 'mod+alt+left',
+    intercept: true,
+  },
+  {
+    id: CommandId.focusPanelRight,
+    title: 'Focus Panel to the Right',
+    category: 'View',
+    keybinding: 'mod+alt+right',
+    intercept: true,
+  },
+  {
+    id: CommandId.focusPanelUp,
+    title: 'Focus Panel Above',
+    category: 'View',
+    keybinding: 'mod+alt+up',
+    intercept: true,
+  },
+  {
+    id: CommandId.focusPanelDown,
+    title: 'Focus Panel Below',
+    category: 'View',
+    keybinding: 'mod+alt+down',
+    intercept: true,
+  },
   { id: CommandId.focusNextPanel, title: 'Focus Next Panel', category: 'View', keybinding: 'f6', intercept: true },
   {
     id: CommandId.focusPreviousPanel,
@@ -420,5 +479,31 @@ export class CommandRegistry {
 
   private emit(): void {
     for (const listener of this.listeners) listener();
+  }
+}
+
+/** The four workspace panels `Mod+1`..`Mod+4` focus, in that order. */
+export const WORKSPACE_PANELS = ['sidebar', 'center', 'bottom', 'agent'] as const;
+export type WorkspacePanel = (typeof WORKSPACE_PANELS)[number];
+export type PanelDirection = 'left' | 'right' | 'up' | 'down';
+
+/**
+ * The panel next to `from` in the default layout: the sidebar on the left, the browser/editor above
+ * the bottom panel in the middle, the agent on the right. `null` at an edge.
+ */
+export function neighbourPanel(from: WorkspacePanel, direction: PanelDirection): WorkspacePanel | null {
+  switch (direction) {
+    case 'left':
+      return from === 'agent' ? 'center' : from === 'sidebar' ? null : 'sidebar';
+    case 'right':
+      return from === 'sidebar' ? 'center' : from === 'agent' ? null : 'agent';
+    case 'up':
+      return from === 'bottom' ? 'center' : null;
+    case 'down':
+      return from === 'center' ? 'bottom' : null;
+    default: {
+      const unreachable: never = direction;
+      throw new Error(`Unknown direction ${String(unreachable)}`);
+    }
   }
 }

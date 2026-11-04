@@ -146,4 +146,9 @@ describe('isTerminalPassthroughChord', () => {
     expect(isTerminalPassthroughChord(parseChord('ctrl+shift+k', 'linux'))).toBe(false);
     expect(isTerminalPassthroughChord(parseChord('cmd+k', 'darwin'))).toBe(false);
   });
+
+  it('leaves Ctrl+digit to Arbora (panel focus)', () => {
+    expect(isTerminalPassthroughChord(parseChord('ctrl+1', 'linux'))).toBe(false);
+    expect(isTerminalPassthroughChord(parseChord('ctrl+4', 'win32'))).toBe(false);
+  });
 });
