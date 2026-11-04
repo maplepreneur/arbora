@@ -37,7 +37,7 @@ Installers publish to `maplepreneur/arbora`, which is already public, so the wor
 
 ### 2. Actions minutes
 
-A release builds on Linux, macOS and Windows: about 60 billed minutes (macOS counts 10x, Windows 2x). Check **Settings → Billing and plans** for remaining minutes, or set a spending limit. The ordinary push CI is not affected. The performance budget job currently fails on the packaged build (about 374 MB against 350) and does not block publish.
+A release builds on Linux, macOS and Windows: about 60 billed minutes (macOS counts 10x, Windows 2x). Check **Settings → Billing and plans** for remaining minutes, or set a spending limit. The ordinary push CI is not affected. The performance budget job currently fails on the packaged build (about 374 MB earlier, 442 MB on `v0.0.4`, against 350) and does not block publish.
 
 ### 3. (Optional) Signing later
 
