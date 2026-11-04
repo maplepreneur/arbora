@@ -380,7 +380,7 @@ export const gitSettingsSchema = z.object({
 export type GitSettings = z.infer<typeof gitSettingsSchema>;
 
 /** Trigger points that can use their own agent and model instead of the thread default. */
-export const TASK_IDS = ['git', 'agentMode', 'design'] as const;
+export const TASK_IDS = ['git', 'agentMode', 'design', 'fix'] as const;
 export type TaskId = (typeof TASK_IDS)[number];
 
 export const taskAgentSchema = z.object({
@@ -398,6 +398,8 @@ export const taskAgentsSchema = z.object({
   agentMode: taskAgentSchema.default(taskAgentSchema.parse({})),
   /** Design mode batches. */
   design: taskAgentSchema.default(taskAgentSchema.parse({})),
+  /** "Fix" and "Fix all" in the Problems panel. */
+  fix: taskAgentSchema.default(taskAgentSchema.parse({})),
 });
 export type TaskAgents = z.infer<typeof taskAgentsSchema>;
 

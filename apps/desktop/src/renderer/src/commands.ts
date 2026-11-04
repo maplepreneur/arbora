@@ -249,12 +249,16 @@ function designPending(): 'idle' | 'agent' {
 
 /** A new thread with the default agent and its default model, if that agent is signed in and shown. */
 export function defaultDesignTarget(): AgentModeTarget | null {
-  const settings = useApp.getState().settings.agents;
+  const { agents: settings, tasks } = useApp.getState().settings;
   const pickable = useAgents.getState().agents.filter((agent) => isPickableAgent(settings, agent.id));
-  const preferred = defaultAgentId();
-  const agent = pickable.find((entry) => entry.id === preferred) ?? pickable[0];
+  const agent =
+    pickable.find((entry) => entry.id === tasks.design.agentId) ??
+    pickable.find((entry) => entry.id === defaultAgentId()) ??
+    pickable[0];
   if (!agent) return null;
-  const model = visibleModels(settings, agent.id)[0]?.value;
+  const models = visibleModels(settings, agent.id);
+  const taskModel = tasks.design.agentId === agent.id ? tasks.design.model : null;
+  const model = models.find((m) => m.value === taskModel)?.value ?? models[0]?.value;
   return { type: 'new', agentId: agent.id, ...(model ? { model } : {}) };
 }
 

@@ -70,6 +70,9 @@ test.describe('Stage 9 onboarding', () => {
       await page.getByTestId('onboarding-next').click();
       await expect(page.getByTestId(`onboarding-agent-${FAKE_ID}`)).toContainText('Connected');
       await page.getByTestId('onboarding-next').click();
+      await expect(page.getByTestId('onboarding-step-tasks')).toBeVisible();
+      await page.getByTestId('task-agent-fix-agent').selectOption(FAKE_ID);
+      await page.getByTestId('onboarding-next').click();
       await expect(page.getByTestId('onboarding-step-keys')).toBeVisible();
       // Mode chords are intercepted in main; onboarding sees them instead of the modes starting.
       await page.keyboard.press('ControlOrMeta+K');
@@ -87,7 +90,9 @@ test.describe('Stage 9 onboarding', () => {
       const settings = JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')) as {
         onboarding: { completed: boolean; checkedChords: string[] };
         sounds: { enabled: boolean };
+        tasks: { fix: { agentId: string | null } };
       };
+      expect(settings.tasks.fix.agentId).toBe(FAKE_ID);
       expect(settings.onboarding.completed).toBe(true);
       expect(settings.onboarding.checkedChords.sort()).toEqual(['arbora.agentMode', 'arbora.designMode']);
       expect(settings.sounds.enabled).toBe(false);

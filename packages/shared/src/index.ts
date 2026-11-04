@@ -5,6 +5,7 @@ export * from './channels.js';
 export * from './commands.js';
 export * from './design.js';
 export * from './files.js';
+export * from './problems.js';
 export * from './git.js';
 export * from './fuzzy.js';
 export * from './inspector.js';

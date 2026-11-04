@@ -50,3 +50,27 @@ export function TaskAgentPicker({ task, label }: { task: TaskId; label: string }
     </div>
   );
 }
+
+const TASKS: readonly { task: TaskId; title: string; detail: string }[] = [
+  { task: 'agentMode', title: 'Agent mode', detail: 'Prompts from Mod+K on the page. A strong coding model fits.' },
+  { task: 'design', title: 'Design mode', detail: 'Style and text edits sent from design mode.' },
+  { task: 'fix', title: 'Fix problems', detail: 'Fix and Fix all in the Problems panel.' },
+  { task: 'git', title: 'Commit and PR messages', detail: 'Runs in the background. A small, fast model is enough.' },
+];
+
+/** One row per task; "Default agent" follows the project's or the starred agent. */
+export function TaskDefaults() {
+  return (
+    <div className="flex flex-col divide-y divide-border rounded border border-border" data-testid="task-defaults">
+      {TASKS.map(({ task, title, detail }) => (
+        <div key={task} className="flex items-center gap-3 px-3 py-2">
+          <div className="min-w-0 flex-1">
+            <div className="text-sm">{title}</div>
+            <div className="text-xs text-fg-subtle">{detail}</div>
+          </div>
+          <TaskAgentPicker task={task} label={title} />
+        </div>
+      ))}
+    </div>
+  );
+}
