@@ -301,7 +301,20 @@ test.describe('Stage 9 settings', () => {
       await page.getByTestId('setting-notifications').click();
       await expect(page.getByTestId('setting-notifications')).toHaveAttribute('aria-checked', 'false');
       await page.getByTestId('settings-nav-updates').click();
-      await expect(page.getByTestId('updates-section')).toContainText('Development build');
+      const updates = page.getByTestId('updates-section');
+      await expect(updates).toContainText('Development build');
+      await expect(updates).toContainText('Updates are off in development builds.');
+      await expect(page.getByTestId('check-updates')).toBeDisabled();
+      const channel = page.getByTestId('update-channel');
+      await expect(channel.getByRole('radio')).toHaveText(['Stable', 'Beta', 'Development']);
+      await channel.getByRole('radio', { name: 'Development' }).click();
+      await expect(channel.getByRole('radio', { name: 'Development' })).toHaveAttribute('aria-checked', 'true');
+      await expect(updates).toContainText('Never checks, downloads or installs an update.');
+      await expect
+        .poll(() => (JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')) as { updates: object }).updates)
+        .toEqual({ channel: 'off', autoCheck: true, autoDownload: true });
+      // Still off for the build reason, not the channel: an unpackaged run never updates.
+      await expect(updates).toContainText('Updates are off in development builds.');
     } finally {
       await app.close();
     }
