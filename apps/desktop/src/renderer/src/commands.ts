@@ -41,6 +41,8 @@ import {
   useFiles,
 } from './files-store';
 import { nextThreadNeedingYou } from './attention-store';
+import { aiCommit, aiPullRequest, commitStaged, push, stageAll, syncNow } from './git-actions';
+import { ipcError } from './ipc-error';
 import { updateSettings } from './settings-client';
 import { closeOverlay, dispatchMode, openOverlay, openSettings, resetLayout, showToast, useApp } from './store';
 import { checkForUpdates } from './update-store';
@@ -233,10 +235,6 @@ export function toggleMode(mode: 'agent' | 'design'): void {
   // Both modes act on the page, so it has to be on screen.
   showBrowserTab();
   dispatchMode({ type: mode === 'agent' ? 'toggleAgent' : 'toggleDesign' });
-}
-
-function ipcError(error: unknown): string {
-  return (error as Error).message.replace(/^Error invoking remote method '[^']+': (\w*Error: )?/, '');
 }
 
 function designPending(): 'idle' | 'agent' {
@@ -855,6 +853,27 @@ async function runCommand(id: CommandId): Promise<void> {
       return;
     case CommandId.agentNewGroup:
       withAgentPanel(() => requestNewGroup());
+      return;
+    case CommandId.gitStageAll:
+      if (hasProject()) void stageAll();
+      return;
+    case CommandId.gitCommit:
+      withProject((w) => {
+        w.showSidebarView('git');
+        void commitStaged();
+      });
+      return;
+    case CommandId.gitPush:
+      if (hasProject()) void push();
+      return;
+    case CommandId.gitSync:
+      if (hasProject()) void syncNow();
+      return;
+    case CommandId.gitAiCommit:
+      if (hasProject()) void aiCommit();
+      return;
+    case CommandId.gitAiPullRequest:
+      if (hasProject()) void aiPullRequest();
       return;
     default: {
       const unreachable: never = id;

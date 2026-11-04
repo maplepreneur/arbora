@@ -46,6 +46,7 @@ import { DevServer } from './terminal/dev-server.js';
 import { findExecutable, type ShellEnvironment } from './terminal/shell-env.js';
 import { TerminalService } from './terminal/terminal-service.js';
 import type { ThemeService } from './theme-service.js';
+import { GitAutoSync } from './git/git-auto-sync.js';
 import { GitService } from './git/git-service.js';
 import { ToolingService } from './workspace/tooling/tooling-service.js';
 import { forkUtility } from './workspace/tooling/utility-fork.js';
@@ -130,6 +131,8 @@ export class ProjectWindow {
   designMode: DesignModeService | null = null;
   workspace: WorkspaceService | null = null;
   git: GitService | null = null;
+  gitSync: GitAutoSync | null = null;
+  private gitSyncKey = '';
 
   constructor(
     private readonly manager: WindowManager,
@@ -226,6 +229,14 @@ export class ProjectWindow {
     if (zoom === this.zoom) return;
     this.zoom = zoom;
     this.browser?.setBounds(this.scaledBrowserRect(), this.browserBounds.emulation);
+  }
+
+  /** Restarts the background sync timer when its settings changed. */
+  applyGitSync(): void {
+    const key = JSON.stringify(this.options.settings.get().git);
+    if (key === this.gitSyncKey) return;
+    this.gitSyncKey = key;
+    this.gitSync?.reschedule();
   }
 
   private scaledBrowserRect(): Rect | null {
@@ -570,6 +581,13 @@ export class ProjectWindow {
       },
     });
     this.git = new GitService({ root: projectPath, env: environment });
+    this.gitSync = new GitAutoSync({
+      git: this.git,
+      settings: () => settings.get().git,
+      onSynced: (result) => sendEvent(app, 'git.synced', result),
+    });
+    this.gitSyncKey = JSON.stringify(settings.get().git);
+    this.gitSync.start();
     this.workspace = new WorkspaceService({
       root: projectPath,
       rg: async () => findExecutable('rg', await environment(), platform) ?? null,
@@ -587,6 +605,8 @@ export class ProjectWindow {
   }
 
   private stopWorkspace(): void {
+    this.gitSync?.dispose();
+    this.gitSync = null;
     this.git = null;
     const workspace = this.workspace;
     this.workspace = null;
@@ -761,8 +781,11 @@ export class WindowManager {
     return [...this.windows];
   }
 
-  applyZoom(): void {
-    for (const w of this.windows) w.applyZoom();
+  settingsChanged(): void {
+    for (const w of this.windows) {
+      w.applyZoom();
+      w.applyGitSync();
+    }
   }
 
   rebuildKeybindings(): void {

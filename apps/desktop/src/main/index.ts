@@ -9,8 +9,12 @@ import {
   applyProjectMeta,
   applySettingsPatch,
   buildProjectLibrary,
+  commitMessagePrompt,
   detectInstallKind,
+  parseGeneratedText,
   projectSettingsUpdates,
+  pullRequestPrompt,
+  resolveTaskAgent,
   toPlatform,
   updatePolicy,
   type AgentVerification,
@@ -231,7 +235,7 @@ function main(): void {
       theme.setMode(next.theme);
       void browserSessions.applySettings();
       manager.rebuildKeybindings();
-      manager.applyZoom();
+      manager.settingsChanged();
       mainLog.setEnabled(next.diagnostics.logToFile);
       updates.refresh();
       attention.applyBadge();
@@ -908,6 +912,39 @@ function main(): void {
       const project = windowFor(event.sender).project;
       if (!project) throw new Error('Open a project first');
       return { url: await createPullRequest(project.path, await gitEnv(), title, body) };
+    });
+    defineHandler('git.stageAll', isTrusted, async (_req, event) => {
+      await requireGit(event.sender).stageAll();
+      return undefined;
+    });
+    defineHandler('git.defaultBranch', isTrusted, (_req, event) => requireGit(event.sender).defaultBranch());
+    defineHandler('git.syncNow', isTrusted, async (_req, event) => {
+      const sync = windowFor(event.sender).gitSync;
+      if (!sync) throw new Error('Open a project first');
+      return sync.sync();
+    });
+    defineHandler('git.generate', isTrusted, async ({ kind }, event) => {
+      const w = windowFor(event.sender);
+      const git = requireGit(event.sender);
+      if (!w.project || !w.agents) throw new Error('Open a project first');
+      const current = settings.get();
+      const known = w.agents.listAgents().agents.map((agent) => agent.id);
+      const task = resolveTaskAgent(current.tasks, 'git', known, current.agents, w.project.settings.defaultAgent);
+      if (!task) throw new Error('Choose an agent for Git in Settings → Agents.');
+      let prompt: string;
+      if (kind === 'commit') {
+        const { stat, diff } = await git.stagedSummary();
+        if (diff.trim() === '') throw new Error('Stage changes before generating a message.');
+        prompt = commitMessagePrompt(stat, diff);
+      } else {
+        const status = await git.status();
+        const base = (await git.defaultBranch()) ?? 'main';
+        const summary = await git.branchSummary(base);
+        prompt = pullRequestPrompt(status.branch ?? 'HEAD', base, summary.log, summary.stat, summary.diff);
+      }
+      const text = parseGeneratedText(await w.agents.runTask(task.agentId, task.model, prompt));
+      if (text.title === '') throw new Error('The agent did not return any text.');
+      return text;
     });
     defineHandler('git.checks', isTrusted, async ({ number }, event) => {
       const project = windowFor(event.sender).project;

@@ -25,8 +25,11 @@ import {
 import { designCommandSchema, designSessionSummarySchema, designStateSchema } from './design.js';
 import { agentModeIncludeSchema, agentModeSelectionSchema, agentModeTargetSchema } from './inspector.js';
 import {
+  generatedTextSchema,
   gitBranchSchema,
   gitCommitSchema,
+  gitGenerateKindSchema,
+  gitSyncResultSchema,
   gitHunkSchema,
   gitLineSchema,
   gitRemoteSchema,
@@ -546,6 +549,17 @@ export const channels = {
     z.object({ number: z.number().int().positive() }),
     z.array(githubCheckSchema),
   ),
+  /** `git add -A`. */
+  'git.stageAll': defineChannel('git.stageAll', none, none),
+  /** The branch pull requests target (`origin/HEAD`, else `main`/`master`). */
+  'git.defaultBranch': defineChannel('git.defaultBranch', none, z.string().nullable()),
+  /**
+   * A commit message for the staged changes, or pull request text for the current branch, from
+   * the Git task agent (`settings.tasks.git`) in a hidden session: nothing appears in a thread.
+   */
+  'git.generate': defineChannel('git.generate', z.object({ kind: gitGenerateKindSchema }), generatedTextSchema),
+  /** Runs the background sync now; null when sync is off or the repository has no remote. */
+  'git.syncNow': defineChannel('git.syncNow', none, gitSyncResultSchema.nullable()),
 } as const;
 
 /** Main -> renderer events. */
@@ -554,6 +568,8 @@ export const events = {
   'theme.changed': defineEvent('theme.changed', themeStateSchema),
   'project.changed': defineEvent('project.changed', projectInfoSchema.nullable()),
   'window.stateChanged': defineEvent('window.stateChanged', windowStateSchema),
+  /** The background git sync ran (`settings.git.autoSync`). */
+  'git.synced': defineEvent('git.synced', gitSyncResultSchema),
   /** A chord intercepted in main (or a menu action) asks the renderer to run a command. */
   'command.invoke': defineEvent('command.invoke', z.object({ commandId: z.string() })),
   'browser.stateChanged': defineEvent('browser.stateChanged', navigationStateSchema),

@@ -108,6 +108,12 @@ export const CommandId = {
   browserResetData: 'arbora.browser.resetData',
   agentShowAttention: 'arbora.agent.showAttention',
   agentNewGroup: 'arbora.agent.newGroup',
+  gitStageAll: 'arbora.git.stageAll',
+  gitCommit: 'arbora.git.commit',
+  gitPush: 'arbora.git.push',
+  gitSync: 'arbora.git.sync',
+  gitAiCommit: 'arbora.git.aiCommit',
+  gitAiPullRequest: 'arbora.git.aiPullRequest',
 } as const;
 
 export type CommandId = (typeof CommandId)[keyof typeof CommandId];
@@ -309,6 +315,31 @@ export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
     intercept: true,
   },
   { id: CommandId.agentNewGroup, title: 'New Agent Group…', category: 'Agent' },
+  // Git chords are intercepted so they work from the page and the terminal too.
+  { id: CommandId.gitStageAll, title: 'Stage All Changes', category: 'Git', keybinding: 'mod+alt+s', intercept: true },
+  {
+    id: CommandId.gitCommit,
+    title: 'Commit Staged Changes',
+    category: 'Git',
+    keybinding: 'mod+alt+c',
+    intercept: true,
+  },
+  { id: CommandId.gitPush, title: 'Push', category: 'Git', keybinding: 'mod+alt+p', intercept: true },
+  { id: CommandId.gitSync, title: 'Fetch and Pull Now', category: 'Git' },
+  {
+    id: CommandId.gitAiCommit,
+    title: 'Stage All and Commit with AI',
+    category: 'Git',
+    keybinding: 'mod+alt+shift+c',
+    intercept: true,
+  },
+  {
+    id: CommandId.gitAiPullRequest,
+    title: 'AI Commit, Push and Open Pull Request',
+    category: 'Git',
+    keybinding: 'mod+alt+shift+p',
+    intercept: true,
+  },
 ];
 
 /** Overrides map a command id to a chord string, or `null` to unbind it. */

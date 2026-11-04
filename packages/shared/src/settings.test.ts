@@ -15,6 +15,7 @@ import {
   migrateSettings,
   projectSettingsUpdates,
   resolveDefaultAgent,
+  resolveTaskAgent,
   SANS_FONT_STACK,
   visibleModels,
   SETTINGS_VERSION,
@@ -133,6 +134,23 @@ describe('loadSettings', () => {
     expect(fontFamily('Dank Mono', 'monospace')).toBe("'Dank Mono', monospace");
     expect(fontFamily('Inter, "IBM Plex Sans"', 'sans-serif')).toBe('Inter, "IBM Plex Sans", sans-serif');
     expect(MONO_FONT_STACK.startsWith("'Dank Mono'")).toBe(true);
+  });
+
+  it('resolves a task agent from its own choice, then the defaults, then a signed-in agent', () => {
+    const tasks = defaultSettings().tasks;
+    const agents = {
+      ...defaultSettings().agents,
+      verified: { b: { status: 'ready' as const, checkedAt: 1, models: [] } },
+    };
+    expect(resolveTaskAgent(tasks, 'git', ['a', 'b'], agents, undefined)).toEqual({ agentId: 'b', model: null });
+    expect(resolveTaskAgent(tasks, 'git', ['a', 'b'], { ...agents, defaultAgent: 'a' }, undefined)).toEqual({
+      agentId: 'a',
+      model: null,
+    });
+    expect(resolveTaskAgent(tasks, 'git', ['a', 'b'], agents, 'a')).toEqual({ agentId: 'a', model: null });
+    const chosen = { ...tasks, git: { agentId: 'b', model: 'haiku' } };
+    expect(resolveTaskAgent(chosen, 'git', ['a', 'b'], agents, 'a')).toEqual({ agentId: 'b', model: 'haiku' });
+    expect(resolveTaskAgent(chosen, 'design', ['a'], { ...agents, verified: {} }, undefined)).toBeUndefined();
   });
 
   it('lets the agent font follow the interface font', () => {

@@ -118,6 +118,18 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
     return states?.[states.length - 1];
   }
 
+  it('runs a task in a hidden session that cannot write files', async () => {
+    root = makeRoot();
+    writeFileSync(join(root, 'App.tsx'), 'export {};\n');
+    const h = setup();
+    const reply = await h.service.runTask(FAKE, null, 'Please add a comment to App.tsx');
+    expect(reply).toContain('Working on: Please add a comment to App.tsx');
+    expect(readFileSync(join(root, 'App.tsx'), 'utf8')).toBe('export {};\n');
+    expect(h.service.listThreads()).toEqual([]);
+    expect(h.threads).toEqual([]);
+    expect(existsSync(threadsDir(root))).toBe(false);
+  });
+
   it('groups and pins threads, persists both, and ungroups threads of a removed group', async () => {
     root = makeRoot();
     const h = setup();

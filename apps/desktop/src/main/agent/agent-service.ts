@@ -53,6 +53,7 @@ import {
 } from '@arbora/shared';
 import type { TerminalService } from '../terminal/terminal-service.js';
 import { AgentTerminals } from './agent-terminals.js';
+import { runAgentTask } from './agent-task.js';
 import { attachmentBlocks } from './attachments.js';
 import { AgentGroupStore, ThreadStore } from './thread-store.js';
 
@@ -476,6 +477,26 @@ export class AgentService {
     record.pendingPrompt = null;
     this.setState(record, { ...idleThreadState() });
     void this.ensureRuntime(record).catch(() => undefined);
+  }
+
+  /**
+   * One prompt to `agentId` in a session of its own that is not a thread (commit messages, pull
+   * request text). `model` null uses the user's default model for that agent.
+   */
+  async runTask(agentId: string, model: string | null, prompt: string): Promise<string> {
+    const agent = this.options.registry.get(agentId);
+    if (!agent) throw new AgentServiceError(`Unknown agent ${agentId}`);
+    const env = await this.options.environment();
+    Object.assign(env, agent.env);
+    return runAgentTask({
+      platform: this.options.platform,
+      projectPath: this.options.projectPath,
+      agent,
+      env,
+      lookup: this.options.lookup(),
+      model: model ?? this.options.defaultModel?.(agentId) ?? null,
+      prompt,
+    });
   }
 
   // --- Log -----------------------------------------------------------------------------------
