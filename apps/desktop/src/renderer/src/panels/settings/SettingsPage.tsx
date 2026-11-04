@@ -40,6 +40,8 @@ const THEMES: readonly { value: ThemeMode; label: string }[] = [
 function GeneralSection() {
   const theme = useApp((s) => s.theme.mode);
   const fontSize = useApp((s) => s.settings.terminal.fontSize);
+  const isMac = useApp((s) => s.info.platform === 'darwin');
+  const quitOnLastWindowClose = useApp((s) => s.settings.quitOnLastWindowClose);
   return (
     <div>
       <SettingRow title="Theme">
@@ -79,6 +81,19 @@ function GeneralSection() {
           className="h-7 w-16 rounded border border-border bg-bg px-2 text-xs"
         />
       </SettingRow>
+      {isMac && (
+        <SettingRow
+          title="Quit when the last window closes"
+          detail="Stops dev servers and agents. Off keeps Arbora running in the dock with no window."
+        >
+          <Toggle
+            on={quitOnLastWindowClose}
+            label="Quit when the last window closes"
+            testId="setting-quit-on-last-window-close"
+            onChange={(on) => void updateSettings({ quitOnLastWindowClose: on })}
+          />
+        </SettingRow>
+      )}
     </div>
   );
 }

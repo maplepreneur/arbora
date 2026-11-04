@@ -47,3 +47,13 @@ export function nextValue(values: readonly string[], current: string): string | 
   const index = values.indexOf(current);
   return values[(index + 1) % values.length] ?? null;
 }
+
+/**
+ * The values to try, in order, when rotating past `current`: every other value starting after it
+ * and wrapping around, minus the ones the agent already refused.
+ */
+export function rotationOrder(values: readonly string[], current: string, refused: ReadonlySet<string>): string[] {
+  const index = values.indexOf(current);
+  const rotated = [...values.slice(index + 1), ...values.slice(0, Math.max(index, 0))];
+  return rotated.filter((value) => value !== current && !refused.has(value));
+}

@@ -7,6 +7,8 @@ import { checkedAgents, DESKTOP_ROOT, launch, tempUserData } from './app';
 
 const FAKE_AGENT = resolve(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
 const FAKE_ID = 'fake';
+const ONE_PIXEL_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
 /** A throwaway project with one file for the fake agent to edit. */
 function tempProject(): string {
@@ -339,7 +341,21 @@ test.describe('Stage 3 agent panel', () => {
       await page.getByTestId('new-thread-choose').click();
       await page.getByTestId(`pick-agent-${FAKE_ID}`).click();
       await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', { timeout: 20_000 });
+      await expect(page.getByTestId('auto-approve-edits')).toHaveText('Ask before edits');
       await page.getByTestId('auto-approve-edits').click();
+      await expect(page.getByTestId('auto-approve-edits')).toHaveText('Auto-approve edits');
+
+      // A pasted screenshot becomes an image attachment saved under the git-ignored .arbora folder.
+      await app.evaluate(async ({ clipboard, ClipboardItem }, png) => {
+        const blob = new Blob([Buffer.from(png, 'base64')], { type: 'image/png' });
+        await clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      }, ONE_PIXEL_PNG);
+      await page.getByTestId('composer-input').focus();
+      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+V' : 'Control+V');
+      await expect(page.getByTestId('attachment-chip')).toContainText('.arbora/pasted/paste-');
+      expect(readFileSync(join(project, '.arbora', '.gitignore'), 'utf8')).toContain('*');
+      await page.getByTestId('attachment-chip').getByRole('button').click();
+
       await send(page, 'add a comment to `App.tsx`');
       await expect(page.getByTestId('permission-outcome')).toContainText('automatic', { timeout: 20_000 });
       await expect(page.getByTestId('diff')).toBeVisible({ timeout: 20_000 });

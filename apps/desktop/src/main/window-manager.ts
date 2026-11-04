@@ -39,7 +39,7 @@ import { attachKeybindingInterceptor, type InterceptorSource } from './keybindin
 import { ArboraToolHost, type PermissionAnswer } from './mcp/browser-tool-host.js';
 import { openBrowserTools, type ShimCommand } from './mcp/browser-tools.js';
 import { writeSkillFile } from './mcp/skill-file.js';
-import { readProjectSettings, updateProjectSettingsFile } from './project-settings.js';
+import { ensureArboraGitignore, readProjectSettings, updateProjectSettingsFile } from './project-settings.js';
 import type { SettingsStore } from './settings-store.js';
 import { shouldRestoreBounds } from './startup.js';
 import { DevServer } from './terminal/dev-server.js';
@@ -227,6 +227,7 @@ export class ProjectWindow {
   }
 
   openProject(path: string): void {
+    ensureArboraGitignore(path);
     const { settings, warnings } = readProjectSettings(path);
     this.project = { path, name: basename(path), settings, settingsWarnings: warnings };
     this.window.setTitle(`${this.project.name} — Arbora`);

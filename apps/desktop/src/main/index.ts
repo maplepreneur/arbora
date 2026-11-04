@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { app, BrowserWindow, clipboard, crashReporter, dialog, Menu, shell, type WebContents } from 'electron';
 import { AgentRegistry } from '@arbora/acp-client';
 import {
@@ -22,15 +22,15 @@ import { AttentionService } from './attention-service.js';
 import { buildDiagnosticsZip, MainLog } from './diagnostics.js';
 import { UpdateService } from './update-service.js';
 import type { AgentService } from './agent/agent-service.js';
-import { describeAttachment } from './agent/attachments.js';
+import { describeAttachment, pastedImagePath, pickPastedImageType } from './agent/attachments.js';
 import { BrowserSessions } from './browser/browser-sessions.js';
 import type { BrowserService } from './browser/browser-service.js';
 import { registerPageIpc } from './browser/page-ipc.js';
 import { defineHandler, sendEvent } from './ipc.js';
 import { buildMacMenu } from './menu.js';
-import { ensureProjectSettingsFile, updateProjectSettingsFile } from './project-settings.js';
+import { ensureArboraGitignore, ensureProjectSettingsFile, updateProjectSettingsFile } from './project-settings.js';
 import { SettingsStore } from './settings-store.js';
-import { detectTilingCompositor, parseProjectArg, startupSwitches } from './startup.js';
+import { detectTilingCompositor, parseProjectArg, shouldQuitWhenAllWindowsClosed, startupSwitches } from './startup.js';
 import { inferProjectDevCommand } from './terminal/dev-command.js';
 import type { DevServer } from './terminal/dev-server.js';
 import { findExecutable, ShellEnvironment } from './terminal/shell-env.js';
@@ -66,6 +66,7 @@ function main(): void {
   }
 
   let windows: WindowManager | undefined;
+  let quitOnLastWindowClose = (): boolean => true;
   const pendingPaths: string[] = [];
   const initialProject = parseProjectArg(process.argv, process.cwd(), isDefaultApp);
 
@@ -105,6 +106,7 @@ function main(): void {
   void app.whenReady().then(() => {
     const shellEnvironment = new ShellEnvironment(platform);
     const settings = new SettingsStore(join(app.getPath('userData'), 'settings.json'));
+    quitOnLastWindowClose = () => settings.get().quitOnLastWindowClose;
     const mainLog = new MainLog(join(app.getPath('userData'), 'logs'));
     mainLog.setEnabled(settings.get().diagnostics.logToFile);
     mainLog.install();
@@ -733,6 +735,22 @@ function main(): void {
         return attachment ? [attachment] : [];
       }),
     );
+    defineHandler('agent.pasteImage', isTrusted, async (_req, event) => {
+      const project = windowFor(event.sender).project;
+      if (!project) throw new Error('Open a project first');
+      for (const item of await clipboard.read()) {
+        const type = pickPastedImageType(item.types);
+        if (!type) continue;
+        const blob = await item.getType(type);
+        if (!(blob instanceof Blob)) continue;
+        const file = pastedImagePath(project.path, new Date(), type);
+        mkdirSync(dirname(file), { recursive: true });
+        ensureArboraGitignore(project.path);
+        await writeFile(file, Buffer.from(await blob.arrayBuffer()));
+        return describeAttachment(file);
+      }
+      return null;
+    });
     defineHandler('agent.forgetPermissions', isTrusted, ({ agentId }) => {
       settings.update((s) => ({
         ...s,
@@ -874,6 +892,10 @@ function main(): void {
       requireGit(event.sender).stashApply(index, pop),
     );
     defineHandler('git.stashDrop', isTrusted, ({ index }, event) => requireGit(event.sender).stashDrop(index));
+    defineHandler('git.arboraTracked', isTrusted, async (_req, event) => ({
+      count: await requireGit(event.sender).trackedArboraFiles(),
+    }));
+    defineHandler('git.untrackArbora', isTrusted, (_req, event) => requireGit(event.sender).untrackArbora());
     defineHandler('git.remotes', isTrusted, (_req, event) => requireGit(event.sender).remotes());
     defineHandler('git.github', isTrusted, async () => githubAuth(await gitEnv()));
     defineHandler('git.pullRequests', isTrusted, async (_req, event) => {
@@ -918,7 +940,7 @@ function main(): void {
   });
 
   app.on('window-all-closed', () => {
-    if (platform !== 'darwin') app.quit();
+    if (shouldQuitWhenAllWindowsClosed(platform, quitOnLastWindowClose())) app.quit();
   });
 }
 

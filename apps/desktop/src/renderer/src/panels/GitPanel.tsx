@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { GitBranch } from 'lucide-react';
 import type { GitFile, GitHunk, GitStatus, GithubPr } from '@arbora/shared';
 import { baseName } from '@arbora/shared';
@@ -139,6 +139,7 @@ export default function GitPanel({ variant }: { variant: 'sidebar' | 'panel' }) 
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
+        <TrackedArboraNotice status={status} busy={busy} run={run} />
         <Section
           title="Staged"
           files={filesIn(status, 'staged')}
@@ -253,6 +254,55 @@ export default function GitPanel({ variant }: { variant: 'sidebar' | 'panel' }) 
           }
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * `.arbora/.gitignore` only stops new files; ones committed before it stay tracked, so offer to
+ * remove them from the index (the files stay on disk).
+ */
+function TrackedArboraNotice({
+  status,
+  busy,
+  run,
+}: {
+  status: GitStatus;
+  busy: boolean;
+  run: (action: () => Promise<{ ok: boolean; output: string } | undefined>) => Promise<void>;
+}) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    let live = true;
+    void window.arbora
+      .invoke('git.arboraTracked')
+      .then((result) => {
+        if (live) setCount(result.count);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [status]);
+  if (count === 0) return null;
+  return (
+    <div
+      className="flex items-center gap-2 border-b border-border bg-attention-soft px-2 py-1.5 text-attention"
+      data-testid="git-arbora-tracked"
+    >
+      <span className="min-w-0 flex-1">
+        {count} file{count === 1 ? '' : 's'} in .arbora {count === 1 ? 'is' : 'are'} committed. Arbora keeps that folder
+        out of git.
+      </span>
+      <button
+        type="button"
+        disabled={busy}
+        title="Runs git rm -r --cached .arbora. The files stay on disk; commit to record it."
+        className="shrink-0 rounded border border-current px-1.5 py-0.5 hover:bg-bg/40"
+        onClick={() => void run(() => window.arbora.invoke('git.untrackArbora'))}
+      >
+        Stop tracking
+      </button>
     </div>
   );
 }

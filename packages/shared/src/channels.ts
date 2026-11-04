@@ -391,6 +391,8 @@ export const channels = {
     z.object({ paths: z.array(z.string()).max(50) }),
     z.array(attachmentSchema),
   ),
+  /** Saves the clipboard image to `.arbora/pasted/` and describes it; null when there is none. */
+  'agent.pasteImage': defineChannel('agent.pasteImage', none, attachmentSchema.nullable()),
   'agent.listGroups': defineChannel('agent.listGroups', none, z.array(agentGroupSchema)),
   /** Replaces the project's groups (order, names, colours). Threads of a removed group are ungrouped. */
   'agent.saveGroups': defineChannel(
@@ -521,6 +523,10 @@ export const channels = {
   'git.pull': defineChannel('git.pull', none, gitResultSchema),
   'git.fetch': defineChannel('git.fetch', none, gitResultSchema),
   'git.stash': defineChannel('git.stash', none, z.array(gitStashSchema)),
+  /** How many `.arbora/` files are committed (ignored folders stay tracked until untracked). */
+  'git.arboraTracked': defineChannel('git.arboraTracked', none, z.object({ count: z.number().int().nonnegative() })),
+  /** `git rm -r --cached .arbora`: stop tracking it, keep the files. */
+  'git.untrackArbora': defineChannel('git.untrackArbora', none, gitResultSchema),
   'git.stashApply': defineChannel(
     'git.stashApply',
     z.object({ index: z.number().int().nonnegative(), pop: z.boolean() }),

@@ -56,5 +56,4 @@ Settings → Updates & diagnostics → **Channel**. **Beta** installs prerelease
 ## Where are settings, threads and screenshots?
 
 - App settings: `settings.json` in the user-data folder (`~/.config/arbora`, `~/Library/Application Support/arbora`, `%APPDATA%\arbora`).
-- Per project, committed: `.arbora/project.json` (dev command, default agent, MCP tool permissions, keybinding overrides).
-- Per project, machine-local (keep them out of git, for example with `.arbora/*` and `!.arbora/project.json` in `.gitignore`): `.arbora/threads/`, `.arbora/agent-groups.json`, `.arbora/screenshots/`, `.arbora/design-sessions/`.
+- Per project: the `.arbora/` folder. Arbora writes `.arbora/.gitignore` (containing `*`) the first time it uses the folder, so none of it shows up in git: `.arbora/project.json` (dev command, default agent, MCP tool permissions, keybinding overrides), `.arbora/threads/`, `.arbora/agent-groups.json`, `.arbora/screenshots/`, `.arbora/design-sessions/` and `.arbora/SKILL.md`. To share `project.json` with your team, add `!project.json` to `.arbora/.gitignore`. Arbora never overwrites that file once it exists.

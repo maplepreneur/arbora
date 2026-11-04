@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionConfigOption } from '@arbora/shared';
-import { modeControl, nextValue, thinkingControl } from './thread-controls';
+import { modeControl, nextValue, rotationOrder, thinkingControl } from './thread-controls';
 
 function select(
   id: string,
@@ -32,6 +32,14 @@ describe('thread controls', () => {
     expect(nextValue(['a', 'b', 'c'], 'c')).toBe('a');
     expect(nextValue(['a', 'b'], 'missing')).toBe('a');
     expect(nextValue([], 'a')).toBeNull();
+  });
+
+  it('orders the rotation after the current value and skips refused ones', () => {
+    const all = ['default', 'acceptEdits', 'plan', 'dontAsk', 'bypassPermissions'];
+    expect(rotationOrder(all, 'dontAsk', new Set())).toEqual(['bypassPermissions', 'default', 'acceptEdits', 'plan']);
+    expect(rotationOrder(all, 'dontAsk', new Set(['bypassPermissions']))).toEqual(['default', 'acceptEdits', 'plan']);
+    expect(rotationOrder(all, 'missing', new Set())).toEqual(all);
+    expect(rotationOrder(['only'], 'only', new Set())).toEqual([]);
   });
 
   it('prefers a mode config option over session modes', () => {

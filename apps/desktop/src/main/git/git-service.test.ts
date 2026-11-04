@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -41,6 +41,21 @@ describe('GitService', () => {
     expect(branches.some((branch) => branch.current)).toBe(true);
     const log = await git.log();
     expect(log[0]?.subject).toBe('edit');
+  });
+
+  it('untracks a committed .arbora folder and keeps the files', async () => {
+    const { git, root } = fresh();
+    await init(root);
+    mkdirSync(join(root, '.arbora', 'threads'), { recursive: true });
+    writeFileSync(join(root, '.arbora', 'threads', 't.json'), '{}');
+    writeFileSync(join(root, 'f.txt'), 'a\n');
+    await git.stage(['.arbora', 'f.txt']);
+    expect((await git.commit('init', false)).ok).toBe(true);
+    expect(await git.trackedArboraFiles()).toBe(1);
+
+    expect((await git.untrackArbora()).ok).toBe(true);
+    expect(await git.trackedArboraFiles()).toBe(0);
+    expect(existsSync(join(root, '.arbora', 'threads', 't.json'))).toBe(true);
   });
 
   it('reports a folder that is not a repository', async () => {
