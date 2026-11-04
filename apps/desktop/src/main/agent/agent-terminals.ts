@@ -90,7 +90,8 @@ export class AgentTerminals implements Pick<AcpSessionHandlers, 'terminal'> {
     let released = false;
     const info = await this.terminals.create({
       kind: 'agent',
-      title: `${this.threadTitle()}: ${[request.command, ...(request.args ?? [])].join(' ').slice(0, 60)}`,
+      title: [request.command, ...(request.args ?? [])].join(' ').slice(0, 200),
+      thread: this.threadTitle(),
       command: request.command,
       // Grok sends a whole command line (`/usr/bin/bash -lc '...'`) as `command` with no args; an
       // undefined `args` runs it through the shell instead of exec'ing it as one file name.

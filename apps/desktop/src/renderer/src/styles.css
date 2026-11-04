@@ -198,3 +198,10 @@ button:focus-visible,
 .cm-editor {
   user-select: text;
 }
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
