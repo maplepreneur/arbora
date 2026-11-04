@@ -6,11 +6,9 @@ import {
   DEFAULT_COMMANDS,
   groveSessionIndex,
   isPickableAgent,
-  neighbourPanel,
   parentPath,
   toProjectPath,
   visibleModels,
-  WORKSPACE_PANELS,
   type AgentModeTarget,
   type BottomTab,
   type BrowserAction,
@@ -24,15 +22,11 @@ import {
   type WorkspacePanel,
 } from '@arbora/shared';
 import {
-  activeThread,
   isListed,
   isStoppable,
   focusComposer,
   loadThread,
-  openThread,
   requestNewGroup,
-  showPicker,
-  showThreads,
   stopAgent,
   toggleLog,
   useAgents,
@@ -55,11 +49,9 @@ import {
   currentSession,
   cycleGroveProject,
   focusSessionList,
-  isGroveShowing,
   openGroveSearch,
   stepProjectSwitch,
-  showBrowserForGroveSelection,
-  showGroveForBrowserProject,
+  resumeProjectSwitch,
   openLauncher,
   renameSession,
   restartSession,
@@ -72,13 +64,21 @@ import {
   startDefaultSession,
   stopSession,
   toggleSessionList,
-  toggleWorkspace,
 } from './grove-store';
 import type { GroveSession } from './grove-model';
 import { ipcError } from './ipc-error';
 import type { DesignPending } from './mode';
 import { updateSettings } from './settings-client';
-import { closeOverlay, dispatchMode, openOverlay, openSettings, resetLayout, showToast, useApp } from './store';
+import {
+  closeOverlay,
+  dispatchMode,
+  openOverlay,
+  openSettings,
+  resetLayout,
+  showRightView,
+  showToast,
+  useApp,
+} from './store';
 import { checkForUpdates } from './update-store';
 import { modeControl, nextValue, rotationOrder, selectValues, thinkingControl } from './thread-controls';
 import {
@@ -141,7 +141,6 @@ export function openFileAtLocation(location?: FileLocation): void {
     showToast(`${location.path} is outside the project`);
     return;
   }
-  if (!leaveGrove()) return;
   useApp.setState({ settingsOpen: false });
   openFile(path, {
     pinned: true,
@@ -149,16 +148,10 @@ export function openFileAtLocation(location?: FileLocation): void {
   });
 }
 
-/** Opens a diff tab in the editor, switching from Grove to the browser workspace first. */
+/** Opens a diff tab in the right column. */
 export function openDiffTab(diff: Parameters<typeof openDiff>[0]): void {
-  if (!leaveGrove()) return;
   useApp.setState({ settingsOpen: false });
   openDiff(diff);
-}
-
-/** The page, the editor and the terminals live in the browser workspace: from Grove, show it. */
-function leaveGrove(): boolean {
-  return !isGroveShowing() || showWorkspace('browser');
 }
 
 /** The active file tab's path, or null with a toast. */
@@ -233,6 +226,8 @@ export interface WorkspaceController {
   toggleAgentPanel(): void;
   showAgentPanel(): void;
   toggleBottomPanel(): void;
+  /** Collapses the tree and the chat so the right column fills the window, or puts them back. */
+  toggleMaximizeRight(): void;
   showSidebarView(view: SidebarView): void;
   showBottomTab(tab: BottomTab): void;
   /** Expands a collapsed panel. */
@@ -240,7 +235,7 @@ export interface WorkspaceController {
 }
 
 let workspace: WorkspaceController | null = null;
-/** A command that needs the browser layout, waiting for it to mount after a switch from Grove. */
+/** A command that needs the shell's panels, waiting for them to mount. */
 let pendingWorkspaceAction: ((controller: WorkspaceController) => void) | null = null;
 
 export function setWorkspaceController(controller: WorkspaceController | null): void {
@@ -253,48 +248,27 @@ export function setWorkspaceController(controller: WorkspaceController | null): 
   }
 }
 
-/**
- * Runs `action` with the browser layout mounted. From Grove it switches first, and the action
- * runs once the layout registers its controller.
- */
+/** Runs `action` on the shell's panels, once they are mounted. */
 function withProject(action: (controller: WorkspaceController) => void): void {
   if (!useApp.getState().project) {
     showToast('Open a project first');
-    return;
-  }
-  if (isGroveShowing()) {
-    if (!showWorkspace('browser')) return;
-    pendingWorkspaceAction = action;
     return;
   }
   if (workspace) action(workspace);
   else pendingWorkspaceAction = action;
 }
 
-/** Shows a thread in the workspace on screen: the Grove pane, or the docked agent panel. */
+/** Shows a thread in the chat column. */
 export function revealThread(threadId: string): void {
   useApp.setState({ settingsOpen: false, overlay: null });
-  if (isGroveShowing()) {
-    selectSession(threadId);
-    return;
-  }
   workspace?.showAgentPanel();
-  void openThread(threadId);
-}
-
-/** Runs `action` with the agent panel visible. */
-function withAgentPanel(action: () => void): void {
-  withProject((controller) => {
-    controller.showAgentPanel();
-    action();
-  });
+  selectSession(threadId);
 }
 
 const THEME_CYCLE: Readonly<Record<ThemeMode, ThemeMode>> = { system: 'light', light: 'dark', dark: 'system' };
 
-/** Runs `action` in Grove, switching to it first. A Grove launch has projects without a browser project. */
+/** Runs a Grove action; the shell always shows Grove, so this is a plain call. */
 function withGrove(action: () => void): void {
-  if (!isGroveShowing() && !showWorkspace('grove')) return;
   action();
 }
 
@@ -337,16 +311,13 @@ export function toggleMode(mode: 'agent' | 'design'): void {
       showToast('Open a project first');
       return;
     }
-    showBrowserTab();
+    // Both modes act on the selected project's page.
+    if (mode === 'agent' ? useApp.getState().mode.kind !== 'agent' : useApp.getState().mode.kind !== 'design') {
+      showBrowserTab();
+      workspace?.revealPanel('bottom');
+    }
     dispatchMode({ type: mode === 'agent' ? 'toggleAgent' : 'toggleDesign' });
   };
-  // Both modes act on the page. From Grove, that page is the project selected there.
-  if (isGroveShowing()) {
-    void showBrowserForGroveSelection().then((shown) => {
-      if (shown) enter();
-    });
-    return;
-  }
   enter();
 }
 
@@ -364,7 +335,7 @@ function continueAfterDesign(pending: DesignPending): void {
       dispatchMode({ type: 'toggleAgent' });
       return;
     case 'grove':
-      void showGroveForBrowserProject();
+      void resumeProjectSwitch();
       return;
     default: {
       const unreachable: never = pending;
@@ -398,10 +369,8 @@ export async function saveDesignTo(target: AgentModeTarget | null): Promise<void
   try {
     const { threadId } = await window.arbora.invoke('design.save', { target });
     dispatchMode({ type: 'designLeave' });
-    // Grove first, so the thread that got the edits opens there and you can watch it work.
-    if (pending === 'grove') await showGroveForBrowserProject();
     await showAgentThread(threadId);
-    if (pending !== 'grove') continueAfterDesign(pending);
+    continueAfterDesign(pending);
   } catch (error) {
     showToast(ipcError(error));
   }
@@ -469,7 +438,7 @@ async function runDesignCommand(command: DesignCommand): Promise<void> {
   }
 }
 
-/** The Grove selection while Grove shows (if it is listed), else the docked panel's open thread. */
+/** The thread in the chat column, if it is listed. */
 function groveThread(): ThreadSummary | undefined {
   const id = useApp.getState().layout.groveThreadId;
   return useAgents.getState().threads.find((t) => t.id === id && isListed(t));
@@ -477,7 +446,7 @@ function groveThread(): ThreadSummary | undefined {
 
 /** The thread on screen, or null with a toast saying why nothing happened. */
 function shownThread(): ThreadSummary | null {
-  const thread = isGroveShowing() ? groveThread() : useAgents.getState().view === 'thread' ? activeThread() : undefined;
+  const thread = groveThread();
   if (!thread) {
     showToast('Open a thread first');
     return null;
@@ -577,12 +546,9 @@ async function cycleThreadThinking(): Promise<void> {
 
 /** Shows `threadId` where threads show now (agent mode and design mode hand their prompt over to it). */
 export async function showAgentThread(threadId: string): Promise<void> {
-  if (isGroveShowing()) {
-    selectSession(threadId);
-    return;
-  }
   workspace?.showAgentPanel();
-  await openThread(threadId);
+  selectSession(threadId);
+  return Promise.resolve();
 }
 
 const DEFAULT_DEV_URL = 'http://localhost:5173';
@@ -594,11 +560,11 @@ function hasProject(): boolean {
 }
 
 async function browserAction(action: BrowserAction): Promise<void> {
-  if (hasProject() && leaveGrove()) await window.arbora.invoke('browser.action', { action });
+  if (hasProject()) await window.arbora.invoke('browser.action', { action });
 }
 
 async function setViewport(preset: ViewportPresetId): Promise<void> {
-  if (hasProject() && leaveGrove()) await window.arbora.invoke('browser.setPreset', { preset });
+  if (hasProject()) await window.arbora.invoke('browser.setPreset', { preset });
 }
 
 export async function navigateBrowser(url: string): Promise<void> {
@@ -633,7 +599,7 @@ export async function openGroveWebsite(action: GroveWebsiteAction): Promise<void
 
 async function takeScreenshot(mode: ScreenshotRequest['mode']): Promise<void> {
   const project = useApp.getState().project;
-  if (!hasProject() || !project || !leaveGrove()) return;
+  if (!hasProject() || !project) return;
   try {
     const shot = await window.arbora.invoke('browser.screenshot', { mode, save: true });
     const path = shot.path?.startsWith(project.path) ? shot.path.slice(project.path.length + 1) : shot.path;
@@ -674,30 +640,11 @@ export function focusLandmark(direction: 1 | -1): void {
   if (target) focusWithin(target);
 }
 
-/** The panel that has focus; the embedded page counts as the centre. */
-function focusedPanel(): WorkspacePanel | null {
-  if (!document.hasFocus()) return 'center';
-  const landmark = document.activeElement?.closest<HTMLElement>(LANDMARK_SELECTOR)?.dataset['landmark'];
-  return WORKSPACE_PANELS.find((panel) => panel === landmark) ?? null;
-}
-
 function focusAgentComposer(): void {
   const listed = useAgents.getState().threads.some(isListed);
-  if (isGroveShowing()) {
-    if (groveThread()) focusComposer();
-    else if (listed) focusSessionList();
-    else openLauncher();
-    return;
-  }
-  const thread = activeThread();
-  if (thread) {
-    useAgents.setState({ view: 'thread' });
-    focusComposer();
-  } else if (listed) {
-    showThreads();
-  } else {
-    showPicker();
-  }
+  if (groveThread()) focusComposer();
+  else if (listed) focusSessionList();
+  else openLauncher();
 }
 
 /** `Mod+1`..`Mod+4`: expands the panel if it is collapsed and puts the keyboard in it. */
@@ -717,18 +664,21 @@ function focusPanelSoon(panel: WorkspacePanel): void {
         if (landmark) focusWithin(landmark);
         return;
       case 'center': {
-        const { settingsOpen, browser } = useApp.getState();
-        if (!settingsOpen && useFiles.getState().active !== null) editorController()?.focus();
-        else if (!settingsOpen && browser?.url) void window.arbora.invoke('browser.action', { action: 'focusPage' });
+        const { settingsOpen, browser, layout } = useApp.getState();
+        if (!settingsOpen && layout.rightView === 'editor' && useFiles.getState().active !== null)
+          editorController()?.focus();
+        else if (!settingsOpen && layout.rightView === 'terminal') focusActiveTerminal();
+        else if (!settingsOpen && layout.rightView === 'browser' && browser?.url)
+          void window.arbora.invoke('browser.action', { action: 'focusPage' });
         else if (landmark) focusWithin(landmark);
         return;
       }
       case 'bottom':
-        if (useApp.getState().layout.bottomTab === 'terminal') focusActiveTerminal();
-        else if (landmark) focusWithin(landmark);
+        showRightView('terminal');
+        focusActiveTerminal();
         return;
       case 'agent':
-        if (useApp.getState().mode.kind !== 'design' && activeThread()) focusAgentComposer();
+        if (useApp.getState().mode.kind !== 'design' && groveThread()) focusAgentComposer();
         else if (landmark) focusWithin(landmark);
         return;
       default: {
@@ -739,15 +689,18 @@ function focusPanelSoon(panel: WorkspacePanel): void {
   });
 }
 
+/** The shell's columns from left to right; up and down stay in the column. */
+const SHELL_COLUMNS = ['tree', 'agent', 'center', 'sidebar'] as const;
+
 function focusNeighbour(direction: 'left' | 'right' | 'up' | 'down'): void {
-  if (isGroveShowing()) {
-    // Grove is two columns: the list on the left, the session on the right.
-    if (direction === 'left') focusSessionList();
-    else if (direction === 'right') focusAgentComposer();
-    return;
-  }
-  const next = neighbourPanel(focusedPanel() ?? 'center', direction);
-  if (next) focusPanel(next);
+  if (direction === 'up' || direction === 'down') return;
+  const landmark = document.hasFocus()
+    ? document.activeElement?.closest<HTMLElement>(LANDMARK_SELECTOR)?.dataset['landmark']
+    : 'center';
+  const at = SHELL_COLUMNS.findIndex((column) => column === landmark);
+  const next = SHELL_COLUMNS[(at === -1 ? 2 : at) + (direction === 'left' ? -1 : 1)];
+  if (next === 'tree') focusSessionList();
+  else if (next) focusPanel(next);
 }
 
 function showAttentionThread(): void {
@@ -807,20 +760,17 @@ async function runCommand(id: CommandId): Promise<void> {
       return;
     }
     case CommandId.toggleSidebar:
-      if (isGroveShowing()) toggleSessionList();
-      else withProject((w) => w.toggleSidebar());
+      toggleSessionList();
       return;
-    case CommandId.toggleAgentPanel: {
-      // From Grove the switch is the point, so the panel shows rather than toggles.
-      const fromGrove = isGroveShowing();
-      withProject((w) => (fromGrove ? w.revealPanel('agent') : w.toggleAgentPanel()));
+    case CommandId.toggleAgentPanel:
+      withProject((w) => w.toggleAgentPanel());
       return;
-    }
-    case CommandId.toggleBottomPanel: {
-      const fromGrove = isGroveShowing();
-      withProject((w) => (fromGrove ? w.revealPanel('bottom') : w.toggleBottomPanel()));
+    case CommandId.toggleBottomPanel:
+      withProject((w) => w.toggleBottomPanel());
       return;
-    }
+    case CommandId.toggleMaximizeRight:
+      if (!chordProbe?.(id)) withProject((w) => w.toggleMaximizeRight());
+      return;
     case CommandId.resetLayout:
       if (hasProject()) resetLayout();
       return;
@@ -862,7 +812,7 @@ async function runCommand(id: CommandId): Promise<void> {
       await arbora.invoke('window.control', { action: 'toggleDevTools' });
       return;
     case CommandId.browserFocusUrl:
-      if (hasProject() && leaveGrove()) {
+      if (hasProject()) {
         showBrowserTab();
         useApp.setState((s) => ({ urlFocusRequest: s.urlFocusRequest + 1 }));
       }
@@ -873,7 +823,6 @@ async function runCommand(id: CommandId): Promise<void> {
         showToast('Open a project first');
         return;
       }
-      if (!leaveGrove()) return;
       showBrowserTab();
       await navigateBrowser(project.settings.devUrl ?? DEFAULT_DEV_URL);
       return;
@@ -940,8 +889,8 @@ async function runCommand(id: CommandId): Promise<void> {
       return;
     case CommandId.terminalKill: {
       const pane = activePane();
-      if (pane && leaveGrove()) await arbora.invoke('terminal.kill', { id: pane.id });
-      else if (!pane && hasProject()) showToast('No terminal is open');
+      if (pane) await arbora.invoke('terminal.kill', { id: pane.id });
+      else if (hasProject()) showToast('No terminal is open');
       return;
     }
     case CommandId.terminalClear:
@@ -973,19 +922,17 @@ async function runCommand(id: CommandId): Promise<void> {
       openFileAtLocation();
       return;
     case CommandId.showBrowser:
-      if (hasProject() && leaveGrove()) {
+      if (hasProject()) {
         useApp.setState({ settingsOpen: false });
         showBrowserTab();
       }
       return;
-    // Grove shows no editor, so its keys do nothing there rather than act on a hidden tab.
     case CommandId.editorSave: {
       const tab = activeTab();
-      if (tab?.kind === 'file' && !isGroveShowing()) await editorController()?.save(tab.path);
+      if (tab?.kind === 'file') await editorController()?.save(tab.path);
       return;
     }
     case CommandId.editorCloseTab: {
-      if (isGroveShowing()) return;
       const active = useFiles.getState().active;
       if (active) closeTab(active);
       // macOS convention: Cmd+W with nothing left to close closes the window.
@@ -993,13 +940,12 @@ async function runCommand(id: CommandId): Promise<void> {
       return;
     }
     case CommandId.editorFormat: {
-      if (isGroveShowing()) return;
       const path = activeFilePath();
       if (path) await editorController()?.format(path);
       return;
     }
     case CommandId.editorCompareWithSaved:
-      if (activeFilePath() && leaveGrove()) compareWithSaved();
+      if (activeFilePath()) compareWithSaved();
       return;
     case CommandId.filesNewFile:
     case CommandId.filesNewFolder:
@@ -1020,26 +966,22 @@ async function runCommand(id: CommandId): Promise<void> {
       return;
     case CommandId.agentNewThread:
       // The picker opens on the default agent, so the shortcut then Enter starts it.
-      if (isGroveShowing()) openLauncher();
-      else withAgentPanel(() => showPicker());
+      openLauncher();
       return;
     case CommandId.agentFocusComposer:
-      if (isGroveShowing()) focusAgentComposer();
-      else withAgentPanel(focusAgentComposer);
+      focusAgentComposer();
       return;
     case CommandId.agentCancel: {
-      const thread = isGroveShowing() ? groveThread() : activeThread();
+      const thread = groveThread();
       if (thread && isStoppable(thread.state.status)) await stopAgent(thread.id);
       else if (hasProject()) showToast('The agent is not working on anything');
       return;
     }
     case CommandId.agentToggleLog:
-      if (isGroveShowing()) toggleGroveLog();
-      else withAgentPanel(() => toggleLog());
+      toggleGroveLog();
       return;
     case CommandId.agentShowThreads:
-      if (isGroveShowing()) focusSessionList();
-      else withAgentPanel(() => showThreads());
+      focusSessionList();
       return;
     case CommandId.agentCycleMode:
       await cycleThreadMode();
@@ -1143,7 +1085,7 @@ async function runCommand(id: CommandId): Promise<void> {
       showAttentionThread();
       return;
     case CommandId.agentNewGroup:
-      withAgentPanel(() => requestNewGroup());
+      requestNewGroup();
       return;
     case CommandId.gitStageAll:
       if (hasProject()) void stageAll();
@@ -1165,15 +1107,6 @@ async function runCommand(id: CommandId): Promise<void> {
       return;
     case CommandId.gitAiPullRequest:
       if (hasProject()) void aiPullRequest();
-      return;
-    case CommandId.toggleWorkspace:
-      if (!chordProbe?.(id)) toggleWorkspace();
-      return;
-    case CommandId.showBrowserWorkspace:
-      showWorkspace('browser');
-      return;
-    case CommandId.showGrove:
-      showWorkspace('grove');
       return;
     case CommandId.groveNewDefault:
       startDefaultSession();

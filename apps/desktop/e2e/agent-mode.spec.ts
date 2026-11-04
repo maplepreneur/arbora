@@ -2,7 +2,7 @@ import { existsSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import type { NavigationState } from '@arbora/shared';
-import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, tempUserData } from './app';
+import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, startAgent, tempUserData } from './app';
 import { startNextFixture, startNuxtFixture, startViteFixture, type RunningServer } from './servers';
 
 const FAKE_AGENT = resolve(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
@@ -233,7 +233,8 @@ test.describe('Stage 4 agent mode on Vite + React 18', () => {
       const titles = await page.evaluate(async () =>
         (await window.arbora.invoke('agent.listThreads')).map((t) => t.title),
       );
-      expect(titles).toEqual(['make this button red']);
+      // The default agent may have started on its own in the empty project; this one is ours.
+      expect(titles).toContain('make this button red');
 
       // Leaving the mode removes the overlay and brings the page back.
       await expect.poll(() => inPage<boolean>(app, OVERLAY)).toBe(false);
@@ -266,7 +267,7 @@ test.describe('Stage 4 agent mode on Vite + React 18', () => {
     }
   });
 
-  test('sends to the thread open in the agent panel, or a new thread when none is open', async () => {
+  test('sends to the thread in the chat column, or a new thread when none is open', async () => {
     const before = screenshotsIn(VITE_REACT);
     const { app, page } = await launch(userDataWithFakeAgents(), [VITE_REACT]);
     try {
@@ -279,10 +280,8 @@ test.describe('Stage 4 agent mode on Vite + React 18', () => {
       await expect(page.getByTestId('agent-mode-target')).toHaveAttribute('data-value', /^new:/);
       await page.keyboard.press('Escape');
 
-      // Open a fake-agent thread in the panel; agent mode now sends there.
-      await page.getByTestId('new-thread-choose').click();
-      await page.getByTestId(`pick-agent-${FAKE_ID}`).click();
-      await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', { timeout: 20_000 });
+      // Open a fake-agent thread in the chat column; agent mode now sends there.
+      await startAgent(page, FAKE_ID);
       const [open] = await page.evaluate(() => window.arbora.invoke('agent.listThreads'));
       await enterAgentMode(app, page);
       await clickInPage(app, BUTTON);

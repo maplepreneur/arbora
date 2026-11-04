@@ -36,21 +36,6 @@ function mount(): Root {
   return root;
 }
 
-function setWidth(name: string, width: number): void {
-  const element = document.querySelector(`[data-measure="${name}"]`);
-  if (!(element instanceof HTMLElement)) throw new Error(`missing measure ${name}`);
-  Object.defineProperty(element, 'offsetWidth', { configurable: true, get: () => width });
-  Object.defineProperty(element, 'clientWidth', { configurable: true, get: () => width });
-}
-
-async function applyWidths(widths: Record<string, number>): Promise<void> {
-  for (const [name, width] of Object.entries(widths)) setWidth(name, width);
-  await act(async () => {
-    window.dispatchEvent(new Event('resize'));
-    await Promise.resolve();
-  });
-}
-
 function openProject(name = 'vite-react'): void {
   const settings = defaultSettings();
   useApp.setState({
@@ -118,139 +103,22 @@ describe('TitleBar', () => {
     expect(document.querySelector('[aria-label="Toggle theme"]')).toBeNull();
   });
 
-  it('keeps the mode pills and workspace switch expanded when they fit', async () => {
+  it('names the project and leaves the mode switch and panels to the shell', () => {
     openProject();
     root = mount();
-    await applyWidths({
-      bar: 1200,
-      spacer: 12,
-      trailing: 140,
-      'left-expanded': 360,
-      'left-collapsed': 240,
-      'workspace-expanded': 150,
-      'workspace-collapsed': 90,
-    });
-    expect(document.querySelector('[data-testid="mode-pills"]')?.getAttribute('data-collapsed')).toBe('false');
-    expect(document.querySelector('[data-testid="mode-pill-agent"]')).not.toBeNull();
-    expect(document.querySelector('[data-testid="mode-pill-design"]')).not.toBeNull();
-    expect(document.querySelector('[data-testid="mode-pill-idle"]')).not.toBeNull();
-    expect(document.querySelector('[data-testid="workspace-browser"]')).not.toBeNull();
-    expect(document.querySelector('[data-testid="workspace-grove"]')).not.toBeNull();
-    expect(document.querySelector('[data-testid="mode-menu"]')).toBeNull();
-    expect(document.querySelector('[data-testid="workspace-menu"]')).toBeNull();
+    const bar = document.querySelector('[data-testid="title-bar"]');
+    expect(bar?.querySelector('[data-testid="title-project-name"]')?.textContent).toBe('vite-react');
+    expect(bar?.querySelector('[data-testid="mode-pills"]')).toBeNull();
+    expect(bar?.querySelector('[data-testid="workspace-switch"]')).toBeNull();
+    expect(bar?.querySelector('[data-testid="attention-button"]')).not.toBeNull();
   });
 
-  it('collapses only the mode pills when that group is the one that does not fit', async () => {
+  it('opens the project switcher from the project name', () => {
     openProject();
     root = mount();
-    await applyWidths({
-      bar: 597,
-      spacer: 40,
-      trailing: 40,
-      'left-expanded': 360,
-      'left-collapsed': 240,
-      'workspace-expanded': 150,
-      'workspace-collapsed': 90,
-    });
-    expect(document.querySelector('[data-testid="mode-menu"]')).not.toBeNull();
-    expect(document.querySelector('[data-testid="mode-pill-agent"]')).toBeNull();
-    expect(document.querySelector('[data-testid="workspace-browser"]')).not.toBeNull();
-    expect(document.querySelector('[data-testid="workspace-grove"]')).not.toBeNull();
-  });
-
-  it('collapses only the workspace switch when that group is the one that does not fit', async () => {
-    openProject();
-    root = mount();
-    await applyWidths({
-      bar: 500,
-      spacer: 40,
-      trailing: 40,
-      'left-expanded': 300,
-      'left-collapsed': 250,
-      'workspace-expanded': 220,
-      'workspace-collapsed': 80,
-    });
-    expect(document.querySelector('[data-testid="mode-pill-agent"]')).not.toBeNull();
-    expect(document.querySelector('[data-testid="workspace-menu"]')).not.toBeNull();
-    expect(document.querySelector('[data-testid="workspace-browser"]')).toBeNull();
-    expect(document.querySelector('[data-testid="mode-menu"]')).toBeNull();
-  });
-
-  it('collapses a long project name in a window where a short name still fits', async () => {
-    openProject('vite-react');
-    root = mount();
-    const fitted = {
-      bar: 698,
-      spacer: 40,
-      trailing: 40,
-      'left-expanded': 360,
-      'left-collapsed': 240,
-      'workspace-expanded': 150,
-      'workspace-collapsed': 90,
-    };
-    await applyWidths(fitted);
-    expect(document.querySelector('[data-testid="mode-menu"]')).toBeNull();
-    expect(document.querySelector('[data-testid="workspace-menu"]')).toBeNull();
-    // The bar width is unchanged. The wider project name is what no longer fits, so only the
-    // mode group collapses; the workspace switch still has room.
-    await applyWidths({ ...fitted, 'left-expanded': 560, 'left-collapsed': 440 });
-    expect(document.querySelector('[data-testid="mode-menu"]')).not.toBeNull();
-    expect(document.querySelector('[data-testid="workspace-browser"]')).not.toBeNull();
-    expect(document.querySelector('[data-testid="workspace-menu"]')).toBeNull();
-  });
-
-  it('runs the same mode command from the menu, including Arrow Down and a dismissed menu', async () => {
-    openProject();
-    root = mount();
-    await applyWidths({
-      bar: 400,
-      spacer: 40,
-      trailing: 40,
-      'left-expanded': 360,
-      'left-collapsed': 240,
-      'workspace-expanded': 150,
-      'workspace-collapsed': 90,
-    });
-    const trigger = document.querySelector('[data-testid="mode-menu"]');
-    if (!(trigger instanceof HTMLButtonElement)) throw new Error('mode menu missing');
-    menuChoice = null;
-    trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(menus.at(-1)?.map((item) => ('label' in item ? item.label : ''))).toEqual(['Agent', 'Design']);
-    expect(useApp.getState().mode.kind).toBe('idle');
-
-    menuChoice = 'agent';
-    trigger.click();
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(useApp.getState().mode.kind).toBe('agent');
-  });
-
-  it('switches workspace from the collapsed menu the same way as the segments', async () => {
-    openProject();
-    root = mount();
-    await applyWidths({
-      bar: 500,
-      spacer: 40,
-      trailing: 40,
-      'left-expanded': 300,
-      'left-collapsed': 250,
-      'workspace-expanded': 220,
-      'workspace-collapsed': 80,
-    });
-    const trigger = document.querySelector('[data-testid="workspace-menu"]');
-    if (!(trigger instanceof HTMLButtonElement)) throw new Error('workspace menu missing');
-    menuChoice = 'grove';
-    trigger.click();
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(menus.at(-1)?.map((item) => ('label' in item ? item.label : ''))).toEqual(['Grove']);
-    expect(useApp.getState().layout.workspace).toBe('grove');
+    const name = document.querySelector('[data-testid="title-project-name"]')?.closest('button');
+    if (!(name instanceof HTMLButtonElement)) throw new Error('project button missing');
+    act(() => name.click());
+    expect(useApp.getState().overlay).toBe('switcher');
   });
 });

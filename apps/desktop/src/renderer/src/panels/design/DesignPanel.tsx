@@ -917,7 +917,7 @@ function NoAgents() {
 const CONFIRM_TEXT: Readonly<Record<DesignPending, string>> = {
   idle: 'Send them to an agent, or discard them to put the page back.',
   agent: 'Send them to an agent, or discard them, before switching to agent mode.',
-  grove: 'Send them to an agent, or discard them, before opening Grove.',
+  grove: 'Send them to an agent, or discard them, before switching project.',
 };
 
 function SendBar({ confirm, target }: { confirm: DesignPending | null; target: DesignTarget | null }) {

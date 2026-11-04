@@ -33,19 +33,59 @@ export interface LaunchedApp {
 }
 
 /**
- * Shows Browser or Grove. A narrow title bar folds the switch into the active option, so the
- * other segment is not a button; the workspace chord toggles it.
+ * The shell shows the tree, the chat and the right column together. `browser` brings the right
+ * column's Browser tab forward; `grove` only waits for the shell.
  */
 export async function switchWorkspace(page: Page, kind: 'browser' | 'grove'): Promise<void> {
-  const group = page.getByTestId('workspace-switch');
-  await expect(group).toBeVisible();
-  if ((await group.getAttribute('data-workspace')) === kind) return;
-  if ((await group.getAttribute('data-collapsed')) === 'true') {
-    await page.keyboard.press('ControlOrMeta+Alt+G');
-  } else {
-    await page.getByTestId(`workspace-${kind}`).click();
+  await expect(page.getByTestId('grove')).toBeVisible();
+  if (kind === 'browser') await page.getByTestId('right-tab-browser').click();
+}
+
+/** Puts focus on the app chrome (not the page, a text field or a terminal) so chords reach the renderer. */
+export async function focusChrome(page: Page): Promise<void> {
+  const chat = page.getByTestId('panel-chat');
+  if ((await chat.boundingBox())?.width) await chat.click({ position: { x: 4, y: 4 } });
+  else await page.getByTestId('right-tabs').click({ position: { x: 2, y: 2 } });
+}
+
+const RIGHT_CHORDS = {
+  terminal: 'Control+`',
+  problems: 'ControlOrMeta+Shift+M',
+} as const;
+
+/** Shows a right-column tab: Browser, a terminal (starting one when there is none), or Problems. */
+export async function showRight(page: Page, view: 'browser' | keyof typeof RIGHT_CHORDS): Promise<void> {
+  if (view === 'browser') {
+    await page.getByTestId('right-tab-browser').click();
+    await expect(page.getByTestId('browser-panel')).toBeVisible();
+    return;
   }
-  await expect(group).toHaveAttribute('data-workspace', kind);
+  await focusChrome(page);
+  await page.keyboard.press(RIGHT_CHORDS[view]);
+  await expect(page.getByTestId(view === 'terminal' ? 'terminal-panel' : 'right-tab-problems')).toBeVisible();
+}
+
+const SIDE_CHORDS = {
+  files: 'ControlOrMeta+Shift+E',
+  git: 'ControlOrMeta+Shift+G',
+  search: 'ControlOrMeta+Shift+F',
+} as const;
+
+/** Opens the side column on Files, Source Control or Search; a narrow window makes room for it. */
+export async function showSide(page: Page, view: keyof typeof SIDE_CHORDS): Promise<void> {
+  await focusChrome(page);
+  await page.keyboard.press(SIDE_CHORDS[view]);
+  await expect(page.getByTestId(`side-view-${view}`)).toHaveAttribute('aria-selected', 'true');
+  await expect.poll(async () => (await page.getByTestId('panel-side').boundingBox())?.width ?? 0).toBeGreaterThan(100);
+}
+
+/** Starts `agentId` from the Grove launcher of the first project and waits for its thread. */
+export async function startAgent(page: Page, agentId: string): Promise<void> {
+  await page.getByTestId('grove-new-choose').first().click();
+  await page.getByTestId(`launcher-agent-${agentId}`).click();
+  await page.getByTestId('launcher-start').click();
+  await expect(page.getByTestId('grove-launcher')).toHaveCount(0);
+  await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', { timeout: 20_000 });
 }
 
 /** Launches the built app (`pnpm build:test`) with an isolated userData directory. */

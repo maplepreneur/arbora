@@ -90,7 +90,10 @@ export function GroveSide() {
   const states = useApp((s) => s.settings.projects);
   const aliases = useApp((s) => s.settings.projects);
   const focusPath = useGrove((s) => s.focusPath);
-  const terminalId = useGrove((s) => s.terminalId);
+  // A terminal row is current only while that terminal is the right column's tab.
+  const terminalShown = useApp((s) => s.layout.rightView === 'terminal');
+  const activePane = useTerminals((s) => s.activePaneId);
+  const terminalId = terminalShown ? activePane : null;
   const recentOpen = useGrove((s) => s.recentOpen);
   const showAllRecent = useGrove((s) => s.showAllRecent);
   const sidebar = useGroveSidebar();

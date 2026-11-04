@@ -56,8 +56,6 @@ describe('defaultAgentModeTarget', () => {
     state: idleThreadState(),
   });
   const base = {
-    view: 'threads' as const,
-    activeThreadId: null,
     threads: [thread('t1'), thread('t2')],
     agents: [agent('claude-code'), agent('kimi'), agent('opencode')],
     availability: [
@@ -67,21 +65,19 @@ describe('defaultAgentModeTarget', () => {
     ],
   };
 
-  it('uses the thread open in the agent panel', () => {
-    expect(defaultAgentModeTarget({ ...base, view: 'thread', activeThreadId: 't2' }, 'opencode')).toBe('thread:t2');
+  it('uses the thread in the chat column', () => {
+    expect(defaultAgentModeTarget(base, 't2', 'opencode')).toBe('thread:t2');
   });
 
   it('starts a new thread with the default agent when no thread is open', () => {
-    expect(defaultAgentModeTarget({ ...base, activeThreadId: 't2' }, 'opencode')).toBe('new:opencode');
-    expect(defaultAgentModeTarget({ ...base, view: 'thread', activeThreadId: 'gone' }, 'opencode')).toBe(
-      'new:opencode',
-    );
+    expect(defaultAgentModeTarget(base, null, 'opencode')).toBe('new:opencode');
+    expect(defaultAgentModeTarget(base, 'gone', 'opencode')).toBe('new:opencode');
   });
 
   it('falls back to the first detected agent, then the first listed', () => {
-    expect(defaultAgentModeTarget(base, undefined)).toBe('new:kimi');
-    expect(defaultAgentModeTarget({ ...base, availability: [] }, undefined)).toBe('new:claude-code');
-    expect(defaultAgentModeTarget({ ...base, agents: [] }, undefined)).toBeNull();
+    expect(defaultAgentModeTarget(base, null, undefined)).toBe('new:kimi');
+    expect(defaultAgentModeTarget({ ...base, availability: [] }, null, undefined)).toBe('new:claude-code');
+    expect(defaultAgentModeTarget({ ...base, agents: [] }, null, undefined)).toBeNull();
   });
 });
 

@@ -180,7 +180,7 @@ function LocationLink({
   );
 }
 
-/** An agent's edit in the editor's diff viewer (in the browser workspace). */
+/** An agent's edit in the editor's diff viewer (a right-column tab). */
 export function openAgentDiff(path: string, oldText: string | null | undefined, newText: string): void {
   const name = path.slice(path.lastIndexOf('/') + 1);
   openDiffTab({

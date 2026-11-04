@@ -4,7 +4,7 @@ import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { checkedAgents, DESKTOP_ROOT, launch, tempUserData } from './app';
+import { checkedAgents, DESKTOP_ROOT, launch, startAgent, tempUserData } from './app';
 
 const FAKE_AGENT = join(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
 
@@ -144,9 +144,7 @@ test.describe('Skills and MCP servers', () => {
       await expect(page.getByTestId('mcp-enabled-from-claude')).toHaveAttribute('aria-checked', 'false');
 
       await page.getByTestId('settings-close').click();
-      await page.getByTestId('new-thread-choose').click();
-      await page.getByTestId('pick-agent-fake').click();
-      await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', { timeout: 20_000 });
+      await startAgent(page, 'fake');
       const input = page.getByTestId('composer-input');
       await input.fill('list mcp servers');
       await input.press('Enter');

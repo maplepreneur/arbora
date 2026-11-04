@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import type { NavigationState } from '@arbora/shared';
-import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, tempUserData } from './app';
+import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, showRight, startAgent, tempUserData } from './app';
 import { freePort, startViteFixture, type RunningServer } from './servers';
 
 const FAKE_AGENT = resolve(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
@@ -80,9 +80,7 @@ async function openFixture(app: ElectronApplication, page: Page, url: string): P
 }
 
 async function newThread(page: Page, agentId: string): Promise<void> {
-  await page.getByTestId('new-thread-choose').click();
-  await page.getByTestId(`pick-agent-${agentId}`).click();
-  await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', { timeout: 30_000 });
+  await startAgent(page, agentId);
 }
 
 async function send(page: Page, text: string): Promise<void> {
@@ -231,6 +229,7 @@ createServer((req, res) => res.end('<title>dev ' + port + '</title><h1>port ' + 
     writeFileSync(join(project, '.arbora/project.json'), JSON.stringify({ version: 1, devCommand: 'node server.mjs' }));
     const { app, page } = await launch(userDataWithFakeAgents(), [project]);
     try {
+      await showRight(page, 'terminal');
       await page.getByTestId('devserver-run').click();
       await expect
         .poll(async () => (await browserState(page))?.url, { timeout: 30_000 })
@@ -250,7 +249,6 @@ createServer((req, res) => res.end('<title>dev ' + port + '</title><h1>port ' + 
       const settings = JSON.parse(readFileSync(join(project, '.arbora/project.json'), 'utf8')) as unknown;
       expect(settings).toMatchObject({ devCommand: 'node server.mjs', browserTools: { terminalRun: 'allow' } });
       // A new thread (a new agent session) runs commands without asking again.
-      await page.getByTestId('show-threads').click();
       await newThread(page, HTTP_ID);
       await send(page, 'restart dev');
       await expect(page.getByTestId('agent-message').last()).toContainText('restart-ok', { timeout: 60_000 });

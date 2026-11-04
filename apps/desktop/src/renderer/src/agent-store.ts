@@ -324,15 +324,15 @@ export async function archiveThread(threadId: string, archived: boolean): Promis
 }
 
 /**
- * Where agent mode (`Mod+K`) sends by default: the thread open in the agent panel, else a new
- * thread with the default agent (or the first detected agent, or the first listed one).
+ * Where agent mode (`Mod+K`) sends by default: the thread in the chat column, else a new thread
+ * with the default agent (or the first detected agent, or the first listed one).
  */
 export function defaultAgentModeTarget(
-  state: Pick<AgentPanelState, 'view' | 'activeThreadId' | 'threads' | 'agents' | 'availability'>,
+  state: Pick<AgentPanelState, 'threads' | 'agents' | 'availability'>,
+  openThreadId: string | null,
   defaultAgentId: string | undefined,
 ): string | null {
-  const open =
-    state.view === 'thread' ? state.threads.find((t) => t.id === state.activeThreadId && isListed(t)) : undefined;
+  const open = state.threads.find((t) => t.id === openThreadId && isListed(t));
   if (open) return `thread:${open.id}`;
   const detected = new Set(state.availability.filter((a) => a.available).map((a) => a.id));
   const agent =

@@ -56,8 +56,8 @@ export function useKeybindingDispatch(): void {
 
 let activeTable: KeybindingTable | null = null;
 
-/** Where the CLI-style thread keys apply: the docked agent panel and Grove's session pane. */
-const AGENT_THREAD_SELECTOR = '[data-testid="agent-panel"], [data-testid="grove-pane"]';
+/** Where the CLI-style thread keys and Archive / Stop apply: the chat column. */
+const AGENT_THREAD_SELECTOR = '[data-testid="panel-chat"]';
 
 /**
  * The Arbora binding a keydown triggers in the current context, if any. The terminal asks this

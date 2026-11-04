@@ -9,6 +9,7 @@ import {
   type FileEntry,
   type GitFile,
 } from '@arbora/shared';
+import { showRightView, useApp } from './store';
 
 /** A file open in the centre area. A preview tab (single click) is replaced by the next preview. */
 export interface FileTab {
@@ -262,6 +263,7 @@ export function openFile(path: string, options: { pinned?: boolean; at?: Omit<Re
     selected: path,
   }));
   noteRecent(path);
+  showRightView('editor');
   if (options.at) {
     const target = { path, ...options.at };
     pendingReveal = target;
@@ -278,6 +280,13 @@ export function openDiff(diff: Omit<DiffTab, 'kind' | 'id'>): void {
     const tab: DiffTab = { kind: 'diff', id, ...diff };
     return { tabs: [...s.tabs.slice(0, at + 1), tab, ...s.tabs.slice(at + 1)], active: id };
   });
+  showRightView('editor');
+}
+
+/** Shows an open file or diff tab in the right column. */
+export function showEditorTab(id: string): void {
+  useFiles.setState({ active: id });
+  showRightView('editor');
 }
 
 /** Closes a tab, asking first when the file has unsaved edits. Returns false when cancelled. */
@@ -291,11 +300,13 @@ export function closeTab(id: string): boolean {
     useFiles.setState((s) => ({ status: omitKey(s.status, tab.path) }));
   }
   useFiles.setState((s) => closeTabIn(s.tabs, s.active, id));
+  if (useFiles.getState().active === null && useApp.getState().layout.rightView === 'editor') showRightView('browser');
   return true;
 }
 
 export function showBrowserTab(): void {
   useFiles.setState({ active: null });
+  showRightView('browser');
 }
 
 /** Paths with unsaved edits. */

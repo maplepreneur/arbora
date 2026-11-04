@@ -38,7 +38,8 @@ import { buildGroveSidebar, type GroveSidebarModel } from './grove-sidebar-model
 import { replaceGroveThreadIndex } from './grove-thread-index';
 import { ipcError } from './ipc-error';
 import { updateProjectSettings } from './settings-client';
-import { dispatchMode, showToast, updateLayout, useApp } from './store';
+import { dispatchMode, showRightView, showToast, updateLayout, useApp } from './store';
+import { createTerminal, revealTerminal } from './terminal-store';
 
 export type GroveTab = 'transcript' | 'changes';
 
@@ -129,102 +130,36 @@ export function isGroveShowing(): boolean {
   return useApp.getState().layout.workspace === 'grove';
 }
 
-/** Leaving Grove or the project ends the visit: the next visit may auto-start again. */
+/** Changing project ends the visit: the next visit may auto-start again. */
 export function initGroveTracking(): () => void {
   return useApp.subscribe((state, previous) => {
-    const left = previous.layout.workspace === 'grove' && state.layout.workspace !== 'grove';
-    if (left || previous.project?.path !== state.project?.path) {
-      if (left) {
-        useGrove.setState({
-          searchOpen: false,
-          launcherOpen: false,
-          renamingId: null,
-          startError: null,
-          autoStartedFor: null,
-        });
-        // Drop main's grove focus so browser IPC follows this window. Keep the renderer
-        // selection so Mod+Shift+K can reopen Grove on it instead of the browser project.
-        void window.arbora.invoke('grove.focusProject', { path: null }).finally(() => {
-          useGrove.setState({ terminalId: null });
-        });
-        return;
-      }
-      useGrove.setState({ autoStartedFor: null, launcherOpen: false, renamingId: null, startError: null });
-    }
+    if (previous.project?.path === state.project?.path) return;
+    useGrove.setState({
+      autoStartedFor: null,
+      launcherOpen: false,
+      renamingId: null,
+      startError: null,
+      terminalId: null,
+    });
   });
 }
 
 /**
- * Shows the browser workspace or Grove. Entering Grove exits agent mode, and design mode when it
- * has nothing unsaved; unsaved design edits ask first (Send or Discard, then Grove), so this returns
- * false and does nothing else. The page, terminals and agent processes are left running.
+ * Kept for callers from the two-workspace layout. The shell always shows the tree, the chat and
+ * the right column, so `browser` only brings the Browser tab forward.
  */
 export function showWorkspace(kind: WorkspaceKind): boolean {
-  const { project, layout, mode, design } = useApp.getState();
-  if (!project) {
-    useApp.setState({ settingsOpen: false });
-    if (layout.workspace !== kind) updateLayout({ workspace: kind });
-    if (kind === 'grove') reattachGroveFocus();
-    return true;
-  }
-  if (kind === 'grove' && mode.kind === 'agent') dispatchMode({ type: 'exit' });
-  if (kind === 'grove' && mode.kind === 'design') {
-    if (mode.phase === 'confirm') return false;
-    if (design.cursor > 0) {
-      dispatchMode({ type: 'designConfirm', pending: 'grove' });
-      return false;
-    }
-    dispatchMode({ type: 'toggleDesign' });
-  }
   useApp.setState({ settingsOpen: false });
-  if (layout.workspace !== kind) updateLayout({ workspace: kind });
-  if (kind === 'grove') reattachGroveFocus();
+  if (kind === 'browser') showRightView('browser');
   return true;
 }
 
-/** Main cleared grove focus while the browser was showing. Put that row back, without changing it. */
-function reattachGroveFocus(): void {
-  const focus = useGrove.getState().focusPath;
-  const open = useApp.getState().project?.path ?? null;
-  if (!focus || focus === open) return;
-  void window.arbora.invoke('grove.focusProject', { path: focus }).catch(() => undefined);
-}
-
-export function toggleWorkspace(): void {
-  if (useApp.getState().layout.workspace === 'grove') void showBrowserForGroveSelection();
-  else void showGroveForBrowserProject();
-}
-
-/** The project Grove is showing: its focused row, or this window's project when the row follows it. */
+/** The project the tree has selected: always this window's project. */
 export function groveSelectedProjectPath(): string | null {
-  return useGrove.getState().focusPath ?? useApp.getState().project?.path ?? null;
+  return useApp.getState().project?.path ?? null;
 }
 
-/**
- * Grove → browser. Switches this window onto the project selected in Grove, then shows the browser.
- * A page that window already has for the folder is shown again. Another window does not take focus.
- */
-export async function showBrowserForGroveSelection(): Promise<boolean> {
-  const selected = groveSelectedProjectPath();
-  if (!selected) return showWorkspace('browser');
-  const current = useApp.getState().project?.path ?? null;
-  if (selected !== current) {
-    try {
-      const result = await window.arbora.invoke('project.open', { path: selected, onThisWindow: true });
-      if (result.focusedElsewhere) return false;
-      if (!result.opened) {
-        showToast(result.error ?? 'Could not open that project');
-        return false;
-      }
-    } catch (error) {
-      showToast(ipcError(error));
-      return false;
-    }
-  }
-  return showWorkspace('browser');
-}
-
-/** So the sidebar lists `path` before Grove mounts, if `settings.changed` has not arrived yet. */
+/** So the sidebar lists `path` before `settings.changed` arrives. */
 function rememberGroveProject(path: string): void {
   useApp.setState((state) => {
     if (state.settings.grove.projects.some((entry) => entry.path === path)) return state;
@@ -240,72 +175,112 @@ function rememberGroveProject(path: string): void {
   });
 }
 
-/**
- * Browser → Grove. Shows Grove and focuses the project this window has open, adding it to the
- * remembered list when Grove does not list it yet. With no browser project, Grove just opens.
- */
+/** Lists this window's project in the tree when it is not listed yet. */
 export async function showGroveForBrowserProject(): Promise<boolean> {
   const path = useApp.getState().project?.path;
-  if (!path) return showWorkspace('grove');
+  if (!path) return true;
   if (useGrove.getState().dismissedOpenPath === path) useGrove.setState({ dismissedOpenPath: null });
-  if (!useApp.getState().settings.grove.projects.some((entry) => entry.path === path)) {
-    try {
-      const result = await window.arbora.invoke('grove.addProject', { path });
-      if (result.error || !result.added) {
-        if (result.error) showToast(result.error);
-        return false;
-      }
-    } catch (error) {
-      showToast(ipcError(error));
+  if (useApp.getState().settings.grove.projects.some((entry) => entry.path === path)) return true;
+  try {
+    const result = await window.arbora.invoke('grove.addProject', { path });
+    if (result.error || !result.added) {
+      if (result.error) showToast(result.error);
       return false;
     }
-    rememberGroveProject(path);
+  } catch (error) {
+    showToast(ipcError(error));
+    return false;
   }
-  // Null follows the window's project. A different row would keep the previous Grove selection.
-  if (useGrove.getState().focusPath !== null) {
-    try {
-      await focusGroveProject(null);
-    } catch (error) {
-      showToast(ipcError(error));
+  rememberGroveProject(path);
+  return true;
+}
+
+/** Resolves once this window's project is `path`, or after `timeoutMs`. */
+function projectBecomes(path: string, timeoutMs = 10_000): Promise<void> {
+  if (useApp.getState().project?.path === path) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(done, timeoutMs);
+    const unsubscribe = useApp.subscribe((state) => {
+      if (state.project?.path === path) done();
+    });
+    function done(): void {
+      clearTimeout(timer);
+      unsubscribe();
+      resolve();
+    }
+  });
+}
+
+/** A project switch waiting for design mode's Send or Discard. */
+let pendingSwitch: string | null = null;
+
+/** Runs the project switch design mode held back, once its edits were sent or discarded. */
+export async function resumeProjectSwitch(): Promise<void> {
+  const path = pendingSwitch;
+  pendingSwitch = null;
+  if (path) await focusGroveProject(path);
+}
+
+/**
+ * Selects a project in the tree. Another project opens on this window, so the right column (page,
+ * files, git) follows it; main parks the previous project's page and keeps its processes running.
+ * `null` keeps the window's project. False when nothing switched: unsaved design edits ask first,
+ * because a parked page would keep them.
+ */
+export async function focusGroveProject(path: string | null): Promise<boolean> {
+  useGrove.setState({ focusPath: null, searchOpen: false });
+  const open = useApp.getState().project?.path ?? null;
+  if (path === null || path === open) return true;
+  const { mode, design } = useApp.getState();
+  if (mode.kind === 'agent') dispatchMode({ type: 'exit' });
+  if (mode.kind === 'design') {
+    if (mode.phase === 'confirm') return false;
+    if (design.cursor > 0) {
+      pendingSwitch = path;
+      dispatchMode({ type: 'designConfirm', pending: 'grove' });
       return false;
     }
+    dispatchMode({ type: 'toggleDesign' });
   }
-  return showWorkspace('grove');
+  try {
+    const result = await window.arbora.invoke('project.open', { path, onThisWindow: true });
+    if (!result.opened) {
+      showToast(result.error ?? 'Could not open that project');
+      return false;
+    }
+  } catch (error) {
+    showToast(ipcError(error));
+    return false;
+  }
+  await projectBecomes(path);
+  return true;
 }
 
-/** Shows one Grove project's agents and terminals in this window. */
-export async function focusGroveProject(path: string | null): Promise<void> {
-  await window.arbora.invoke('grove.focusProject', { path });
-  useGrove.setState({ focusPath: path, terminalId: null, searchOpen: false });
-}
-
-export function selectGroveTerminal(id: string | null, options: { focus?: boolean } = {}): void {
+/** Shows terminal `id` of this window's project as the right column's tab. */
+export function selectGroveTerminal(id: string | null, options: { focus?: boolean; info?: TerminalInfo } = {}): void {
   useGrove.setState((state) => ({
     terminalId: id,
     terminalFocusRequest: options.focus ? state.terminalFocusRequest + 1 : state.terminalFocusRequest,
   }));
+  if (id) revealTerminal(id, options.info);
 }
 
-/** Starts a shell in the Grove project on screen (or `path`) and focuses it. Does not leave Grove. */
+/** Starts a shell in `path` (or the window's project) and shows it in the right column. */
 export async function createGroveTerminal(path?: string): Promise<void> {
-  const open = useApp.getState().project?.path ?? null;
-  const target = path ?? useGrove.getState().focusPath ?? open;
+  const target = path ?? useApp.getState().project?.path ?? null;
   if (!target) {
     showToast('Open a project first');
     return;
   }
-  const showing = useGrove.getState().focusPath ?? open;
-  if (showing !== target) {
-    try {
-      await focusGroveProject(target === open ? null : target);
-    } catch (error) {
-      showToast(ipcError(error));
-      return;
-    }
+  try {
+    await focusGroveProject(target);
+  } catch (error) {
+    showToast(ipcError(error));
+    return;
   }
   try {
-    const info = await window.arbora.invoke('terminal.create', { cols: 100, rows: 24 });
-    selectGroveTerminal(info.id, { focus: true });
+    const info = await createTerminal();
+    selectGroveTerminal(info.id, { focus: true, info });
   } catch (error) {
     showToast(`Could not start a terminal: ${ipcError(error)}`);
   }
@@ -663,14 +638,18 @@ export function selectSession(threadId: string, options: { focus?: boolean } = {
     if (useApp.getState().layout.groveThreadId !== threadId) updateLayout({ groveThreadId: threadId });
     useGrove.setState({ tab: 'transcript', renamingId: null, terminalId: null });
     void loadThread(threadId).catch(() => undefined);
-    if (options.focus !== false) focusComposer();
+    // An auto-started agent must not take the keys from a dialog the user just opened.
+    const { overlay, paletteOpen } = useApp.getState();
+    if (options.focus !== false && overlay === null && !paletteOpen) focusComposer();
   };
   if (projectPath && projectPath !== showing) {
     if (useApp.getState().layout.groveThreadId !== threadId) updateLayout({ groveThreadId: threadId });
     useGrove.setState({ tab: 'transcript', renamingId: null, terminalId: null });
     const entry = useApp.getState().settings.grove.projects.find((item) => item.path === projectPath);
     if (entry?.collapsed) void window.arbora.invoke('grove.setCollapsed', { path: projectPath, collapsed: false });
-    void focusGroveProject(projectPath === open ? null : projectPath).then(apply);
+    void focusGroveProject(projectPath === open ? null : projectPath).then((switched) => {
+      if (switched) apply();
+    });
     return;
   }
   apply();

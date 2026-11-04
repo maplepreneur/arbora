@@ -66,6 +66,8 @@ describe('applyProjectMeta', () => {
       sidebarView: 'files' as const,
       bottomTab: 'terminal' as const,
       workspace: 'browser' as const,
+      rightView: 'browser' as const,
+      rightPanels: [],
       groveThreadId: null,
     };
     const next = applyProjectMeta({ layout, alias: 'x' }, { pinned: true, groupId: 'work', alias: null });

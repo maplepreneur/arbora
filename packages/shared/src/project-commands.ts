@@ -50,6 +50,9 @@ export interface ProjectCommandInput {
   readonly rails?: boolean;
   readonly binDev?: boolean;
   readonly binJobs?: boolean;
+  readonly gemfile?: string;
+  /** A `spec/` folder exists. */
+  readonly specDir?: boolean;
   readonly procfileDev?: string;
   readonly makefile?: string;
   readonly composerJson?: string;
@@ -108,10 +111,15 @@ export function detectProjectCommands(input: ProjectCommandInput): ProjectComman
     }
   }
   if (input.rails) {
+    const rspec = input.specDir === true && /^\s*gem\s+['"]rspec(-rails)?['"]/m.test(input.gemfile ?? '');
     push(commands, 'rails', 'Dev server', input.binDev ? 'bin/dev' : 'bin/rails server');
+    push(commands, 'rails', 'Bundle install', 'bundle install');
     push(commands, 'rails', 'Migrate', 'bin/rails db:migrate');
+    push(commands, 'rails', 'Rollback', 'bin/rails db:rollback');
+    push(commands, 'rails', 'Seed', 'bin/rails db:seed');
+    push(commands, 'rails', 'Routes', 'bin/rails routes');
     push(commands, 'rails', 'Console', 'bin/rails console');
-    push(commands, 'rails', 'Test', 'bin/rails test');
+    push(commands, 'rails', 'Test', rspec ? 'bundle exec rspec' : 'bin/rails test');
     if (input.binJobs) push(commands, 'rails', 'Jobs', 'bin/jobs');
   }
   if (input.procfileDev) {

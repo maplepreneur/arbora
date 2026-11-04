@@ -34,7 +34,7 @@ const WHEN_LABEL: Readonly<Record<KeybindingRow['when'], string | null>> = {
   always: null,
   modeActive: 'in a mode',
   design: 'in design mode',
-  agentPanel: 'in the agent panel',
+  agentPanel: 'in the chat',
   grove: 'in Grove',
 };
 
