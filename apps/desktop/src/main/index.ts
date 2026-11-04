@@ -12,8 +12,10 @@ import {
   detectInstallKind,
   projectSettingsUpdates,
   toPlatform,
+  updatePolicy,
   type AgentVerification,
   type ProjectLibrary,
+  type UpdatePolicy,
 } from '@arbora/shared';
 import { probeAgent } from './agent/agent-probe.js';
 import { AttentionService } from './attention-service.js';
@@ -50,6 +52,9 @@ for (const flag of startupSwitches(platform, process.env['ARBORA_FLAGS'])) {
   if (flag.value === undefined) app.commandLine.appendSwitch(flag.name);
   else app.commandLine.appendSwitch(flag.name, flag.value);
 }
+
+// release.yml greps the bundle for `RELEASE_BUILD = true;`, so keep this name and keep it top-level.
+const RELEASE_BUILD: boolean = __ARBORA_RELEASE_BUILD__;
 
 // Typed as boolean but undefined in packaged builds; both falsy values mean "packaged".
 const isDefaultApp: boolean = process.defaultApp;
@@ -184,11 +189,19 @@ function main(): void {
       onCountsChanged: broadcastLibrary,
     });
 
+    const policy = (): UpdatePolicy =>
+      updatePolicy({
+        kind: installKind,
+        releaseBuild: RELEASE_BUILD,
+        env: process.env['ARBORA_UPDATES'],
+        channel: settings.get().updates.channel,
+      });
     const updates = new UpdateService({
       kind: installKind,
       macSigned: platform === 'darwin' && installKind === 'dmg' && macSignedWithTeam(),
       version: app.getVersion(),
       settings: () => settings.get().updates,
+      policy,
       emit: (state) => {
         for (const w of manager.all()) sendEvent(w.contents, 'updates.state', state);
       },
@@ -219,6 +232,7 @@ function main(): void {
       void browserSessions.applySettings();
       manager.rebuildKeybindings();
       mainLog.setEnabled(next.diagnostics.logToFile);
+      updates.refresh();
       attention.applyBadge();
       for (const w of manager.all()) sendEvent(w.contents, 'settings.changed', next);
       broadcastLibrary();
@@ -301,6 +315,7 @@ function main(): void {
       installKind,
       version: app.getVersion(),
       selfUpdates: updates.selfUpdates,
+      sourceLauncher: process.env['ARBORA_LAUNCHER'] === '1',
     }));
     defineHandler('updates.check', isTrusted, () => updates.check());
     defineHandler('updates.download', isTrusted, async () => {

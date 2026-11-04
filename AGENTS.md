@@ -14,7 +14,7 @@ Since 2 Nov 2026: work on a branch and open a pull request into `beta`. `beta` i
 - **Linux only by default.** Add the `ci:all-os` label (macOS costs 10x, Windows 2x) only when the change is platform-specific (paths, shells, keyboard labels, packaging, native modules), once, just before merge, and remove it once that run is green.
 - **Merging does not rerun CI;** the PR run is the gate. `main` gets a weekly Linux run (Mondays) and "Run workflow" on demand, and a merge into `main` also starts the release build. If a merge could interact with other merged work, update the branch from `beta` before the final push so the PR run covers the result.
 - **Docs-only changes** (`**/*.md`, `docs/**`, `.cursor/**`) skip CI. They still go through a PR, which can be merged without waiting.
-- **Releases cost about 60 minutes** (three OSes) and happen by themselves when a pull request merges into `main`. Do not tag a release or run `package.yml` by hand unless you are rebuilding one (docs/RELEASING.md). The git branch `beta` is not the in-app Beta update channel.
+- **Releases cost about 60 minutes** (three OSes) and happen by themselves when a pull request merges into `main`. Do not tag a release or run `package.yml` by hand unless you are rebuilding one (docs/RELEASING.md). Merging into `beta` publishes nothing; the in-app Beta channel only gets an `x.y.z-beta.n` when a person runs **Cut a beta** (`release-beta.yml`, also about 60 minutes). Agents do not run it.
 - The progress update below goes in the PR with the work, not a follow-up PR. Stage statuses use `In progress (PR #N)` while open and `In progress (PR #N, merged)` / `Done (PR #N)` after merge.
 
 ## End of work: update progress

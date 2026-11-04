@@ -168,6 +168,8 @@ export const channels = {
       version: z.string(),
       /** False for installs that only learn about new versions (deb, AUR, tarball, unsigned macOS). */
       selfUpdates: z.boolean(),
+      /** Started by `scripts/arbora-local`, which moves the checkout to the channel's branch. */
+      sourceLauncher: z.boolean(),
     }),
   ),
   'updates.check': defineChannel('updates.check', none, updateStateSchema),
