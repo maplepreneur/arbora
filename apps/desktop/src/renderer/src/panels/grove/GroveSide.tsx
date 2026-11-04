@@ -21,7 +21,9 @@ import { useAgents } from '../../agent-store';
 import {
   claimListFocus,
   closeGroveProject,
+  createGroveTerminal,
   focusGroveProject,
+  RECENT_LIMIT,
   noteProjectFramework,
   noteProjectTerminals,
   openInboxItem,
@@ -47,7 +49,9 @@ import {
   inboxNavId,
   moveSidebarFocus,
   projectNavId,
+  recentNavId,
   sectionNavId,
+  sidebarEnter,
   sidebarHorizontal,
   terminalNavId,
   type SidebarNavRow,
@@ -87,6 +91,8 @@ export function GroveSide() {
   const aliases = useApp((s) => s.settings.projects);
   const focusPath = useGrove((s) => s.focusPath);
   const terminalId = useGrove((s) => s.terminalId);
+  const recentOpen = useGrove((s) => s.recentOpen);
+  const showAllRecent = useGrove((s) => s.showAllRecent);
   const sidebar = useGroveSidebar();
   const selectedId = useApp((s) => s.layout.groveThreadId);
   const agentGroups = useAgents((s) => s.groups);
@@ -156,6 +162,7 @@ export function GroveSide() {
                   usage,
                   terminalId,
                 );
+                const recent = recentEntries(sidebar.byPath.get(path), recentOpen, showAllRecent);
                 return {
                   path,
                   expanded: !collapsed,
@@ -170,6 +177,7 @@ export function GroveSide() {
                             ...parts.agentTerminals.map((terminal) => ({ kind: 'terminal' as const, id: terminal.id })),
                             { kind: 'action' as const, id: 'new-agent', action: 'new-agent' as const },
                           ],
+                          ...(recent ? { recent } : {}),
                         },
                         {
                           section: 'terminals' as const,
@@ -205,6 +213,8 @@ export function GroveSide() {
       usage,
       terminalId,
       sectionOpen,
+      recentOpen,
+      showAllRecent,
     ],
   );
 
@@ -214,8 +224,8 @@ export function GroveSide() {
     scroller.current?.querySelector<HTMLElement>(`[data-nav-id="${CSS.escape(id)}"]`)?.focus();
   };
 
-  const applyHorizontal = (direction: 'left' | 'right'): void => {
-    const move = sidebarHorizontal(navRows, navFocus, direction);
+  const applyHorizontal = (direction: 'left' | 'right', id: string | null): void => {
+    const move = sidebarHorizontal(navRows, id, direction);
     if (move.type === 'focus') focusNav(move.id);
     if (move.type !== 'expand' && move.type !== 'collapse') return;
     const row = navRows.find((item) => item.id === move.id);
@@ -223,56 +233,66 @@ export function GroveSide() {
     if (row?.kind === 'project')
       void window.arbora.invoke('grove.setCollapsed', { path: row.path, collapsed: !expanded });
     if (row?.kind === 'section') setSection(row.path, row.section, expanded);
+    if (row?.kind === 'recent') useGrove.setState({ recentOpen: expanded });
   };
 
   const activate = (row: SidebarNavRow): void => {
-    switch (row.kind) {
-      case 'project':
-        void focusGroveProject(row.path === open?.path ? null : row.path);
+    const action = sidebarEnter(row);
+    switch (action.type) {
+      case 'focus-project':
+        void focusGroveProject(action.path === open?.path ? null : action.path);
         return;
-      case 'section':
-        setSection(row.path, row.section, !sectionExpanded(row.path, row.section));
+      case 'toggle-section':
+        setSection(action.path, action.section, !sectionExpanded(action.path, action.section));
         return;
-      case 'agent':
-        selectSession(row.threadId, { focus: false });
+      case 'toggle-recent':
+        useGrove.setState((state) => ({ recentOpen: !state.recentOpen }));
         return;
-      case 'terminal':
-        void showProjectTerminal(row.path, row.terminalId);
+      case 'focus-agent':
+        selectSession(action.threadId);
         return;
-      case 'command': {
-        const command = (commandsByPath[row.path] ?? []).find((item) => item.id === row.commandId);
+      case 'focus-terminal':
+        void showProjectTerminal(action.path, action.terminalId, true);
+        return;
+      case 'run-command': {
+        const command = (commandsByPath[action.path] ?? []).find((item) => item.id === action.commandId);
         if (!command) return;
         const parts = classifyProject(
-          terminalsFor(row.path, active, terminals, terminalsByProject),
-          commandsByPath[row.path] ?? [],
-          sidebar.byPath.get(row.path),
+          terminalsFor(action.path, active, terminals, terminalsByProject),
+          commandsByPath[action.path] ?? [],
+          sidebar.byPath.get(action.path),
           usage,
           terminalId,
         );
-        void runCommand(row.path, command, parts.running[command.id], () =>
-          setCommandsByPath((current) => ({
-            ...current,
-            [row.path]: (current[row.path] ?? []).map((item) =>
-              item.id === command.id ? { ...item, trusted: true } : item,
-            ),
-          })),
+        void runCommand(
+          action.path,
+          command,
+          parts.running[command.id],
+          () =>
+            setCommandsByPath((current) => ({
+              ...current,
+              [action.path]: (current[action.path] ?? []).map((item) =>
+                item.id === command.id ? { ...item, trusted: true } : item,
+              ),
+            })),
+          { focus: true },
         );
         return;
       }
-      case 'action':
-        if (row.action === 'new-agent') void startAgentIn(row.path);
-        else
-          void ensureProject(row.path).then(() =>
-            window.arbora
-              .invoke('terminal.create', { cols: 100, rows: 24 })
-              .then((info) => selectGroveTerminal(info.id)),
-          );
+      case 'new-agent':
+        void startAgentIn(action.path);
         return;
-      case 'inbox':
-        openInboxItem({ threadId: row.threadId, projectPath: row.path });
+      case 'new-terminal':
+        void createGroveTerminal(action.path);
+        return;
+      case 'show-all-recent':
+        useGrove.setState({ showAllRecent: true });
+        return;
+      case 'open-inbox':
+        openInboxItem({ threadId: action.threadId, projectPath: action.path });
         return;
       default: {
-        const unreachable: never = row;
+        const unreachable: never = action;
         return unreachable;
       }
     }
@@ -297,9 +317,10 @@ export function GroveSide() {
     }
     const rowEl = target.closest<HTMLElement>('[data-nav-id]');
     if (target !== event.currentTarget && !rowEl) return;
+    const currentId = rowEl?.getAttribute('data-nav-id') ?? navFocus;
     event.preventDefault();
     if (key === 'ArrowDown' || key === 'ArrowUp') {
-      focusNav(moveSidebarFocus(navRows, navFocus, key === 'ArrowDown' ? 1 : -1));
+      focusNav(moveSidebarFocus(navRows, currentId, key === 'ArrowDown' ? 1 : -1));
       return;
     }
     if (key === 'Home') {
@@ -311,11 +332,14 @@ export function GroveSide() {
       return;
     }
     if (key === 'ArrowLeft' || key === 'ArrowRight') {
-      applyHorizontal(key === 'ArrowLeft' ? 'left' : 'right');
+      applyHorizontal(key === 'ArrowLeft' ? 'left' : 'right', currentId);
       return;
     }
-    const row = navRows.find((item) => item.id === navFocus);
-    if (row) activate(row);
+    const row = navRows.find((item) => item.id === currentId);
+    if (row) {
+      setNavFocus(row.id);
+      activate(row);
+    }
   };
 
   return (
@@ -541,6 +565,18 @@ function classifyProject(
   return { agentTerminals, plainTerminals: grouped.terminals, running: grouped.running, agentRows, commands };
 }
 
+function recentEntries(model: GroveModel | undefined, open: boolean, showAll: boolean) {
+  const recent = model?.recent ?? [];
+  if (recent.length === 0) return undefined;
+  const visible = showAll ? recent : recent.slice(0, RECENT_LIMIT);
+  return {
+    present: true,
+    expanded: open,
+    visibleIds: open ? visible.map((session) => session.id) : [],
+    showAll: open && !showAll && recent.length > RECENT_LIMIT,
+  };
+}
+
 function terminalsFor(
   path: string,
   active: string | null,
@@ -681,7 +717,19 @@ function ProjectBody({
                 <ChevronDown size={12} />
               </button>
             </div>
-            {model && <RecentSection recent={model.recent} selectedId={selectedId} />}
+            {model && (
+              <RecentSection
+                recent={model.recent}
+                selectedId={selectedId}
+                navId={recentNavId(path)}
+                kbd={kbd(recentNavId(path))}
+                onNavigate={onNavFocus}
+                rowNavId={agentNavId}
+                rowKbd={(threadId) => kbd(agentNavId(threadId))}
+                showAllNavId={actionNavId(path, 'show-all-recent')}
+                showAllKbd={kbd(actionNavId(path, 'show-all-recent'))}
+              />
+            )}
           </>
         )}
       </Section>
@@ -721,11 +769,7 @@ function ProjectBody({
             data-kbd={kbd(actionNavId(path, 'new-terminal')) || undefined}
             onClick={() => {
               onNavFocus(actionNavId(path, 'new-terminal'));
-              void ensureProject(path).then(() =>
-                window.arbora.invoke('terminal.create', { cols: 100, rows: 24 }).then((info) => {
-                  selectGroveTerminal(info.id);
-                }),
-              );
+              void createGroveTerminal(path);
             }}
             className={clsx(
               'flex h-6 items-center gap-1 px-1.5 text-[12px] text-fg-subtle hover:text-fg',
@@ -921,9 +965,9 @@ async function ensureProject(path: string): Promise<void> {
   if (showing !== path) await focusGroveProject(path === open ? null : path);
 }
 
-async function showProjectTerminal(path: string, id: string): Promise<void> {
+async function showProjectTerminal(path: string, id: string, focus = false): Promise<void> {
   await ensureProject(path);
-  selectGroveTerminal(id);
+  selectGroveTerminal(id, { focus });
 }
 
 /** Stops one terminal. `terminal.close` kills a process that is still running; one terminal has no confirm. */
@@ -940,6 +984,7 @@ async function runCommand(
   command: ListedCommand,
   running: TerminalInfo | undefined,
   onTrusted: () => void,
+  options: { focus?: boolean } = {},
 ): Promise<void> {
   if (!command.trusted) {
     await window.arbora.invoke('grove.trustCommand', { path, command: command.command });
@@ -950,7 +995,7 @@ async function runCommand(
   const showing = useGrove.getState().focusPath ?? open;
   if (showing !== path) await focusGroveProject(path === open ? null : path);
   if (running && running.exitCode === null) {
-    selectGroveTerminal(running.id);
+    selectGroveTerminal(running.id, { focus: options.focus === true });
     return;
   }
   const info = await window.arbora.invoke('grove.runCommand', {
@@ -960,5 +1005,5 @@ async function runCommand(
     cols: 100,
     rows: 24,
   });
-  selectGroveTerminal(info.id);
+  selectGroveTerminal(info.id, { focus: options.focus === true });
 }

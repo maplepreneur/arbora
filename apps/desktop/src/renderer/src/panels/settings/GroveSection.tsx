@@ -21,6 +21,7 @@ interface ChordRow {
 const CHORDS: readonly ChordRow[] = [
   { ids: [CommandId.toggleWorkspace], text: 'Switch between the browser and Grove' },
   { ids: [CommandId.groveNewDefault], text: 'Start the default agent' },
+  { ids: [CommandId.groveNewTerminal], text: 'New terminal in the open project' },
   { ids: [CommandId.agentNewThread], text: 'New agent with a task' },
   { ids: [CommandId.groveSelectSession1, CommandId.groveSelectSession9], range: true, text: 'Agent 1 to 9, top down' },
   { ids: [CommandId.groveFocusAgents], text: 'Focus the agent list' },

@@ -68,6 +68,7 @@ import {
   selectSession,
   setProjectDefaultAgent,
   showWorkspace,
+  createGroveTerminal,
   startDefaultSession,
   stopSession,
   toggleSessionList,
@@ -1176,6 +1177,11 @@ async function runCommand(id: CommandId): Promise<void> {
       return;
     case CommandId.groveNewDefault:
       startDefaultSession();
+      return;
+    case CommandId.groveNewTerminal:
+      withGrove(() => {
+        void createGroveTerminal();
+      });
       return;
     case CommandId.groveLaunch:
       openLauncher();
