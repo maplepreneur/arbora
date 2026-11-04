@@ -58,6 +58,35 @@ describe('GitService', () => {
     expect(existsSync(join(root, '.arbora', 'threads', 't.json'))).toBe(true);
   });
 
+  it('stages everything, publishes a new branch and summarises it against the default branch', async () => {
+    const { git, root } = fresh();
+    const remote = mkdtempSync(join(tmpdir(), 'arbora-git-remote-'));
+    roots.push(remote);
+    await gitIn(remote, ['init', '--bare', '-b', 'main']);
+    await init(root);
+    await gitIn(root, ['remote', 'add', 'origin', remote]);
+    writeFileSync(join(root, 'f.txt'), 'a\n');
+    await git.stageAll();
+    expect((await git.commit('init', false)).ok).toBe(true);
+    expect((await git.push()).ok).toBe(true);
+    expect(await git.defaultBranch()).toBe('main');
+
+    expect((await git.createBranch('arbora/feature')).ok).toBe(true);
+    writeFileSync(join(root, 'f.txt'), 'a\nb\n');
+    writeFileSync(join(root, 'g.txt'), 'new\n');
+    await git.stageAll();
+    const staged = await git.stagedSummary();
+    expect(staged.stat).toContain('g.txt');
+    expect(staged.diff).toContain('+b');
+    expect((await git.commit('Add b and g', false)).ok).toBe(true);
+    const pushed = await git.push();
+    expect(pushed.ok).toBe(true);
+    expect((await git.status()).upstream).toBe('origin/arbora/feature');
+    const summary = await git.branchSummary('main');
+    expect(summary.log).toContain('- Add b and g');
+    expect(summary.stat).toContain('g.txt');
+  });
+
   it('reports a folder that is not a repository', async () => {
     const { git } = fresh();
     const status = await git.status();
@@ -65,25 +94,28 @@ describe('GitService', () => {
   });
 });
 
-function init(root: string): Promise<void> {
-  const run = (args: string[]) =>
-    new Promise<void>((resolve, reject) => {
-      execFile(
-        'git',
-        args,
-        {
-          cwd: root,
-          env: {
-            ...process.env,
-            GIT_AUTHOR_EMAIL: 't@t',
-            GIT_AUTHOR_NAME: 't',
-            GIT_COMMITTER_EMAIL: 't@t',
-            GIT_COMMITTER_NAME: 't',
-          },
+function gitIn(root: string, args: string[]): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    execFile(
+      'git',
+      args,
+      {
+        cwd: root,
+        env: {
+          ...process.env,
+          GIT_AUTHOR_EMAIL: 't@t',
+          GIT_AUTHOR_NAME: 't',
+          GIT_COMMITTER_EMAIL: 't@t',
+          GIT_COMMITTER_NAME: 't',
         },
-        (error) => (error ? reject(new Error(error.message)) : resolve()),
-      );
-    });
+      },
+      (error) => (error ? reject(new Error(error.message)) : resolve()),
+    );
+  });
+}
+
+function init(root: string): Promise<void> {
+  const run = (args: string[]) => gitIn(root, args);
   return run(['init', '-b', 'main'])
     .then(() => run(['config', 'user.email', 't@t']))
     .then(() => run(['config', 'user.name', 't']));

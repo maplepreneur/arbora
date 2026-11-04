@@ -357,6 +357,62 @@ export function resolveDefaultAgent(
   return [projectDefault, appDefault].find((id) => id !== undefined && knownAgentIds.includes(id));
 }
 
+export const GIT_SYNC_MODES = ['off', 'fetch', 'pull'] as const;
+export type GitSyncMode = (typeof GIT_SYNC_MODES)[number];
+
+export const gitSettingsSchema = z.object({
+  /**
+   * Background sync of the open project: `fetch` updates the ahead/behind counts, `pull` also
+   * fast-forwards a clean branch that is only behind. Never merges or rebases.
+   */
+  autoSync: z.enum(GIT_SYNC_MODES).default('fetch'),
+  autoSyncMinutes: z.number().int().min(1).max(240).default(5),
+});
+export type GitSettings = z.infer<typeof gitSettingsSchema>;
+
+/** Trigger points that can use their own agent and model instead of the thread default. */
+export const TASK_IDS = ['git', 'agentMode', 'design'] as const;
+export type TaskId = (typeof TASK_IDS)[number];
+
+export const taskAgentSchema = z.object({
+  /** Null uses the project's or the app's default agent. */
+  agentId: z.string().min(1).nullable().default(null),
+  /** A value of the agent's `model` config option; null keeps the agent's default model. */
+  model: z.string().min(1).nullable().default(null),
+});
+export type TaskAgent = z.infer<typeof taskAgentSchema>;
+
+export const taskAgentsSchema = z.object({
+  /** Commit messages, pull request text and AI commit + PR. A small, fast model fits. */
+  git: taskAgentSchema.default(taskAgentSchema.parse({})),
+  /** `Mod+K` agent mode prompts. */
+  agentMode: taskAgentSchema.default(taskAgentSchema.parse({})),
+  /** Design mode batches. */
+  design: taskAgentSchema.default(taskAgentSchema.parse({})),
+});
+export type TaskAgents = z.infer<typeof taskAgentsSchema>;
+
+/**
+ * The agent and model for a task: the task's own choice, else the project's or the app's default
+ * agent with its default model, else the first signed-in agent. Undefined when none is known.
+ */
+export function resolveTaskAgent(
+  tasks: TaskAgents,
+  task: TaskId,
+  knownAgentIds: readonly string[],
+  agents: Pick<AgentSettings, 'defaultAgent' | 'verified' | 'hidden'>,
+  projectDefault: string | undefined,
+): { agentId: string; model: string | null } | undefined {
+  const chosen = tasks[task];
+  if (chosen.agentId !== null && knownAgentIds.includes(chosen.agentId)) {
+    return { agentId: chosen.agentId, model: chosen.model };
+  }
+  const fallback =
+    resolveDefaultAgent(knownAgentIds, projectDefault, agents.defaultAgent) ??
+    knownAgentIds.find((id) => isPickableAgent(agents, id));
+  return fallback ? { agentId: fallback, model: null } : undefined;
+}
+
 /**
  * User settings stored in `<userData>/settings.json`. Every field has a default so a partially
  * written or hand-edited file still loads.
@@ -378,6 +434,8 @@ export const appSettingsSchema = z.object({
   terminal: terminalSettingsSchema.default(terminalSettingsSchema.parse({})),
   editor: editorSettingsSchema.default(editorSettingsSchema.parse({})),
   agents: agentSettingsSchema.default(agentSettingsSchema.parse({})),
+  tasks: taskAgentsSchema.default(taskAgentsSchema.parse({})),
+  git: gitSettingsSchema.default(gitSettingsSchema.parse({})),
   notifications: notificationSettingsSchema.default(notificationSettingsSchema.parse({})),
   sounds: soundSettingsSchema.default(soundSettingsSchema.parse({})),
   updates: updateSettingsSchema.default(updateSettingsSchema.parse({})),
@@ -419,6 +477,8 @@ export const appSettingsPatchSchema = z
     terminal: patchSchema(terminalSettingsSchema),
     editor: patchSchema(editorSettingsSchema),
     agents: agentSettingsPatchSchema,
+    tasks: patchSchema(taskAgentsSchema),
+    git: patchSchema(gitSettingsSchema),
     notifications: patchSchema(notificationSettingsSchema),
     sounds: patchSchema(soundSettingsSchema),
     updates: patchSchema(updateSettingsSchema),
@@ -452,6 +512,8 @@ export function applySettingsPatch(current: AppSettings, patch: AppSettingsPatch
     ...(patch.terminal !== undefined ? { terminal: mergeDefined(current.terminal, patch.terminal) } : {}),
     ...(patch.editor !== undefined ? { editor: mergeEditorSettings(current.editor, patch.editor) } : {}),
     ...(patch.agents !== undefined ? { agents: mergeAgentSettings(current.agents, patch.agents) } : {}),
+    ...(patch.tasks !== undefined ? { tasks: mergeDefined(current.tasks, patch.tasks) } : {}),
+    ...(patch.git !== undefined ? { git: mergeDefined(current.git, patch.git) } : {}),
     ...(patch.notifications !== undefined
       ? { notifications: mergeDefined(current.notifications, patch.notifications) }
       : {}),

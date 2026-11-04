@@ -33,7 +33,7 @@ import { applyLibrary } from './projects-store';
 import { applyUpdateState } from './update-store';
 import { executeCommand, navigateBrowser, registerBuiltinCommands, setWorkspaceShown } from './commands';
 import { onFilesChanged, resetFiles, setDiagnostics } from './files-store';
-import { noteAgentWatcherChanges, refreshGit, scheduleGitRefresh } from './git-client';
+import { noteAgentWatcherChanges, refreshGit, scheduleGitRefresh, useGit } from './git-client';
 import { useKeybindingContextSync, useKeybindingDispatch } from './keybindings';
 import {
   addProblems,
@@ -62,6 +62,10 @@ function useMainEvents(): void {
       arbora.on('theme.changed', (theme) => useApp.setState({ theme })),
       arbora.on('project.changed', (project) => setProject(project)),
       arbora.on('window.stateChanged', (windowState) => useApp.setState({ windowState })),
+      arbora.on('git.synced', (result) => {
+        useGit.setState({ lastSync: result });
+        void refreshGit();
+      }),
       arbora.on('command.invoke', ({ commandId }) => executeCommand(commandId)),
       arbora.on('browser.stateChanged', (browser) => useApp.setState({ browser })),
       arbora.on('browser.problemsAdded', ({ entries }) => addProblems(entries)),

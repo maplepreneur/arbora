@@ -41,9 +41,12 @@
   --syn-active-line: #16181d08;
   --syn-search: #f5c54266;
   --syn-search-outline: #d9a40f;
-  --syn-diff-line: #2f7d5b14;
-  --syn-diff-deleted: #c93c3c1f;
-  --syn-diff-word: #2f7d5b40;
+  --syn-diff-line: #1f9d5517;
+  --syn-diff-word: #1f9d553d;
+  --syn-diff-gutter: #1f9d55;
+  --syn-diff-deleted: #d2333317;
+  --syn-diff-deleted-word: #d233333a;
+  --syn-diff-deleted-gutter: #d23333;
   color-scheme: light;
 }
 
@@ -83,9 +86,12 @@
   --syn-active-line: #ffffff08;
   --syn-search: #e5c07b40;
   --syn-search-outline: #b8902f;
-  --syn-diff-line: #4fb3851a;
-  --syn-diff-deleted: #ef6b6b26;
-  --syn-diff-word: #4fb3854d;
+  --syn-diff-line: #3fb9501c;
+  --syn-diff-word: #3fb95047;
+  --syn-diff-gutter: #3fb950;
+  --syn-diff-deleted: #f851491c;
+  --syn-diff-deleted-word: #f8514947;
+  --syn-diff-deleted-gutter: #f85149;
   color-scheme: dark;
 }
 

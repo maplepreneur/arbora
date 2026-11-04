@@ -7,6 +7,7 @@ import { updateSettings } from '../../settings-client';
 import { useApp, type SettingsSection } from '../../store';
 import { AgentsSection } from './AgentsSection';
 import { AppearanceSection } from './AppearanceSection';
+import { GitSection } from './GitSection';
 import { inputClass, Segmented, SettingRow, Toggle } from './controls';
 import { KeyboardSection } from './KeyboardSection';
 import { NotificationsSection } from './NotificationsSection';
@@ -21,6 +22,7 @@ const SECTIONS: readonly { id: Section; label: string }[] = [
   { id: 'appearance', label: 'Appearance' },
   { id: 'notifications', label: 'Notifications & sounds' },
   { id: 'editor', label: 'Editor' },
+  { id: 'git', label: 'Git' },
   { id: 'browser', label: 'Browser' },
   { id: 'project', label: 'Project' },
   { id: 'keyboard', label: 'Keyboard' },
@@ -251,6 +253,7 @@ export default function SettingsPage() {
           {section === 'general' && <GeneralSection />}
           {section === 'appearance' && <AppearanceSection />}
           {section === 'editor' && <EditorSection />}
+          {section === 'git' && <GitSection />}
           {section === 'browser' && <BrowserSection />}
           {section === 'notifications' && <NotificationsSection />}
           {section === 'project' && <ProjectSection />}
