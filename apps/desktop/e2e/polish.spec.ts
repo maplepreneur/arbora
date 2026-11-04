@@ -73,6 +73,17 @@ test.describe('Stage 9 onboarding', () => {
       await expect(page.getByTestId('onboarding-step-tasks')).toBeVisible();
       await page.getByTestId('task-agent-fix-agent').selectOption(FAKE_ID);
       await page.getByTestId('onboarding-next').click();
+      await expect(page.getByTestId('onboarding-step-grove')).toBeVisible();
+      await page.getByTestId(`onboarding-grove-agent-${FAKE_ID}`).click();
+      await expect
+        .poll(() => JSON.parse(readFileSync(join(project, '.arbora', 'project.json'), 'utf8')) as object)
+        .toMatchObject({ defaultAgent: FAKE_ID });
+      await expect(page.getByTestId(`onboarding-grove-agent-${FAKE_ID}`)).toHaveAttribute('aria-checked', 'true');
+      // The workspace chord is checked, not run: the browser workspace stays behind the dialog.
+      await page.keyboard.press('ControlOrMeta+Alt+G');
+      await expect(page.getByTestId('onboarding-chord-arbora.toggleWorkspace')).toHaveAttribute('data-pressed', 'true');
+      await expect(page.getByTestId('workspace-browser')).toHaveAttribute('aria-pressed', 'true');
+      await page.getByTestId('onboarding-next').click();
       await expect(page.getByTestId('onboarding-step-keys')).toBeVisible();
       // Mode chords are intercepted in main; onboarding sees them instead of the modes starting.
       await page.keyboard.press('ControlOrMeta+K');
@@ -94,7 +105,11 @@ test.describe('Stage 9 onboarding', () => {
       };
       expect(settings.tasks.fix.agentId).toBe(FAKE_ID);
       expect(settings.onboarding.completed).toBe(true);
-      expect(settings.onboarding.checkedChords.sort()).toEqual(['arbora.agentMode', 'arbora.designMode']);
+      expect(settings.onboarding.checkedChords.sort()).toEqual([
+        'arbora.agentMode',
+        'arbora.designMode',
+        'arbora.toggleWorkspace',
+      ]);
       expect(settings.sounds.enabled).toBe(false);
     } finally {
       await first.app.close();

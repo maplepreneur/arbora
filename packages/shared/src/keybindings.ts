@@ -221,13 +221,19 @@ export interface KeybindingContext {
   readonly agentFocused?: boolean;
   /** The shortcut editor is recording; nothing is intercepted or dispatched. */
   readonly recording?: boolean;
+  /** The workspace that fills the window; missing means the browser workspace. */
+  readonly workspace?: WorkspaceKind;
 }
+
+/** The browser workspace (page, docked agent, terminal) or Grove (every agent session). */
+export type WorkspaceKind = 'browser' | 'grove';
 
 /**
  * `always`: any context. `modeActive`: agent or design mode. `design`: design mode only.
- * `agentPanel`: focus is in the agent panel (CLI-style thread keys such as Shift+Tab).
+ * `agentPanel`: focus is in an agent thread (CLI-style thread keys such as Shift+Tab).
+ * `grove`: the Grove workspace is showing.
  */
-export type KeybindingWhen = 'always' | 'modeActive' | 'design' | 'agentPanel';
+export type KeybindingWhen = 'always' | 'modeActive' | 'design' | 'agentPanel' | 'grove';
 
 function bindingApplies(when: KeybindingWhen, context: KeybindingContext): boolean {
   switch (when) {
@@ -239,6 +245,8 @@ function bindingApplies(when: KeybindingWhen, context: KeybindingContext): boole
       return context.designActive === true;
     case 'agentPanel':
       return context.agentFocused === true;
+    case 'grove':
+      return context.workspace === 'grove';
     default: {
       const unreachable: never = when;
       return unreachable;
@@ -300,14 +308,24 @@ export class KeybindingTable {
     return { table: new KeybindingTable(bindings), errors };
   }
 
-  /** Returns the binding that should fire for this chord in this context, or undefined. */
+  /**
+   * Returns the binding that should fire for this chord in this context, or undefined. A binding
+   * scoped to a context beats an `always` binding on the same chord, so `Mod+1` can select a Grove
+   * row while Grove shows and focus a panel everywhere else.
+   */
   match(chord: Chord, context: KeybindingContext): ResolvedKeybinding | undefined {
     const candidates = this.byChord.get(chordId(chord));
     if (!candidates) return undefined;
     if (context.terminalFocused && context.terminalPassthrough && isTerminalPassthroughChord(chord)) {
       return undefined;
     }
-    return candidates.find((binding) => bindingApplies(binding.when, context));
+    let fallback: ResolvedKeybinding | undefined;
+    for (const binding of candidates) {
+      if (!bindingApplies(binding.when, context)) continue;
+      if (binding.when !== 'always') return binding;
+      fallback ??= binding;
+    }
+    return fallback;
   }
 
   forCommand(commandId: string): ResolvedKeybinding | undefined {

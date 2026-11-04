@@ -56,6 +56,9 @@ export function useKeybindingDispatch(): void {
 
 let activeTable: KeybindingTable | null = null;
 
+/** Where the CLI-style thread keys apply: the docked agent panel and Grove's session pane. */
+const AGENT_THREAD_SELECTOR = '[data-testid="agent-panel"], [data-testid="grove-pane"]';
+
 /**
  * The Arbora binding a keydown triggers in the current context, if any. The terminal asks this
  * before handling a key so a chord that runs a command does not also reach the shell.
@@ -70,14 +73,15 @@ export function bindingForEvent(event: KeyboardEvent): ReturnType<KeybindingTabl
     alt: event.altKey,
     shift: event.shiftKey,
   });
-  const { mode, terminalFocused, settings, design } = useApp.getState();
+  const { mode, terminalFocused, settings, design, layout, project } = useApp.getState();
   const binding = activeTable.match(chord, {
     modeActive: modeActive(mode),
     terminalFocused,
     terminalPassthrough: settings.terminalPassthrough,
     designActive: mode.kind === 'design',
     textEditing: design.textEditing,
-    agentFocused: event.target instanceof Element && event.target.closest('[data-testid="agent-panel"]') !== null,
+    agentFocused: event.target instanceof Element && event.target.closest(AGENT_THREAD_SELECTOR) !== null,
+    workspace: project ? layout.workspace : 'browser',
   });
   if (binding && design.textEditing && binding.commandId !== 'arbora.exitMode') return undefined;
   return binding;
@@ -90,6 +94,7 @@ export function useKeybindingContextSync(): void {
   const designActive = useApp((s) => s.mode.kind === 'design');
   const textEditing = useApp((s) => s.design.textEditing);
   const recording = useApp((s) => s.recordingShortcut);
+  const workspace = useApp((s) => (s.project ? s.layout.workspace : 'browser'));
   useEffect(() => {
     void window.arbora.invoke('keybindings.setContext', {
       modeActive: active,
@@ -97,6 +102,7 @@ export function useKeybindingContextSync(): void {
       designActive,
       textEditing,
       recording,
+      workspace,
     });
-  }, [active, terminalFocused, designActive, textEditing, recording]);
+  }, [active, terminalFocused, designActive, textEditing, recording, workspace]);
 }

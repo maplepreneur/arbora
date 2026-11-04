@@ -51,6 +51,6 @@ describe('threadSummarySchema', () => {
         contextLost: false,
       },
     });
-    expect(parsed).toMatchObject({ groupId: null, pinned: false });
+    expect(parsed).toMatchObject({ groupId: null, pinned: false, archivedAt: null, parentThreadId: null });
   });
 });

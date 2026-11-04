@@ -26,11 +26,37 @@ export function matchCommands(commands: readonly AvailableCommand[], query: stri
   return commands.filter((c) => c.name.toLowerCase().startsWith(lower)).slice(0, 8);
 }
 
+const NON_TEXT_INPUTS: ReadonlySet<string> = new Set([
+  'checkbox',
+  'radio',
+  'button',
+  'submit',
+  'reset',
+  'range',
+  'color',
+  'file',
+]);
+
+function isTextField(element: Element | null): boolean {
+  if (element instanceof HTMLTextAreaElement) return true;
+  if (element instanceof HTMLInputElement) return !NON_TEXT_INPUTS.has(element.type);
+  return element instanceof HTMLElement && element.isContentEditable;
+}
+
 /** Stable fallback: a fresh `[]` per render would make the store selector loop forever. */
 const NO_ATTACHMENTS: readonly Attachment[] = [];
 const MAX_COMPOSER_HEIGHT = 200;
 
-export function Composer({ thread, projectPath }: { thread: ThreadSummary; projectPath: string }) {
+export function Composer({
+  thread,
+  projectPath,
+  name,
+}: {
+  thread: ThreadSummary;
+  projectPath: string;
+  /** Who the placeholder addresses ("Ask {name}…"); "the agent" when not given. */
+  name?: string | undefined;
+}) {
   const draft = useAgents((s) => s.drafts[thread.id] ?? '');
   const attachments = useAgents((s) => s.attachments[thread.id] ?? NO_ATTACHMENTS);
   const focusRequest = useAgents((s) => s.composerFocusRequest);
@@ -42,6 +68,7 @@ export function Composer({ thread, projectPath }: { thread: ThreadSummary; proje
 
   const status = thread.state.status;
   const busy = status === 'prompting';
+  const prompt = name ? `Ask ${name}…` : 'Message the agent…';
   const stoppable = isStoppable(status);
   const canSend = (draft.trim().length > 0 || attachments.length > 0) && !busy && status !== 'starting';
   const query = slashQuery(draft, caret);
@@ -52,8 +79,16 @@ export function Composer({ thread, projectPath }: { thread: ThreadSummary; proje
   const selected = selection.query === query ? Math.min(selection.index, Math.max(0, suggestions.length - 1)) : 0;
   const setSelected = (update: (current: number) => number): void => setSelection({ query, index: update(selected) });
 
+  const handledRequest = useRef(focusRequest);
   useEffect(() => {
-    textarea.current?.focus();
+    const element = textarea.current;
+    if (!element) return;
+    const requested = handledRequest.current !== focusRequest;
+    handledRequest.current = focusRequest;
+    // Showing a thread focuses its composer, but not away from a field the user is typing in
+    // (Grove's rename box opens together with the session it renames).
+    const active = document.activeElement;
+    if (requested || active === element || !isTextField(active)) element.focus();
   }, [focusRequest, thread.id]);
 
   useEffect(() => {
@@ -189,8 +224,8 @@ export function Composer({ thread, projectPath }: { thread: ThreadSummary; proje
               : status === 'starting'
                 ? 'Starting the agent…'
                 : thread.state.availableCommands.length > 0
-                  ? 'Message the agent… ( / for commands)'
-                  : 'Message the agent…'
+                  ? `${prompt} ( / for commands)`
+                  : prompt
           }
           className="block max-h-[200px] w-full resize-none overflow-y-hidden rounded border border-border bg-bg px-2 py-1.5 pr-16 agent-text outline-none select-text focus:border-accent"
           onChange={(event) => {

@@ -51,6 +51,28 @@ describe('conflicts', () => {
     });
   });
 
+  it('does not count a Grove chord against an always chord', () => {
+    expect(scopesOverlap('grove', 'always')).toBe(false);
+    expect(scopesOverlap('always', 'grove')).toBe(false);
+    expect(scopesOverlap('grove', 'grove')).toBe(true);
+    // Grove's session pane is an agent thread; modes end on the way into Grove.
+    expect(scopesOverlap('grove', 'agentPanel')).toBe(true);
+    expect(scopesOverlap('grove', 'modeActive')).toBe(false);
+    expect(scopesOverlap('grove', 'design')).toBe(false);
+    const rows = keybindingRows(DEFAULT_COMMANDS, {}, undefined, 'linux');
+    expect(rows.find((r) => r.commandId === CommandId.focusSidebarPanel)?.conflicts).toEqual([]);
+    expect(rows.find((r) => r.commandId === CommandId.groveNextSession)).toMatchObject({
+      when: 'grove',
+      conflicts: [],
+    });
+    // The row chords are fixed: they are hidden from the editor.
+    expect(rows.some((r) => r.commandId === CommandId.groveSelectSession1)).toBe(false);
+    expect(conflictsFor(CommandId.groveArchiveSession, 'mod+alt+n', DEFAULT_COMMANDS, {}, undefined, 'linux')).toEqual([
+      CommandId.groveNewDefault,
+    ]);
+    expect(conflictsFor(CommandId.groveArchiveSession, 'mod+k', DEFAULT_COMMANDS, {}, undefined, 'linux')).toEqual([]);
+  });
+
   it('has no conflicts in the defaults', () => {
     for (const platform of ['linux', 'darwin', 'win32'] as const) {
       expect(keybindingRows(DEFAULT_COMMANDS, {}, undefined, platform).filter((r) => r.conflicts.length > 0)).toEqual(

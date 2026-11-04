@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { customAgentSchema, rememberedPermissionsSchema } from './agent.js';
 import { viewportPresetIdSchema } from './browser.js';
+import type { WorkspaceKind } from './keybindings.js';
 import { mcpServerConfigSchema } from './mcp-servers.js';
 
 export const themeModeSchema = z.enum(['system', 'light', 'dark']);
@@ -30,10 +31,15 @@ export type SidebarView = z.infer<typeof sidebarViewSchema>;
 export const bottomTabSchema = z.enum(['terminal', 'git', 'problems']);
 export type BottomTab = z.infer<typeof bottomTabSchema>;
 
+export const workspaceKindSchema = z.enum(['browser', 'grove']) satisfies z.ZodType<WorkspaceKind>;
+
 export const layoutStateSchema = z.object({
   groups: z.record(z.string(), panelGroupLayoutSchema).default({}),
   sidebarView: sidebarViewSchema.default('files'),
   bottomTab: bottomTabSchema.default('terminal'),
+  workspace: workspaceKindSchema.default('browser'),
+  /** The session Grove shows; the docked agent panel keeps its own open thread. */
+  groveThreadId: z.string().nullable().default(null),
 });
 export type LayoutState = z.infer<typeof layoutStateSchema>;
 
@@ -155,9 +161,17 @@ export const onboardingSettingsSchema = z.object({
 });
 export type OnboardingSettings = z.infer<typeof onboardingSettingsSchema>;
 
+export const groveSettingsSchema = z.object({
+  /** Sessions that are not helpers get the `grove_*` tools to start and steer helper sessions. */
+  orchestration: z.boolean().default(true),
+  /** Running helpers one lead may have at once. */
+  maxChildren: z.number().int().min(1).max(10).default(4),
+});
+export type GroveSettings = z.infer<typeof groveSettingsSchema>;
+
 export const MAX_RECENT_PROJECTS = 10;
 
-export const SETTINGS_VERSION = 4;
+export const SETTINGS_VERSION = 5;
 
 export const browserSettingsSchema = z.object({
   /** Load the bundled React and Vue DevTools into the browser panel's session. */
@@ -455,6 +469,7 @@ export const appSettingsSchema = z.object({
   updates: updateSettingsSchema.default(updateSettingsSchema.parse({})),
   diagnostics: diagnosticsSettingsSchema.default(diagnosticsSettingsSchema.parse({})),
   onboarding: onboardingSettingsSchema.default(onboardingSettingsSchema.parse({})),
+  grove: groveSettingsSchema.default(groveSettingsSchema.parse({})),
   recentProjects: z.array(recentProjectSchema).max(MAX_RECENT_PROJECTS).default([]),
   projectGroups: z.array(projectGroupSchema).max(100).default([]),
   projects: z.record(z.string(), projectStateSchema).default({}),
@@ -505,6 +520,7 @@ export const appSettingsPatchSchema = z
     updates: patchSchema(updateSettingsSchema),
     diagnostics: patchSchema(diagnosticsSettingsSchema),
     onboarding: patchSchema(onboardingSettingsSchema),
+    grove: patchSchema(groveSettingsSchema),
     projectGroups: z.array(projectGroupSchema).max(100),
   })
   .partial();
@@ -543,6 +559,7 @@ export function applySettingsPatch(current: AppSettings, patch: AppSettingsPatch
     ...(patch.updates !== undefined ? { updates: mergeDefined(current.updates, patch.updates) } : {}),
     ...(patch.diagnostics !== undefined ? { diagnostics: mergeDefined(current.diagnostics, patch.diagnostics) } : {}),
     ...(patch.onboarding !== undefined ? { onboarding: mergeDefined(current.onboarding, patch.onboarding) } : {}),
+    ...(patch.grove !== undefined ? { grove: mergeDefined(current.grove, patch.grove) } : {}),
     ...(patch.projectGroups !== undefined ? { projectGroups: patch.projectGroups } : {}),
   };
 }
@@ -576,6 +593,8 @@ export const SETTINGS_MIGRATIONS: Readonly<Record<number, Migration>> = {
     }
     return next;
   },
+  // v5 added `grove` (orchestration and the helper cap), defaulted by the schema.
+  4: (input) => ({ ...input, version: 5 }),
 };
 
 function objectField(input: Record<string, unknown>, key: string): Record<string, unknown> | null {
@@ -669,6 +688,8 @@ export const projectSettingsSchema = z.object({
   /** Load a dev-server URL printed in a terminal when the browser panel is empty (default on). */
   autoOpenDevUrl: z.boolean().optional(),
   defaultAgent: z.string().optional(),
+  /** Start one session of the default agent when Grove opens with none listed (default on). */
+  startDefaultOnOpen: z.boolean().optional(),
   keybindings: keybindingOverridesSchema.optional(),
   /**
    * Standing answers for the agent browser tools that can do more than look: `browser_evaluate`
@@ -687,6 +708,7 @@ export const projectSettingsPatchSchema = z
     devUrl: z.string().min(1).max(2000).nullable(),
     autoOpenDevUrl: z.boolean().nullable(),
     defaultAgent: z.string().min(1).nullable(),
+    startDefaultOnOpen: z.boolean().nullable(),
     browserTools: z
       .object({ evaluate: browserToolPolicySchema.optional(), terminalRun: browserToolPolicySchema.optional() })
       .nullable(),

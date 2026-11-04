@@ -1,5 +1,8 @@
 import type { AgentModeSelection } from '@arbora/shared';
 
+/** Where design mode goes once its unsaved edits are sent or discarded: no mode, agent mode, or Grove. */
+export type DesignPending = 'idle' | 'agent' | 'grove';
+
 /**
  * The app's interaction mode. Agent mode runs `inspecting -> selected -> prompting -> idle`:
  * hovering the page, waiting for main to capture and resolve the click, then the prompt popover.
@@ -11,7 +14,7 @@ export type ModeState =
   | { readonly kind: 'agent'; readonly phase: 'selected' }
   | { readonly kind: 'agent'; readonly phase: 'prompting'; readonly selection: AgentModeSelection }
   | { readonly kind: 'design'; readonly phase: 'editing' }
-  | { readonly kind: 'design'; readonly phase: 'confirm'; readonly pending: 'idle' | 'agent' };
+  | { readonly kind: 'design'; readonly phase: 'confirm'; readonly pending: DesignPending };
 
 export type ModeEvent =
   | { readonly type: 'toggleAgent' }
@@ -25,7 +28,7 @@ export type ModeEvent =
   | { readonly type: 'repick' }
   | { readonly type: 'submitted' }
   /** Unsaved design edits: ask before leaving. `pending` is where to go after save or discard. */
-  | { readonly type: 'designConfirm'; readonly pending: 'idle' | 'agent' }
+  | { readonly type: 'designConfirm'; readonly pending: DesignPending }
   | { readonly type: 'designCancelConfirm' }
   /** Leave design mode. The caller has already saved or discarded. */
   | { readonly type: 'designLeave' };

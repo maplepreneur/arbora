@@ -51,6 +51,8 @@ describe('defaultAgentModeTarget', () => {
     autoApproveEdits: false,
     groupId: null,
     pinned: false,
+    archivedAt: null,
+    parentThreadId: null,
     state: idleThreadState(),
   });
   const base = {

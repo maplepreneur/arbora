@@ -7,6 +7,7 @@ export * from './design.js';
 export * from './files.js';
 export * from './problems.js';
 export * from './git.js';
+export * from './grove.js';
 export * from './fuzzy.js';
 export * from './inspector.js';
 export * from './ipc.js';

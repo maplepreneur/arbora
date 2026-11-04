@@ -4,6 +4,14 @@
  */
 export { ToolError, type Cdp } from './cdp.js';
 export type {
+  GroveAgent,
+  GroveSession,
+  GroveStartRequest,
+  GroveStatus,
+  GroveToolHost,
+  GroveWaitRequest,
+} from './grove-host.js';
+export type {
   BrowserToolHost,
   DevServerInfo,
   GuardedTool,

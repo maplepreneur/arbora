@@ -74,6 +74,10 @@ test.describe('Skills and MCP servers', () => {
       ARBORA_SKILLS_HOME: home,
       ARBORA_SKILLS_API: search.url,
       ARBORA_SKILLS_GIT_BASE: `${home}/remote/`,
+      // These move agents' folders out of `home`, and CI sets XDG_CONFIG_HOME (GitHub's Ubuntu image does).
+      XDG_CONFIG_HOME: '',
+      CLAUDE_CONFIG_DIR: '',
+      GROK_HOME: '',
     });
     try {
       await page.keyboard.press('ControlOrMeta+,');

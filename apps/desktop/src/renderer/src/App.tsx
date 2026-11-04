@@ -18,7 +18,6 @@ import {
   applyThreadState,
   loadAgentSnapshot,
   noteFileChanged,
-  openThread,
   resetAgents,
 } from './agent-store';
 import {
@@ -31,9 +30,10 @@ import {
 } from './attention-store';
 import { applyLibrary } from './projects-store';
 import { applyUpdateState } from './update-store';
-import { executeCommand, navigateBrowser, registerBuiltinCommands, setWorkspaceShown } from './commands';
+import { executeCommand, navigateBrowser, registerBuiltinCommands, revealThread } from './commands';
 import { onFilesChanged, resetFiles, setDiagnostics } from './files-store';
 import { noteAgentWatcherChanges, refreshGit, scheduleGitRefresh, useGit } from './git-client';
+import { initGroveTracking } from './grove-store';
 import { useKeybindingContextSync, useKeybindingDispatch } from './keybindings';
 import {
   addProblems,
@@ -42,6 +42,7 @@ import {
   closeOverlay,
   openOverlay,
   setProblems,
+  GROVE_GROUP,
   setProject,
   showToast,
   useApp,
@@ -50,6 +51,26 @@ import { applyTerminalList, resetTerminals } from './terminal-store';
 
 const SettingsPage = lazy(() => import('./panels/settings/SettingsPage'));
 const Onboarding = lazy(() => import('./panels/onboarding/Onboarding'));
+const GroveWorkspace = lazy(() => import('./panels/grove/GroveWorkspace'));
+
+/**
+ * Grove's two columns while its chunk loads. The browser layout has already unmounted, so a null
+ * fallback would flash an empty window on the first switch.
+ */
+function GroveLoading() {
+  const list = useApp((s) => s.layout.groups[GROVE_GROUP]?.['grove-list'] ?? 24);
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1" aria-busy="true">
+      {list > 0 && (
+        <div
+          className="h-full max-w-[45%] min-w-[180px] border-r border-border bg-bg-subtle"
+          style={{ width: `${list}%` }}
+        />
+      )}
+      <div className="h-full min-w-0 flex-1 bg-bg" />
+    </div>
+  );
+}
 
 /** Tool failures repeat on every save; say each one once per session. */
 const shownToolErrors = new Set<string>();
@@ -90,10 +111,7 @@ function useMainEvents(): void {
         noteThreadState(threadId, state);
       }),
       arbora.on('notification.clicked', ({ threadId }) => {
-        if (!threadId || !useApp.getState().project) return;
-        useApp.setState({ settingsOpen: false, overlay: null });
-        setWorkspaceShown();
-        void openThread(threadId);
+        if (threadId && useApp.getState().project) revealThread(threadId);
       }),
       arbora.on('updates.state', (state) => applyUpdateState(state)),
       arbora.on('projects.changed', (library) => applyLibrary(library)),
@@ -244,9 +262,11 @@ export function App() {
   const project = useApp((s) => s.project);
   const settingsOpen = useApp((s) => s.settingsOpen);
   const overlay = useApp((s) => s.overlay);
+  const grove = useApp((s) => s.layout.workspace === 'grove');
   const lastCue = useAttention((s) => s.lastCue);
   useEffect(() => registerBuiltinCommands(), []);
   useEffect(() => initAttentionTracking(), []);
+  useEffect(() => initGroveTracking(), []);
   useFirstRun();
   useMainEvents();
   useBrowserSnapshot();
@@ -266,7 +286,13 @@ export function App() {
       data-last-cue={lastCue ? `${lastCue.kind}:${lastCue.sound ? 'sound' : 'silent'}` : undefined}
     >
       <TitleBar />
-      {project ? (
+      {project && grove ? (
+        <ErrorBoundary label="Grove">
+          <Suspense fallback={<GroveLoading />}>
+            <GroveWorkspace />
+          </Suspense>
+        </ErrorBoundary>
+      ) : project ? (
         <Workspace />
       ) : settingsOpen ? (
         <ErrorBoundary label="Settings">

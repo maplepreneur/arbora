@@ -122,11 +122,45 @@ export const CommandId = {
   gitSync: 'arbora.git.sync',
   gitAiCommit: 'arbora.git.aiCommit',
   gitAiPullRequest: 'arbora.git.aiPullRequest',
+  toggleWorkspace: 'arbora.toggleWorkspace',
+  showBrowserWorkspace: 'arbora.showBrowserWorkspace',
+  showGrove: 'arbora.showGrove',
+  groveNewDefault: 'arbora.grove.newDefault',
+  groveLaunch: 'arbora.grove.launch',
+  groveNextSession: 'arbora.grove.nextSession',
+  grovePreviousSession: 'arbora.grove.previousSession',
+  groveSelectSession1: 'arbora.grove.selectSession1',
+  groveSelectSession2: 'arbora.grove.selectSession2',
+  groveSelectSession3: 'arbora.grove.selectSession3',
+  groveSelectSession4: 'arbora.grove.selectSession4',
+  groveSelectSession5: 'arbora.grove.selectSession5',
+  groveSelectSession6: 'arbora.grove.selectSession6',
+  groveSelectSession7: 'arbora.grove.selectSession7',
+  groveSelectSession8: 'arbora.grove.selectSession8',
+  groveSelectSession9: 'arbora.grove.selectSession9',
+  groveArchiveSession: 'arbora.grove.archiveSession',
+  groveStopSession: 'arbora.grove.stopSession',
+  groveRestartSession: 'arbora.grove.restartSession',
+  groveRenameSession: 'arbora.grove.renameSession',
+  groveSetDefaultAgent: 'arbora.grove.setDefaultAgent',
 } as const;
 
 export type CommandId = (typeof CommandId)[keyof typeof CommandId];
 
 export const commandIdSchema = z.enum(Object.values(CommandId) as [CommandId, ...CommandId[]]);
+
+/** `Mod+1`..`Mod+9` inside Grove, in row order. */
+export const GROVE_SELECT_COMMANDS = [
+  CommandId.groveSelectSession1,
+  CommandId.groveSelectSession2,
+  CommandId.groveSelectSession3,
+  CommandId.groveSelectSession4,
+  CommandId.groveSelectSession5,
+  CommandId.groveSelectSession6,
+  CommandId.groveSelectSession7,
+  CommandId.groveSelectSession8,
+  CommandId.groveSelectSession9,
+] as const;
 
 export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
   {
@@ -399,7 +433,76 @@ export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
     keybinding: 'mod+alt+shift+p',
     intercept: true,
   },
+  {
+    id: CommandId.toggleWorkspace,
+    title: 'Toggle Browser / Grove',
+    category: 'View',
+    keybinding: 'mod+alt+g',
+    intercept: true,
+  },
+  { id: CommandId.showBrowserWorkspace, title: 'Show Browser Workspace', category: 'View', intercept: true },
+  { id: CommandId.showGrove, title: 'Show Grove', category: 'View', intercept: true },
+  // Grove chords only apply while Grove shows, so they beat the browser workspace's `always`
+  // bindings on the same keys there (Mod+1..9, Mod+Alt+Up/Down) and leave them alone elsewhere.
+  {
+    id: CommandId.groveNewDefault,
+    title: 'New Agent',
+    category: 'Grove',
+    keybinding: 'mod+alt+n',
+    when: 'grove',
+    intercept: true,
+  },
+  { id: CommandId.groveLaunch, title: 'New Agent with a Task…', category: 'Grove', intercept: true },
+  {
+    id: CommandId.groveNextSession,
+    title: 'Next Agent',
+    category: 'Grove',
+    keybinding: 'mod+alt+down',
+    when: 'grove',
+    intercept: true,
+  },
+  {
+    id: CommandId.grovePreviousSession,
+    title: 'Previous Agent',
+    category: 'Grove',
+    keybinding: 'mod+alt+up',
+    when: 'grove',
+    intercept: true,
+  },
+  ...GROVE_SELECT_COMMANDS.map((id, index): CommandDescriptor => ({
+    id,
+    title: `Agent ${index + 1}`,
+    category: 'Grove',
+    keybinding: `mod+${index + 1}`,
+    when: 'grove',
+    intercept: true,
+    hidden: true,
+  })),
+  {
+    id: CommandId.groveArchiveSession,
+    title: 'Archive Agent',
+    category: 'Grove',
+    keybinding: 'mod+alt+w',
+    when: 'grove',
+    intercept: true,
+  },
+  { id: CommandId.groveStopSession, title: 'Stop Agent Process', category: 'Grove', when: 'grove', intercept: true },
+  { id: CommandId.groveRestartSession, title: 'Restart Agent', category: 'Grove', when: 'grove', intercept: true },
+  { id: CommandId.groveRenameSession, title: 'Rename Agent…', category: 'Grove', when: 'grove', intercept: true },
+  {
+    id: CommandId.groveSetDefaultAgent,
+    title: 'Set as Default Agent',
+    category: 'Grove',
+    when: 'grove',
+    intercept: true,
+  },
 ];
+
+/** The zero-based Grove row a `groveSelectSession*` command selects, or `null` for any other command. */
+export function groveSessionIndex(commandId: string): number | null {
+  const index = (GROVE_SELECT_COMMANDS as readonly string[]).indexOf(commandId);
+  return index === -1 ? null : index;
+}
 
 /** Overrides map a command id to a chord string, or `null` to unbind it. */
 export type KeybindingOverrides = Readonly<Record<string, string | null>>;

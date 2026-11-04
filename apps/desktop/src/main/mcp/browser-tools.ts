@@ -3,6 +3,7 @@ import {
   MCP_SERVER_NAME,
   SHIM_TOKEN_ENV,
   type BrowserToolHost,
+  type GroveToolHost,
   type McpActivity,
 } from '@arbora/mcp-browser-server/host';
 import type { McpAttachment } from '../agent/agent-service.js';
@@ -12,6 +13,12 @@ import { loadBrowserMcpServer } from '../lazy/mcp-server.js';
 export interface ShimCommand {
   readonly command: string;
   readonly script: string;
+}
+
+export interface BrowserToolsOptions {
+  /** The Grove orchestration tools, for a lead session (never a helper). */
+  readonly grove?: GroveToolHost | undefined;
+  readonly onActivity?: ((activity: McpActivity) => void) | undefined;
 }
 
 /** The `mcpServers` entry for `session/new`: HTTP when the agent supports it, else the stdio shim. */
@@ -41,16 +48,17 @@ export async function openBrowserTools(
   host: BrowserToolHost,
   shim: ShimCommand,
   version: string,
-  onActivity?: (activity: McpActivity) => void,
+  options: BrowserToolsOptions = {},
 ): Promise<McpAttachment> {
   let listed = false;
   const BrowserMcpServer = await loadBrowserMcpServer();
   const server = new BrowserMcpServer({
     host,
+    grove: options.grove,
     version,
     onActivity: (activity) => {
       if (activity.method === 'tools/list') listed = true;
-      onActivity?.(activity);
+      options.onActivity?.(activity);
     },
   });
   const endpoint = await server.start();
@@ -59,6 +67,7 @@ export async function openBrowserTools(
     get toolsListed() {
       return listed;
     },
+    groveTools: options.grove !== undefined,
     close: () => server.stop(),
   };
 }

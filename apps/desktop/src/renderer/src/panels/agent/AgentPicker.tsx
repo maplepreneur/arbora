@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 
 import clsx from 'clsx';
 import { ArrowLeft, Bot, ChevronRight, Cpu, LoaderCircle, Pin, Settings, Star } from 'lucide-react';
 import { openSettings, showToast, useApp } from '../../store';
-import { createThread, showThreads, useAgents } from '../../agent-store';
+import { createThread, isListed, showThreads, useAgents } from '../../agent-store';
 import { toggleDefaultAgent, toggleDefaultModel, toggleFavoriteModel } from '../../agent-defaults';
 import { shortModelName, useAutoVerify, usePickableAgents, type PickableAgent } from '../../agent-pickers';
 
@@ -183,7 +183,7 @@ function ModelStep({
 export function AgentPicker() {
   const pickable = usePickableAgents();
   const total = useAgents((s) => s.agents.length);
-  const hasThreads = useAgents((s) => s.threads.length > 0);
+  const hasThreads = useAgents((s) => s.threads.some(isListed));
   const focusRequest = useAgents((s) => s.pickerFocusRequest);
   const checking = useApp((s) => s.checkingAgents.length > 0);
   const appDefault = useApp((s) => s.settings.agents.defaultAgent);

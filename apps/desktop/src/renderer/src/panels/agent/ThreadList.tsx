@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { useMemo, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import clsx from 'clsx';
 import {
   Bot,
@@ -28,6 +28,7 @@ import {
   createThread,
   deleteGroup,
   deleteThread,
+  isListed,
   isStoppable,
   moveGroup,
   openThread,
@@ -69,7 +70,7 @@ export function groupColor(color: AgentGroup['color']): string {
   return `var(--group-${color})`;
 }
 
-function formatWhen(timestamp: number): string {
+export function formatWhen(timestamp: number): string {
   const date = new Date(timestamp);
   const today = new Date();
   const sameDay = date.toDateString() === today.toDateString();
@@ -102,12 +103,12 @@ function AttentionChip({ kind }: { kind: AttentionKind }) {
   );
 }
 
-async function showMenu(items: ContextMenuItem[]): Promise<string | null> {
+export async function showMenu(items: ContextMenuItem[]): Promise<string | null> {
   const { id } = await window.arbora.invoke('contextMenu.show', { items });
   return id;
 }
 
-function InlineName({
+export function InlineName({
   initial,
   label,
   testId,
@@ -409,7 +410,9 @@ function GroupHeader({
 }
 
 export function ThreadList() {
-  const threads = useAgents((s) => s.threads);
+  const allThreads = useAgents((s) => s.threads);
+  // Archived threads live in Grove's Recent.
+  const threads = useMemo(() => allThreads.filter(isListed), [allThreads]);
   const groups = useAgents((s) => s.groups);
   const agents = useAgents((s) => s.agents);
   const activeThreadId = useAgents((s) => s.activeThreadId);

@@ -8,6 +8,7 @@ import { useApp, type SettingsSection } from '../../store';
 import { AgentsSection } from './AgentsSection';
 import { AppearanceSection } from './AppearanceSection';
 import { GitSection } from './GitSection';
+import { GroveSection } from './GroveSection';
 import { inputClass, Segmented, SettingRow, Toggle } from './controls';
 import { KeyboardSection } from './KeyboardSection';
 import { McpSection } from './McpSection';
@@ -20,6 +21,7 @@ type Section = SettingsSection;
 
 const SECTIONS: readonly { id: Section; label: string }[] = [
   { id: 'agents', label: 'Agents' },
+  { id: 'grove', label: 'Grove' },
   { id: 'general', label: 'General' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'notifications', label: 'Notifications & sounds' },
@@ -254,6 +256,7 @@ export default function SettingsPage() {
         </header>
         <div className="mx-auto max-w-3xl px-6 py-5">
           {section === 'agents' && <AgentsSection />}
+          {section === 'grove' && <GroveSection />}
           {section === 'general' && <GeneralSection />}
           {section === 'appearance' && <AppearanceSection />}
           {section === 'editor' && <EditorSection />}

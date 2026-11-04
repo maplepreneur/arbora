@@ -4,6 +4,9 @@ updates:
     directory: '/'
     schedule:
       interval: 'weekly'
+    # Stays on React 18 for agent mode's `_debugSource` e2e; a lone react-dom 19 bump breaks every test on its page.
+    exclude-paths:
+      - 'fixtures/vite-react/**'
   - package-ecosystem: 'github-actions'
     directory: '/'
     schedule:
