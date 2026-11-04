@@ -43,7 +43,7 @@ import { findCandidates } from './agent-mode/source-search.js';
 import { ProjectRuntime } from './project-runtime.js';
 import { RuntimeTable } from './runtime-table.js';
 import { BrowserHistory } from './browser/browser-history.js';
-import { BrowserService } from './browser/browser-service.js';
+import { BrowserService, type BrowserServiceEvents } from './browser/browser-service.js';
 import { browserPartition, type BrowserSessions } from './browser/browser-sessions.js';
 import { sendEvent } from './ipc.js';
 import { attachKeybindingInterceptor, type InterceptorSource } from './keybinding-interceptor.js';
@@ -117,6 +117,12 @@ const FOCUS_APP_COMMANDS: ReadonlySet<string> = new Set([
 ]);
 const BOUNDS_SAVE_DELAY_MS = 500;
 
+/** A project's page, kept alive so switching back does not load it again. */
+interface LiveBrowser {
+  readonly browser: BrowserService;
+  readonly history: BrowserHistory;
+}
+
 export class ProjectWindowError extends Error {}
 
 /** Resolves and validates a folder path; returns its canonical form. */
@@ -143,6 +149,8 @@ export class ProjectWindow {
   private readonly disposers: (() => void)[] = [];
   browser: BrowserService | null = null;
   private browserHistory: BrowserHistory | null = null;
+  /** Pages for projects this window has shown, hidden while another project is current. */
+  private readonly parkedBrowsers = new Map<string, LiveBrowser>();
   /** Bumped whenever the browser is (re)started or stopped, to drop stale async starts. */
   private browserGeneration = 0;
   /** The in-flight browser start. Already resolved when the view exists. */
@@ -314,29 +322,30 @@ export class ProjectWindow {
   }
 
   /**
-   * Drops this window's browser, files and git. The project's runtime stays while Grove lists the
-   * path or another window still holds it.
+   * Opens `path` on this window. A page already shown here, or handed over from another window,
+   * is shown again without loading. The window keeps its size; bounds restore only on the first
+   * project, so a switch does not jump.
    */
-  private releaseWindowServices(): void {
-    this.saveBounds();
-    this.designMode?.setActive(false);
-    this.designMode = null;
-    this.agentMode = null;
-    this.stopBrowser();
-    this.detachRuntime();
-    this.stopWorkspace();
-  }
-
-  openProject(path: string): void {
+  openProject(path: string, adopted: LiveBrowser | null = null): void {
     if (this.project?.path === path) return;
-    if (this.project) this.releaseWindowServices();
+    const hadProject = this.project !== null;
+    if (hadProject) {
+      this.saveBounds();
+      this.parkActiveBrowser();
+      this.detachRuntime();
+      this.stopWorkspace();
+    }
     ensureArboraGitignore(path);
     const { settings, warnings } = readProjectSettings(path);
     this.project = { path, name: basename(path), settings, settingsWarnings: warnings };
     this.window.setTitle(`${this.project.name} — Arbora`);
     this.rebuildKeybindings();
-    this.restoreBounds();
-    this.browserReady = this.startBrowser(path);
+    if (!hadProject) this.restoreBounds();
+    const live = adopted ?? this.unpark(path);
+    if (live) {
+      this.installLive(live);
+      this.browserReady = Promise.resolve();
+    } else this.browserReady = this.startBrowser(path);
     this.attachRuntime(path);
     this.startAgentMode(path);
     this.startDesignMode(path);
@@ -360,7 +369,27 @@ export class ProjectWindow {
     });
     if (launch) this.context = { ...this.context, workspace: launch };
     this.emitProject();
+    if (live) sendEvent(this.contents, 'browser.stateChanged', live.browser.getState());
     this.manager.projectsChanged();
+  }
+
+  /**
+   * The live page for this window's project, detached so another window can show it. Parked pages
+   * for other projects stay here.
+   */
+  takeBrowser(): LiveBrowser | null {
+    const path = this.project?.path;
+    if (!path) return null;
+    this.designMode?.setActive(false);
+    this.agentMode?.setInspecting(false);
+    const parked = this.unpark(path);
+    if (parked) return parked;
+    if (!this.browser || !this.browserHistory) return null;
+    const live = { browser: this.browser, history: this.browserHistory };
+    this.browser = null;
+    this.browserHistory = null;
+    live.browser.setBounds(null, null);
+    return live;
   }
 
   /** Clears cookies, storage and cache of the project partition, then reloads the page. */
@@ -379,6 +408,7 @@ export class ProjectWindow {
     this.designMode = null;
     this.agentMode = null;
     this.stopBrowser();
+    this.disposeParked();
     this.detachRuntime();
     this.stopWorkspace();
     this.project = null;
@@ -422,48 +452,121 @@ export class ProjectWindow {
   }
 
   private async startBrowser(projectPath: string): Promise<void> {
-    this.stopBrowser();
     const generation = ++this.browserGeneration;
     const partition = browserPartition(projectPath);
     const session = await this.options.browserSessions.prepare(partition);
     if (generation !== this.browserGeneration || this.window.isDestroyed()) return;
 
-    const app = this.contents;
     const history = new BrowserHistory(
       join(this.options.userDataPath, 'browser', partition.replace(/^persist:/, ''), 'history.json'),
     );
-    this.browserHistory = history;
-    this.browser = new BrowserService({
+    const holder: { current: BrowserService | null } = { current: null };
+    const browser = new BrowserService({
       window: this.window,
       session,
       preloadPath: this.options.browserPreloadPath,
       projectPath,
       history,
       initial: this.options.settings.get().projects[projectPath]?.browser,
-      events: {
-        state: (state) => sendEvent(app, 'browser.stateChanged', state),
-        problemsAdded: (entries) => sendEvent(app, 'browser.problemsAdded', { entries }),
-        problemsCleared: () => sendEvent(app, 'browser.problemsCleared', {}),
-        urlSuggested: (url) => sendEvent(app, 'browser.urlSuggested', { url }),
-        inspectorSelected: (selection) => void this.agentMode?.select(selection),
-        inspectorCancelled: () => this.agentMode?.cancelledInPage(),
-        designState: (state) => this.designMode?.onState(state),
-        designExitRequested: () => sendEvent(app, 'command.invoke', { commandId: CommandId.exitMode }),
-        designNavigationBlocked: (url) => sendEvent(app, 'design.navigationBlocked', { url }),
-        designDocumentNavigated: () => void this.designMode?.onDocumentNavigated(),
-      },
-      attachInterceptor: (page) =>
-        attachKeybindingInterceptor(
-          page,
-          this.interceptorSource((commandId) => {
-            if (FOCUS_APP_COMMANDS.has(commandId)) app.focus();
-            sendEvent(app, 'command.invoke', { commandId });
-          }),
-        ),
-      saveState: (browser) => this.saveBrowserState(projectPath, browser),
+      events: this.browserEvents(() => holder.current),
+      attachInterceptor: (page) => this.pageInterceptor(page),
+      saveState: (state) => this.saveBrowserState(projectPath, state),
       beforeDevTools: () => this.options.browserSessions.ensureExtensions(session),
     });
-    this.browser.setBounds(this.scaledBrowserRect(), this.browserBounds.emulation);
+    holder.current = browser;
+    if (generation !== this.browserGeneration || this.window.isDestroyed()) {
+      browser.dispose();
+      history.dispose();
+      return;
+    }
+    this.browserHistory = history;
+    this.browser = browser;
+    browser.setBounds(this.scaledBrowserRect(), this.browserBounds.emulation);
+    sendEvent(this.contents, 'browser.stateChanged', browser.getState());
+  }
+
+  /** Hide the current page and remember it under the project it belongs to. */
+  private parkActiveBrowser(): void {
+    this.designMode?.setActive(false);
+    this.designMode = null;
+    this.agentMode?.setInspecting(false);
+    this.agentMode = null;
+    this.browserGeneration++;
+    const path = this.project?.path;
+    const browser = this.browser;
+    const history = this.browserHistory;
+    this.browser = null;
+    this.browserHistory = null;
+    if (!path || !browser || !history) return;
+    browser.setBounds(null, null);
+    this.parkedBrowsers.set(path, { browser, history });
+  }
+
+  private unpark(path: string): LiveBrowser | null {
+    const live = this.parkedBrowsers.get(path) ?? null;
+    if (live) this.parkedBrowsers.delete(path);
+    return live;
+  }
+
+  private installLive(live: LiveBrowser): void {
+    this.browser = live.browser;
+    this.browserHistory = live.history;
+    live.browser.rebind(
+      this.window,
+      this.browserEvents(() => live.browser),
+      (page) => this.pageInterceptor(page),
+    );
+    live.browser.setBounds(this.scaledBrowserRect(), this.browserBounds.emulation);
+  }
+
+  /** Events from a parked page are ignored. `owner` is that page, compared with the one on screen. */
+  private browserEvents(owner: () => BrowserService | null): BrowserServiceEvents {
+    const active = (): boolean => {
+      const browser = owner();
+      return browser !== null && browser === this.browser;
+    };
+    return {
+      state: (state) => {
+        if (active()) sendEvent(this.contents, 'browser.stateChanged', state);
+      },
+      problemsAdded: (entries) => {
+        if (active()) sendEvent(this.contents, 'browser.problemsAdded', { entries });
+      },
+      problemsCleared: () => {
+        if (active()) sendEvent(this.contents, 'browser.problemsCleared', {});
+      },
+      urlSuggested: (url) => {
+        if (active()) sendEvent(this.contents, 'browser.urlSuggested', { url });
+      },
+      inspectorSelected: (selection) => {
+        if (active()) void this.agentMode?.select(selection);
+      },
+      inspectorCancelled: () => {
+        if (active()) this.agentMode?.cancelledInPage();
+      },
+      designState: (state) => {
+        if (active()) this.designMode?.onState(state);
+      },
+      designExitRequested: () => {
+        if (active()) sendEvent(this.contents, 'command.invoke', { commandId: CommandId.exitMode });
+      },
+      designNavigationBlocked: (url) => {
+        if (active()) sendEvent(this.contents, 'design.navigationBlocked', { url });
+      },
+      designDocumentNavigated: () => {
+        if (active()) void this.designMode?.onDocumentNavigated();
+      },
+    };
+  }
+
+  private pageInterceptor(page: WebContents): () => void {
+    return attachKeybindingInterceptor(
+      page,
+      this.interceptorSource((commandId) => {
+        if (FOCUS_APP_COMMANDS.has(commandId)) this.contents.focus();
+        sendEvent(this.contents, 'command.invoke', { commandId });
+      }),
+    );
   }
 
   private stopBrowser(): void {
@@ -472,6 +575,14 @@ export class ProjectWindow {
     this.browser = null;
     this.browserHistory?.dispose();
     this.browserHistory = null;
+  }
+
+  private disposeParked(): void {
+    for (const live of this.parkedBrowsers.values()) {
+      live.browser.dispose();
+      live.history.dispose();
+    }
+    this.parkedBrowsers.clear();
   }
 
   shownWorkspace(): WorkspaceKind {
@@ -684,6 +795,7 @@ export class ProjectWindow {
     this.manager.projectsChanged();
     clearTimeout(this.boundsTimer);
     this.stopBrowser();
+    this.disposeParked();
     this.detachRuntime();
     this.stopWorkspace();
     for (const dispose of this.disposers.splice(0)) dispose();
@@ -978,19 +1090,17 @@ export class WindowManager {
   }
 
   /**
-   * Opens `path` on `projectWindow`, attaching the runtime that already exists for that folder.
-   * Another window that already has the folder is focused instead, so this one does not start a
-   * second runtime or a second browser for it.
+   * Opens `path` on `projectWindow`. A page another window is showing for that folder moves here,
+   * so this window changes project instead of focusing a second one. The runtime stays shared.
    */
   openOnThisWindow(path: string, projectWindow: ProjectWindow): { focusedElsewhere: ProjectWindow | null } {
     const resolved = resolveProjectPath(path);
-    const existing = this.findByProject(resolved);
-    if (existing && existing !== projectWindow) {
-      if (existing.window.isMinimized()) existing.window.restore();
-      existing.window.focus();
-      return { focusedElsewhere: existing };
+    if (projectWindow.project?.path !== resolved) {
+      const existing = this.findByProject(resolved);
+      const adopted = existing && existing !== projectWindow ? existing.takeBrowser() : null;
+      if (existing && existing !== projectWindow) existing.closeProject();
+      projectWindow.openProject(resolved, adopted);
     }
-    projectWindow.openProject(resolved);
     return { focusedElsewhere: null };
   }
 

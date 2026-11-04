@@ -97,7 +97,9 @@ describe('Grove commands', () => {
       when: 'grove',
       intercept: true,
     });
-    expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.groveArchiveSession)?.keybinding).toBe('mod+w');
+    expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.groveArchiveSession)?.keybinding).toBe('alt+a');
+    expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.groveArchiveSession)?.extraKeybindings).toEqual(['mod+w']);
+    expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.groveStopSession)?.keybinding).toBe('alt+s');
     expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.groveNewTerminal)).toMatchObject({
       title: 'New Terminal',
       keybinding: 'mod+shift+t',

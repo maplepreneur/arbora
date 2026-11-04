@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import clsx from 'clsx';
-import { ChevronDown, ChevronRight, MoreHorizontal, Pin, Plus, TriangleAlert } from 'lucide-react';
+import { Archive, ChevronDown, ChevronRight, MoreHorizontal, Pin, Plus, Square, TriangleAlert } from 'lucide-react';
 import {
   CommandId,
   formatElapsed,
@@ -13,10 +13,12 @@ import { updateGroup, useAgents } from '../../agent-store';
 import { useDefaultAgentId } from '../../agent-defaults';
 import { usePickableAgents } from '../../agent-pickers';
 import {
+  archiveSession,
   claimListFocus,
   openLauncher,
   RECENT_LIMIT,
   selectSession,
+  stopSession,
   setProjectDefaultAgent,
   setStartDefaultOnOpen,
   startDefaultSession,
@@ -176,6 +178,9 @@ export function SessionRow({
   kbd?: boolean;
   onNavigate?: () => void;
 }) {
+  const stopKey = useChordLabel(CommandId.groveStopSession);
+  const archiveKey = useChordLabel(CommandId.groveArchiveSession);
+  const revealed = selected || kbd;
   const stats = sessionStats(session.activity);
   const since = session.status === 'working' ? session.activity.turnStartedAt : null;
   const worked = since === null ? session.activity.lastTurnMs : null;
@@ -217,9 +222,10 @@ export function SessionRow({
           void openRowMenu(session, groups);
         }}
         className={clsx(
-          'flex w-full flex-col gap-0.5 py-1.5 pr-7 text-left outline-none focus-visible:ring-1 focus-visible:ring-accent focus-visible:ring-inset',
+          'flex w-full flex-col gap-0.5 py-1.5 pr-7 text-left outline-none focus-visible:ring-1 focus-visible:ring-accent focus-visible:ring-inset group-hover/row:pr-36 group-focus-within/row:pr-36',
           helper ? 'pl-7' : 'pl-3',
           selected ? 'bg-bg-muted' : 'hover:bg-bg-muted/60',
+          revealed && 'pr-36',
           kbd && 'ring-1 ring-inset ring-accent',
         )}
       >
@@ -248,17 +254,85 @@ export function SessionRow({
           {session.line}
         </span>
       </button>
-      <button
-        type="button"
-        aria-label={`${session.name} actions`}
-        data-testid="grove-row-menu"
-        tabIndex={-1}
-        onClick={() => void openRowMenu(session, groups)}
-        className="absolute top-1.5 right-1 flex h-5 w-5 items-center justify-center rounded text-fg-subtle opacity-0 group-hover/row:opacity-100 hover:bg-bg hover:text-fg focus-visible:opacity-100"
+      <div
+        className={clsx(
+          'absolute top-1 right-0.5 flex items-center gap-0.5',
+          revealed
+            ? 'opacity-100'
+            : 'pointer-events-none opacity-0 group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100',
+        )}
       >
-        <MoreHorizontal size={12} />
-      </button>
+        {session.archivedAt === null && (
+          <RowAction
+            testId="grove-row-stop"
+            label="Stop"
+            chord={stopKey}
+            danger
+            onClick={() => void stopSession(session.id)}
+          >
+            <Square size={9} fill="currentColor" />
+          </RowAction>
+        )}
+        {session.archivedAt === null && (
+          <RowAction
+            testId="grove-row-archive"
+            label="Archive"
+            chord={archiveKey}
+            onClick={() => archiveSession(session.id)}
+          >
+            <Archive size={11} />
+          </RowAction>
+        )}
+        <button
+          type="button"
+          aria-label={`${session.name} actions`}
+          data-testid="grove-row-menu"
+          tabIndex={-1}
+          onClick={() => void openRowMenu(session, groups)}
+          className="flex h-5 w-5 items-center justify-center rounded text-fg-subtle hover:bg-bg hover:text-fg"
+        >
+          <MoreHorizontal size={12} />
+        </button>
+      </div>
     </li>
+  );
+}
+
+function RowAction({
+  testId,
+  label,
+  chord,
+  danger = false,
+  onClick,
+  children,
+}: {
+  testId: string;
+  label: string;
+  chord: string | undefined;
+  danger?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  const hint = chord ? `${label} (${chord})` : label;
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      tabIndex={-1}
+      title={hint}
+      aria-label={hint}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      className={clsx(
+        'flex h-5 shrink-0 items-center gap-1 rounded px-1 text-fg-subtle hover:bg-bg hover:text-fg',
+        danger && 'hover:text-danger',
+      )}
+    >
+      {children}
+      {chord && <kbd className="font-mono text-[9px] leading-none tracking-tight">{chord}</kbd>}
+    </button>
   );
 }
 

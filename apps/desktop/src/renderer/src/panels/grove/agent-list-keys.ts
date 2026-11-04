@@ -22,7 +22,7 @@ export interface AgentListKeyOptions {
 
 function rowSelector(rowTestId: AgentListKeyOptions['rowTestId']): string {
   return rowTestId === 'grove-row'
-    ? '[data-testid="grove-row"], [data-testid="grove-row-menu"]'
+    ? '[data-testid="grove-row"], [data-testid="grove-row-stop"], [data-testid="grove-row-archive"], [data-testid="grove-row-menu"]'
     : '[data-testid="grove-rail-row"]';
 }
 

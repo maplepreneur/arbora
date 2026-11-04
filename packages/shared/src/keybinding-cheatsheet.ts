@@ -21,9 +21,10 @@ export interface KeybindingCheatRow {
 }
 
 /**
- * One row per command that currently has a chord, in command-table order. Unbound commands are
- * skipped. Built from the command list and `resolveKeybindingSpecs`, so a new default shows up
- * without a second handwritten list. User and project overrides are the same layers the app uses.
+ * One row per chord that currently fires a command, in command-table order. Unbound commands are
+ * skipped. A command with an extra default chord gets a row for each. Built from the command list
+ * and `resolveKeybindingSpecs`, so a new default shows up without a second handwritten list. User
+ * and project overrides are the same layers the app uses.
  */
 export function keybindingCheatRows(
   commands: readonly CommandDescriptor[],

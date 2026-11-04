@@ -12,7 +12,6 @@ import {
   applySettingsPatch,
   addRecentProject,
   buildProjectLibrary,
-  CommandId,
   commitMessagePrompt,
   detectInstallKind,
   parseGeneratedText,
@@ -466,13 +465,9 @@ function main(): void {
       if (target === undefined) return { opened: false };
       try {
         if (onThisWindow) {
-          const { focusedElsewhere } = manager.openOnThisWindow(target, from);
-          if (focusedElsewhere) {
-            if (url) focusedElsewhere.browser?.navigate(url);
-            sendEvent(focusedElsewhere.contents, 'command.invoke', { commandId: CommandId.showBrowserWorkspace });
-            return { opened: true, focusedElsewhere: true };
-          }
+          manager.openOnThisWindow(target, from);
           await from.whenBrowserReady();
+          if (url) from.browser?.navigate(url);
           return { opened: true };
         }
         manager.openProject(target, from);

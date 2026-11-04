@@ -214,6 +214,20 @@ describe('KeybindingTable', () => {
     expect(table.match(close, idle)?.commandId).toBe(CommandId.editorCloseTab);
     expect(table.match(close, browser)?.commandId).toBe(CommandId.editorCloseTab);
     expect(table.match(close, grove)).toMatchObject({ commandId: CommandId.groveArchiveSession, intercept: true });
+    expect(table.match(parseChord('alt+a', 'linux'), grove)).toMatchObject({
+      commandId: CommandId.groveArchiveSession,
+      intercept: true,
+    });
+    expect(table.match(parseChord('alt+a', 'linux'), browser)).toBeUndefined();
+    expect(table.match(parseChord('alt+s', 'linux'), grove)).toMatchObject({
+      commandId: CommandId.groveStopSession,
+      intercept: true,
+    });
+    expect(table.match(parseChord('alt+s', 'linux'), browser)).toBeUndefined();
+    const overridden = build('linux', { [CommandId.groveArchiveSession]: 'mod+shift+w' }).table;
+    expect(overridden.match(parseChord('alt+a', 'linux'), grove)).toBeUndefined();
+    expect(overridden.match(close, grove)?.commandId).toBe(CommandId.editorCloseTab);
+    expect(overridden.match(parseChord('ctrl+shift+w', 'linux'), grove)?.commandId).toBe(CommandId.groveArchiveSession);
     const mac = build('darwin').table;
     expect(mac.match(parseChord('cmd+w', 'darwin'), browser)?.commandId).toBe(CommandId.editorCloseTab);
     expect(mac.match(parseChord('cmd+shift+a', 'darwin'), grove)?.commandId).toBe(CommandId.groveFocusAgents);

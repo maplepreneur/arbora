@@ -30,6 +30,34 @@ export function modeControl(state: Pick<ThreadState, 'configOptions' | 'modes'>)
 
 const THINKING_NAME = /think|reason|effort/i;
 
+export type SessionControlRole = 'mode' | 'effort' | 'other';
+
+/** Mode and effort stay named that way when the agent calls the option something else. */
+export function sessionControlRole(
+  optionId: string,
+  mode: ModeControl | null,
+  thinking: ThinkingControl | null,
+): SessionControlRole {
+  if (mode?.kind === 'config' && mode.option.id === optionId) return 'mode';
+  if (thinking?.option.id === optionId) return 'effort';
+  return 'other';
+}
+
+export function sessionControlLabel(name: string, role: SessionControlRole): string {
+  switch (role) {
+    case 'mode':
+      return 'Mode';
+    case 'effort':
+      return 'Effort';
+    case 'other':
+      return name;
+    default: {
+      const unreachable: never = role;
+      return unreachable;
+    }
+  }
+}
+
 export function thinkingControl(state: Pick<ThreadState, 'configOptions'>): ThinkingControl | null {
   const options = state.configOptions;
   const byCategory = options.find((o) => o.category === 'thought_level');

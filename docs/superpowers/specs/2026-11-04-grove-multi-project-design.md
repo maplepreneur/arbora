@@ -111,14 +111,14 @@ The footer of the pane shows the selection's status word and its agent name or s
 
 The title-bar Browser / Grove switch stays. Choosing **Browser** while Grove has a selection:
 
-1. If some other window already has that project open, focus it. This window stays on Grove.
-2. Otherwise this window opens that project (`ProjectWindow` attaches the existing runtime, then starts the browser, files and git for it) and sets `workspace` to `browser`.
+1. This window switches onto that project. A page it already showed for the folder, or a page another window was showing, is attached here without loading again. The other window is not focused.
+2. Files and git for the folder start on this window, and the runtime that Grove already holds is attached. `workspace` becomes `browser`.
 
 Choosing **Browser** with no Grove selection switches this window to the browser workspace for whatever project it already has open, or the projects page when it has none.
 
 Choosing **Grove** does what it does today, and the Grove list is the machine-wide `settings.grove.projects`, not "the project this window had open". Entering Grove does not add the window's project to that list.
 
-`Mod+Alt+G` keeps toggling. `Mod+K` and `Mod+D` keep switching to the browser workspace first and then entering the mode, for the project the Browser segment would open.
+`Mod+Alt+G` keeps toggling. `Mod+K` and `Mod+D` switch this window to the browser workspace for the selected project and then enter the mode. They do not open or focus another window. Switching back shows the same page.
 
 ## Renderer state
 

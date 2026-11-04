@@ -201,8 +201,8 @@ export function groveSelectedProjectPath(): string | null {
 }
 
 /**
- * Grove → browser. Opens the project selected in Grove on this window, then shows the browser.
- * A window that already has that folder is focused instead, and this one stays where it is.
+ * Grove → browser. Switches this window onto the project selected in Grove, then shows the browser.
+ * A page that window already has for the folder is shown again. Another window does not take focus.
  */
 export async function showBrowserForGroveSelection(): Promise<boolean> {
   const selected = groveSelectedProjectPath();

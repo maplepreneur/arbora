@@ -11,6 +11,11 @@ export interface CommandDescriptor {
   readonly category?: string;
   /** Default chord, e.g. `mod+k`. Users override it in settings or `.arbora/project.json`. */
   readonly keybinding?: string;
+  /**
+   * More default chords for the same command. A user or project override replaces the whole set
+   * with that one chord. Labels show `keybinding`, not these.
+   */
+  readonly extraKeybindings?: readonly string[];
   readonly when?: KeybindingWhen;
   /** Handle in main via `before-input-event` so it wins over the embedded page and terminal. */
   readonly intercept?: boolean;
@@ -514,11 +519,19 @@ export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
     id: CommandId.groveArchiveSession,
     title: 'Archive Agent',
     category: 'Grove',
-    keybinding: 'mod+w',
+    keybinding: 'alt+a',
+    extraKeybindings: ['mod+w'],
     when: 'grove',
     intercept: true,
   },
-  { id: CommandId.groveStopSession, title: 'Stop Agent Process', category: 'Grove', when: 'grove', intercept: true },
+  {
+    id: CommandId.groveStopSession,
+    title: 'Stop Agent Process',
+    category: 'Grove',
+    keybinding: 'alt+s',
+    when: 'grove',
+    intercept: true,
+  },
   { id: CommandId.groveRestartSession, title: 'Restart Agent', category: 'Grove', when: 'grove', intercept: true },
   { id: CommandId.groveRenameSession, title: 'Rename Agent…', category: 'Grove', when: 'grove', intercept: true },
   {
@@ -590,19 +603,17 @@ export function resolveKeybindingSpecs(
   const specs: KeybindingSpec[] = [];
   for (const command of commands) {
     let binding: string | null | undefined = command.keybinding;
+    let extras: readonly string[] = command.extraKeybindings ?? [];
     for (const layer of overrideLayers) {
       if (layer && Object.hasOwn(layer, command.id)) {
         binding = layer[command.id];
+        extras = [];
       }
     }
-    if (binding) {
-      specs.push({
-        commandId: command.id,
-        binding,
-        when: command.when ?? 'always',
-        intercept: command.intercept ?? false,
-      });
-    }
+    const when = command.when ?? 'always';
+    const intercept = command.intercept ?? false;
+    if (binding) specs.push({ commandId: command.id, binding, when, intercept });
+    for (const extra of extras) specs.push({ commandId: command.id, binding: extra, when, intercept });
   }
   return specs;
 }

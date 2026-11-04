@@ -258,8 +258,8 @@ export const channels = {
   'project.getCurrent': defineChannel('project.getCurrent', none, projectInfoSchema.nullable()),
   /**
    * Opens `path`, or shows the native folder dialog when omitted.
-   * `onThisWindow` attaches that folder on the calling window (the shared runtime, not a second one).
-   * A window that already has it is focused instead; `url` is then loaded in that window's browser.
+   * `onThisWindow` switches the calling window onto that folder. Its page comes along if this
+   * window, or another one, already had it open. `focusedElsewhere` stays unused.
    */
   'project.open': defineChannel(
     'project.open',

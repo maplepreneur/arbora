@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Bot,
   Cpu,
+  Gauge,
   KeyRound,
   List,
   Loader2,
@@ -12,10 +13,17 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Square,
+  type LucideIcon,
 } from 'lucide-react';
 import { CommandId, type SessionConfigOption, type ThreadSummary } from '@arbora/shared';
 import { useChordLabel } from '../../keybindings';
-import { modeControl, thinkingControl } from '../../thread-controls';
+import {
+  modeControl,
+  sessionControlLabel,
+  sessionControlRole,
+  type SessionControlRole,
+  thinkingControl,
+} from '../../thread-controls';
 import { Picker, type PickerOption } from '../../components/Picker';
 import { showToast, useApp } from '../../store';
 import { isStoppable, showThreads, stopAgent, toggleLog, useAgents } from '../../agent-store';
@@ -204,12 +212,10 @@ export default function ThreadView({
           className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border px-2 py-1"
           data-testid="session-controls"
         >
-          <span className="mr-1 max-w-[30%] truncate text-[11px] text-fg-subtle" data-testid="thread-agent">
-            {agentName}
-          </span>
           {state.modes && state.modes.availableModes.length > 0 && (
             <Picker
               label="Mode"
+              showLabel
               icon={Bot}
               testId="mode-select"
               menuWidth={240}
@@ -230,6 +236,7 @@ export default function ThreadView({
           {modelOption && (
             <Picker
               label="Model"
+              showLabel
               icon={Cpu}
               testId="model-select"
               favorites={favoriteModels}
@@ -254,12 +261,15 @@ export default function ThreadView({
               }
             />
           )}
-          {otherOptions.map((option) =>
-            option.type === 'select' ? (
+          {otherOptions.map((option) => {
+            const role = sessionControlRole(option.id, mode, thinking);
+            const label = sessionControlLabel(option.name, role);
+            return option.type === 'select' ? (
               <Picker
                 key={option.id}
-                label={option.name}
-                icon={SlidersHorizontal}
+                label={label}
+                showLabel
+                icon={sessionControlIcon(role)}
                 className="max-w-[45%]"
                 testId={`config-${option.id}`}
                 openRequest={modeMenuFor(option.id)}
@@ -292,10 +302,11 @@ export default function ThreadView({
                     )
                   }
                 />
-                {option.name}
+                {role === 'effort' && <Gauge size={12} className="shrink-0 text-fg-subtle" />}
+                {label}
               </label>
-            ),
-          )}
+            );
+          })}
           <button
             type="button"
             title={
@@ -366,13 +377,28 @@ export default function ThreadView({
             hints={[
               mode && cycleModeKey ? `${cycleModeKey} mode` : null,
               modelOption && modelKey ? `${modelKey} model` : null,
-              thinking && thinkingKey ? `${thinkingKey} thinking` : null,
+              thinking && thinkingKey ? `${thinkingKey} effort` : null,
             ]}
           />
         </>
       )}
     </div>
   );
+}
+
+function sessionControlIcon(role: SessionControlRole): LucideIcon {
+  switch (role) {
+    case 'mode':
+      return Bot;
+    case 'effort':
+      return Gauge;
+    case 'other':
+      return SlidersHorizontal;
+    default: {
+      const unreachable: never = role;
+      return unreachable;
+    }
+  }
 }
 
 /** One quiet line under the composer naming the CLI-style keys this agent supports. */

@@ -27,6 +27,7 @@ const CHORDS: readonly ChordRow[] = [
   { ids: [CommandId.groveFocusAgents], text: 'Focus the agent list' },
   { ids: [CommandId.grovePreviousSession, CommandId.groveNextSession], text: 'Previous or next agent' },
   { ids: [CommandId.agentShowAttention], text: 'The agent that needs you' },
+  { ids: [CommandId.groveStopSession], text: 'Stop the selected agent' },
   { ids: [CommandId.groveArchiveSession], text: 'Archive the selected agent' },
   { ids: [CommandId.toggleSidebar], text: 'Hide or show the list' },
   { ids: [CommandId.focusPanelLeft, CommandId.focusPanelRight], text: 'Move between the list and the composer' },

@@ -75,6 +75,7 @@ function PaneHeader({ session, model }: { session: GroveSession; model: GroveMod
   const renaming = useGrove((s) => s.renamingId === session.id);
   const logOpen = useAgents((s) => s.logOpen);
   const archiveKey = useChordLabel(CommandId.groveArchiveSession);
+  const stopKey = useChordLabel(CommandId.groveStopSession);
   const archived = session.archivedAt !== null;
   const running = hasProcess(session);
   return (
@@ -116,7 +117,7 @@ function PaneHeader({ session, model }: { session: GroveSession; model: GroveMod
           <button
             type="button"
             data-testid="grove-stop"
-            title="Stop the agent process. The session stays, and the next message starts it again."
+            title={`Stop the agent process${stopKey ? ` (${stopKey})` : ''}. The session stays, and the next message starts it again.`}
             aria-label="Stop the agent process"
             onClick={() => void stopSession(session.id)}
             className={clsx(iconButton, 'text-danger hover:text-danger')}
