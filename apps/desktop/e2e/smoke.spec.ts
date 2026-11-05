@@ -110,6 +110,13 @@ test.describe('Stage 0 smoke', () => {
       await focusChrome(page);
       await page.keyboard.press('ControlOrMeta+Shift+E');
       await expect(page.getByTestId('explorer-tree')).toBeVisible();
+      // The side column hides from its own header and comes back from the right column's strip.
+      const sideWidth = async (): Promise<number> => (await page.getByTestId('panel-side').boundingBox())?.width ?? 0;
+      await page.getByTestId('side-hide').click();
+      await expect.poll(sideWidth).toBe(0);
+      await page.getByTestId('side-show').click();
+      await expect.poll(sideWidth).toBeGreaterThan(100);
+      await expect(page.getByTestId('side-show')).toHaveCount(0);
 
       // Mod+B shows and hides the project tree, making room by closing Files when the window is full.
       const treeWidth = async (): Promise<number> => (await page.getByTestId('panel-tree').boundingBox())?.width ?? 0;
