@@ -73,7 +73,8 @@ async function screenshotMedian(page: Page): Promise<number> {
 }
 
 async function loadFixture(page: Page, url: string): Promise<void> {
-  await page.waitForSelector('[data-testid="workspace"]');
+  // The unified shell replaced the browser workspace root. `grove` mounts once a project is open.
+  await page.waitForSelector('[data-testid="grove"]');
   const result = await page.evaluate((target) => window.arbora.invoke('browser.navigate', { url: target }), url);
   expect(result.ok).toBe(true);
   await page.waitForTimeout(SETTLE_MS);
