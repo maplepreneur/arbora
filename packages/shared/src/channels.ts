@@ -747,6 +747,13 @@ export const events = {
     z.object({ commandId: z.string(), fromPage: z.boolean().optional() }),
   ),
   'browser.stateChanged': defineEvent('browser.stateChanged', navigationStateSchema),
+  /** The live page view gained or lost keyboard focus. False while the view is parked. */
+  'browser.pageFocused': defineEvent('browser.pageFocused', z.object({ focused: z.boolean() })),
+  /**
+   * A hidden page view had the keyboard. The renderer should put focus in the content pane
+   * when that tab is an error or empty state, so pane chords are not swallowed.
+   */
+  'browser.focusParked': defineEvent('browser.focusParked', z.object({})),
   /** New console/exception/network entries since the last event, batched. */
   'browser.problemsAdded': defineEvent('browser.problemsAdded', z.object({ entries: z.array(problemEntrySchema) })),
   'browser.problemsCleared': defineEvent('browser.problemsCleared', z.object({})),

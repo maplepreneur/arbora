@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject, type SyntheticEvent } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+  type SyntheticEvent,
+} from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -430,7 +438,44 @@ function modeBannerText(mode: ModeState, hasPage: boolean, changes: number, orig
   }
 }
 
-export default function BrowserPanel() {
+/** The page, frozen, so a DOM menu can float where the native view was. */
+function MenuFrame({ src, preset }: { src: string; preset: ViewportPresetId }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const measure = (): void => setSize({ width: element.clientWidth, height: element.clientHeight });
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const fit = fitViewport({ x: 0, y: 0, width: size.width, height: size.height }, preset);
+  return (
+    <div ref={ref} className="absolute inset-0 overflow-hidden" data-testid="content-menu-frame">
+      {size.width > 0 && size.height > 0 && (
+        <img
+          alt=""
+          src={src}
+          draggable={false}
+          className="pointer-events-none absolute select-none"
+          style={{ left: fit.rect.x, top: fit.rect.y, width: fit.rect.width, height: fit.rect.height }}
+        />
+      )}
+    </div>
+  );
+}
+
+export default function BrowserPanel({
+  menuPark = false,
+  menuFrame = null,
+}: {
+  /** Hide the native view while the content-pane + menu is open over the page. */
+  menuPark?: boolean;
+  /** PNG data URL captured before the view was parked. Kept briefly after the menu closes. */
+  menuFrame?: string | null;
+}) {
   const mode = useApp((s) => s.mode);
   const designChanges = useApp((s) => s.design.cursor);
   const showingOriginal = useApp((s) => s.design.showingOriginal);
@@ -448,7 +493,7 @@ export default function BrowserPanel() {
   const prompting = mode.kind === 'agent' && mode.phase === 'prompting' ? mode.selection : null;
   // Anything rendered in the viewport area (or over it, like the palette) needs the view hidden.
   // A hidden content pane must park the page. A zero-size view captures empty screenshots.
-  const hidden = empty || error !== null || paletteOpen || prompting !== null || contentHidden;
+  const hidden = empty || error !== null || paletteOpen || prompting !== null || contentHidden || menuPark;
   const preset = state?.preset ?? 'responsive';
   useViewBounds(viewportRef, hidden, preset);
 
@@ -488,6 +533,8 @@ export default function BrowserPanel() {
           <EmptyState devUrl={devUrl} />
         ) : prompting ? (
           <AgentModeLayer key={prompting.id} selection={prompting} preset={preset} />
+        ) : menuFrame ? (
+          <MenuFrame src={menuFrame} preset={preset} />
         ) : null}
       </div>
     </div>

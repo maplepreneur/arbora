@@ -84,6 +84,7 @@ export async function showSide(page: Page, view: keyof typeof SIDE_CHORDS): Prom
 export async function startAgent(page: Page, agentId: string): Promise<void> {
   await page.getByTestId('grove-new-choose').first().click();
   await page.getByTestId(`launcher-agent-${agentId}`).click();
+  await page.keyboard.press('Enter');
   await page.getByTestId('launcher-start').click();
   await expect(page.getByTestId('grove-launcher')).toHaveCount(0);
   await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', { timeout: 20_000 });

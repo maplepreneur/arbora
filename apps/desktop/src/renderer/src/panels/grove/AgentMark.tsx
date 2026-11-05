@@ -1,3 +1,6 @@
+import clsx from 'clsx';
+import { AgentLogo, isAgentLogoId } from './agent-logos';
+
 const CLI_AGENT: Readonly<Record<string, string>> = {
   'Claude Code': 'claude-code',
   Codex: 'codex',
@@ -25,17 +28,22 @@ export function agentIdForCliName(name: string): string | undefined {
   return CLI_AGENT[name];
 }
 
-/** Quiet monogram for an agent type. Grove has no bundled trademark art, so this is the shared mark. */
+/** Product logo for a built-in agent, or a letter monogram when that agent has no mark. */
 export function AgentMark({ name, agentId }: { name: string; agentId?: string | undefined }) {
+  const logoId = agentId !== undefined && isAgentLogoId(agentId) ? agentId : undefined;
   return (
     <span
       data-testid="agent-mark"
       data-agent={agentId}
+      data-logo={logoId !== undefined ? 'true' : 'false'}
       aria-hidden
       title={name}
-      className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-bg-muted text-[8px] font-semibold tracking-tight text-fg-subtle"
+      className={clsx(
+        'flex h-4 w-4 shrink-0 items-center justify-center rounded bg-bg-muted text-[8px] font-semibold tracking-tight',
+        logoId !== undefined ? 'text-fg' : 'text-fg-subtle',
+      )}
     >
-      {agentMonogram(name)}
+      {logoId !== undefined ? <AgentLogo agentId={logoId} /> : agentMonogram(name)}
     </span>
   );
 }

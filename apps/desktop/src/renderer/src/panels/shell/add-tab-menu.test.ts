@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { menuContentInset, placeTabMenu } from './add-tab-menu';
+import { CommandId, DEFAULT_COMMANDS } from '@arbora/shared';
+import { ADD_TABS, addTabCommand, placeTabMenu } from './add-tab-menu';
 
 const menu = { width: 176, height: 180 };
 const viewport = { width: 1200, height: 800 };
@@ -20,9 +21,20 @@ describe('placeTabMenu', () => {
   });
 });
 
-describe('menuContentInset', () => {
-  it('is the part of the menu that hangs below the tab strip', () => {
-    expect(menuContentInset(72, 252)).toBe(180);
-    expect(menuContentInset(72, 40)).toBe(0);
+describe('add tab commands', () => {
+  it('gives every row the command its shortcut runs', () => {
+    expect(ADD_TABS.map((item) => [item.id, item.command, addTabCommand(item.id)])).toEqual([
+      ['file', CommandId.quickOpen, CommandId.quickOpen],
+      ['terminal', CommandId.showTerminal, CommandId.showTerminal],
+      ['browser', CommandId.showBrowser, CommandId.showBrowser],
+      ['changes', CommandId.showGitPanel, CommandId.showGitPanel],
+      ['problems', CommandId.showProblems, CommandId.showProblems],
+    ]);
+    expect(ADD_TABS.map((item) => DEFAULT_COMMANDS.find((command) => command.id === item.command)?.keybinding)).toEqual(
+      ['mod+p', 'ctrl+`', 'mod+shift+l', 'mod+alt+g', 'mod+shift+m'],
+    );
+    for (const item of ADD_TABS) {
+      expect(DEFAULT_COMMANDS.find((command) => command.id === item.command)?.intercept).toBe(true);
+    }
   });
 });

@@ -569,6 +569,12 @@ export class ProjectWindow {
       designDocumentNavigated: () => {
         if (active()) void this.designMode?.onDocumentNavigated();
       },
+      pageFocused: (focused) => {
+        if (active()) sendEvent(this.contents, 'browser.pageFocused', { focused });
+      },
+      focusParked: () => {
+        if (active()) sendEvent(this.contents, 'browser.focusParked', {});
+      },
     };
   }
 

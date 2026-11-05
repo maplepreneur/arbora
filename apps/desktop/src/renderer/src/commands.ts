@@ -1,5 +1,6 @@
 import {
   baseName,
+  browserViewAcceptsFocus,
   CommandId,
   CommandRegistry,
   commandIdSchema,
@@ -51,6 +52,7 @@ import {
   cycleGroveProject,
   focusSessionList,
   openGroveSearch,
+  useGrove,
   stepProjectSwitch,
   resumeProjectSwitch,
   openLauncher,
@@ -619,6 +621,21 @@ const LANDMARK_SELECTOR = '[data-landmark]';
 const FOCUSABLE =
   'input:not([disabled]), textarea:not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
+/**
+ * The parked page had the keyboard (it failed to load, or the tab is empty). Focus the content
+ * pane's DOM so `Ctrl+Alt+Left`/`Right` and `Mod+1`..`9` keep working. A live page parked only
+ * for a menu or dialog is left alone; so is an open palette.
+ */
+export function reclaimFocusFromParkedPage(): void {
+  const { paletteOpen, overlay, browser } = useApp.getState();
+  const { searchOpen, launcherOpen, projectSwitch } = useGrove.getState();
+  if (paletteOpen || overlay !== null || searchOpen || launcherOpen || projectSwitch !== null) return;
+  if (browserViewAcceptsFocus(browser)) return;
+  const pane = document.querySelector<HTMLElement>('[data-landmark="center"]');
+  if (!pane || pane.contains(document.activeElement)) return;
+  focusWithin(pane);
+}
+
 /** Focuses a panel's `data-panel-focus` element (the file tree, the commit box), else its first control. */
 function focusWithin(target: HTMLElement): void {
   const visible = (el: HTMLElement): boolean => el.offsetParent !== null;
@@ -673,7 +690,7 @@ function focusPanelSoon(panel: WorkspacePanel): void {
         if (!settingsOpen && layout.rightView === 'editor' && useFiles.getState().active !== null)
           editorController()?.focus();
         else if (!settingsOpen && layout.rightView === 'terminal') focusActiveTerminal();
-        else if (!settingsOpen && layout.rightView === 'browser' && browser?.url)
+        else if (!settingsOpen && layout.rightView === 'browser' && browserViewAcceptsFocus(browser))
           void window.arbora.invoke('browser.action', { action: 'focusPage' });
         else if (landmark) focusWithin(landmark);
         return;

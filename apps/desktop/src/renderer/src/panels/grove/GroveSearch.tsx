@@ -182,7 +182,7 @@ function GroveSearchOpen() {
                   value={`inbox ${row.name} ${row.projectName} ${row.threadId}`}
                   mark={
                     <span className="flex items-center gap-1.5">
-                      <AgentMark name={row.name} />
+                      <AgentMark name={row.name} agentId={row.agentId} />
                       <StatusDot status={row.status} />
                     </span>
                   }

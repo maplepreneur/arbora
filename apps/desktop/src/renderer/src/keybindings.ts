@@ -5,10 +5,12 @@ import {
   formatChord,
   isModifierKey,
   KeybindingTable,
+  nextContentPaneFocus,
   resolveKeybindingSpecs,
 } from '@arbora/shared';
 import { executeCommand } from './commands';
 import { modeActive } from './mode';
+import { browserPageFocused, focusedShellLandmark, subscribeBrowserPageFocus } from './shell-focus';
 import { useApp } from './store';
 
 export function useKeybindingTable(): KeybindingTable {
@@ -60,20 +62,22 @@ let activeTable: KeybindingTable | null = null;
 const AGENT_THREAD_SELECTOR = '[data-testid="panel-chat"]';
 
 /**
- * Stays true after the content pane's terminal unmounts (focus falls on `body`) so the next
- * Mod+1..9 still switches its tabs. Cleared when focus moves to the project tree or the chat.
+ * Stays true after the content pane's terminal unmounts (focus falls on `body`), and after the
+ * live page had the keyboard, so the next Mod+1..9 still switches its tabs. Cleared when focus
+ * moves to the project tree or the chat. An error or empty browser counts once its DOM is focused.
  */
 let contentPaneSticky = false;
 
 function contentPaneFocused(target: EventTarget | null, terminalFocused: boolean): boolean {
-  const element =
-    target instanceof Element ? target : document.activeElement instanceof Element ? document.activeElement : null;
-  const inTree = element?.closest('[data-landmark="tree"]') !== null && element !== null;
-  const inChat = element?.closest(AGENT_THREAD_SELECTOR) !== null && element !== null;
-  const inContent = (element?.closest('[data-landmark="center"]') !== null && element !== null) || terminalFocused;
-  if (element && (inTree || inChat)) contentPaneSticky = false;
-  else if (inContent) contentPaneSticky = true;
-  return inContent || contentPaneSticky;
+  const decision = nextContentPaneFocus({
+    landmark: focusedShellLandmark(target),
+    terminalFocused,
+    pageFocused: browserPageFocused(),
+    documentFocused: document.hasFocus(),
+    sticky: contentPaneSticky,
+  });
+  contentPaneSticky = decision.sticky;
+  return decision.contentFocused;
 }
 
 /**
@@ -121,7 +125,11 @@ export function useKeybindingContextSync(): void {
     };
     update();
     document.addEventListener('focusin', update);
-    return () => document.removeEventListener('focusin', update);
+    const unsubscribe = subscribeBrowserPageFocus(update);
+    return () => {
+      document.removeEventListener('focusin', update);
+      unsubscribe();
+    };
   }, [terminalFocused]);
   useEffect(() => {
     void window.arbora.invoke('keybindings.setContext', {

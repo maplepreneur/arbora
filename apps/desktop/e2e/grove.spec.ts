@@ -225,6 +225,7 @@ test.describe('Stage 10 Grove', () => {
       const launcher = page.getByTestId('grove-launcher');
       await expect(launcher).toBeVisible();
       await expect(page.getByTestId(`launcher-agent-${FAKE_ID}`)).toHaveAttribute('data-active', 'true');
+      await page.keyboard.press('Enter');
       const task = page.getByTestId('launcher-task');
       await expect(task).toBeFocused();
       await page.getByTestId('launcher-default').check();

@@ -1,4 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { flushSync } from 'react-dom';
 import {
   GitCompare,
   Globe,
@@ -16,11 +17,13 @@ import { EditorTabButtons } from '../../components/EditorTabButtons';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { allDiagnostics, showBrowserTab, useFiles } from '../../files-store';
 import { useChordLabel } from '../../keybindings';
+import { useShellFocusPane } from '../../shell-focus';
+import { useGrove } from '../../grove-store';
 import { closeRightPanel, showRightView, useApp } from '../../store';
 import { useTerminals } from '../../terminal-store';
 import { TerminalTabButtons } from '../terminal/TerminalTabs';
 import { AddTabButton } from './AddTabButton';
-import { menuContentInset, type AddTabId } from './add-tab-menu';
+import { addTabCommand, type AddTabId } from './add-tab-menu';
 
 const BrowserPanel = lazy(() => import('../BrowserPanel'));
 const TerminalPanel = lazy(() => import('../TerminalPanel'));
@@ -112,25 +115,20 @@ function useStripScroll(ref: RefObject<HTMLDivElement | null>, key: string): voi
 }
 
 function chooseAddTab(id: AddTabId): void {
-  switch (id) {
-    case 'file':
-      useFiles.setState({ quickOpen: true });
-      return;
-    case 'terminal':
-      executeCommand(CommandId.terminalNew);
-      return;
-    case 'browser':
-      showBrowserTab();
-      return;
-    case 'changes':
-    case 'problems':
-      showRightView(id);
-      return;
-    default: {
-      const unreachable: never = id;
-      return unreachable;
-    }
-  }
+  executeCommand(addTabCommand(id));
+}
+
+/** A loaded page is on screen, so the native view would cover a DOM menu. */
+function livePageUnderMenu(): boolean {
+  const { project, settingsOpen, layout, browser, paletteOpen, overlay, mode } = useApp.getState();
+  const { searchOpen, launcherOpen, projectSwitch } = useGrove.getState();
+  if (!project || settingsOpen || layout.contentHidden || paletteOpen || overlay !== null) return false;
+  if (searchOpen || launcherOpen || projectSwitch !== null) return false;
+  if (mode.kind === 'agent' && mode.phase === 'prompting') return false;
+  const editorActive = useFiles.getState().active !== null;
+  const showingBrowser = layout.rightView === 'browser' || (layout.rightView === 'editor' && !editorActive);
+  if (!showingBrowser) return false;
+  return browser !== null && Boolean(browser.url) && browser.error === null;
 }
 
 interface ColumnControls {
@@ -145,9 +143,9 @@ function Strip({
   onToggleMaximize,
   sideOpen,
   onToggleSide,
-  coverBrowser,
-  onInset,
-}: ColumnControls & { coverBrowser: boolean; onInset: (px: number) => void }) {
+  onBeforeOpen,
+  onOpenChange,
+}: ColumnControls & { onBeforeOpen: () => Promise<void>; onOpenChange: (open: boolean) => void }) {
   const view = useApp((s) => s.layout.rightView);
   const panels = useApp((s) => s.layout.rightPanels);
   const terminalTab = useTerminals((s) => s.activeTabId);
@@ -157,23 +155,11 @@ function Strip({
   const sideChord = useChordLabel(CommandId.toggleSideColumn);
   const showSideLabel = `Show files, source control and search${sideChord ? ` (${sideChord})` : ''}`;
   const ref = useRef<HTMLDivElement>(null);
-  const stripRef = useRef<HTMLDivElement>(null);
   useStripScroll(ref, `${view}:${terminalTab ?? ''}:${editorTab ?? ''}`);
   const maximizeLabel = `${maximized ? 'Restore columns' : 'Maximize'}${maximizeChord ? ` (${maximizeChord})` : ''}`;
   const hideLabel = `Hide content pane${hideChord ? ` (${hideChord})` : ''}`;
-  const onFrame = useCallback(
-    (bottom: number | null): void => {
-      if (bottom === null || !coverBrowser) {
-        onInset(0);
-        return;
-      }
-      const stripBottom = stripRef.current?.getBoundingClientRect().bottom ?? bottom;
-      onInset(menuContentInset(stripBottom, bottom));
-    },
-    [coverBrowser, onInset],
-  );
   return (
-    <div ref={stripRef} className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-1.5">
+    <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-1.5">
       <div
         ref={ref}
         role="tablist"
@@ -207,7 +193,7 @@ function Strip({
           </StripTab>
         )}
       </div>
-      <AddTabButton onChoose={chooseAddTab} onFrame={onFrame} />
+      <AddTabButton onChoose={chooseAddTab} onBeforeOpen={onBeforeOpen} onOpenChange={onOpenChange} />
       <button
         type="button"
         aria-label={hideLabel}
@@ -245,16 +231,16 @@ function Strip({
   );
 }
 
-function Content() {
+function Content({ menuPark, menuFrame }: { menuPark: boolean; menuFrame: string | null }) {
   const view = useApp((s) => s.layout.rightView);
   const editorActive = useFiles((s) => s.active !== null);
   switch (view) {
     case 'browser':
-      return <BrowserPanel />;
+      return <BrowserPanel menuPark={menuPark} menuFrame={menuFrame} />;
     case 'terminal':
       return <TerminalPanel />;
     case 'editor':
-      return editorActive ? <EditorPanel /> : <BrowserPanel />;
+      return editorActive ? <EditorPanel /> : <BrowserPanel menuPark={menuPark} menuFrame={menuFrame} />;
     case 'changes':
       return <GitPanel variant="panel" />;
     case 'problems':
@@ -271,26 +257,69 @@ function Content() {
  * in one tab strip. Hidden behind Settings, so the native page view comes down with it.
  */
 export function ContentPane(controls: ColumnControls) {
+  const keyboardFocus = useShellFocusPane() === 'center' ? 'true' : undefined;
   const project = useApp((s) => s.project);
   const settingsOpen = useApp((s) => s.settingsOpen);
-  const view = useApp((s) => s.layout.rightView);
-  const editorActive = useFiles((s) => s.active !== null);
-  const [inset, setInset] = useState(0);
-  const coverBrowser =
-    project !== null && !settingsOpen && (view === 'browser' || (view === 'editor' && !editorActive));
+  const [menuPark, setMenuPark] = useState(false);
+  const [menuFrame, setMenuFrame] = useState<string | null>(null);
+  const frameToken = useRef(0);
+  const alive = useRef(true);
+  useEffect(
+    () => () => {
+      alive.current = false;
+    },
+    [],
+  );
+  const beforeOpen = async (): Promise<void> => {
+    frameToken.current += 1;
+    if (!livePageUnderMenu()) {
+      setMenuPark(false);
+      setMenuFrame(null);
+      return;
+    }
+    let frame = '';
+    try {
+      const shot = await window.arbora.invoke('browser.screenshot', { mode: 'viewport' });
+      frame = `data:image/png;base64,${shot.pngBase64}`;
+    } catch {
+      frame = '';
+    }
+    if (!alive.current) return;
+    // Capture happened while the view was still visible. Park it before the menu paints.
+    flushSync(() => {
+      setMenuPark(true);
+      setMenuFrame(frame.length > 0 ? frame : null);
+    });
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+  };
+  const onOpenChange = (open: boolean): void => {
+    if (open) return;
+    setMenuPark(false);
+    const token = ++frameToken.current;
+    // The live view paints over the still image; drop the image once that has had a frame.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        if (frameToken.current === token) setMenuFrame(null);
+      }),
+    );
+  };
   return (
     <section
       data-testid="panel-content"
       data-landmark="center"
+      data-keyboard-focus={keyboardFocus}
+      tabIndex={-1}
       aria-label="Content pane"
       className="flex h-full min-w-0 flex-col bg-bg"
     >
-      <Strip {...controls} coverBrowser={coverBrowser} onInset={setInset} />
-      <div className="min-h-0 flex-1" style={inset > 0 ? { paddingTop: inset } : undefined}>
+      <Strip {...controls} onBeforeOpen={beforeOpen} onOpenChange={onOpenChange} />
+      <div className="min-h-0 flex-1">
         {project && !settingsOpen ? (
           <ErrorBoundary label="Project tab">
             <Suspense fallback={<div className="h-full bg-bg" />}>
-              <Content />
+              <Content menuPark={menuPark} menuFrame={menuFrame} />
             </Suspense>
           </ErrorBoundary>
         ) : (
