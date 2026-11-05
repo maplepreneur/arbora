@@ -143,6 +143,14 @@ test.describe('Stage 2 terminal panel', () => {
 
       await page.getByTestId('terminal-new').click();
       await expect(page.getByTestId('terminal-tab')).toHaveCount(2);
+      // Mod+Alt+1..9 pick the right column's tabs, even from inside a terminal: 1 is Browser, 9 the last.
+      await page.keyboard.press('ControlOrMeta+Alt+1');
+      await expect(page.getByTestId('right-tab-browser')).toHaveAttribute('aria-selected', 'true');
+      await page.keyboard.press('ControlOrMeta+Alt+2');
+      await expect(page.getByTestId('terminal-tab').first()).toHaveAttribute('aria-selected', 'true');
+      await expect(textarea).toBeFocused();
+      await page.keyboard.press('ControlOrMeta+Alt+9');
+      await expect(page.getByTestId('terminal-tab').last()).toHaveAttribute('aria-selected', 'true');
       await page.getByTestId('terminal-split').click();
       await expect(page.getByTestId('terminal-tab')).toHaveCount(2);
       await expect(page.getByTestId('terminal-pane')).toHaveCount(2);

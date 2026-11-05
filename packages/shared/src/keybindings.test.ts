@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_COMMANDS, CommandId, resolveKeybindingSpecs } from './commands.js';
+import { DEFAULT_COMMANDS, CommandId, resolveKeybindingSpecs, rightTabIndex } from './commands.js';
 import {
   ChordParseError,
   chordFromInput,
@@ -177,6 +177,14 @@ describe('KeybindingTable', () => {
       CommandId.toggleMaximizeRight,
     );
     expect(table.match(parseChord('ctrl+alt+g', 'linux'), grove)).toBeUndefined();
+    // Mod+Alt+1..9 pick the right column's tabs, from the terminal too; Mod+1..9 stay agents.
+    expect(table.match(parseChord('ctrl+alt+1', 'linux'), grove)?.commandId).toBe(CommandId.rightTab1);
+    expect(table.match(parseChord('ctrl+alt+9', 'linux'), { ...grove, terminalFocused: true })?.commandId).toBe(
+      CommandId.rightTab9,
+    );
+    expect(table.match(parseChord('ctrl+1', 'linux'), grove)?.commandId).toBe(CommandId.groveSelectSession1);
+    expect(rightTabIndex(CommandId.rightTab2)).toBe(1);
+    expect(rightTabIndex(CommandId.rightTab9)).toBe(-1);
     const newTerminal = parseChord('ctrl+shift+t', 'linux');
     expect(CommandId.groveNewTerminal).toBe('arbora.grove.newTerminal');
     expect(table.match(newTerminal, idle)).toBeUndefined();

@@ -1,9 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { placeTooltip } from '../tooltip-place';
 import { splitTooltip } from '../tooltip-text';
 
 const SHOW_DELAY_MS = 350;
-const GAP = 6;
-const MARGIN = 8;
 
 interface Tip {
   readonly text: string;
@@ -77,6 +76,11 @@ export function Tooltips() {
   return tip ? <TooltipBubble tip={tip} /> : null;
 }
 
+/** The browser page's box. It is a native view drawn above the DOM, so a tooltip over it is hidden. */
+function pageRect(): DOMRect | null {
+  return document.querySelector('[data-testid="browser-viewport"]')?.getBoundingClientRect() ?? null;
+}
+
 function TooltipBubble({ tip }: { tip: Tip }) {
   const ref = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
@@ -86,12 +90,9 @@ function TooltipBubble({ tip }: { tip: Tip }) {
     const bubble = ref.current;
     if (!bubble) return;
     const { width, height } = bubble.getBoundingClientRect();
-    const { anchor } = tip;
-    const below = anchor.bottom + GAP;
-    const top = below + height + MARGIN <= window.innerHeight ? below : Math.max(MARGIN, anchor.top - GAP - height);
-    const centered = anchor.left + anchor.width / 2 - width / 2;
-    const left = Math.min(Math.max(MARGIN, centered), window.innerWidth - width - MARGIN);
-    setPosition({ left, top });
+    setPosition(
+      placeTooltip(tip.anchor, width, height, pageRect(), { width: window.innerWidth, height: window.innerHeight }),
+    );
   }, [tip]);
 
   return (

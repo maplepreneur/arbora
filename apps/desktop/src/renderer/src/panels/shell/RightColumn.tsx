@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, type ReactNode, type RefObject } from 'react';
-import { GitCompare, Globe, Maximize2, Minimize2, Plus, TriangleAlert, X } from 'lucide-react';
+import { GitCompare, Globe, Maximize2, Minimize2, PanelRightOpen, Plus, TriangleAlert, X } from 'lucide-react';
 import clsx from 'clsx';
 import { CommandId } from '@arbora/shared';
 import { executeCommand } from '../../commands';
@@ -130,12 +130,21 @@ async function openAddMenu(): Promise<void> {
   }
 }
 
-function Strip({ maximized, onToggleMaximize }: { maximized: boolean; onToggleMaximize: () => void }) {
+interface ColumnControls {
+  maximized: boolean;
+  onToggleMaximize: () => void;
+  sideOpen: boolean;
+  onToggleSide: () => void;
+}
+
+function Strip({ maximized, onToggleMaximize, sideOpen, onToggleSide }: ColumnControls) {
   const view = useApp((s) => s.layout.rightView);
   const panels = useApp((s) => s.layout.rightPanels);
   const terminalTab = useTerminals((s) => s.activeTabId);
   const editorTab = useFiles((s) => s.active);
   const maximizeChord = useChordLabel(CommandId.toggleMaximizeRight);
+  const sideChord = useChordLabel(CommandId.toggleSideColumn);
+  const showSideLabel = `Show files, source control and search${sideChord ? ` (${sideChord})` : ''}`;
   const ref = useRef<HTMLDivElement>(null);
   useStripScroll(ref, `${view}:${terminalTab ?? ''}:${editorTab ?? ''}`);
   const maximizeLabel = `${maximized ? 'Restore columns' : 'Maximize'}${maximizeChord ? ` (${maximizeChord})` : ''}`;
@@ -195,6 +204,18 @@ function Strip({ maximized, onToggleMaximize }: { maximized: boolean; onToggleMa
       >
         {maximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
       </button>
+      {!sideOpen && (
+        <button
+          type="button"
+          aria-label={showSideLabel}
+          title={showSideLabel}
+          data-testid="side-show"
+          onClick={onToggleSide}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-fg-subtle hover:bg-bg-muted hover:text-fg"
+        >
+          <PanelRightOpen size={14} />
+        </button>
+      )}
     </div>
   );
 }
@@ -224,7 +245,7 @@ function Content() {
  * The selected project's tools: its page, terminals, open files and diffs, Changes and Problems,
  * in one tab strip. Hidden behind Settings, so the native page view comes down with it.
  */
-export function RightColumn({ maximized, onToggleMaximize }: { maximized: boolean; onToggleMaximize: () => void }) {
+export function RightColumn(controls: ColumnControls) {
   const project = useApp((s) => s.project);
   const settingsOpen = useApp((s) => s.settingsOpen);
   return (
@@ -234,7 +255,7 @@ export function RightColumn({ maximized, onToggleMaximize }: { maximized: boolea
       aria-label="Project tabs"
       className="flex h-full min-w-0 flex-col bg-bg"
     >
-      <Strip maximized={maximized} onToggleMaximize={onToggleMaximize} />
+      <Strip {...controls} />
       <div className="min-h-0 flex-1">
         {project && !settingsOpen ? (
           <ErrorBoundary label="Project tab">

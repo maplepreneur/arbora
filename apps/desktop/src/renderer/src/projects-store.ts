@@ -6,6 +6,7 @@ import {
   type ProjectLibrary,
   type ProjectMetaPatch,
 } from '@arbora/shared';
+import { focusGroveProject } from './grove-store';
 import { showToast, useApp } from './store';
 
 export const useProjects = create<{ library: ProjectLibrary; loaded: boolean }>()(() => ({
@@ -21,7 +22,12 @@ export async function loadLibrary(): Promise<void> {
   applyLibrary(await window.arbora.invoke('projects.library'));
 }
 
+/** Opens `path` on this window. With a project open, it switches like the tree does (design edits ask first). */
 export async function openProjectPath(path?: string): Promise<void> {
+  if (path !== undefined && useApp.getState().project) {
+    await focusGroveProject(path);
+    return;
+  }
   const result = await window.arbora.invoke('project.open', path === undefined ? {} : { path });
   if (result.error) showToast(result.error);
 }

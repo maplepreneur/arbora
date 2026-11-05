@@ -739,7 +739,11 @@ export const events = {
   /** The background git sync ran (`settings.git.autoSync`). */
   'git.synced': defineEvent('git.synced', gitSyncResultSchema),
   /** A chord intercepted in main (or a menu action) asks the renderer to run a command. */
-  'command.invoke': defineEvent('command.invoke', z.object({ commandId: z.string() })),
+  /** `fromPage`: the chord was pressed while the browser page had keyboard focus. */
+  'command.invoke': defineEvent(
+    'command.invoke',
+    z.object({ commandId: z.string(), fromPage: z.boolean().optional() }),
+  ),
   'browser.stateChanged': defineEvent('browser.stateChanged', navigationStateSchema),
   /** New console/exception/network entries since the last event, batched. */
   'browser.problemsAdded': defineEvent('browser.problemsAdded', z.object({ entries: z.array(problemEntrySchema) })),
