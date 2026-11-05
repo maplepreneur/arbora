@@ -326,12 +326,11 @@ function RowAction({
         onClick();
       }}
       className={clsx(
-        'flex h-5 shrink-0 items-center gap-1 rounded px-1 text-fg-subtle hover:bg-bg hover:text-fg',
+        'flex h-5 w-5 shrink-0 items-center justify-center rounded text-fg-subtle hover:bg-bg hover:text-fg',
         danger && 'hover:text-danger',
       )}
     >
       {children}
-      {chord && <kbd className="font-mono text-[9px] leading-none tracking-tight">{chord}</kbd>}
     </button>
   );
 }
