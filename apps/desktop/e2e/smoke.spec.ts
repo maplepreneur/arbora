@@ -18,7 +18,7 @@ test.describe('Stage 0 smoke', () => {
     const { app, page } = await launch(userData, [VITE_REACT]);
     try {
       await expect(page.getByTestId('title-project-name')).toHaveText('vite-react');
-      for (const id of ['panel-tree', 'panel-chat', 'panel-right', 'right-tab-browser', 'mode-pills']) {
+      for (const id of ['panel-tree', 'panel-chat', 'panel-content', 'content-tab-browser', 'mode-pills']) {
         await expect(page.getByTestId(id)).toBeVisible();
       }
       await expect(page.getByTestId('panel-side')).toBeAttached();
@@ -176,10 +176,10 @@ test.describe('Stage 0 smoke', () => {
       try {
         await focusChrome(page);
         await page.keyboard.press('ControlOrMeta+Shift+M');
-        await expect(page.getByTestId('right-tab-problems')).toHaveAttribute('aria-selected', 'true');
-        await page.getByTestId('right-maximize').click();
+        await expect(page.getByTestId('content-tab-problems')).toHaveAttribute('aria-selected', 'true');
+        await page.getByTestId('content-maximize').click();
         await expect.poll(() => width(page, 'panel-chat').catch(() => 0)).toBeLessThan(2);
-        await expect(page.getByTestId('right-maximize')).toHaveAttribute('aria-pressed', 'true');
+        await expect(page.getByTestId('content-maximize')).toHaveAttribute('aria-pressed', 'true');
         await page.waitForTimeout(600);
       } finally {
         await app.close();
@@ -188,11 +188,11 @@ test.describe('Stage 0 smoke', () => {
     {
       const { app, page } = await launch(userData, [VITE_REACT]);
       try {
-        await expect(page.getByTestId('right-tab-problems')).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByTestId('content-tab-problems')).toHaveAttribute('aria-selected', 'true');
         expect(await width(page, 'panel-chat').catch(() => 0)).toBeLessThan(2);
         await page.keyboard.press('ControlOrMeta+Alt+M');
         await expect.poll(() => width(page, 'panel-chat').catch(() => 0)).toBeGreaterThan(200);
-        await expect(page.getByTestId('right-maximize')).toHaveAttribute('aria-pressed', 'false');
+        await expect(page.getByTestId('content-maximize')).toHaveAttribute('aria-pressed', 'false');
         await page.waitForTimeout(600);
       } finally {
         await app.close();

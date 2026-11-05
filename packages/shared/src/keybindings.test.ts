@@ -178,11 +178,15 @@ describe('KeybindingTable', () => {
     );
     expect(table.match(parseChord('ctrl+alt+g', 'linux'), grove)).toBeUndefined();
     // Mod+Alt+1..9 pick the right column's tabs, from the terminal too; Mod+1..9 stay agents.
-    expect(table.match(parseChord('ctrl+alt+1', 'linux'), grove)?.commandId).toBe(CommandId.rightTab1);
-    expect(table.match(parseChord('ctrl+alt+9', 'linux'), { ...grove, terminalFocused: true })?.commandId).toBe(
+    const content = { ...grove, contentFocused: true };
+    expect(table.match(parseChord('ctrl+1', 'linux'), content)?.commandId).toBe(CommandId.rightTab1);
+    expect(table.match(parseChord('ctrl+9', 'linux'), { ...content, terminalFocused: true })?.commandId).toBe(
       CommandId.rightTab9,
     );
+    // The project tree keeps Grove's agent rows. The content pane does not steal them.
     expect(table.match(parseChord('ctrl+1', 'linux'), grove)?.commandId).toBe(CommandId.groveSelectSession1);
+    expect(table.match(parseChord('ctrl+k', 'linux'), content)?.commandId).toBe(CommandId.agentMode);
+    expect(table.match(parseChord('ctrl+k', 'linux'), grove)?.commandId).toBe(CommandId.agentMode);
     expect(rightTabIndex(CommandId.rightTab2)).toBe(1);
     expect(rightTabIndex(CommandId.rightTab9)).toBe(-1);
     const newTerminal = parseChord('ctrl+shift+t', 'linux');

@@ -39,14 +39,14 @@ export interface LaunchedApp {
  */
 export async function switchWorkspace(page: Page, kind: 'browser' | 'grove'): Promise<void> {
   await expect(page.getByTestId('grove')).toBeVisible();
-  if (kind === 'browser') await page.getByTestId('right-tab-browser').click();
+  if (kind === 'browser') await page.getByTestId('content-tab-browser').click();
 }
 
 /** Puts focus on the app chrome (not the page, a text field or a terminal) so chords reach the renderer. */
 export async function focusChrome(page: Page): Promise<void> {
   const chat = page.getByTestId('panel-chat');
   if ((await chat.boundingBox())?.width) await chat.click({ position: { x: 4, y: 4 } });
-  else await page.getByTestId('right-tabs').click({ position: { x: 2, y: 2 } });
+  else await page.getByTestId('content-tabs').click({ position: { x: 2, y: 2 } });
 }
 
 const RIGHT_CHORDS = {
@@ -57,13 +57,13 @@ const RIGHT_CHORDS = {
 /** Shows a right-column tab: Browser, a terminal (starting one when there is none), or Problems. */
 export async function showRight(page: Page, view: 'browser' | keyof typeof RIGHT_CHORDS): Promise<void> {
   if (view === 'browser') {
-    await page.getByTestId('right-tab-browser').click();
+    await page.getByTestId('content-tab-browser').click();
     await expect(page.getByTestId('browser-panel')).toBeVisible();
     return;
   }
   await focusChrome(page);
   await page.keyboard.press(RIGHT_CHORDS[view]);
-  await expect(page.getByTestId(view === 'terminal' ? 'terminal-panel' : 'right-tab-problems')).toBeVisible();
+  await expect(page.getByTestId(view === 'terminal' ? 'terminal-panel' : 'content-tab-problems')).toBeVisible();
 }
 
 const SIDE_CHORDS = {

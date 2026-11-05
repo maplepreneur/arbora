@@ -400,7 +400,7 @@ export default function TerminalPanel() {
   // Focus follows the active pane when tabs switch.
   useEffect(() => {
     const session = getSession(activePaneId);
-    if (session && document.activeElement?.closest('[data-testid="panel-right"]')) session.focus();
+    if (session && document.activeElement?.closest('[data-testid="panel-content"]')) session.focus();
   }, [activePaneId, activeTabId]);
 
   const activeTab = tabs.find((t) => t.id === activeTabId);

@@ -130,6 +130,7 @@ export const CommandId = {
   gitAiCommit: 'arbora.git.aiCommit',
   gitAiPullRequest: 'arbora.git.aiPullRequest',
   toggleMaximizeRight: 'arbora.toggleMaximizeRight',
+  toggleContentPane: 'arbora.toggleContentPane',
   rightTab1: 'arbora.rightTab1',
   rightTab2: 'arbora.rightTab2',
   rightTab3: 'arbora.rightTab3',
@@ -183,7 +184,7 @@ export const GROVE_SELECT_COMMANDS = [
   CommandId.groveSelectSession9,
 ] as const;
 
-/** `Mod+Alt+1`..`Mod+Alt+9`: the right column's tabs in strip order; 9 is the last tab. */
+/** `Mod+1`..`Mod+9` while the content pane is focused: its tabs in strip order; 9 is the last tab. */
 export const RIGHT_TAB_COMMANDS = [
   CommandId.rightTab1,
   CommandId.rightTab2,
@@ -196,7 +197,7 @@ export const RIGHT_TAB_COMMANDS = [
   CommandId.rightTab9,
 ] as const;
 
-/** The zero-based right-column tab a `rightTab*` command shows (`-1` is the last), or `null`. */
+/** The zero-based content-pane tab a `rightTab*` command shows (`-1` is the last), or `null`. */
 export function rightTabIndex(commandId: string): number | null {
   const index = (RIGHT_TAB_COMMANDS as readonly string[]).indexOf(commandId);
   if (index === -1) return null;
@@ -491,17 +492,26 @@ export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
   },
   ...RIGHT_TAB_COMMANDS.map((id, index): CommandDescriptor => ({
     id,
-    title: index === RIGHT_TAB_COMMANDS.length - 1 ? 'Show Last Right Tab' : `Show Right Tab ${index + 1}`,
+    title:
+      index === RIGHT_TAB_COMMANDS.length - 1 ? 'Show Last Content Pane Tab' : `Show Content Pane Tab ${index + 1}`,
     category: 'View',
-    keybinding: `mod+alt+${index + 1}`,
+    keybinding: `mod+${index + 1}`,
+    when: 'contentPane',
     intercept: true,
     hidden: true,
   })),
   {
     id: CommandId.toggleMaximizeRight,
-    title: 'Maximize Right Column',
+    title: 'Maximize Content Pane',
     category: 'View',
     keybinding: 'mod+alt+m',
+    intercept: true,
+  },
+  {
+    id: CommandId.toggleContentPane,
+    title: 'Hide Content Pane',
+    category: 'View',
+    keybinding: 'mod+alt+h',
     intercept: true,
   },
   // Grove chords apply in the Grove workspace, so they beat `always` bindings on the same keys

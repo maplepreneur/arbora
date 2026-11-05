@@ -50,13 +50,13 @@ The selected project is the window's project. Selecting any row under another pr
 
 ## Tests
 
-Unit: the Rails command set (with RSpec), the right-view helpers, the title bar without the switch, the new and removed commands and their scopes. e2e: every spec moved to the shell's test ids (`grove`, `panel-tree`, `panel-chat`, `panel-right`, `panel-side`, `right-tab-*`, `side-view-*`, `right-maximize`) and the helpers in `e2e/app.ts`. Threads start from the Grove launcher.
+Unit: the Rails command set (with RSpec), the right-view helpers, the title bar without the switch, the new and removed commands and their scopes. e2e: every spec moved to the shell's test ids (`grove`, `panel-tree`, `panel-chat`, `panel-content`, `panel-side`, `content-tab-*`, `side-view-*`, `content-maximize`) and the helpers in `e2e/app.ts`. Threads start from the Grove launcher.
 
 ## Build order
 
 1. Shared: commands, keybindings, `layout.rightView`, Rails commands.
 2. Renderer state: `store.ts` (workspace forced, sizes kept on switch), `files-store` and right-view helpers, `grove-store` (project switch on select, terminals as right tabs).
-3. Shell: `GroveWorkspace` with the four panels, `RightColumn`, `SideColumn`, `ModeSwitch`, the slimmer `TitleBar`, `App.tsx`.
+3. Shell: `GroveWorkspace` with the four panels, `ContentPane`, `SideColumn`, `ModeSwitch`, the slimmer `TitleBar`, `App.tsx`.
 4. `commands.ts` and `QuickOpen` without the workspace switch.
 5. Delete the old layout; Settings and onboarding copy.
 6. Unit and e2e tests; docs.

@@ -19,7 +19,8 @@ interface ChordRow {
 }
 
 const CHORDS: readonly ChordRow[] = [
-  { ids: [CommandId.toggleMaximizeRight], text: 'Maximize the right column, and back' },
+  { ids: [CommandId.toggleMaximizeRight], text: 'Maximize the content pane, and back' },
+  { ids: [CommandId.toggleContentPane], text: 'Hide the content pane, and show it again' },
   { ids: [CommandId.groveNewDefault], text: 'Start the default agent' },
   { ids: [CommandId.groveNewTerminal], text: 'New terminal in the open project' },
   { ids: [CommandId.agentNewThread], text: 'New agent with a task' },
@@ -31,10 +32,10 @@ const CHORDS: readonly ChordRow[] = [
   { ids: [CommandId.groveArchiveSession], text: 'Archive the selected agent' },
   { ids: [CommandId.toggleSidebar], text: 'Hide or show the project tree' },
   { ids: [CommandId.toggleSideColumn], text: 'Hide or show Files, Source Control and Search' },
-  { ids: [CommandId.rightTab1, CommandId.rightTab9], range: true, text: 'Right column tab 1 to 8, then the last' },
+  { ids: [CommandId.rightTab1, CommandId.rightTab9], range: true, text: 'Content pane tab 1 to 8, then the last' },
   {
     ids: [CommandId.focusPanelLeft, CommandId.focusPanelRight],
-    text: 'Move between the tree, the chat and the right column',
+    text: 'Move between the tree, the chat, the content pane and Files',
   },
 ];
 

@@ -464,7 +464,9 @@ function main(): void {
       }
       if (target === undefined) return { opened: false };
       try {
-        if (onThisWindow) {
+        // A window that already has a project switches in place. Creating another window here is
+        // what made a Grove project click tile a second Arbora window beside this one.
+        if (onThisWindow || from.project !== null) {
           manager.openOnThisWindow(target, from);
           await from.whenBrowserReady();
           if (url) from.browser?.navigate(url);

@@ -147,6 +147,10 @@ export function chordFromInput(input: KeyInput): Chord {
     else if (digit?.[1]) key = digit[1];
     // Shift turns ` into ~, which would make `ctrl+shift+`` (new terminal) unmatchable.
     else if (input.code === 'Backquote') key = '`';
+    else if (input.code === 'ArrowLeft') key = 'arrowleft';
+    else if (input.code === 'ArrowRight') key = 'arrowright';
+    else if (input.code === 'ArrowUp') key = 'arrowup';
+    else if (input.code === 'ArrowDown') key = 'arrowdown';
   }
   key ??= normaliseKeyName(input.key);
   return { key, ctrl: input.ctrl, meta: input.meta, alt: input.alt, shift: input.shift };
@@ -223,6 +227,11 @@ export interface KeybindingContext {
   readonly recording?: boolean;
   /** The workspace that fills the window; missing means the browser workspace. */
   readonly workspace?: WorkspaceKind;
+  /**
+   * Keyboard focus is in the content pane, including its browser page. Mod+1..9 then switch that
+   * pane's tabs instead of Grove's agent rows.
+   */
+  readonly contentFocused?: boolean;
 }
 
 /** The browser workspace (page, docked agent, terminal) or Grove (every agent session). */
@@ -232,8 +241,9 @@ export type WorkspaceKind = 'browser' | 'grove';
  * `always`: any context. `modeActive`: agent or design mode. `design`: design mode only.
  * `agentPanel`: focus is in an agent thread (CLI-style thread keys such as Shift+Tab).
  * `grove`: the Grove workspace is showing.
+ * `contentPane`: focus is in the content pane (its tabs, terminal, or browser page).
  */
-export type KeybindingWhen = 'always' | 'modeActive' | 'design' | 'agentPanel' | 'grove';
+export type KeybindingWhen = 'always' | 'modeActive' | 'design' | 'agentPanel' | 'grove' | 'contentPane';
 
 function bindingApplies(when: KeybindingWhen, context: KeybindingContext): boolean {
   switch (when) {
@@ -247,6 +257,8 @@ function bindingApplies(when: KeybindingWhen, context: KeybindingContext): boole
       return context.agentFocused === true;
     case 'grove':
       return context.workspace === 'grove';
+    case 'contentPane':
+      return context.contentFocused === true;
     default: {
       const unreachable: never = when;
       return unreachable;
@@ -319,13 +331,14 @@ export class KeybindingTable {
     if (context.terminalFocused && context.terminalPassthrough && isTerminalPassthroughChord(chord)) {
       return undefined;
     }
-    let fallback: ResolvedKeybinding | undefined;
-    for (const binding of candidates) {
-      if (!bindingApplies(binding.when, context)) continue;
-      if (binding.when !== 'always') return binding;
-      fallback ??= binding;
-    }
-    return fallback;
+    const applicable = candidates.filter((binding) => bindingApplies(binding.when, context));
+    // The content pane sits inside the Grove shell, so its chords beat Grove's on the same keys
+    // (Mod+1..9 are agent rows in the tree and tabs while the content pane is focused).
+    const content = applicable.find((binding) => binding.when === 'contentPane');
+    if (content) return content;
+    const specific = applicable.find((binding) => binding.when !== 'always');
+    if (specific) return specific;
+    return applicable.find((binding) => binding.when === 'always');
   }
 
   forCommand(commandId: string): ResolvedKeybinding | undefined {

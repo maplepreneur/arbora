@@ -150,6 +150,8 @@ export const keybindingContextSchema = z.object({
   /** The shortcut editor is recording a chord: main must let every key through to it. */
   recording: z.boolean().default(false),
   workspace: workspaceKindSchema.default('browser'),
+  /** Focus is in the content pane, so Mod+1..9 switch its tabs. The page interceptor sets this too. */
+  contentFocused: z.boolean().default(false),
 });
 
 /** Request/response channels. Keep this the single registry of IPC surface. */

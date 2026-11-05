@@ -436,6 +436,7 @@ export default function BrowserPanel() {
   const showingOriginal = useApp((s) => s.design.showingOriginal);
   const state = useApp((s) => s.browser);
   const groveDialog = useGrove((s) => s.searchOpen || s.launcherOpen || s.projectSwitch !== null);
+  const contentHidden = useApp((s) => s.layout.contentHidden);
   const paletteOpen = useApp((s) => s.paletteOpen || s.overlay !== null) || groveDialog;
   const suggestedUrl = useApp((s) => s.suggestedUrl);
   const devUrl = useApp((s) => s.project?.settings.devUrl) ?? DEFAULT_DEV_URL;
@@ -446,7 +447,8 @@ export default function BrowserPanel() {
   const error = state?.error ?? null;
   const prompting = mode.kind === 'agent' && mode.phase === 'prompting' ? mode.selection : null;
   // Anything rendered in the viewport area (or over it, like the palette) needs the view hidden.
-  const hidden = empty || error !== null || paletteOpen || prompting !== null;
+  // A hidden content pane must park the page. A zero-size view captures empty screenshots.
+  const hidden = empty || error !== null || paletteOpen || prompting !== null || contentHidden;
   const preset = state?.preset ?? 'responsive';
   useViewBounds(viewportRef, hidden, preset);
 

@@ -79,7 +79,7 @@ async function launchWithFixture(userData = tempUserData()): Promise<{ app: Elec
 
 /** Narrow tiles (Hyprland half-width, CI) hide toolbar buttons; maximizing the right column shows them all. */
 async function roomForToolbar(page: Page): Promise<void> {
-  const maximize = page.getByTestId('right-maximize');
+  const maximize = page.getByTestId('content-maximize');
   if ((await maximize.getAttribute('aria-pressed')) !== 'true') await maximize.click();
   await expect(maximize).toHaveAttribute('aria-pressed', 'true');
 }
@@ -125,7 +125,7 @@ test.describe('Stage 1 browser panel', () => {
       ]);
 
       // Maximizing the right column moves the view with it.
-      await page.getByTestId('right-maximize').click();
+      await page.getByTestId('content-maximize').click();
       await expect.poll(async () => (await viewBounds(app)).width).toBeGreaterThan(Math.round(box.width) + 50);
 
       // The palette is DOM, so the view hides while it is open.

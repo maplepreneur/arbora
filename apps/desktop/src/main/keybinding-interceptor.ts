@@ -12,7 +12,9 @@ export interface InterceptorSource {
  * to let the key through. Kept to a cheap table lookup because it runs on every keystroke.
  */
 export function interceptCommand(input: Input, source: InterceptorSource): string | undefined {
-  if (input.type !== 'keyDown' || isModifierKey(input.key)) return undefined;
+  // Linux delivers some modified arrows to a focused WebContentsView as `rawKeyDown` only.
+  // `keyDown` still follows on the app window; the listener dispatches one of the pair.
+  if ((input.type !== 'keyDown' && input.type !== 'rawKeyDown') || isModifierKey(input.key)) return undefined;
   const chord = chordFromInput({
     key: input.key,
     code: input.code,
@@ -37,10 +39,25 @@ export function interceptCommand(input: Input, source: InterceptorSource): strin
  * no-op on Wayland.
  */
 export function attachKeybindingInterceptor(contents: WebContents, source: InterceptorSource): () => void {
+  // A modified arrow on the browser view arrives as `rawKeyDown`, then sometimes `keyDown` too.
+  // Dispatch the raw event and drop the matching keyDown, so a chord runs once.
+  let skipKeyDown: string | null = null;
   const listener = (event: Event, input: Input): void => {
+    if (input.type === 'keyUp') {
+      skipKeyDown = null;
+      return;
+    }
     const commandId = interceptCommand(input, source);
-    if (commandId === undefined) return;
+    if (commandId === undefined) {
+      if (input.type === 'keyDown') skipKeyDown = null;
+      return;
+    }
     event.preventDefault();
+    if (input.type === 'keyDown' && skipKeyDown === commandId) {
+      skipKeyDown = null;
+      return;
+    }
+    if (input.type === 'rawKeyDown') skipKeyDown = commandId;
     if (!input.isAutoRepeat) source.dispatch(commandId);
   };
   contents.on('before-input-event', listener);
