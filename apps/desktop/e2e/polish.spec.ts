@@ -163,7 +163,7 @@ test.describe('Stage 9 projects and project groups', () => {
       await expect(page.getByTestId('project-switcher')).toHaveCount(0);
       // One window: it switches onto the project instead of opening another.
       await expect(page.getByTestId('title-project-name')).toHaveText('plain-html');
-      expect(app.windows()).toHaveLength(1);
+      expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
 
       const library = await page.evaluate(() => window.arbora.invoke('projects.library'));
       expect(
