@@ -1,6 +1,6 @@
 # One window for every project
 
-Date: 4 Nov 2026. Status: implemented in draft [PR #72](https://github.com/maplepreneur/arbora/pull/72) into `beta`, not `arch-ok`.
+Date: 4 Nov 2026. Status: implemented. [PR #72](https://github.com/maplepreneur/arbora/pull/72) merged into `beta` on 4 Nov 2026 (3:43 PM ET); the follow-ups (one window, Grove dialogs over the page, `Mod+Shift+B`, `Mod+Alt+1`..`9`, focus out of the page, tooltips) are in draft [PR #73](https://github.com/maplepreneur/arbora/pull/73). Not `arch-ok`.
 
 The browser workspace and Grove merge into one layout. There is no Browser / Grove switch any more. The window always shows the Grove project tree, the selected agent's chat, and the selected project's tools beside it. The look of Grove stays: framework marks, the green selected project, agent marks, status dots, the Agents / Recent / Terminals / Commands sections and the default-agent footer.
 
@@ -40,6 +40,7 @@ The selected project is the window's project. Selecting any row under another pr
 - Panel commands keep their ids and map onto the shell: *Toggle Sidebar* collapses the tree, *Toggle Agent Panel* the chat, *Toggle Bottom Panel* the right column. *Show Terminal / Git Panel / Problems* pick that right tab. *Show Files / Source Control / Search* open the side view.
 - Editor save, close tab and format work again (the old guards skipped them in Grove).
 - Archive Agent loses its extra `Mod+W` (that closes the editor tab). Archive (`Alt+A`) and Stop (`Alt+S`) apply only with focus in the chat, and main does not intercept them, so the page and the editor still get those keys.
+- `Mod+Alt+1`..`Mod+Alt+8` show the right column's tabs in strip order and `Mod+Alt+9` the last one (intercepted, so they work from the page and a terminal). `Mod+Shift+B` toggles the side column.
 - `Mod+1`..`Mod+4` stay Grove's Agent 1–4; panel focus by number is shadowed. `Mod+Alt+Left` / `Right` walk tree, chat, right column and side.
 - Agent mode and design mode show the Browser tab and expand the right column; they no longer switch workspace.
 

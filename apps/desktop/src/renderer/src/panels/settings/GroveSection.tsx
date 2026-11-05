@@ -30,6 +30,8 @@ const CHORDS: readonly ChordRow[] = [
   { ids: [CommandId.groveStopSession], text: 'Stop the selected agent' },
   { ids: [CommandId.groveArchiveSession], text: 'Archive the selected agent' },
   { ids: [CommandId.toggleSidebar], text: 'Hide or show the project tree' },
+  { ids: [CommandId.toggleSideColumn], text: 'Hide or show Files, Source Control and Search' },
+  { ids: [CommandId.rightTab1, CommandId.rightTab9], range: true, text: 'Right column tab 1 to 8, then the last' },
   {
     ids: [CommandId.focusPanelLeft, CommandId.focusPanelRight],
     text: 'Move between the tree, the chat and the right column',

@@ -225,7 +225,8 @@ test.describe('Stage 6 design mode', () => {
       const offered = await page
         .locator('[data-testid="design-target-option"]')
         .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-value')));
-      expect(offered).toEqual(['new:fake']);
+      // A thread the default agent started on its own may be listed too; new threads are only the signed-in agent.
+      expect(offered.filter((value) => value?.startsWith('new:'))).toEqual(['new:fake']);
       await page.getByTestId('design-target').click();
       await expect(page.getByTestId('design-model')).toHaveAttribute('data-value', 'smart');
       await expect(page.getByTestId('design-save')).toContainText('Send 2 changes to Fake agent');
@@ -240,15 +241,15 @@ test.describe('Stage 6 design mode', () => {
       await expect(message).toContainText('40px');
       await expect(message).toContainText('Total');
       await expect(message.locator('img')).toHaveCount(2);
-      // The new thread started on the model picked in the send bar.
+      // The new thread (the one in the chat) started on the model picked in the send bar.
+      const designThread = await page.getByTestId('grove-pane').getAttribute('data-thread-id');
       await expect
         .poll(async () =>
-          page.evaluate(async () => {
-            const [summary] = await window.arbora.invoke('agent.listThreads');
-            const thread = summary ? await window.arbora.invoke('agent.getThread', { threadId: summary.id }) : null;
+          page.evaluate(async (threadId) => {
+            const thread = threadId ? await window.arbora.invoke('agent.getThread', { threadId }) : null;
             const model = thread?.state.configOptions.find((o) => o.category === 'model');
             return model?.type === 'select' ? model.currentValue : null;
-          }),
+          }, designThread),
         )
         .toBe('smart');
       await expect.poll(() => inPage<boolean>(app, OVERLAY)).toBe(false);
@@ -259,16 +260,15 @@ test.describe('Stage 6 design mode', () => {
       await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', {
         timeout: 30_000,
       });
+      const threadCount = async (): Promise<number> =>
+        (await page.evaluate(() => window.arbora.invoke('agent.listThreads'))).length;
+      const beforeResend = await threadCount();
       await page.keyboard.press('ControlOrMeta+D');
       await page.getByTestId('design-tab-changes').click();
       await expect(page.getByTestId('design-sessions')).toBeVisible();
       await page.getByTestId('design-resend').click();
-      // The agent picked earlier is remembered, so the resend starts a second Fake agent thread.
-      await expect
-        .poll(async () => (await page.evaluate(() => window.arbora.invoke('agent.listThreads'))).length, {
-          timeout: 30_000,
-        })
-        .toBe(2);
+      // The agent picked earlier is remembered, so the resend starts another Fake agent thread.
+      await expect.poll(threadCount, { timeout: 30_000 }).toBe(beforeResend + 1);
       await expect(page.getByTestId('user-message').first()).toContainText('do not add inline styles', {
         timeout: 30_000,
       });
@@ -328,6 +328,7 @@ test.describe('Stage 6 design mode', () => {
       // Discard reverts the page, then the switch goes ahead.
       await page.getByTestId('design-discard').click();
       await expect(page.getByTestId('title-project-name')).toHaveText('plain-html');
+      expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
       await expect(page.getByTestId('mode-banner')).toHaveCount(0);
       await page.locator(`[data-testid="grove-project"][data-path="${project}"]`).click();
       await expect(page.getByTestId('title-project-name')).not.toHaveText('plain-html');

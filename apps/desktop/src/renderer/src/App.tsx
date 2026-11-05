@@ -101,7 +101,7 @@ function useMainEvents(): void {
         useGit.setState({ lastSync: result });
         void refreshGit();
       }),
-      arbora.on('command.invoke', ({ commandId }) => executeCommand(commandId)),
+      arbora.on('command.invoke', ({ commandId, fromPage }) => executeCommand(commandId, { fromPage })),
       arbora.on('browser.stateChanged', (browser) => useApp.setState({ browser })),
       arbora.on('browser.problemsAdded', ({ entries }) => addProblems(entries)),
       arbora.on('browser.problemsCleared', () => useApp.setState({ problems: [] })),

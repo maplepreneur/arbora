@@ -132,6 +132,7 @@ function Columns({ model, projectPath, width }: { model: GroveModel; projectPath
   const sideRef = usePanelRef();
   const treeElement = useRef<HTMLElement>(null);
   const [maximized, setMaximized] = useState(() => (initial['chat'] ?? 1) === 0);
+  const [sideOpen, setSideOpen] = useState(() => (initial['side'] ?? 0) > 0);
   const focusRequest = useGrove((s) => s.listFocusRequest);
   const handledFocus = useRef(focusRequest);
 
@@ -189,6 +190,7 @@ function Columns({ model, projectPath, width }: { model: GroveModel; projectPath
         onLayoutChanged={(next, meta) => {
           setGroupLayout(SHELL_GROUP, meta.requestedLayout ?? next);
           setMaximized((next['chat'] ?? 0) === 0);
+          setSideOpen((next['side'] ?? 0) > 0);
         }}
         className="min-w-0 flex-1"
       >
@@ -211,11 +213,16 @@ function Columns({ model, projectPath, width }: { model: GroveModel; projectPath
         </Panel>
         <Handle id="sep-chat" />
         <Panel id="right" panelRef={rightRef} collapsible collapsedSize={0} minSize="240px">
-          <RightColumn maximized={maximized} onToggleMaximize={toggleMaximize} />
+          <RightColumn
+            maximized={maximized}
+            onToggleMaximize={toggleMaximize}
+            sideOpen={sideOpen}
+            onToggleSide={() => toggle(sideRef, [treeRef, chatRef])}
+          />
         </Panel>
         <Handle id="sep-side" />
         <Panel id="side" panelRef={sideRef} collapsible collapsedSize={0} minSize="160px" maxSize="35%">
-          <SideColumn />
+          <SideColumn onCollapse={() => sideRef.current?.collapse()} />
         </Panel>
       </Group>
       {settingsOpen && <SettingsLayer treeRef={treeElement} />}

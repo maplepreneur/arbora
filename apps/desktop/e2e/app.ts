@@ -4,7 +4,8 @@ import { join, resolve } from 'node:path';
 import { _electron as electron, expect, type ElectronApplication, type Page } from '@playwright/test';
 
 export const DESKTOP_ROOT = resolve(import.meta.dirname, '..');
-export const MAIN_ENTRY = join(DESKTOP_ROOT, 'out/main/index.js');
+/** `ARBORA_E2E_OUT` points at another build folder, so a checkout instance running from `out/` keeps its files. */
+export const MAIN_ENTRY = join(DESKTOP_ROOT, process.env['ARBORA_E2E_OUT'] ?? 'out', 'main/index.js');
 export const FIXTURES = resolve(DESKTOP_ROOT, '../../fixtures');
 
 export function tempUserData(): string {

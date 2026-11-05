@@ -5,6 +5,7 @@ import {
   commandIdSchema,
   DEFAULT_COMMANDS,
   groveSessionIndex,
+  rightTabIndex,
   isPickableAgent,
   parentPath,
   toProjectPath,
@@ -79,6 +80,7 @@ import {
   showToast,
   useApp,
 } from './store';
+import { showRightTab } from './right-tabs';
 import { checkForUpdates } from './update-store';
 import { modeControl, nextValue, rotationOrder, selectValues, thinkingControl } from './thread-controls';
 import {
@@ -694,9 +696,11 @@ const SHELL_COLUMNS = ['tree', 'agent', 'center', 'sidebar'] as const;
 
 function focusNeighbour(direction: 'left' | 'right' | 'up' | 'down'): void {
   if (direction === 'up' || direction === 'down') return;
-  const landmark = document.hasFocus()
-    ? document.activeElement?.closest<HTMLElement>(LANDMARK_SELECTOR)?.dataset['landmark']
-    : 'center';
+  // The page lives in the right column; main moved keyboard focus to the app before sending this.
+  const landmark =
+    invokedFromPage || !document.hasFocus()
+      ? 'center'
+      : document.activeElement?.closest<HTMLElement>(LANDMARK_SELECTOR)?.dataset['landmark'];
   const at = SHELL_COLUMNS.findIndex((column) => column === landmark);
   const next = SHELL_COLUMNS[(at === -1 ? 2 : at) + (direction === 'left' ? -1 : 1)];
   if (next === 'tree') focusSessionList();
@@ -762,11 +766,28 @@ async function runCommand(id: CommandId): Promise<void> {
     case CommandId.toggleSidebar:
       toggleSessionList();
       return;
+    case CommandId.toggleSideColumn:
+      withProject((w) => w.toggleSidebar());
+      return;
     case CommandId.toggleAgentPanel:
       withProject((w) => w.toggleAgentPanel());
       return;
     case CommandId.toggleBottomPanel:
       withProject((w) => w.toggleBottomPanel());
+      return;
+    case CommandId.rightTab1:
+    case CommandId.rightTab2:
+    case CommandId.rightTab3:
+    case CommandId.rightTab4:
+    case CommandId.rightTab5:
+    case CommandId.rightTab6:
+    case CommandId.rightTab7:
+    case CommandId.rightTab8:
+    case CommandId.rightTab9:
+      withProject((w) => {
+        w.revealPanel('bottom');
+        showRightTab(rightTabIndex(id) ?? 0);
+      });
       return;
     case CommandId.toggleMaximizeRight:
       if (!chordProbe?.(id)) withProject((w) => w.toggleMaximizeRight());
@@ -1196,8 +1217,14 @@ export function registerBuiltinCommands(): () => void {
   };
 }
 
-export function executeCommand(id: string): void {
-  void commands.execute(id).then((found) => {
+/** Set while a command that main caught on the browser page runs: focus is in the page, not the DOM. */
+let invokedFromPage = false;
+
+export function executeCommand(id: string, options: { fromPage?: boolean | undefined } = {}): void {
+  invokedFromPage = options.fromPage === true;
+  const run = commands.execute(id);
+  invokedFromPage = false;
+  void run.then((found) => {
     if (!found) console.warn(`[commands] unknown command ${id}`);
   });
 }
