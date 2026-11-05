@@ -1102,22 +1102,23 @@ export class WindowManager {
     return { focusedElsewhere: null };
   }
 
-  /** Opens `path` in `from` when it is a welcome window, otherwise in its own window. */
+  /**
+   * Opens `path` in one window: the window that already shows it, else `from`, else the focused or
+   * first window, which switches project in place (its previous page is parked). A new window is
+   * made only when there is none.
+   */
   openProject(path: string, from?: ProjectWindow): ProjectWindow {
     const resolved = resolveProjectPath(path);
-    const existing = this.findByProject(resolved);
-    if (existing) {
-      if (existing.window.isMinimized()) existing.window.restore();
-      existing.window.focus();
-      return existing;
-    }
-    const target = from && !from.project ? from : [...this.windows].find((w) => !w.project);
-    if (target) {
-      target.openProject(resolved);
-      target.window.focus();
-      return target;
-    }
-    return this.create(resolved);
+    const target =
+      this.findByProject(resolved) ??
+      from ??
+      [...this.windows].find((w) => !w.window.isDestroyed() && w.window.isFocused()) ??
+      [...this.windows].find((w) => !w.window.isDestroyed());
+    if (!target) return this.create(resolved);
+    this.openOnThisWindow(resolved, target);
+    if (target.window.isMinimized()) target.window.restore();
+    target.window.focus();
+    return target;
   }
 
   fromWebContents(contents: WebContents): ProjectWindow | undefined {

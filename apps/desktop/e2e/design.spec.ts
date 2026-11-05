@@ -328,6 +328,7 @@ test.describe('Stage 6 design mode', () => {
       // Discard reverts the page, then the switch goes ahead.
       await page.getByTestId('design-discard').click();
       await expect(page.getByTestId('title-project-name')).toHaveText('plain-html');
+      expect(app.windows()).toHaveLength(1);
       await expect(page.getByTestId('mode-banner')).toHaveCount(0);
       await page.locator(`[data-testid="grove-project"][data-path="${project}"]`).click();
       await expect(page.getByTestId('title-project-name')).not.toHaveText('plain-html');

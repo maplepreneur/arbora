@@ -161,7 +161,9 @@ test.describe('Stage 9 projects and project groups', () => {
       await page.keyboard.type('plain');
       await page.keyboard.press('Enter');
       await expect(page.getByTestId('project-switcher')).toHaveCount(0);
-      await expect.poll(() => app.windows().length).toBe(2);
+      // One window: it switches onto the project instead of opening another.
+      await expect(page.getByTestId('title-project-name')).toHaveText('plain-html');
+      expect(app.windows()).toHaveLength(1);
 
       const library = await page.evaluate(() => window.arbora.invoke('projects.library'));
       expect(
@@ -169,7 +171,7 @@ test.describe('Stage 9 projects and project groups', () => {
           .filter((e) => e.open)
           .map((e) => e.folder)
           .sort(),
-      ).toEqual(['plain-html', 'vite-react']);
+      ).toEqual(['plain-html']);
       // A group survives the projects in it dropping out of the recents.
       const settings = JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')) as {
         projectGroups: { id: string }[];
