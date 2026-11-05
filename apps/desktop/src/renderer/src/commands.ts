@@ -5,6 +5,7 @@ import {
   commandIdSchema,
   DEFAULT_COMMANDS,
   groveSessionIndex,
+  rightTabIndex,
   isPickableAgent,
   parentPath,
   toProjectPath,
@@ -79,6 +80,7 @@ import {
   showToast,
   useApp,
 } from './store';
+import { showRightTab } from './right-tabs';
 import { checkForUpdates } from './update-store';
 import { modeControl, nextValue, rotationOrder, selectValues, thinkingControl } from './thread-controls';
 import {
@@ -772,6 +774,20 @@ async function runCommand(id: CommandId): Promise<void> {
       return;
     case CommandId.toggleBottomPanel:
       withProject((w) => w.toggleBottomPanel());
+      return;
+    case CommandId.rightTab1:
+    case CommandId.rightTab2:
+    case CommandId.rightTab3:
+    case CommandId.rightTab4:
+    case CommandId.rightTab5:
+    case CommandId.rightTab6:
+    case CommandId.rightTab7:
+    case CommandId.rightTab8:
+    case CommandId.rightTab9:
+      withProject((w) => {
+        w.revealPanel('bottom');
+        showRightTab(rightTabIndex(id) ?? 0);
+      });
       return;
     case CommandId.toggleMaximizeRight:
       if (!chordProbe?.(id)) withProject((w) => w.toggleMaximizeRight());

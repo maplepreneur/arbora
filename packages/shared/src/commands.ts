@@ -130,6 +130,15 @@ export const CommandId = {
   gitAiCommit: 'arbora.git.aiCommit',
   gitAiPullRequest: 'arbora.git.aiPullRequest',
   toggleMaximizeRight: 'arbora.toggleMaximizeRight',
+  rightTab1: 'arbora.rightTab1',
+  rightTab2: 'arbora.rightTab2',
+  rightTab3: 'arbora.rightTab3',
+  rightTab4: 'arbora.rightTab4',
+  rightTab5: 'arbora.rightTab5',
+  rightTab6: 'arbora.rightTab6',
+  rightTab7: 'arbora.rightTab7',
+  rightTab8: 'arbora.rightTab8',
+  rightTab9: 'arbora.rightTab9',
   groveNewDefault: 'arbora.grove.newDefault',
   groveNewTerminal: 'arbora.grove.newTerminal',
   groveLaunch: 'arbora.grove.launch',
@@ -173,6 +182,26 @@ export const GROVE_SELECT_COMMANDS = [
   CommandId.groveSelectSession8,
   CommandId.groveSelectSession9,
 ] as const;
+
+/** `Mod+Alt+1`..`Mod+Alt+9`: the right column's tabs in strip order; 9 is the last tab. */
+export const RIGHT_TAB_COMMANDS = [
+  CommandId.rightTab1,
+  CommandId.rightTab2,
+  CommandId.rightTab3,
+  CommandId.rightTab4,
+  CommandId.rightTab5,
+  CommandId.rightTab6,
+  CommandId.rightTab7,
+  CommandId.rightTab8,
+  CommandId.rightTab9,
+] as const;
+
+/** The zero-based right-column tab a `rightTab*` command shows (`-1` is the last), or `null`. */
+export function rightTabIndex(commandId: string): number | null {
+  const index = (RIGHT_TAB_COMMANDS as readonly string[]).indexOf(commandId);
+  if (index === -1) return null;
+  return index === RIGHT_TAB_COMMANDS.length - 1 ? -1 : index;
+}
 
 export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
   {
@@ -460,6 +489,14 @@ export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
     keybinding: 'mod+alt+shift+p',
     intercept: true,
   },
+  ...RIGHT_TAB_COMMANDS.map((id, index): CommandDescriptor => ({
+    id,
+    title: index === RIGHT_TAB_COMMANDS.length - 1 ? 'Show Last Right Tab' : `Show Right Tab ${index + 1}`,
+    category: 'View',
+    keybinding: `mod+alt+${index + 1}`,
+    intercept: true,
+    hidden: true,
+  })),
   {
     id: CommandId.toggleMaximizeRight,
     title: 'Maximize Right Column',
