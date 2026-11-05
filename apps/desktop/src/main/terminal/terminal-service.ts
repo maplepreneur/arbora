@@ -106,6 +106,55 @@ export class TerminalService {
     return this.terminals.get(id)?.info;
   }
 
+  /**
+   * A process recorded before this launch. No pty is spawned. `gone` is a row the user can close.
+   * `running` can still be killed by pid. Output from before the quit is not available.
+   */
+  adopt(input: {
+    id: string;
+    title: string;
+    command: string;
+    cwd: string;
+    pid: number | null;
+    recovered: 'running' | 'gone';
+  }): TerminalInfo {
+    const existing = this.terminals.get(input.id);
+    if (existing) return existing.info;
+    const gone = input.recovered === 'gone';
+    const record: TerminalRecord = {
+      info: {
+        id: input.id,
+        title: input.title,
+        kind: 'shell',
+        cwd: input.cwd,
+        command: input.command,
+        pid: gone ? null : input.pid,
+        exitCode: gone ? -1 : null,
+        readOnly: true,
+        recovered: input.recovered,
+      },
+      command: undefined,
+      args: undefined,
+      cwd: input.cwd,
+      env: undefined,
+      listeners: new Set(),
+      lastExit: gone ? { exitCode: -1, signal: null } : null,
+      pty: null,
+      size: { ...DEFAULT_SIZE },
+      lines: new LineBuffer(TERMINAL_LINE_BUFFER),
+      scrollback: new ScrollbackBuffer(SCROLLBACK_CHARS),
+      urls: new Set(),
+      pending: '',
+      flushTimer: undefined,
+      urlTimer: undefined,
+      exited: Promise.resolve(),
+      generation: 0,
+    };
+    this.terminals.set(input.id, record);
+    this.emitChanged();
+    return record.info;
+  }
+
   async create(request: CreateTerminalOptions = {}): Promise<TerminalInfo> {
     if (this.disposed) throw new Error('Terminals are closed');
     const kind = request.kind ?? 'shell';
@@ -225,6 +274,7 @@ export class TerminalService {
   async restart(id: string, beforeStart?: () => Promise<void>): Promise<TerminalInfo | undefined> {
     const record = this.terminals.get(id);
     if (!record) return undefined;
+    if (record.info.recovered) return record.info;
     record.generation++;
     this.killRecord(record);
     await record.exited;
@@ -332,8 +382,16 @@ export class TerminalService {
 
   private killRecord(record: TerminalRecord): void {
     const pty = record.pty;
-    if (!pty) return;
-    killProcessTree(pty.pid, this.options.platform);
+    const adopted = !pty && record.info.recovered === 'running' ? record.info.pid : null;
+    if (!pty && adopted === null) return;
+    const pid = pty?.pid ?? adopted;
+    if (pid) killProcessTree(pid, this.options.platform);
+    if (!pty) {
+      record.info = { ...record.info, pid: null, exitCode: -1, recovered: 'gone' };
+      record.lastExit = { exitCode: -1, signal: null };
+      record.exited = Promise.resolve();
+      return;
+    }
     try {
       pty.kill();
     } catch {

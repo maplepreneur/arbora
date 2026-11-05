@@ -302,7 +302,7 @@ export function Picker({
         )}
       >
         {Icon && <Icon size={12} className="shrink-0 text-fg-subtle" />}
-        {showLabel && <span className="shrink-0 text-fg-subtle">{label}</span>}
+        {showLabel && <span className="shrink-0 font-semibold text-fg">{label}</span>}
         <span className="min-w-0 truncate">{selected?.name ?? value}</span>
         <ChevronDown size={12} className={clsx('shrink-0 text-fg-subtle transition-transform', open && 'rotate-180')} />
       </button>

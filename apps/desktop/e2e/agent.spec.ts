@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import type { TerminalInfo, ThreadSummary } from '@arbora/shared';
-import { checkedAgents, DESKTOP_ROOT, launch, tempUserData } from './app';
+import { checkedAgents, DESKTOP_ROOT, focusChrome, launch, startAgent, tempUserData } from './app';
 
 const FAKE_AGENT = resolve(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
 const FAKE_ID = 'fake';
@@ -43,6 +43,13 @@ function threads(page: Page): Promise<ThreadSummary[]> {
   return page.evaluate(() => window.arbora.invoke('agent.listThreads'));
 }
 
+async function runFromPalette(page: Page, title: string): Promise<void> {
+  await focusChrome(page);
+  await page.keyboard.press('ControlOrMeta+Shift+P');
+  await page.keyboard.type(title);
+  await page.keyboard.press('Enter');
+}
+
 async function send(page: Page, text: string): Promise<void> {
   const input = page.getByTestId('composer-input');
   await input.fill(text);
@@ -54,17 +61,12 @@ test.describe('Stage 3 agent panel', () => {
     const project = tempProject();
     const { app, page } = await launch(userDataWithFakeAgent(), [project]);
     try {
-      await expect(page.getByTestId('agent-panel')).toBeVisible();
-      await expect(page.getByTestId('thread-list')).toBeVisible();
-      await page.getByTestId('new-thread-choose').click();
-      await expect(page.getByTestId('agent-picker')).toBeVisible();
+      await page.getByTestId('grove-new-choose').first().click();
       // Only checked, signed-in agents are offered; the built-ins were never checked here.
-      await expect(page.getByTestId(`pick-agent-${FAKE_ID}`)).toBeVisible();
-      await expect(page.getByTestId('pick-agent-claude-code')).toHaveCount(0);
-      await expect(page.getByTestId('agent-picker-hidden')).toBeVisible();
-      await page.getByTestId(`pick-agent-${FAKE_ID}`).click();
-      await expect(page.getByTestId('thread-view')).toBeVisible();
-      await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', { timeout: 20_000 });
+      await expect(page.getByTestId(`launcher-agent-${FAKE_ID}`)).toBeVisible();
+      await expect(page.getByTestId('launcher-agent-claude-code')).toHaveCount(0);
+      await page.keyboard.press('Escape');
+      await startAgent(page, FAKE_ID);
       // Session controls come from the agent: a mode and a model config option.
       await expect(page.getByTestId('mode-select')).toHaveAttribute('data-value', 'ask');
       await expect(page.getByTestId('model-select')).toHaveAttribute('data-value', 'fast');
@@ -131,36 +133,33 @@ test.describe('Stage 3 agent panel', () => {
       await page.getByTestId('composer-cancel').click();
       await expect(page.getByTestId('turn-end').last()).toContainText('cancelled', { timeout: 20_000 });
 
-      // An agent that ignores session/cancel is still stopped (the process is stopped after a grace period),
-      // from the thread header this time.
+      // An agent that ignores session/cancel is still stopped (the process is stopped after a grace period).
       await send(page, 'stubborn');
-      await expect(page.getByTestId('thread-stop')).toBeVisible();
-      await page.getByTestId('thread-stop').click();
+      await expect(page.getByTestId('composer-cancel')).toBeVisible();
+      await page.getByTestId('composer-cancel').click();
       await expect(page.getByTestId('turn-end').last()).toContainText('cancelled', { timeout: 15_000 });
-      await expect(page.getByTestId('thread-stop')).toHaveCount(0);
       await expect(page.getByTestId('composer-send')).toBeVisible();
 
       // The ACP log shows the JSON-RPC traffic.
-      await page.getByTestId('toggle-log').click();
+      await runFromPalette(page, 'Toggle ACP Log');
       await expect(page.getByTestId('acp-log')).toBeVisible();
       await expect(page.getByTestId('log-row').filter({ hasText: 'session/prompt' }).first()).toBeVisible();
-      await page.getByTestId('toggle-log').click();
+      await runFromPalette(page, 'Toggle ACP Log');
 
       // The thread is persisted in the project folder and listed with its title.
       const list = await threads(page);
       expect(list).toHaveLength(1);
       expect(list[0]?.title).toBe('add a comment to `App.tsx`');
       await expect.poll(() => existsSync(join(project, '.arbora/threads', `${list[0]?.id ?? ''}.json`))).toBe(true);
-      await page.getByTestId('show-threads').click();
-      await expect(page.getByTestId('thread-row')).toHaveCount(1);
-      await expect(page.getByTestId('thread-row')).toContainText('add a comment to');
+      await expect(page.getByTestId('grove-row')).toHaveCount(1);
+      await expect(page.getByTestId('grove-row')).toContainText('add a comment to');
     } finally {
       await app.close();
       rmSync(project, { recursive: true, force: true });
     }
   });
 
-  test('the new-thread shortcut opens the picker on the default agent; arrows and Enter pick one', async () => {
+  test('the new-thread shortcut opens the launcher on the default agent and its default model', async () => {
     const project = tempProject();
     const userData = tempUserData();
     const agent = (id: string, name: string) => ({
@@ -185,63 +184,33 @@ test.describe('Stage 3 agent panel', () => {
     );
     const { app, page } = await launch(userData, [project]);
     try {
-      await expect(page.getByTestId('agent-panel')).toBeVisible();
+      // An empty project starts the default agent once, as Grove always has.
+      await expect.poll(async () => (await threads(page)).map((t) => t.agentId)).toEqual(['second']);
+      await focusChrome(page);
       await page.keyboard.press('ControlOrMeta+Shift+N');
-      await expect(page.getByTestId('agent-picker')).toBeVisible();
+      await expect(page.getByTestId('grove-launcher')).toBeVisible();
       // The default is listed first and highlighted; agents that were never checked are left out.
       const ids = await page
-        .locator('[data-testid^="pick-agent-"]')
+        .locator('[data-testid^="launcher-agent-"]')
         .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-testid')));
-      expect(ids).toEqual(['pick-agent-second', 'pick-agent-first']);
-      await expect(page.getByTestId('pick-agent-second')).toHaveAttribute('data-active', 'true');
-      await expect(page.getByTestId('agent-picker-hidden')).toContainText('hidden or not signed in');
+      expect(ids).toEqual(['launcher-agent-second', 'launcher-agent-first']);
+      await expect(page.getByTestId('launcher-agent-second')).toHaveAttribute('data-active', 'true');
+      await expect(page.getByTestId('launcher-model-smart')).toHaveAttribute('data-active', 'true');
 
-      // The gear opens Settings on Agents, and keeps it open when Settings is already showing.
-      await page.getByRole('button', { name: 'Open settings' }).click();
-      await expect(page.getByTestId('settings-page')).toBeVisible();
-      await page.getByTestId('settings-nav-general').click();
-      await page.getByRole('button', { name: 'Open settings' }).click();
-      await expect(page.getByTestId('settings-page')).toBeVisible();
-      await expect(page.getByTestId('settings-nav-agents')).toHaveAttribute('aria-current', 'page');
-      await page.getByTestId('settings-close').click();
-      await expect(page.getByTestId('settings-page')).toHaveCount(0);
-      await page.keyboard.press('ControlOrMeta+Shift+N');
-
-      // Arrow keys wrap around; Enter starts the highlighted agent.
-      await page.keyboard.press('ArrowDown');
-      await expect(page.getByTestId('pick-agent-first')).toHaveAttribute('data-active', 'true');
-      await page.keyboard.press('ArrowDown');
-      await expect(page.getByTestId('pick-agent-second')).toHaveAttribute('data-active', 'true');
-      await page.keyboard.press('ArrowUp');
+      // Picking another agent starts it; the shortcut then Enter starts the default on its model.
+      await page.getByTestId('launcher-agent-first').click();
       await page.keyboard.press('Enter');
-      await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', { timeout: 20_000 });
-      expect((await threads(page)).map((t) => t.agentId)).toEqual(['first']);
-
-      // Shortcut, then Enter, starts the default agent on its default model.
-      await page.keyboard.press('ControlOrMeta+Shift+N');
-      await expect(page.getByTestId('pick-agent-second')).toHaveAttribute('data-active', 'true');
-      await page.keyboard.press('Enter');
+      await page.getByTestId('launcher-start').click();
       await expect.poll(async () => (await threads(page)).map((t) => t.agentId).sort()).toEqual(['first', 'second']);
-      await expect(page.getByTestId('model-select')).toHaveAttribute('data-value', 'smart', { timeout: 20_000 });
-
-      // → opens the model list: the default first, then favourites, then the rest.
+      await focusChrome(page);
       await page.keyboard.press('ControlOrMeta+Shift+N');
-      await page.keyboard.press('ArrowRight');
-      await expect(page.getByTestId('model-step')).toHaveAttribute('data-agent', 'second');
-      const order = await page
-        .locator('[data-testid^="pick-model-"]')
-        .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-testid')));
-      expect(order).toEqual(['pick-model-smart', 'pick-model-fast']);
-      await expect(page.getByTestId('default-model-badge')).toHaveCount(1);
-      await page.keyboard.press('ArrowDown');
       await page.keyboard.press('Enter');
-      await expect.poll(async () => (await threads(page)).length).toBe(3);
-      await expect(page.getByTestId('model-select')).toHaveAttribute('data-value', 'fast', { timeout: 20_000 });
-
-      // The split button's main half starts the global default without asking.
-      await page.getByTestId('show-threads').click();
-      await expect(page.getByTestId('new-thread')).toHaveAttribute('data-agent', 'second');
-      await expect(page.getByTestId('new-thread')).toHaveAttribute('data-model', 'smart');
+      await expect(page.getByTestId('launcher-task')).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect
+        .poll(async () => (await threads(page)).map((t) => t.agentId).sort())
+        .toEqual(['first', 'second', 'second']);
+      await expect(page.getByTestId('model-select')).toHaveAttribute('data-value', 'smart', { timeout: 20_000 });
     } finally {
       await app.close();
       rmSync(project, { recursive: true, force: true });
@@ -252,13 +221,11 @@ test.describe('Stage 3 agent panel', () => {
     const project = tempProject();
     const { app, page } = await launch(userDataWithFakeAgent(), [project]);
     try {
-      await page.getByTestId('new-thread-choose').click();
-      await page.getByTestId(`pick-agent-${FAKE_ID}`).click();
-      await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', { timeout: 20_000 });
+      await startAgent(page, FAKE_ID);
       await expect(page.getByTestId('thread-key-hints')).toHaveText(
         process.platform === 'darwin'
-          ? '⇧Tab mode · ⌥P model · ⌥T thinking'
-          : 'Shift+Tab mode · Alt+P model · Alt+T thinking',
+          ? '⇧Tab mode · ⌥P model · ⌥T effort'
+          : 'Shift+Tab mode · Alt+P model · Alt+T effort',
       );
       const input = page.getByTestId('composer-input');
       await input.click();
@@ -303,14 +270,7 @@ test.describe('Stage 3 agent panel', () => {
     const project = tempProject();
     const { app, page } = await launch(userDataWithFakeAgent(), [project]);
     try {
-      // The dropdown opens the picker. Pin the fake agent as the default there.
-      await page.getByTestId('new-thread-choose').click();
-      await expect(page.getByTestId('agent-picker')).toBeVisible();
-      await page.getByTestId(`pick-agent-${FAKE_ID}`).hover();
-      await page.getByTestId(`default-agent-${FAKE_ID}`).click();
-      await expect(page.getByTestId('default-agent-badge')).toBeVisible();
-      await page.getByTestId(`pick-agent-${FAKE_ID}`).click();
-      await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', { timeout: 20_000 });
+      await startAgent(page, FAKE_ID);
 
       // Star "Smart" and make it the default model for this agent.
       await page.getByTestId('model-select').click();
@@ -325,17 +285,17 @@ test.describe('Stage 3 agent panel', () => {
       await expect
         .poll(() => page.evaluate(() => window.arbora.invoke('settings.get').then((s) => s.agents)))
         .toMatchObject({
-          defaultAgent: FAKE_ID,
           defaultModels: { [FAKE_ID]: 'smart' },
           favoriteModels: { [FAKE_ID]: ['smart'] },
         });
-      // The current thread keeps its model; a new thread from the split button uses both defaults.
+      // The current thread keeps its model; a new one from the launcher starts on the default model.
       await expect(page.getByTestId('model-select')).toHaveAttribute('data-value', 'fast');
-      await page.getByTestId('show-threads').click();
-      await expect(page.getByTestId('new-thread-default')).toHaveText('Fake agent · Smart');
-      await page.getByTestId('new-thread').click();
-      await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', { timeout: 20_000 });
-      await expect(page.getByTestId('model-select')).toHaveAttribute('data-value', 'smart', { timeout: 10_000 });
+      await page.getByTestId('grove-new-choose').first().click();
+      await page.getByTestId(`launcher-agent-${FAKE_ID}`).click();
+      await expect(page.getByTestId('launcher-model-smart')).toHaveAttribute('data-active', 'true');
+      await page.keyboard.press('Enter');
+      await page.getByTestId('launcher-start').click();
+      await expect(page.getByTestId('model-select')).toHaveAttribute('data-value', 'smart', { timeout: 20_000 });
       expect(await threads(page)).toHaveLength(2);
     } finally {
       await app.close();
@@ -347,9 +307,7 @@ test.describe('Stage 3 agent panel', () => {
     const project = tempProject();
     const { app, page } = await launch(userDataWithFakeAgent(), [project]);
     try {
-      await page.getByTestId('new-thread-choose').click();
-      await page.getByTestId(`pick-agent-${FAKE_ID}`).click();
-      await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', { timeout: 20_000 });
+      await startAgent(page, FAKE_ID);
       await expect(page.getByTestId('auto-approve-edits')).toHaveText('Ask before edits');
       await page.getByTestId('auto-approve-edits').click();
       await expect(page.getByTestId('auto-approve-edits')).toHaveText('Auto-approve edits');

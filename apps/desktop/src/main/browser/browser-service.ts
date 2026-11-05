@@ -74,6 +74,10 @@ export interface BrowserServiceEvents {
   designNavigationBlocked(url: string): void;
   /** The document changed while design mode had nothing to keep. */
   designDocumentNavigated(): void;
+  /** The live page view gained or lost the keyboard. Not sent while a focus guard will hand it back. */
+  pageFocused(focused: boolean): void;
+  /** A hidden view had the keyboard. The renderer reclaims it for the content pane when the page is not showing. */
+  focusParked(): void;
 }
 
 export interface BrowserServiceOptions {
@@ -97,12 +101,15 @@ interface Metrics {
 }
 
 /**
- * The browser panel: one `WebContentsView` per project window showing the user's dev server, plus
- * the instrumentation later stages build on (CDP, console/network ring buffers, screenshots,
- * device emulation and the private page channel).
+ * The browser panel: one `WebContentsView` per project, parked on the window while another project
+ * shows, plus the instrumentation later stages build on (CDP, console/network ring buffers,
+ * screenshots, device emulation and the private page channel).
  */
 export class BrowserService {
   readonly view: WebContentsView;
+  private hostWindow: BrowserWindow;
+  private events: BrowserServiceEvents;
+  private detachInterceptor: (() => void) | null = null;
   private state: NavigationState;
   private readonly consoleEntries = new RingBuffer<ProblemEntry>(PROBLEM_BUFFER_SIZE);
   private readonly networkEntries = new RingBuffer<ProblemEntry>(PROBLEM_BUFFER_SIZE);
@@ -131,8 +138,16 @@ export class BrowserService {
   /** An agent's `browser_set_viewport` size; cleared when a preset is chosen. */
   private viewportOverride: { width: number; height: number; dpr: number } | null = null;
   private viewRect: Rect | null = null;
+  /** Last `pageFocused` value sent, so blur/focus chatter does not spam the renderer. */
+  private lastPageFocused = false;
+  /** One reclaim notice per time the view is parked, even if Chromium focuses it again. */
+  private parkedNotice = false;
+  /** Stops `webContents.focus()` from re-entering the hidden-view focus handler. */
+  private releasingFocus = false;
 
   constructor(private readonly options: BrowserServiceOptions) {
+    this.hostWindow = options.window;
+    this.events = options.events;
     this.view = new WebContentsView({
       webPreferences: {
         session: options.session,
@@ -146,7 +161,7 @@ export class BrowserService {
     });
     this.view.setVisible(false);
     this.view.setBackgroundColor('#ffffff');
-    options.window.contentView.addChildView(this.view);
+    this.hostWindow.contentView.addChildView(this.view);
 
     this.state = {
       url: '',
@@ -162,7 +177,7 @@ export class BrowserService {
       pageReady: false,
     };
 
-    this.disposers.push(options.attachInterceptor(this.contents));
+    this.detachInterceptor = options.attachInterceptor(this.contents);
     this.wireContents();
     this.update({});
     const lastUrl = options.initial?.lastUrl;
@@ -171,6 +186,26 @@ export class BrowserService {
 
   get contents(): WebContents {
     return this.view.webContents;
+  }
+
+  /**
+   * Point this page at another window. The document stays loaded; only the host view, the key
+   * interceptor and the event callbacks change.
+   */
+  rebind(
+    window: BrowserWindow,
+    events: BrowserServiceEvents,
+    attachInterceptor: (contents: WebContents) => () => void,
+  ): void {
+    this.events = events;
+    this.detachInterceptor?.();
+    this.detachInterceptor = null;
+    if (this.hostWindow !== window) {
+      if (!this.hostWindow.isDestroyed()) this.hostWindow.contentView.removeChildView(this.view);
+      this.hostWindow = window;
+      if (!window.isDestroyed()) window.contentView.addChildView(this.view);
+    }
+    this.detachInterceptor = attachInterceptor(this.contents);
   }
 
   getState(): NavigationState {
@@ -189,7 +224,7 @@ export class BrowserService {
     this.consoleEntries.clear();
     this.networkEntries.clear();
     this.pendingProblems = [];
-    this.options.events.problemsCleared();
+    this.events.problemsCleared();
   }
 
   navigate(input: string): { ok: boolean; url?: string; error?: string } {
@@ -209,7 +244,7 @@ export class BrowserService {
       this.navigate(url);
       return true;
     }
-    if (url !== this.state.url) this.options.events.urlSuggested(url);
+    if (url !== this.state.url) this.events.urlSuggested(url);
     return false;
   }
 
@@ -222,7 +257,7 @@ export class BrowserService {
     const contents = this.contents;
     if (contents.isFocused()) return;
     this.releaseFocusGuard?.();
-    const ui = this.options.window.webContents;
+    const ui = this.hostWindow.webContents;
     const restore = (): void => {
       if (!contents.isDestroyed() && contents.isFocused() && !ui.isDestroyed()) ui.focus();
     };
@@ -243,6 +278,7 @@ export class BrowserService {
         contents.off('did-stop-loading', onStop);
       }
       if (this.releaseFocusGuard === release) this.releaseFocusGuard = undefined;
+      this.notifyPageFocus();
     };
     contents.on('focus', restore);
     contents.on('input-event', onInput);
@@ -298,7 +334,9 @@ export class BrowserService {
         break;
       case 'focusPage':
         this.releaseFocusGuard?.();
-        contents.focus();
+        // A parked view (error, empty, menu) keeps the keyboard and drops `before-input-event`.
+        if (this.visible) contents.focus();
+        else this.releaseParkedFocus();
         break;
       default: {
         const unreachable: never = action;
@@ -384,6 +422,34 @@ export class BrowserService {
     });
   }
 
+  /**
+   * The page view is hidden but still focused. Hand the keyboard to the app window and tell the
+   * renderer once, so it can focus the content pane instead of leaving chords in the parked view.
+   */
+  private releaseParkedFocus(): void {
+    if (this.releasingFocus) return;
+    this.releasingFocus = true;
+    try {
+      const ui = this.hostWindow.webContents;
+      if (!ui.isDestroyed()) ui.focus();
+      if (!this.parkedNotice) {
+        this.parkedNotice = true;
+        this.events.focusParked();
+      }
+    } finally {
+      this.releasingFocus = false;
+    }
+  }
+
+  /** Tells the renderer whether the live page currently has the keyboard. */
+  private notifyPageFocus(): void {
+    if (this.disposed || this.contents.isDestroyed()) return;
+    const focused = this.visible && this.contents.isFocused() && !this.releaseFocusGuard;
+    if (focused === this.lastPageFocused) return;
+    this.lastPageFocused = focused;
+    this.events.pageFocused(focused);
+  }
+
   /** Positions the view (window CSS px == DIP) and applies the preset's device emulation. */
   setBounds(rect: Rect | null, emulation: ViewportEmulation | null): void {
     const show = rect !== null && rect.width > 0 && rect.height > 0;
@@ -398,9 +464,17 @@ export class BrowserService {
     }
     if (show !== this.visible) {
       this.visible = show;
-      // Hidden views keep keyboard focus; hand it back to the app UI (e.g. the command palette).
-      if (!show && this.contents.isFocused()) this.options.window.webContents.focus();
-      this.view.setVisible(show);
+      if (show) {
+        this.parkedNotice = false;
+        this.view.setVisible(true);
+      } else {
+        // Hide first. Focusing the host while the view is still visible does not stick, and a
+        // hidden view that keeps the keyboard never delivers `before-input-event`.
+        const wasFocused = !this.contents.isDestroyed() && this.contents.isFocused();
+        this.view.setVisible(false);
+        const stillFocused = !this.contents.isDestroyed() && this.contents.isFocused();
+        if (wasFocused || stillFocused) this.releaseParkedFocus();
+      }
     }
     this.emulation = emulation;
     void this.applyEmulation();
@@ -534,19 +608,19 @@ export class BrowserService {
         this.pings.delete(message.payload.nonce);
         break;
       case 'inspector.selected':
-        if (this.inspecting) this.options.events.inspectorSelected(message.payload);
+        if (this.inspecting) this.events.inspectorSelected(message.payload);
         break;
       case 'inspector.cancelled':
-        if (this.inspecting) this.options.events.inspectorCancelled();
+        if (this.inspecting) this.events.inspectorCancelled();
         break;
       case 'inspector.overlayApplied':
         this.overlayAcks.get(message.payload.nonce)?.();
         break;
       case 'design.state':
-        if (this.designing) this.options.events.designState(message.payload);
+        if (this.designing) this.events.designState(message.payload);
         break;
       case 'design.exitRequested':
-        if (this.designing) this.options.events.designExitRequested();
+        if (this.designing) this.events.designExitRequested();
         break;
       case 'design.overlayApplied':
         this.overlayAcks.get(message.payload.nonce)?.();
@@ -565,8 +639,10 @@ export class BrowserService {
     const pendingSave = this.saveTimer !== undefined;
     clearTimeout(this.saveTimer);
     this.releaseFocusGuard?.();
+    this.detachInterceptor?.();
+    this.detachInterceptor = null;
     for (const dispose of this.disposers.splice(0)) dispose();
-    if (!this.options.window.isDestroyed()) this.options.window.contentView.removeChildView(this.view);
+    if (!this.hostWindow.isDestroyed()) this.hostWindow.contentView.removeChildView(this.view);
     if (!this.contents.isDestroyed()) {
       if (this.debuggerAttached) {
         try {
@@ -599,10 +675,18 @@ export class BrowserService {
       }
       if (this.designGuard && url !== this.state.url) {
         event.preventDefault();
-        this.options.events.designNavigationBlocked(url);
+        this.events.designNavigationBlocked(url);
       }
     });
     contents.on('will-attach-webview', (event) => event.preventDefault());
+    contents.on('focus', () => {
+      if (!this.visible) {
+        this.releaseParkedFocus();
+        return;
+      }
+      this.notifyPageFocus();
+    });
+    contents.on('blur', () => this.notifyPageFocus());
 
     contents.on('did-start-loading', () => {
       void this.attachDebugger();
@@ -618,7 +702,7 @@ export class BrowserService {
       this.options.history.record(url, contents.getTitle());
       this.update({ url, title: contents.getTitle() });
       this.scheduleSave();
-      if (this.designing && !this.designGuard) this.options.events.designDocumentNavigated();
+      if (this.designing && !this.designGuard) this.events.designDocumentNavigated();
     });
     contents.on('did-navigate-in-page', (_event, url, isMainFrame) => {
       if (!isMainFrame) return;
@@ -626,7 +710,7 @@ export class BrowserService {
       this.options.history.record(url, contents.getTitle());
       this.update({ url });
       this.scheduleSave();
-      if (this.designing && this.designGuard && url !== previous) this.options.events.designNavigationBlocked(url);
+      if (this.designing && this.designGuard && url !== previous) this.events.designNavigationBlocked(url);
     });
     contents.on('did-finish-load', () => {
       // Chromium keeps zoom per origin; re-apply the panel's zoom after cross-origin loads.
@@ -687,7 +771,7 @@ export class BrowserService {
       canGoBack: history.canGoBack(),
       canGoForward: history.canGoForward(),
     };
-    this.options.events.state(this.state);
+    this.events.state(this.state);
   }
 
   private scheduleSave(): void {
@@ -802,7 +886,7 @@ export class BrowserService {
     this.flushTimer ??= setTimeout(() => {
       this.flushTimer = undefined;
       const entries = this.pendingProblems.splice(0).slice(-PROBLEM_BUFFER_SIZE);
-      if (entries.length > 0) this.options.events.problemsAdded(entries);
+      if (entries.length > 0) this.events.problemsAdded(entries);
     }, PROBLEM_FLUSH_MS);
   }
 

@@ -4,6 +4,7 @@ import {
   attentionKind,
   attentionMessage,
   nextAttentionThread,
+  NO_ATTENTION,
   reduceAttention,
   type AttentionInput,
   type AttentionKind,
@@ -12,6 +13,7 @@ import {
   type ThreadState,
 } from '@arbora/shared';
 import { useAgents } from './agent-store';
+import { findGroveThread } from './grove-thread-index';
 import { playSound } from './sounds';
 import { useApp } from './store';
 
@@ -28,7 +30,7 @@ export function resetAttention(): void {
   syncCount();
 }
 
-/** The thread on screen in the workspace that shows: the Grove selection, or the docked panel's open thread. */
+/** The thread in the chat column, unless Settings covers it. */
 export function visibleThreadId(): string | null {
   const { settingsOpen, layout } = useApp.getState();
   if (settingsOpen) return null;
@@ -53,9 +55,17 @@ function syncCount(): void {
 function threadName(threadId: string): string {
   const { threads, agents } = useAgents.getState();
   const thread = threads.find((t) => t.id === threadId);
-  const agent = agents.find((a) => a.id === thread?.agentId)?.name ?? thread?.agentId ?? 'Agent';
-  if (!thread || thread.title === 'New thread') return agent;
-  return `${agent} · ${thread.title}`;
+  const indexed = thread ? undefined : findGroveThread(threadId);
+  const agentId = thread?.agentId ?? indexed?.agentId;
+  const title = thread?.title ?? indexed?.title;
+  const agent = agents.find((a) => a.id === agentId)?.name ?? agentId ?? 'Agent';
+  const base = !title || title === 'New thread' ? agent : `${agent} · ${title}`;
+  if (!indexed) return base;
+  const folder = indexed.projectPath
+    .split(/[/\\]/)
+    .filter((part) => part.length > 0)
+    .pop();
+  return folder ? `${base} · ${folder}` : base;
 }
 
 function soundFor(kind: AttentionKind): ReturnType<typeof useApp.getState>['settings']['sounds']['finished'] {
@@ -90,7 +100,9 @@ function announce(threadId: string, kind: AttentionKind, attention: ThreadAttent
 }
 
 function isHelper(threadId: string): boolean {
-  return useAgents.getState().threads.some((t) => t.id === threadId && t.parentThreadId !== null);
+  if (useAgents.getState().threads.some((t) => t.id === threadId && t.parentThreadId !== null)) return true;
+  const parent = findGroveThread(threadId)?.parentThreadId;
+  return parent !== undefined && parent !== null;
 }
 
 function apply(threadId: string, input: AttentionInput): void {
@@ -118,6 +130,29 @@ export function noteThreadChanges(threadId: string, changes: readonly ThreadChan
 
 export function noteThreadState(threadId: string, state: ThreadState): void {
   apply(threadId, { type: 'status', status: state.status, error: state.error, at: Date.now() });
+}
+
+/**
+ * A permission or sign-in already waiting when Grove first sees another project's transcript.
+ * Does not notify: the attention cue already happened, or the app just opened. Live events after
+ * this still go through `noteThreadChanges` and raise the existing notification.
+ */
+export function seedWaitingAttention(
+  threadId: string,
+  waiting: { permissionIds: readonly string[]; permissionTitle: string | null; auth: boolean },
+): void {
+  if (waiting.permissionIds.length === 0 && !waiting.auth) return;
+  const current = useAttention.getState().threads[threadId];
+  if (current && (current.pendingPermissions.length > 0 || current.auth || current.unread !== null)) return;
+  const next: ThreadAttention = {
+    ...NO_ATTENTION,
+    pendingPermissions: waiting.permissionIds,
+    permissionTitle: waiting.permissionTitle,
+    auth: waiting.auth,
+    since: Date.now(),
+  };
+  useAttention.setState((s) => ({ threads: { ...s.threads, [threadId]: next } }));
+  syncCount();
 }
 
 export function markSeen(threadId: string): void {

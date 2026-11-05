@@ -37,6 +37,8 @@ export function bindingFromChord(chord: Chord, platform: Platform): string {
 export function scopesOverlap(a: KeybindingWhen, b: KeybindingWhen): boolean {
   if (a === b) return true;
   const pair = new Set([a, b]);
+  // Content-pane chords only fire while that pane is focused, so they share keys with Grove rows.
+  if (pair.has('contentPane')) return false;
   // Modes end on the way into Grove; its session pane is an agent thread.
   if (pair.has('grove')) return pair.has('agentPanel');
   if (pair.has('always')) return true;

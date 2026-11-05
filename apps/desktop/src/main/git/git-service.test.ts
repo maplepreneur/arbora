@@ -43,6 +43,20 @@ describe('GitService', () => {
     expect(log[0]?.subject).toBe('edit');
   });
 
+  it('adds a worktree on a sibling path and removes it again', async () => {
+    const { git, root } = fresh();
+    await init(root);
+    writeFileSync(join(root, 'f.txt'), 'a\n');
+    await git.stage(['f.txt']);
+    expect((await git.commit('init', false)).ok).toBe(true);
+    const directory = join(root, '..', `${root.split('/').pop()}-fix-nav`);
+    await git.addWorktree('fix-nav', directory);
+    roots.push(directory);
+    expect(existsSync(join(directory, 'f.txt'))).toBe(true);
+    await git.removeWorktree(directory);
+    expect(existsSync(directory)).toBe(false);
+  });
+
   it('untracks a committed .arbora folder and keeps the files', async () => {
     const { git, root } = fresh();
     await init(root);

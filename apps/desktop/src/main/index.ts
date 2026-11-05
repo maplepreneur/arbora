@@ -1,13 +1,16 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, basename } from 'node:path';
 import { app, BrowserWindow, clipboard, crashReporter, dialog, Menu, shell, type WebContents } from 'electron';
 import { AgentRegistry } from '@arbora/acp-client';
 import {
+  attentionFromTranscript,
+  attentionKind,
   applyProjectMeta,
   applySettingsPatch,
+  addRecentProject,
   buildProjectLibrary,
   commitMessagePrompt,
   detectInstallKind,
@@ -16,8 +19,11 @@ import {
   pullRequestPrompt,
   resolveTaskAgent,
   toPlatform,
+  worktreeBranchName,
+  worktreeDirectory,
   updatePolicy,
   type AgentVerification,
+  type AppSettings,
   type ProjectLibrary,
   type UpdatePolicy,
 } from '@arbora/shared';
@@ -31,7 +37,9 @@ import { BrowserSessions } from './browser/browser-sessions.js';
 import type { BrowserService } from './browser/browser-service.js';
 import { registerPageIpc } from './browser/page-ipc.js';
 import { defineHandler, sendEvent } from './ipc.js';
+import { keepRunningAfterLastWindow } from './grove-processes.js';
 import { buildMacMenu } from './menu.js';
+import { readProjectCommands, readProjectFramework } from './project-runtime.js';
 import { ensureArboraGitignore, ensureProjectSettingsFile, updateProjectSettingsFile } from './project-settings.js';
 import { SettingsStore } from './settings-store.js';
 import { importableMcpServers } from './skills/mcp-import.js';
@@ -42,10 +50,10 @@ import type { DevServer } from './terminal/dev-server.js';
 import { findExecutable, ShellEnvironment } from './terminal/shell-env.js';
 import type { TerminalService } from './terminal/terminal-service.js';
 import { createPullRequest, githubAuth, listPullRequests, pullRequestChecks } from './git/github.js';
-import type { GitService } from './git/git-service.js';
+import { GitService } from './git/git-service.js';
 import type { WorkspaceService } from './workspace/workspace-service.js';
 import { ThemeService } from './theme-service.js';
-import { ProjectWindowError, WindowManager, type ProjectWindow } from './window-manager.js';
+import { ProjectWindowError, resolveProjectPath, WindowManager, type ProjectWindow } from './window-manager.js';
 
 const platform = toPlatform(process.platform);
 const tilingCompositor = detectTilingCompositor(platform, process.env);
@@ -73,6 +81,8 @@ function main(): void {
 
   let windows: WindowManager | undefined;
   let quitOnLastWindowClose = (): boolean => true;
+  let groveStillRunning = (): boolean => false;
+  let showGroveTray = (): void => undefined;
   const pendingPaths: string[] = [];
   const initialProject = parseProjectArg(process.argv, process.cwd(), isDefaultApp);
 
@@ -162,6 +172,8 @@ function main(): void {
           : { file: join(import.meta.dirname, '../renderer/index.html') },
     });
     const manager = windows;
+    groveStillRunning = () => manager.hasLiveGroveProcesses();
+    showGroveTray = () => manager.showBackgroundTray();
 
     const projectLibrary = (): ProjectLibrary => {
       const live = new Map<string, number>();
@@ -440,7 +452,7 @@ function main(): void {
     });
 
     defineHandler('project.getCurrent', isTrusted, (_req, event) => windowFor(event.sender).info());
-    defineHandler('project.open', isTrusted, async ({ path }, event) => {
+    defineHandler('project.open', isTrusted, async ({ path, onThisWindow, url }, event) => {
       const from = windowFor(event.sender);
       let target = path;
       if (target === undefined) {
@@ -452,6 +464,14 @@ function main(): void {
       }
       if (target === undefined) return { opened: false };
       try {
+        // A window that already has a project switches in place. Creating another window here is
+        // what made a Grove project click tile a second Arbora window beside this one.
+        if (onThisWindow || from.project !== null) {
+          manager.openOnThisWindow(target, from);
+          await from.whenBrowserReady();
+          if (url) from.browser?.navigate(url);
+          return { opened: true };
+        }
         manager.openProject(target, from);
         return { opened: true };
       } catch (error) {
@@ -587,13 +607,17 @@ function main(): void {
       return undefined;
     });
 
+    const runtimeOf = (sender: WebContents) => {
+      const path = windowFor(sender).activeRuntimePath();
+      return path ? manager.runtime(path) : undefined;
+    };
     const requireTerminals = (sender: WebContents): TerminalService => {
-      const terminals = windowFor(sender).terminals;
+      const terminals = runtimeOf(sender)?.terminals;
       if (!terminals) throw new Error('Open a project first');
       return terminals;
     };
     const requireDevServer = (sender: WebContents): DevServer => {
-      const devServer = windowFor(sender).devServer;
+      const devServer = runtimeOf(sender)?.devServer;
       if (!devServer) throw new Error('Open a project first');
       return devServer;
     };
@@ -606,28 +630,28 @@ function main(): void {
         ...(command !== undefined ? { command } : {}),
       }),
     );
-    defineHandler('terminal.list', isTrusted, (_req, event) => windowFor(event.sender).terminals?.list() ?? []);
+    defineHandler('terminal.list', isTrusted, (_req, event) => runtimeOf(event.sender)?.terminals.list() ?? []);
     defineHandler('terminal.scrollback', isTrusted, ({ id }, event) => ({
-      data: windowFor(event.sender).terminals?.scrollback(id) ?? '',
+      data: runtimeOf(event.sender)?.terminals.scrollback(id) ?? '',
     }));
     defineHandler('terminal.write', isTrusted, ({ id, data }, event) => {
-      windowFor(event.sender).terminals?.write(id, data);
+      runtimeOf(event.sender)?.terminals.write(id, data);
       return undefined;
     });
     defineHandler('terminal.resize', isTrusted, ({ id, cols, rows }, event) => {
-      windowFor(event.sender).terminals?.resize(id, { cols, rows });
+      runtimeOf(event.sender)?.terminals.resize(id, { cols, rows });
       return undefined;
     });
     defineHandler('terminal.rename', isTrusted, ({ id, title }, event) => {
-      windowFor(event.sender).terminals?.rename(id, title);
+      runtimeOf(event.sender)?.terminals.rename(id, title);
       return undefined;
     });
     defineHandler('terminal.kill', isTrusted, async ({ id }, event) => {
-      await windowFor(event.sender).terminals?.kill(id);
+      await runtimeOf(event.sender)?.terminals.kill(id);
       return undefined;
     });
     defineHandler('terminal.close', isTrusted, async ({ id }, event) => {
-      await windowFor(event.sender).terminals?.close(id);
+      await runtimeOf(event.sender)?.terminals.close(id);
       return undefined;
     });
     defineHandler('terminal.lines', isTrusted, ({ id, count }, event) =>
@@ -640,13 +664,187 @@ function main(): void {
       }),
     );
     defineHandler('devServer.stop', isTrusted, async (_req, event) => {
-      await windowFor(event.sender).devServer?.stop();
+      await runtimeOf(event.sender)?.devServer.stop();
       return undefined;
     });
     defineHandler('devServer.status', isTrusted, (_req, event) => requireDevServer(event.sender).status());
 
+    defineHandler('grove.focusProject', isTrusted, ({ path }, event) => {
+      const projectWindow = windowFor(event.sender);
+      if (path === null) {
+        projectWindow.groveFocus = null;
+        return undefined;
+      }
+      let resolved: string;
+      try {
+        resolved = resolveProjectPath(path);
+      } catch (error) {
+        throw error instanceof Error ? error : new Error('Could not open that folder', { cause: error });
+      }
+      const listed = settings.get().grove.projects.some((entry) => entry.path === resolved);
+      if (resolved !== projectWindow.project?.path && !listed) throw new Error('That project is not in Grove');
+      projectWindow.groveFocus = resolved;
+      return undefined;
+    });
+    defineHandler('grove.addProject', isTrusted, async ({ path }, event) => {
+      const projectWindow = windowFor(event.sender);
+      let target = path;
+      if (target === undefined) {
+        const result = await dialog.showOpenDialog(projectWindow.window, {
+          title: 'Add Project to Grove',
+          properties: ['openDirectory', 'createDirectory'],
+        });
+        target = result.canceled ? undefined : result.filePaths[0];
+      }
+      if (target === undefined) return { added: false };
+      let resolved: string;
+      try {
+        resolved = resolveProjectPath(target);
+      } catch (error) {
+        return { added: false, error: (error as Error).message };
+      }
+      settings.update((current) => {
+        if (current.grove.projects.some((entry) => entry.path === resolved)) return current;
+        return {
+          ...current,
+          grove: {
+            ...current.grove,
+            projects: [...current.grove.projects, { path: resolved, collapsed: false }].slice(0, 50),
+          },
+          recentProjects: addRecentProject(current.recentProjects, {
+            path: resolved,
+            name: basename(resolved),
+            openedAt: Date.now(),
+          }),
+        };
+      });
+      manager.syncGroveProjects();
+      return { added: true, path: resolved };
+    });
+    defineHandler('grove.removeProject', isTrusted, ({ path, confirm }, event) => {
+      let resolved: string;
+      try {
+        resolved = resolveProjectPath(path);
+      } catch {
+        resolved = path;
+      }
+      const runtime = manager.runtime(resolved);
+      if (runtime?.busy() && confirm !== true) return { removed: false, running: true };
+      settings.update((current) => ({
+        ...current,
+        grove: { ...current.grove, projects: current.grove.projects.filter((entry) => entry.path !== resolved) },
+      }));
+      manager.syncGroveProjects();
+      const projectWindow = windowFor(event.sender);
+      if (projectWindow.groveFocus === resolved) projectWindow.groveFocus = null;
+      return { removed: true };
+    });
+    defineHandler('grove.setCollapsed', isTrusted, ({ path, collapsed }) => {
+      settings.update((current) => ({
+        ...current,
+        grove: {
+          ...current.grove,
+          projects: current.grove.projects.map((entry) => (entry.path === path ? { ...entry, collapsed } : entry)),
+        },
+      }));
+      return undefined;
+    });
+    defineHandler('grove.commands', isTrusted, async ({ path }) => {
+      const resolved = resolveProjectPath(path);
+      const [commands, framework] = await Promise.all([readProjectCommands(resolved), readProjectFramework(resolved)]);
+      const trusted = new Set(
+        settings
+          .get()
+          .grove.trustedCommands.filter((entry) => entry.path === resolved)
+          .map((entry) => entry.command),
+      );
+      return {
+        commands: commands.map((command) => ({ ...command, trusted: trusted.has(command.command) })),
+        framework,
+      };
+    });
+    defineHandler('grove.trustCommand', isTrusted, ({ path, command }) => {
+      const resolved = resolveProjectPath(path);
+      settings.update((current) => {
+        if (current.grove.trustedCommands.some((entry) => entry.path === resolved && entry.command === command)) {
+          return current;
+        }
+        return {
+          ...current,
+          grove: {
+            ...current.grove,
+            trustedCommands: [...current.grove.trustedCommands, { path: resolved, command }].slice(-500),
+          },
+        };
+      });
+      return undefined;
+    });
+    defineHandler('grove.runCommand', isTrusted, ({ path, command, title, cols, rows }, event) => {
+      const resolved = resolveProjectPath(path);
+      const trusted = settings
+        .get()
+        .grove.trustedCommands.some((entry) => entry.path === resolved && entry.command === command);
+      if (!trusted) throw new Error('Trust this command before running it');
+      windowFor(event.sender).groveFocus = resolved;
+      return requireTerminals(event.sender).create({
+        command,
+        kind: 'shell',
+        ...(title !== undefined ? { title } : { title: command }),
+        ...(cols !== undefined ? { cols } : {}),
+        ...(rows !== undefined ? { rows } : {}),
+      });
+    });
+    defineHandler('grove.terminals', isTrusted, () => ({
+      projects: manager.runtimePaths().map((path) => ({
+        path,
+        terminals: manager.runtime(path)?.terminals.list() ?? [],
+      })),
+    }));
+    defineHandler('grove.agents', isTrusted, () => ({
+      projects: manager.runtimePaths().map((path) => {
+        const agents = manager.runtime(path)?.agents;
+        const threads = agents?.listThreads() ?? [];
+        const waiting = threads.flatMap((summary) => {
+          if (summary.archivedAt !== null) return [];
+          const thread = agents?.getThread(summary.id);
+          if (!thread) return [];
+          const attention = attentionFromTranscript(thread.events, thread.state);
+          const kind = attentionKind(attention);
+          if (kind !== 'permission' && kind !== 'auth') return [];
+          return [
+            {
+              threadId: summary.id,
+              permissionIds: [...attention.pendingPermissions],
+              permissionTitle: attention.permissionTitle,
+              auth: attention.auth || kind === 'auth',
+            },
+          ];
+        });
+        return { path, threads, waiting };
+      }),
+    }));
+    defineHandler('grove.createWorktree', isTrusted, async ({ parentPath, title, agentId, model }, event) => {
+      const projectWindow = windowFor(event.sender);
+      return createGroveWorktree({
+        parentPath,
+        title,
+        agentId,
+        ...(model !== undefined ? { model } : {}),
+        windowProject: projectWindow.project?.path,
+        settings,
+        manager,
+        env: async () => {
+          await shellEnvironment.ready;
+          return shellEnvironment.env();
+        },
+        focus: (path) => {
+          projectWindow.groveFocus = path;
+        },
+      });
+    });
+
     const requireAgents = (sender: WebContents): AgentService => {
-      const agents = windowFor(sender).agents;
+      const agents = runtimeOf(sender)?.agents;
       if (!agents) throw new Error('Open a project first');
       return agents;
     };
@@ -681,11 +879,11 @@ function main(): void {
       probes.set(agentId, probe);
       return probe;
     });
-    defineHandler('agent.listThreads', isTrusted, (_req, event) => windowFor(event.sender).agents?.listThreads() ?? []);
+    defineHandler('agent.listThreads', isTrusted, (_req, event) => runtimeOf(event.sender)?.agents.listThreads() ?? []);
     defineHandler('agent.createThread', isTrusted, ({ agentId, model, groupId, title }, event) =>
       requireAgents(event.sender).createThread(agentId, { model, groupId, title }),
     );
-    defineHandler('agent.listGroups', isTrusted, (_req, event) => windowFor(event.sender).agents?.listGroups() ?? []);
+    defineHandler('agent.listGroups', isTrusted, (_req, event) => runtimeOf(event.sender)?.agents.listGroups() ?? []);
     defineHandler('agent.saveGroups', isTrusted, ({ groups }, event) => requireAgents(event.sender).saveGroups(groups));
     defineHandler('agent.setThreadGroup', isTrusted, ({ threadId, groupId }, event) => {
       requireAgents(event.sender).setThreadGroup(threadId, groupId);
@@ -1007,7 +1205,30 @@ function main(): void {
       if (manager.all().length === 0) manager.create(null);
     });
 
+    let allowQuit = false;
+    const interactiveQuit = process.env['ARBORA_E2E'] !== '1';
+    app.on('before-quit', (event) => {
+      if (allowQuit || !keepRunningAfterLastWindow(manager.hasLiveGroveProcesses(), interactiveQuit)) return;
+      event.preventDefault();
+      void dialog
+        .showMessageBox({
+          type: 'question',
+          buttons: ['Quit', 'Cancel'],
+          defaultId: 1,
+          cancelId: 1,
+          title: 'Quit Arbora',
+          message: 'Quit Arbora?',
+          detail: 'Grove terminals and agents are still running. Quitting stops them. Closing a window does not.',
+        })
+        .then(({ response }) => {
+          if (response !== 0) return;
+          allowQuit = true;
+          app.quit();
+        });
+    });
+
     app.on('will-quit', () => {
+      manager.disposeRuntimes();
       disposePageIpc();
       browserSessions.dispose();
       updates.dispose();
@@ -1019,8 +1240,106 @@ function main(): void {
   });
 
   app.on('window-all-closed', () => {
+    if (keepRunningAfterLastWindow(groveStillRunning(), process.env['ARBORA_E2E'] !== '1')) {
+      showGroveTray();
+      return;
+    }
     if (shouldQuitWhenAllWindowsClosed(platform, quitOnLastWindowClose())) app.quit();
   });
+}
+
+/**
+ * Adds a git worktree as its own Grove project and starts an agent there. A failed `git worktree add`
+ * does not touch the Grove list. A failure after the folder exists removes the worktree again.
+ */
+async function createGroveWorktree(options: {
+  parentPath: string;
+  title: string;
+  agentId: string;
+  model?: string;
+  windowProject: string | undefined;
+  settings: SettingsStore;
+  manager: WindowManager;
+  env: () => Promise<NodeJS.ProcessEnv>;
+  focus: (path: string) => void;
+}): Promise<{ path?: string; threadId?: string; error?: string }> {
+  let parent: string;
+  try {
+    parent = resolveProjectPath(options.parentPath);
+  } catch (error) {
+    return { error: (error as Error).message };
+  }
+  const known =
+    parent === options.windowProject || options.settings.get().grove.projects.some((entry) => entry.path === parent);
+  if (!known) return { error: 'That project is not in Grove' };
+  const branch = worktreeBranchName(options.title);
+  const directory = worktreeDirectory(parent, branch);
+  if (existsSync(directory)) return { error: `${directory} already exists` };
+  const git = new GitService({ root: parent, env: options.env });
+  const status = await git.status();
+  if (!status.repo) return { error: 'This folder is not a git repository' };
+  try {
+    await git.addWorktree(branch, directory);
+  } catch (error) {
+    if (existsSync(directory)) await git.removeWorktree(directory).catch(() => undefined);
+    return { error: (error as Error).message };
+  }
+  let resolved: string;
+  try {
+    resolved = resolveProjectPath(directory);
+  } catch (error) {
+    await git.removeWorktree(directory).catch(() => undefined);
+    return { error: (error as Error).message };
+  }
+  const undo = async (): Promise<void> => {
+    options.settings.update((current) => ({
+      ...current,
+      grove: { ...current.grove, projects: current.grove.projects.filter((entry) => entry.path !== resolved) },
+    }));
+    options.manager.syncGroveProjects();
+    await git.removeWorktree(directory).catch(() => undefined);
+  };
+  const parentGroup = options.settings.get().projects[parent]?.groupId;
+  options.settings.update((current) => {
+    if (current.grove.projects.some((entry) => entry.path === resolved)) return current;
+    const projects: AppSettings['projects'] = parentGroup
+      ? { ...current.projects, [resolved]: { ...current.projects[resolved], groupId: parentGroup } }
+      : current.projects;
+    return {
+      ...current,
+      projects,
+      grove: {
+        ...current.grove,
+        projects: [...current.grove.projects, { path: resolved, collapsed: false, parentPath: parent }].slice(0, 50),
+      },
+      recentProjects: addRecentProject(current.recentProjects, {
+        path: resolved,
+        name: basename(resolved),
+        openedAt: Date.now(),
+      }),
+    };
+  });
+  if (!options.settings.get().grove.projects.some((entry) => entry.path === resolved)) {
+    await git.removeWorktree(directory).catch(() => undefined);
+    return { error: 'Grove already has 50 projects' };
+  }
+  options.manager.syncGroveProjects();
+  const runtime = options.manager.runtime(resolved);
+  if (!runtime) {
+    await undo();
+    return { error: 'Could not start the worktree' };
+  }
+  try {
+    const thread = runtime.agents.createThread(options.agentId, {
+      title: options.title,
+      ...(options.model !== undefined ? { model: options.model } : {}),
+    });
+    options.focus(resolved);
+    return { path: resolved, threadId: thread.id };
+  } catch (error) {
+    await undo();
+    return { error: (error as Error).message };
+  }
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_COMMANDS, CommandId, resolveKeybindingSpecs } from './commands.js';
+import { DEFAULT_COMMANDS, CommandId, resolveKeybindingSpecs, rightTabIndex } from './commands.js';
 import {
   ChordParseError,
   chordFromInput,
@@ -114,6 +114,10 @@ describe('KeybindingTable', () => {
     const terminal = { ...idle, terminalFocused: true };
     expect(table.match(parseChord('ctrl+k', 'linux'), terminal)).toBeUndefined();
     expect(table.match(parseChord('ctrl+d', 'linux'), terminal)).toBeUndefined();
+    // Show Terminal is Ctrl+`, and that chord still belongs to a focused shell.
+    expect(table.match(parseChord('ctrl+`', 'linux'), idle)?.commandId).toBe(CommandId.showTerminal);
+    expect(table.match(parseChord('ctrl+`', 'linux'), terminal)).toBeUndefined();
+    expect(table.match(parseChord('ctrl+shift+`', 'linux'), terminal)?.commandId).toBe(CommandId.terminalNew);
     expect(table.match(parseChord('ctrl+shift+p', 'linux'), terminal)?.commandId).toBe(CommandId.commandPalette);
     expect(table.match(parseChord('ctrl+k', 'linux'), { ...terminal, terminalPassthrough: false })?.commandId).toBe(
       CommandId.agentMode,
@@ -165,11 +169,86 @@ describe('KeybindingTable', () => {
     expect(table.match(down, idle)?.commandId).toBe(CommandId.focusPanelDown);
     expect(table.match(down, grove)?.commandId).toBe(CommandId.groveNextSession);
     expect(table.match(parseChord('ctrl+alt+up', 'linux'), grove)?.commandId).toBe(CommandId.grovePreviousSession);
-    expect(table.match(parseChord('ctrl+alt+g', 'linux'), idle)?.commandId).toBe(CommandId.toggleWorkspace);
-    expect(table.match(parseChord('ctrl+alt+g', 'linux'), grove)?.commandId).toBe(CommandId.toggleWorkspace);
-    expect(table.match(parseChord('ctrl+alt+g', 'linux'), { ...idle, terminalFocused: true })?.commandId).toBe(
-      CommandId.toggleWorkspace,
+    expect(table.match(parseChord('ctrl+alt+[', 'linux'), grove)?.commandId).toBe(CommandId.groveNextProject);
+    expect(table.match(parseChord('ctrl+alt+]', 'linux'), grove)?.commandId).toBe(CommandId.grovePreviousProject);
+    expect(table.match(parseChord('ctrl+tab', 'linux'), grove)?.commandId).toBe(CommandId.groveSwitchProject);
+    expect(table.match(parseChord('ctrl+shift+tab', 'linux'), grove)?.commandId).toBe(CommandId.groveSwitchProjectBack);
+    expect(table.match(parseChord('ctrl+tab', 'linux'), idle)).toBeUndefined();
+    expect(table.match(parseChord('ctrl+k', 'linux'), grove)?.commandId).toBe(CommandId.agentMode);
+    expect(table.match(parseChord('ctrl+k', 'linux'), grove)?.commandId).not.toBe(CommandId.groveSearch);
+    expect(table.match(parseChord('ctrl+alt+m', 'linux'), grove)?.commandId).toBe(CommandId.toggleMaximizeRight);
+    expect(table.match(parseChord('ctrl+alt+m', 'linux'), { ...grove, terminalFocused: true })?.commandId).toBe(
+      CommandId.toggleMaximizeRight,
     );
+    // The old Grove workspace toggle is gone. Ctrl+Alt+G opens the content pane's Changes tab.
+    expect(table.match(parseChord('ctrl+alt+g', 'linux'), grove)?.commandId).toBe(CommandId.showGitPanel);
+    expect(table.match(parseChord('ctrl+alt+g', 'linux'), idle)?.commandId).toBe(CommandId.showGitPanel);
+    expect(table.match(parseChord('ctrl+shift+l', 'linux'), idle)?.commandId).toBe(CommandId.showBrowser);
+    expect(table.match(parseChord('ctrl+shift+h', 'linux'), idle)?.commandId).toBe(CommandId.toggleContentPane);
+    expect(table.match(parseChord('ctrl+h', 'linux'), idle)?.commandId).toBe(CommandId.showKeybindings);
+    // Mod+Alt+1..9 pick the right column's tabs, from the terminal too; Mod+1..9 stay agents.
+    const content = { ...grove, contentFocused: true };
+    expect(table.match(parseChord('ctrl+1', 'linux'), content)?.commandId).toBe(CommandId.rightTab1);
+    expect(table.match(parseChord('ctrl+9', 'linux'), { ...content, terminalFocused: true })?.commandId).toBe(
+      CommandId.rightTab9,
+    );
+    // The project tree keeps Grove's agent rows. The content pane does not steal them.
+    expect(table.match(parseChord('ctrl+1', 'linux'), grove)?.commandId).toBe(CommandId.groveSelectSession1);
+    expect(table.match(parseChord('ctrl+k', 'linux'), content)?.commandId).toBe(CommandId.agentMode);
+    expect(table.match(parseChord('ctrl+k', 'linux'), grove)?.commandId).toBe(CommandId.agentMode);
+    expect(rightTabIndex(CommandId.rightTab2)).toBe(1);
+    expect(rightTabIndex(CommandId.rightTab9)).toBe(-1);
+    const newTerminal = parseChord('ctrl+shift+t', 'linux');
+    expect(CommandId.groveNewTerminal).toBe('arbora.grove.newTerminal');
+    expect(table.match(newTerminal, idle)).toBeUndefined();
+    expect(table.match(newTerminal, grove)?.commandId).toBe(CommandId.groveNewTerminal);
+    expect(table.match(newTerminal, { ...grove, terminalFocused: true })?.commandId).toBe(CommandId.groveNewTerminal);
+  });
+
+  it('keeps Mod+K as agent mode and Mod+Shift+K as Grove search in both workspaces', () => {
+    const { table } = build('linux');
+    const grove: KeybindingContext = { ...idle, workspace: 'grove' };
+    const browser: KeybindingContext = { ...idle, workspace: 'browser' };
+    for (const context of [idle, browser, grove]) {
+      expect(table.match(parseChord('ctrl+k', 'linux'), context)?.commandId).toBe(CommandId.agentMode);
+      expect(table.match(parseChord('ctrl+shift+k', 'linux'), context)?.commandId).toBe(CommandId.groveSearch);
+    }
+    expect(table.match(parseChord('ctrl+shift+p', 'linux'), grove)?.commandId).toBe(CommandId.commandPalette);
+    const mac = build('darwin').table;
+    const macGrove: KeybindingContext = { ...idle, workspace: 'grove' };
+    expect(mac.match(parseChord('cmd+k', 'darwin'), macGrove)?.commandId).toBe(CommandId.agentMode);
+    expect(mac.match(parseChord('cmd+shift+k', 'darwin'), idle)?.commandId).toBe(CommandId.groveSearch);
+  });
+
+  it('focuses Grove agents in Grove, and archives or stops only with focus in the chat', () => {
+    const { table } = build('linux');
+    const grove: KeybindingContext = { ...idle, workspace: 'grove' };
+    const browser: KeybindingContext = { ...idle, workspace: 'browser' };
+    const focus = parseChord('ctrl+shift+a', 'linux');
+    expect(table.match(focus, idle)?.commandId).toBe(CommandId.agentFocusComposer);
+    expect(table.match(focus, browser)?.commandId).toBe(CommandId.agentFocusComposer);
+    expect(table.match(focus, grove)).toMatchObject({ commandId: CommandId.groveFocusAgents, intercept: true });
+    const close = parseChord('ctrl+w', 'linux');
+    expect(table.match(close, idle)?.commandId).toBe(CommandId.editorCloseTab);
+    expect(table.match(close, browser)?.commandId).toBe(CommandId.editorCloseTab);
+    expect(table.match(close, grove)?.commandId).toBe(CommandId.editorCloseTab);
+    const chat: KeybindingContext = { ...grove, agentFocused: true };
+    expect(table.match(parseChord('alt+a', 'linux'), chat)).toMatchObject({
+      commandId: CommandId.groveArchiveSession,
+      intercept: false,
+    });
+    expect(table.match(parseChord('alt+a', 'linux'), grove)).toBeUndefined();
+    expect(table.match(parseChord('alt+s', 'linux'), chat)).toMatchObject({
+      commandId: CommandId.groveStopSession,
+      intercept: false,
+    });
+    expect(table.match(parseChord('alt+s', 'linux'), grove)).toBeUndefined();
+    const overridden = build('linux', { [CommandId.groveArchiveSession]: 'mod+shift+w' }).table;
+    expect(overridden.match(parseChord('alt+a', 'linux'), chat)).toBeUndefined();
+    expect(overridden.match(parseChord('ctrl+shift+w', 'linux'), chat)?.commandId).toBe(CommandId.groveArchiveSession);
+    const mac = build('darwin').table;
+    expect(mac.match(parseChord('cmd+w', 'darwin'), grove)?.commandId).toBe(CommandId.editorCloseTab);
+    expect(mac.match(parseChord('cmd+shift+a', 'darwin'), grove)?.commandId).toBe(CommandId.groveFocusAgents);
   });
 
   it('prefers a scoped binding over an always binding on the same chord, whatever the order', () => {
@@ -188,6 +267,7 @@ describe('KeybindingTable', () => {
 describe('isTerminalPassthroughChord', () => {
   it('is true only for plain Ctrl chords', () => {
     expect(isTerminalPassthroughChord(parseChord('ctrl+k', 'linux'))).toBe(true);
+    expect(isTerminalPassthroughChord(parseChord('ctrl+tab', 'linux'))).toBe(false);
     expect(isTerminalPassthroughChord(parseChord('ctrl+shift+k', 'linux'))).toBe(false);
     expect(isTerminalPassthroughChord(parseChord('cmd+k', 'darwin'))).toBe(false);
   });

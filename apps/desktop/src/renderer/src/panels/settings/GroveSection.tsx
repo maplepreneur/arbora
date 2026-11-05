@@ -19,15 +19,24 @@ interface ChordRow {
 }
 
 const CHORDS: readonly ChordRow[] = [
-  { ids: [CommandId.toggleWorkspace], text: 'Switch between the browser and Grove' },
+  { ids: [CommandId.toggleMaximizeRight], text: 'Maximize the content pane, and back' },
+  { ids: [CommandId.toggleContentPane], text: 'Hide the content pane, and show it again' },
   { ids: [CommandId.groveNewDefault], text: 'Start the default agent' },
+  { ids: [CommandId.groveNewTerminal], text: 'New terminal in the open project' },
   { ids: [CommandId.agentNewThread], text: 'New agent with a task' },
   { ids: [CommandId.groveSelectSession1, CommandId.groveSelectSession9], range: true, text: 'Agent 1 to 9, top down' },
+  { ids: [CommandId.groveFocusAgents], text: 'Focus the agent list' },
   { ids: [CommandId.grovePreviousSession, CommandId.groveNextSession], text: 'Previous or next agent' },
   { ids: [CommandId.agentShowAttention], text: 'The agent that needs you' },
+  { ids: [CommandId.groveStopSession], text: 'Stop the selected agent' },
   { ids: [CommandId.groveArchiveSession], text: 'Archive the selected agent' },
-  { ids: [CommandId.toggleSidebar], text: 'Hide or show the list' },
-  { ids: [CommandId.focusPanelLeft, CommandId.focusPanelRight], text: 'Move between the list and the composer' },
+  { ids: [CommandId.toggleSidebar], text: 'Hide or show the project tree' },
+  { ids: [CommandId.toggleSideColumn], text: 'Hide or show Files, Source Control and Search' },
+  { ids: [CommandId.rightTab1, CommandId.rightTab9], range: true, text: 'Content pane tab 1 to 8, then the last' },
+  {
+    ids: [CommandId.focusPanelLeft, CommandId.focusPanelRight],
+    text: 'Move between the tree, the chat, the content pane and Files',
+  },
 ];
 
 function ProjectDefaults() {
@@ -62,12 +71,12 @@ function ProjectDefaults() {
         </select>
       </SettingRow>
       <SettingRow
-        title="Start it when Grove opens empty"
+        title="Start it when the project has no agents"
         detail="Opening Grove with no agents starts one session of the default agent, once per visit."
       >
         <Toggle
           on={startOnOpen}
-          label="Start the default agent when Grove opens empty"
+          label="Start the default agent when the project has no agents"
           testId="setting-grove-start-on-open"
           onChange={(on) => void setStartDefaultOnOpen(on)}
         />
@@ -158,8 +167,8 @@ export function GroveSection() {
   return (
     <div data-testid="grove-section">
       <p className="mb-2 text-sm text-fg-muted">
-        Grove swaps the browser for every agent in this project. Agents keep running while you switch back, and quitting
-        Arbora stops them.
+        Grove lists the projects you have not closed. They keep running when you switch back or close the window.
+        Quitting Arbora stops them after you confirm. Close a project in the sidebar to drop it from that list.
       </p>
       <SectionTitle>This project</SectionTitle>
       <ProjectDefaults />

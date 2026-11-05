@@ -11,6 +11,11 @@ export interface CommandDescriptor {
   readonly category?: string;
   /** Default chord, e.g. `mod+k`. Users override it in settings or `.arbora/project.json`. */
   readonly keybinding?: string;
+  /**
+   * More default chords for the same command. A user or project override replaces the whole set
+   * with that one chord. Labels show `keybinding`, not these.
+   */
+  readonly extraKeybindings?: readonly string[];
   readonly when?: KeybindingWhen;
   /** Handle in main via `before-input-event` so it wins over the embedded page and terminal. */
   readonly intercept?: boolean;
@@ -28,6 +33,7 @@ export const CommandId = {
   closeProject: 'arbora.closeProject',
   toggleTheme: 'arbora.toggleTheme',
   toggleSidebar: 'arbora.toggleSidebar',
+  toggleSideColumn: 'arbora.toggleSideColumn',
   toggleAgentPanel: 'arbora.toggleAgentPanel',
   toggleBottomPanel: 'arbora.toggleBottomPanel',
   resetLayout: 'arbora.resetLayout',
@@ -101,6 +107,7 @@ export const CommandId = {
   checkForUpdates: 'arbora.checkForUpdates',
   exportDiagnostics: 'arbora.exportDiagnostics',
   openKeyboardShortcuts: 'arbora.openKeyboardShortcuts',
+  showKeybindings: 'arbora.showKeybindings',
   toggleNotifications: 'arbora.toggleNotifications',
   toggleSounds: 'arbora.toggleSounds',
   focusSidebarPanel: 'arbora.focus.sidebar',
@@ -122,11 +129,21 @@ export const CommandId = {
   gitSync: 'arbora.git.sync',
   gitAiCommit: 'arbora.git.aiCommit',
   gitAiPullRequest: 'arbora.git.aiPullRequest',
-  toggleWorkspace: 'arbora.toggleWorkspace',
-  showBrowserWorkspace: 'arbora.showBrowserWorkspace',
-  showGrove: 'arbora.showGrove',
+  toggleMaximizeRight: 'arbora.toggleMaximizeRight',
+  toggleContentPane: 'arbora.toggleContentPane',
+  rightTab1: 'arbora.rightTab1',
+  rightTab2: 'arbora.rightTab2',
+  rightTab3: 'arbora.rightTab3',
+  rightTab4: 'arbora.rightTab4',
+  rightTab5: 'arbora.rightTab5',
+  rightTab6: 'arbora.rightTab6',
+  rightTab7: 'arbora.rightTab7',
+  rightTab8: 'arbora.rightTab8',
+  rightTab9: 'arbora.rightTab9',
   groveNewDefault: 'arbora.grove.newDefault',
+  groveNewTerminal: 'arbora.grove.newTerminal',
   groveLaunch: 'arbora.grove.launch',
+  groveFocusAgents: 'arbora.grove.focusAgents',
   groveNextSession: 'arbora.grove.nextSession',
   grovePreviousSession: 'arbora.grove.previousSession',
   groveSelectSession1: 'arbora.grove.selectSession1',
@@ -143,6 +160,11 @@ export const CommandId = {
   groveRestartSession: 'arbora.grove.restartSession',
   groveRenameSession: 'arbora.grove.renameSession',
   groveSetDefaultAgent: 'arbora.grove.setDefaultAgent',
+  groveSearch: 'arbora.grove.search',
+  groveNextProject: 'arbora.grove.nextProject',
+  grovePreviousProject: 'arbora.grove.previousProject',
+  groveSwitchProject: 'arbora.grove.switchProject',
+  groveSwitchProjectBack: 'arbora.grove.switchProjectBack',
 } as const;
 
 export type CommandId = (typeof CommandId)[keyof typeof CommandId];
@@ -161,6 +183,26 @@ export const GROVE_SELECT_COMMANDS = [
   CommandId.groveSelectSession8,
   CommandId.groveSelectSession9,
 ] as const;
+
+/** `Mod+1`..`Mod+9` while the content pane is focused: its tabs in strip order; 9 is the last tab. */
+export const RIGHT_TAB_COMMANDS = [
+  CommandId.rightTab1,
+  CommandId.rightTab2,
+  CommandId.rightTab3,
+  CommandId.rightTab4,
+  CommandId.rightTab5,
+  CommandId.rightTab6,
+  CommandId.rightTab7,
+  CommandId.rightTab8,
+  CommandId.rightTab9,
+] as const;
+
+/** The zero-based content-pane tab a `rightTab*` command shows (`-1` is the last), or `null`. */
+export function rightTabIndex(commandId: string): number | null {
+  const index = (RIGHT_TAB_COMMANDS as readonly string[]).indexOf(commandId);
+  if (index === -1) return null;
+  return index === RIGHT_TAB_COMMANDS.length - 1 ? -1 : index;
+}
 
 export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
   {
@@ -181,13 +223,20 @@ export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
     intercept: true,
     hidden: true,
   },
-  { id: CommandId.quickOpen, title: 'Quick Open File', category: 'Files', keybinding: 'mod+p' },
+  { id: CommandId.quickOpen, title: 'Quick Open File', category: 'Files', keybinding: 'mod+p', intercept: true },
   { id: CommandId.openProject, title: 'Open Project…', category: 'Project', keybinding: 'mod+o' },
   { id: CommandId.closeProject, title: 'Close Project', category: 'Project' },
   { id: CommandId.toggleTheme, title: 'Toggle Theme (System / Light / Dark)', category: 'View' },
-  { id: CommandId.toggleSidebar, title: 'Toggle Sidebar', category: 'View', keybinding: 'mod+b' },
-  { id: CommandId.toggleAgentPanel, title: 'Toggle Agent Panel', category: 'View', keybinding: 'mod+alt+b' },
-  { id: CommandId.toggleBottomPanel, title: 'Toggle Bottom Panel', category: 'View', keybinding: 'mod+j' },
+  { id: CommandId.toggleSidebar, title: 'Toggle Project Tree', category: 'View', keybinding: 'mod+b' },
+  {
+    id: CommandId.toggleSideColumn,
+    title: 'Toggle Files, Source Control and Search',
+    category: 'View',
+    keybinding: 'mod+shift+b',
+    intercept: true,
+  },
+  { id: CommandId.toggleAgentPanel, title: 'Toggle Chat', category: 'View', keybinding: 'mod+alt+b' },
+  { id: CommandId.toggleBottomPanel, title: 'Toggle Right Column', category: 'View', keybinding: 'mod+j' },
   { id: CommandId.resetLayout, title: 'Reset Layout', category: 'View' },
   {
     id: CommandId.openSettings,
@@ -201,9 +250,9 @@ export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
   { id: CommandId.showFiles, title: 'Show Files', category: 'View', keybinding: 'mod+shift+e' },
   { id: CommandId.showGitSidebar, title: 'Show Source Control', category: 'View', keybinding: 'mod+shift+g' },
   { id: CommandId.showSearch, title: 'Show Search', category: 'View', keybinding: 'mod+shift+f' },
-  { id: CommandId.showTerminal, title: 'Show Terminal', category: 'View', keybinding: 'ctrl+`' },
-  { id: CommandId.showGitPanel, title: 'Show Git Panel', category: 'View' },
-  { id: CommandId.showProblems, title: 'Show Problems', category: 'View', keybinding: 'mod+shift+m' },
+  { id: CommandId.showTerminal, title: 'Show Terminal', category: 'View', keybinding: 'ctrl+`', intercept: true },
+  { id: CommandId.showGitPanel, title: 'Show Changes', category: 'View', keybinding: 'mod+alt+g', intercept: true },
+  { id: CommandId.showProblems, title: 'Show Problems', category: 'View', keybinding: 'mod+shift+m', intercept: true },
   { id: CommandId.reloadWindow, title: 'Reload Window', category: 'Developer' },
   { id: CommandId.toggleAppDevTools, title: 'Toggle Arbora DevTools', category: 'Developer' },
   // Browser chords are intercepted so they also work while the embedded page has focus.
@@ -250,7 +299,7 @@ export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
   { id: CommandId.devServerStop, title: 'Stop Dev Server', category: 'Dev Server' },
   // Terminal `path:line:col` links and agent tool-call locations call this.
   { id: CommandId.openFileAtLocation, title: 'Open File at Location', category: 'Files', hidden: true },
-  { id: CommandId.showBrowser, title: 'Show Browser', category: 'View' },
+  { id: CommandId.showBrowser, title: 'Show Browser', category: 'View', keybinding: 'mod+shift+l', intercept: true },
   { id: CommandId.editorSave, title: 'Save File', category: 'Editor', keybinding: 'mod+s' },
   { id: CommandId.editorCloseTab, title: 'Close Editor Tab', category: 'Editor', keybinding: 'mod+w' },
   { id: CommandId.editorFormat, title: 'Format Document', category: 'Editor', keybinding: 'shift+alt+f' },
@@ -336,6 +385,14 @@ export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
   { id: CommandId.showOnboarding, title: 'Getting Started…', category: 'Help' },
   { id: CommandId.checkForUpdates, title: 'Check for Updates…', category: 'Help' },
   { id: CommandId.exportDiagnostics, title: 'Export Diagnostics…', category: 'Help' },
+  {
+    id: CommandId.showKeybindings,
+    title: 'Show Keybindings',
+    category: 'Help',
+    keybinding: 'mod+h',
+    when: 'always',
+    intercept: true,
+  },
   { id: CommandId.openKeyboardShortcuts, title: 'Keyboard Shortcuts', category: 'Preferences' },
   { id: CommandId.toggleNotifications, title: 'Toggle Agent Notifications', category: 'Preferences' },
   { id: CommandId.toggleSounds, title: 'Toggle Agent Sounds', category: 'Preferences' },
@@ -433,17 +490,32 @@ export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
     keybinding: 'mod+alt+shift+p',
     intercept: true,
   },
-  {
-    id: CommandId.toggleWorkspace,
-    title: 'Toggle Browser / Grove',
+  ...RIGHT_TAB_COMMANDS.map((id, index): CommandDescriptor => ({
+    id,
+    title:
+      index === RIGHT_TAB_COMMANDS.length - 1 ? 'Show Last Content Pane Tab' : `Show Content Pane Tab ${index + 1}`,
     category: 'View',
-    keybinding: 'mod+alt+g',
+    keybinding: `mod+${index + 1}`,
+    when: 'contentPane',
+    intercept: true,
+    hidden: true,
+  })),
+  {
+    id: CommandId.toggleMaximizeRight,
+    title: 'Maximize Content Pane',
+    category: 'View',
+    keybinding: 'mod+alt+m',
     intercept: true,
   },
-  { id: CommandId.showBrowserWorkspace, title: 'Show Browser Workspace', category: 'View', intercept: true },
-  { id: CommandId.showGrove, title: 'Show Grove', category: 'View', intercept: true },
-  // Grove chords only apply while Grove shows, so they beat the browser workspace's `always`
-  // bindings on the same keys there (Mod+1..9, Mod+Alt+Up/Down) and leave them alone elsewhere.
+  {
+    id: CommandId.toggleContentPane,
+    title: 'Hide Content Pane',
+    category: 'View',
+    keybinding: 'mod+shift+h',
+    intercept: true,
+  },
+  // Grove chords apply in the Grove workspace, so they beat `always` bindings on the same keys
+  // (Mod+1..9, Mod+Alt+Up/Down).
   {
     id: CommandId.groveNewDefault,
     title: 'New Agent',
@@ -452,7 +524,23 @@ export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
     when: 'grove',
     intercept: true,
   },
+  {
+    id: CommandId.groveNewTerminal,
+    title: 'New Terminal',
+    category: 'Grove',
+    keybinding: 'mod+shift+t',
+    when: 'grove',
+    intercept: true,
+  },
   { id: CommandId.groveLaunch, title: 'New Agent with a Task…', category: 'Grove', intercept: true },
+  {
+    id: CommandId.groveFocusAgents,
+    title: 'Focus agents',
+    category: 'Grove',
+    keybinding: 'mod+shift+a',
+    when: 'grove',
+    intercept: true,
+  },
   {
     id: CommandId.groveNextSession,
     title: 'Next Agent',
@@ -482,17 +570,65 @@ export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
     id: CommandId.groveArchiveSession,
     title: 'Archive Agent',
     category: 'Grove',
-    keybinding: 'mod+alt+w',
-    when: 'grove',
-    intercept: true,
+    keybinding: 'alt+a',
+    // The page and the editor share the window, so these keys only act with focus in the chat.
+    when: 'agentPanel',
+    intercept: false,
   },
-  { id: CommandId.groveStopSession, title: 'Stop Agent Process', category: 'Grove', when: 'grove', intercept: true },
+  {
+    id: CommandId.groveStopSession,
+    title: 'Stop Agent Process',
+    category: 'Grove',
+    keybinding: 'alt+s',
+    when: 'agentPanel',
+    intercept: false,
+  },
   { id: CommandId.groveRestartSession, title: 'Restart Agent', category: 'Grove', when: 'grove', intercept: true },
   { id: CommandId.groveRenameSession, title: 'Rename Agent…', category: 'Grove', when: 'grove', intercept: true },
   {
     id: CommandId.groveSetDefaultAgent,
     title: 'Set as Default Agent',
     category: 'Grove',
+    when: 'grove',
+    intercept: true,
+  },
+  {
+    id: CommandId.groveSearch,
+    title: 'Grove Search',
+    category: 'Grove',
+    // Both workspaces, so the browser can open it without clicking Grove first. Mod stays agent mode.
+    keybinding: 'mod+shift+k',
+    intercept: true,
+  },
+  {
+    id: CommandId.groveNextProject,
+    title: 'Next Project',
+    category: 'Grove',
+    keybinding: 'mod+alt+[',
+    when: 'grove',
+    intercept: true,
+  },
+  {
+    id: CommandId.grovePreviousProject,
+    title: 'Previous Project',
+    category: 'Grove',
+    keybinding: 'mod+alt+]',
+    when: 'grove',
+    intercept: true,
+  },
+  {
+    id: CommandId.groveSwitchProject,
+    title: 'Switch Project',
+    category: 'Grove',
+    keybinding: 'mod+tab',
+    when: 'grove',
+    intercept: true,
+  },
+  {
+    id: CommandId.groveSwitchProjectBack,
+    title: 'Switch Project Backward',
+    category: 'Grove',
+    keybinding: 'mod+shift+tab',
     when: 'grove',
     intercept: true,
   },
@@ -518,19 +654,17 @@ export function resolveKeybindingSpecs(
   const specs: KeybindingSpec[] = [];
   for (const command of commands) {
     let binding: string | null | undefined = command.keybinding;
+    let extras: readonly string[] = command.extraKeybindings ?? [];
     for (const layer of overrideLayers) {
       if (layer && Object.hasOwn(layer, command.id)) {
         binding = layer[command.id];
+        extras = [];
       }
     }
-    if (binding) {
-      specs.push({
-        commandId: command.id,
-        binding,
-        when: command.when ?? 'always',
-        intercept: command.intercept ?? false,
-      });
-    }
+    const when = command.when ?? 'always';
+    const intercept = command.intercept ?? false;
+    if (binding) specs.push({ commandId: command.id, binding, when, intercept });
+    for (const extra of extras) specs.push({ commandId: command.id, binding: extra, when, intercept });
   }
   return specs;
 }

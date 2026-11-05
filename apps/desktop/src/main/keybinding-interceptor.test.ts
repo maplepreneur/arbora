@@ -63,11 +63,31 @@ describe('interceptCommand', () => {
     expect(interceptCommand(input({ key: 'F6', code: 'F6' }), source({ recording: true }))).toBeUndefined();
   });
 
+  it('intercepts pane arrows on the browser view, including rawKeyDown', () => {
+    const left = input({ key: 'ArrowLeft', code: 'ArrowLeft', control: true, alt: true });
+    expect(interceptCommand(left, source({ workspace: 'grove', contentFocused: true }))).toBe(CommandId.focusPanelLeft);
+    expect(
+      interceptCommand({ ...left, type: 'rawKeyDown', key: '' }, source({ workspace: 'grove', contentFocused: true })),
+    ).toBe(CommandId.focusPanelLeft);
+    const right = input({ key: 'ArrowRight', code: 'ArrowRight', control: true, alt: true });
+    expect(interceptCommand(right, source({ workspace: 'grove', contentFocused: true }))).toBe(
+      CommandId.focusPanelRight,
+    );
+  });
+
   it('lets Ctrl+K and Ctrl+D through to a focused terminal when passthrough is on', () => {
     const ctrlK = input({ key: 'k', code: 'KeyK', control: true });
     expect(interceptCommand(ctrlK, source({ terminalFocused: true }))).toBeUndefined();
     expect(interceptCommand(ctrlK, source({ terminalFocused: true, terminalPassthrough: false }))).toBe(
       CommandId.agentMode,
     );
+  });
+
+  it('lets plain Ctrl+` through to a focused terminal, and shows the terminal otherwise', () => {
+    const tick = input({ key: '`', code: 'Backquote', control: true });
+    expect(interceptCommand(tick, source())).toBe(CommandId.showTerminal);
+    expect(interceptCommand(tick, source({ terminalFocused: true }))).toBeUndefined();
+    // New Terminal stays Ctrl+Shift+` and is not intercepted, so a focused shell still receives it.
+    expect(interceptCommand({ ...tick, shift: true }, source({ terminalFocused: true }))).toBeUndefined();
   });
 });

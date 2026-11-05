@@ -4,7 +4,6 @@ import { Group, Panel, Separator } from 'react-resizable-panels';
 import {
   ArrowDown,
   ArrowUp,
-  Bot,
   BrushCleaning,
   Check,
   Columns2,
@@ -15,13 +14,13 @@ import {
   Rows2,
   Search,
   Square,
-  SquareTerminal,
   X,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { agentCommandLabel, CommandId, type ContextMenuItem, type TerminalInfo } from '@arbora/shared';
 import { executeCommand, setTerminalPanelController } from '../commands';
 import { useChordLabel } from '../keybindings';
+import { useApp } from '../store';
 import {
   activateTerminal,
   AGENT_TAB_ID,
@@ -30,6 +29,7 @@ import {
   useTerminals,
   type TerminalTab,
 } from '../terminal-store';
+import { exitLabel } from './terminal/TerminalTabs';
 import { copySelection, ensureSession, getSession, initTerminalSessions, pasteClipboard } from './terminal/sessions';
 
 async function showMenu(items: ContextMenuItem[]): Promise<string | null> {
@@ -213,162 +213,49 @@ function IconButton({
   );
 }
 
-function TabTitle({ terminal }: { terminal: TerminalInfo }) {
-  const renaming = useTerminals((s) => s.renamingId === terminal.id);
-  if (!renaming) return <span className="truncate">{terminal.title}</span>;
-  return <RenameInput terminal={terminal} />;
+function tabLabel(tab: TerminalTab, terminals: readonly TerminalInfo[]): string {
+  if (tab.id === AGENT_TAB_ID) return 'Commands run by agents';
+  return tab.panes
+    .map((id) => terminals.find((t) => t.id === id)?.title)
+    .filter((title) => title !== undefined)
+    .join(' | ');
 }
 
-function RenameInput({ terminal }: { terminal: TerminalInfo }) {
-  const [draft, setDraft] = useState(terminal.title);
-  const finish = (save: boolean): void => {
-    const title = draft.trim();
-    if (save && title && title !== terminal.title)
-      void window.arbora.invoke('terminal.rename', { id: terminal.id, title });
-    useTerminals.setState({ renamingId: null });
-    getSession(terminal.id)?.focus();
-  };
+function DevServerButtons({ terminals }: { terminals: TerminalInfo[] }) {
+  const dev = terminals.find((t) => t.kind === 'dev');
+  const running = dev !== undefined && dev.exitCode === null;
   return (
-    <input
-      autoFocus
-      aria-label="Terminal name"
-      data-testid="terminal-rename-input"
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => finish(true)}
-      onKeyDown={(e) => {
-        e.stopPropagation();
-        if (e.key === 'Enter') finish(true);
-        if (e.key === 'Escape') finish(false);
-      }}
-      onClick={(e) => e.stopPropagation()}
-      className="h-5 w-28 rounded border border-accent bg-bg px-1 text-xs outline-none"
-    />
-  );
-}
-
-function exitLabel(terminal: TerminalInfo): string {
-  if (terminal.exitCode === null) return 'Running';
-  return terminal.exitCode === 0 ? 'Finished' : `Exited with code ${terminal.exitCode}`;
-}
-
-function selectTab(tab: TerminalTab, paneId: string): void {
-  useTerminals.setState({ activeTabId: tab.id, activePaneId: paneId });
-  getSession(paneId)?.focus();
-}
-
-function AgentTab({ tab, terminals, active }: { tab: TerminalTab; terminals: TerminalInfo[]; active: boolean }) {
-  const members = terminals.filter((t) => tab.panes.includes(t.id));
-  const running = members.filter((t) => t.exitCode === null).length;
-  const finished = members.length - running;
-  const onContextMenu = async (event: MouseEvent): Promise<void> => {
-    event.preventDefault();
-    const choice = await showMenu([
-      { id: 'clear', label: 'Clear Finished Commands', enabled: finished > 0 },
-      { id: 'kill', label: 'Stop Running Commands', enabled: running > 0 },
-    ]);
-    if (choice === 'clear') clearFinishedAgentTerminals();
-    if (choice === 'kill') {
-      for (const t of members) if (t.exitCode === null) void window.arbora.invoke('terminal.kill', { id: t.id });
-    }
-  };
-  return (
-    <div
-      role="tab"
-      aria-selected={active}
-      data-testid="terminal-tab"
-      data-kind="agent"
-      data-tab-id={tab.id}
-      title={`Commands run by agents: ${running} running, ${finished} finished`}
-      onClick={() => selectTab(tab, useTerminals.getState().activePaneId ?? tab.panes.at(-1) ?? tab.panes[0] ?? '')}
-      onContextMenu={(e) => void onContextMenu(e)}
-      className={clsx(
-        'flex h-6 shrink-0 cursor-default items-center gap-1.5 rounded px-2 text-xs',
-        active ? 'bg-bg-muted text-fg' : 'text-fg-subtle hover:text-fg',
-      )}
-    >
-      {running > 0 ? (
-        <LoaderCircle size={13} className="shrink-0 animate-spin text-accent motion-reduce:animate-none" />
+    <>
+      {running ? (
+        <>
+          <IconButton
+            label="Restart Dev Server"
+            testId="devserver-restart"
+            onClick={() => executeCommand(CommandId.devServerRestart)}
+          >
+            <RotateCw size={13} />
+          </IconButton>
+          <IconButton
+            label="Stop Dev Server"
+            testId="devserver-stop"
+            onClick={() => executeCommand(CommandId.devServerStop)}
+          >
+            <Square size={12} />
+          </IconButton>
+        </>
       ) : (
-        <Bot size={13} className="shrink-0" />
+        <IconButton
+          label="Run Dev Server"
+          testId="devserver-run"
+          onClick={() => executeCommand(CommandId.devServerRun)}
+        >
+          <Play size={13} />
+        </IconButton>
       )}
-      <span>Agent</span>
-      <span className="rounded-full bg-bg-subtle px-1.5 text-[10px] leading-4 text-fg-muted tabular-nums">
-        {members.length}
-      </span>
-    </div>
+    </>
   );
 }
 
-function Tab({ tab, terminals, active }: { tab: TerminalTab; terminals: TerminalInfo[]; active: boolean }) {
-  const members = tab.panes.map((id) => terminals.find((t) => t.id === id)).filter((t) => t !== undefined);
-  const first = members[0];
-  if (!first) return null;
-  const exited = members.every((t) => t.exitCode !== null);
-  const close = (): void => {
-    for (const t of members) void window.arbora.invoke('terminal.close', { id: t.id });
-  };
-  const onContextMenu = async (event: MouseEvent): Promise<void> => {
-    event.preventDefault();
-    const choice = await showMenu([
-      { id: 'rename', label: 'Rename…' },
-      { id: 'kill', label: 'Kill Process', enabled: !exited },
-      { type: 'separator' },
-      { id: 'close', label: members.length > 1 ? 'Close Terminals' : 'Close Terminal' },
-    ]);
-    if (choice === 'rename') useTerminals.setState({ renamingId: first.id });
-    if (choice === 'kill') for (const t of members) void window.arbora.invoke('terminal.kill', { id: t.id });
-    if (choice === 'close') close();
-  };
-  return (
-    <div
-      role="tab"
-      aria-selected={active}
-      data-testid="terminal-tab"
-      data-kind={first.kind}
-      data-tab-id={tab.id}
-      title={`${members.map((t) => t.title).join(' | ')}${exited ? ` (${exitLabel(first).toLowerCase()})` : ''}`}
-      onClick={() => selectTab(tab, first.id)}
-      onDoubleClick={() => useTerminals.setState({ renamingId: first.id })}
-      onAuxClick={(e) => e.button === 1 && close()}
-      onContextMenu={(e) => void onContextMenu(e)}
-      className={clsx(
-        'group flex h-6 max-w-44 shrink-0 cursor-default items-center gap-1.5 rounded pr-1 pl-2 text-xs',
-        active ? 'bg-bg-muted text-fg' : 'text-fg-subtle hover:text-fg',
-        exited && 'opacity-60',
-      )}
-    >
-      {members.length > 1 ? (
-        <Columns2 size={13} className="shrink-0" />
-      ) : (
-        <SquareTerminal size={13} className="shrink-0" />
-      )}
-      {members.map((t, index) => (
-        <Fragment key={t.id}>
-          {index > 0 && <span className="text-fg-subtle">|</span>}
-          <TabTitle terminal={t} />
-        </Fragment>
-      ))}
-      {first.kind === 'dev' && (
-        <span className="rounded bg-accent-soft px-1 text-[10px] font-medium text-accent">dev</span>
-      )}
-      <button
-        type="button"
-        aria-label={`Close ${first.title}`}
-        data-testid="terminal-tab-close"
-        onClick={(e) => {
-          e.stopPropagation();
-          close();
-        }}
-        className="flex h-4 w-4 shrink-0 items-center justify-center rounded opacity-0 group-hover:opacity-100 group-aria-selected:opacity-100 hover:bg-bg-subtle focus-visible:opacity-100"
-      >
-        <X size={11} />
-      </button>
-    </div>
-  );
-}
-
-/** The agent tab: every command an agent ran, newest last, beside the selected command's output. */
 function AgentCommands({
   tab,
   terminals,
@@ -441,73 +328,6 @@ function AgentCommands({
   );
 }
 
-function DevServerButtons({ terminals }: { terminals: TerminalInfo[] }) {
-  const dev = terminals.find((t) => t.kind === 'dev');
-  const running = dev !== undefined && dev.exitCode === null;
-  return (
-    <>
-      {running ? (
-        <>
-          <IconButton
-            label="Restart Dev Server"
-            testId="devserver-restart"
-            onClick={() => executeCommand(CommandId.devServerRestart)}
-          >
-            <RotateCw size={13} />
-          </IconButton>
-          <IconButton
-            label="Stop Dev Server"
-            testId="devserver-stop"
-            onClick={() => executeCommand(CommandId.devServerStop)}
-          >
-            <Square size={12} />
-          </IconButton>
-        </>
-      ) : (
-        <IconButton
-          label="Run Dev Server"
-          testId="devserver-run"
-          onClick={() => executeCommand(CommandId.devServerRun)}
-        >
-          <Play size={13} />
-        </IconButton>
-      )}
-    </>
-  );
-}
-
-/** Tabs scroll sideways with the wheel and keep the active tab in view; no scrollbar. */
-function TabStrip({ activeTabId, children }: { activeTabId: string | null; children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const strip = ref.current;
-    if (!strip) return;
-    const onWheel = (event: WheelEvent): void => {
-      if (strip.scrollWidth <= strip.clientWidth || event.deltaX !== 0) return;
-      event.preventDefault();
-      strip.scrollLeft += event.deltaY;
-    };
-    strip.addEventListener('wheel', onWheel, { passive: false });
-    return () => strip.removeEventListener('wheel', onWheel);
-  }, []);
-  useEffect(() => {
-    if (!activeTabId) return;
-    ref.current
-      ?.querySelector(`[data-tab-id="${CSS.escape(activeTabId)}"]`)
-      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }, [activeTabId]);
-  return (
-    <div
-      ref={ref}
-      role="tablist"
-      aria-label="Terminals"
-      className="no-scrollbar flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto"
-    >
-      {children}
-    </div>
-  );
-}
-
 function TabContent({
   tab,
   terminals,
@@ -554,7 +374,8 @@ export default function TerminalPanel() {
   const activeTabId = useTerminals((s) => s.activeTabId);
   const activePaneId = useTerminals((s) => s.activePaneId);
   const searchOpen = useTerminals((s) => s.searchOpen);
-  const loaded = useTerminals((s) => s.loaded);
+  const projectPath = useApp((s) => s.project?.path ?? null);
+  const loaded = useTerminals((s) => s.loaded && s.loadedFor === projectPath);
   const devStarting = useTerminals((s) => s.devStarting);
   const newChord = useChordLabel(CommandId.terminalNew);
   const splitChord = useChordLabel(CommandId.terminalSplitRight);
@@ -579,7 +400,7 @@ export default function TerminalPanel() {
   // Focus follows the active pane when tabs switch.
   useEffect(() => {
     const session = getSession(activePaneId);
-    if (session && document.activeElement?.closest('[data-testid="panel-bottom"]')) session.focus();
+    if (session && document.activeElement?.closest('[data-testid="panel-content"]')) session.focus();
   }, [activePaneId, activeTabId]);
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -587,16 +408,9 @@ export default function TerminalPanel() {
   return (
     <div className="flex h-full flex-col" data-testid="terminal-panel">
       <div className="flex h-7 shrink-0 items-center gap-1 border-b border-border px-1">
-        <TabStrip activeTabId={activeTabId}>
-          {tabs.map((tab) =>
-            tab.id === AGENT_TAB_ID ? (
-              <AgentTab key={tab.id} tab={tab} terminals={terminals} active={tab.id === activeTabId} />
-            ) : (
-              <Tab key={tab.id} tab={tab} terminals={terminals} active={tab.id === activeTabId} />
-            ),
-          )}
-        </TabStrip>
-        <div className="mx-0.5 h-4 w-px shrink-0 bg-border" />
+        <span className="min-w-0 flex-1 truncate px-1 text-[11px] text-fg-subtle">
+          {activeTab ? tabLabel(activeTab, terminals) : ''}
+        </span>
         <DevServerButtons terminals={terminals} />
         <IconButton label="Find in Terminal" onClick={() => executeCommand(CommandId.terminalFind)}>
           <Search size={13} />

@@ -63,11 +63,11 @@ export function GroveEmpty() {
             checked={startOnOpen}
             onChange={(event) => void setStartDefaultOnOpen(event.target.checked)}
           />
-          Start {agent.name} when Grove opens empty
+          Start {agent.name} when a project has no agents
         </label>
       )}
       <p className="max-w-sm text-[11.5px] text-fg-subtle">
-        Agents keep running while you switch back to the browser. Quitting Arbora stops them.
+        Agents keep running while you switch projects or tabs. Quitting Arbora stops them.
       </p>
     </div>
   );

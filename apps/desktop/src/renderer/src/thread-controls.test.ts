@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionConfigOption } from '@arbora/shared';
-import { modeControl, nextValue, rotationOrder, thinkingControl } from './thread-controls';
+import {
+  modeControl,
+  nextValue,
+  rotationOrder,
+  sessionControlLabel,
+  sessionControlRole,
+  thinkingControl,
+} from './thread-controls';
 
 function select(
   id: string,
@@ -58,5 +65,18 @@ describe('thread controls', () => {
     const named = select('reasoning', null, ['off', 'on']);
     expect(thinkingControl({ configOptions: [named] })).toEqual({ kind: 'select', option: named });
     expect(thinkingControl({ configOptions: [select('model', 'model', ['thinking-max'])] })).toBeNull();
+  });
+
+  it('names the mode and effort controls even when the agent uses another word', () => {
+    const mode = select('variant', 'mode', ['default', 'plan']);
+    const effort = select('thinking', 'thought_level', ['low', 'high']);
+    const other = select('theme', null, ['dark']);
+    const state = { configOptions: [mode, effort, other], modes: null };
+    expect(sessionControlRole(mode.id, modeControl(state), thinkingControl(state))).toBe('mode');
+    expect(sessionControlRole(effort.id, modeControl(state), thinkingControl(state))).toBe('effort');
+    expect(sessionControlRole(other.id, modeControl(state), thinkingControl(state))).toBe('other');
+    expect(sessionControlLabel(mode.name, 'mode')).toBe('Mode');
+    expect(sessionControlLabel(effort.name, 'effort')).toBe('Effort');
+    expect(sessionControlLabel(other.name, 'other')).toBe('theme');
   });
 });

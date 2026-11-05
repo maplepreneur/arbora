@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import type { TerminalInfo } from '@arbora/shared';
-import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, tempUserData } from './app';
+import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, showRight, showSide, startAgent, tempUserData } from './app';
 
 const FAKE_AGENT = resolve(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
 /** The repo's node_modules has Prettier, ESLint and TypeScript; the project links to it. */
@@ -69,6 +69,7 @@ test.describe('Stage 7 files and editor', () => {
     const dir = project();
     const { app, page } = await launch(userData(), [dir]);
     try {
+      await showSide(page, 'files');
       await expect(page.getByTestId('files-panel')).toBeVisible();
       const row = (path: string) => page.locator(`[data-testid="explorer-row"][data-path="${path}"]`);
       await expect(row('src')).toBeVisible();
@@ -101,12 +102,13 @@ test.describe('Stage 7 files and editor', () => {
       await page.keyboard.type('debugger;\n');
       await page.keyboard.press('ControlOrMeta+s');
       await expect(page.getByTestId('editor').locator('.cm-lint-marker-error')).toBeVisible({ timeout: 30_000 });
-      await page.getByTestId('bottom-tab-problems').click();
+      await showRight(page, 'problems');
       await page.getByTestId('problems-scope-code').click();
       const diagnostic = page.getByTestId('diagnostic-row').first();
       await expect(diagnostic).toHaveAttribute('data-source', 'eslint');
       await expect(diagnostic).toContainText('no-debugger');
       await expect(diagnostic.getByTestId('diagnostic-location')).toHaveText('src/util.js:1:1');
+      await page.locator('[data-testid="editor-tab"][data-path="src/util.js"]').click();
 
       // Format Document (Shift+Alt+F) formats without saving.
       await editor(page).click();
@@ -135,7 +137,7 @@ test.describe('Stage 7 files and editor', () => {
       await expect(page.getByTestId('browser-panel')).toBeVisible();
       await page.locator('[data-testid="editor-tab"][data-path="src/App.tsx"]').click();
       await expect(page.getByTestId('editor')).toBeVisible();
-      await page.getByTestId('editor-tab-browser').click();
+      await page.getByTestId('content-tab-browser').click();
       await expect(page.getByTestId('editor')).toHaveCount(0);
       await expect(page.getByTestId('browser-panel')).toBeVisible();
     } finally {
@@ -160,7 +162,7 @@ test.describe('Stage 7 files and editor', () => {
       await expect(page.getByTestId('editor')).toHaveAttribute('data-path', 'src/App.tsx');
       await expect(page.getByTestId('editor').locator('.cm-lineNumbers .cm-activeLineGutter')).toHaveText('3');
 
-      await page.getByTestId('rail-search').click();
+      await showSide(page, 'search');
       await page.getByTestId('search-input').fill('Counter');
       await expect(page.getByTestId('search-file').first()).toBeVisible();
       await expect(page.getByTestId('search-summary')).toContainText(/results? in \d+ files?/);
@@ -235,6 +237,7 @@ test.describe('Stage 7 files and editor', () => {
     );
     const { app, page } = await launch(userData(), [dir]);
     try {
+      await showSide(page, 'files');
       await page.getByTestId('explorer-new-file').click();
       await page.getByTestId('explorer-name-input').fill('notes/todo.md');
       await page.keyboard.press('Enter');
@@ -268,9 +271,7 @@ test.describe('Stage 7 files and editor', () => {
     const dir = project();
     const { app, page } = await launch(userData(), [dir]);
     try {
-      await page.getByTestId('new-thread-choose').click();
-      await page.getByTestId('pick-agent-fake').click();
-      await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', { timeout: 20_000 });
+      await startAgent(page, 'fake');
       const input = page.getByTestId('composer-input');
       await input.fill('add a comment to `src/App.tsx`');
       await input.press('Enter');
@@ -289,7 +290,7 @@ test.describe('Stage 7 files and editor', () => {
       await expect(page.getByTestId('diff-viewer').locator('.cm-changedLine, .cm-deletedChunk').first()).toBeVisible();
 
       // Terminal `path:line:col` links.
-      await page.getByTestId('bottom-tab-terminal').click();
+      await showRight(page, 'terminal');
       await expect
         .poll(async () => (await page.evaluate(() => window.arbora.invoke('terminal.list'))).length, {
           timeout: 20_000,

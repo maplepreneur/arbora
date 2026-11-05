@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import type { ThreadSummary } from '@arbora/shared';
-import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, tempUserData } from './app';
+import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, startAgent, tempUserData } from './app';
 
 const FAKE_AGENT = resolve(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
 const FAKE_ID = 'fake';
@@ -43,15 +43,6 @@ async function focusWindow(app: ElectronApplication): Promise<void> {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.focus());
 }
 
-async function newThread(page: Page): Promise<string> {
-  const before = new Set((await threads(page)).map((t) => t.id));
-  await page.getByTestId('new-thread').click();
-  await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', { timeout: 20_000 });
-  const created = (await threads(page)).find((t) => !before.has(t.id));
-  if (!created) throw new Error('no thread was created');
-  return created.id;
-}
-
 test.describe('Stage 9 onboarding', () => {
   test('runs on first launch, checks the mode chords, and stays done', async () => {
     const userData = tempUserData();
@@ -79,10 +70,13 @@ test.describe('Stage 9 onboarding', () => {
         .poll(() => JSON.parse(readFileSync(join(project, '.arbora', 'project.json'), 'utf8')) as object)
         .toMatchObject({ defaultAgent: FAKE_ID });
       await expect(page.getByTestId(`onboarding-grove-agent-${FAKE_ID}`)).toHaveAttribute('aria-checked', 'true');
-      // The workspace chord is checked, not run: the browser workspace stays behind the dialog.
-      await page.keyboard.press('ControlOrMeta+Alt+G');
-      await expect(page.getByTestId('onboarding-chord-arbora.toggleWorkspace')).toHaveAttribute('data-pressed', 'true');
-      await expect(page.getByTestId('workspace-browser')).toHaveAttribute('aria-pressed', 'true');
+      // The maximize chord is checked, not run: the columns behind the dialog stay as they are.
+      await page.keyboard.press('ControlOrMeta+Alt+M');
+      await expect(page.getByTestId('onboarding-chord-arbora.toggleMaximizeRight')).toHaveAttribute(
+        'data-pressed',
+        'true',
+      );
+      await expect(page.getByTestId('content-maximize')).toHaveAttribute('aria-pressed', 'false');
       await page.getByTestId('onboarding-next').click();
       await expect(page.getByTestId('onboarding-step-keys')).toBeVisible();
       // Mode chords are intercepted in main; onboarding sees them instead of the modes starting.
@@ -108,7 +102,7 @@ test.describe('Stage 9 onboarding', () => {
       expect(settings.onboarding.checkedChords.sort()).toEqual([
         'arbora.agentMode',
         'arbora.designMode',
-        'arbora.toggleWorkspace',
+        'arbora.toggleMaximizeRight',
       ]);
       expect(settings.sounds.enabled).toBe(false);
     } finally {
@@ -116,7 +110,7 @@ test.describe('Stage 9 onboarding', () => {
     }
     const second = await launch(userData, [project], { ARBORA_SKIP_ONBOARDING: '0' });
     try {
-      await expect(second.page.getByTestId('workspace')).toBeVisible();
+      await expect(second.page.getByTestId('grove')).toBeVisible();
       await expect(second.page.getByTestId('onboarding')).toHaveCount(0);
     } finally {
       await second.app.close();
@@ -167,7 +161,9 @@ test.describe('Stage 9 projects and project groups', () => {
       await page.keyboard.type('plain');
       await page.keyboard.press('Enter');
       await expect(page.getByTestId('project-switcher')).toHaveCount(0);
-      await expect.poll(() => app.windows().length).toBe(2);
+      // One window: it switches onto the project instead of opening another.
+      await expect(page.getByTestId('title-project-name')).toHaveText('plain-html');
+      expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
 
       const library = await page.evaluate(() => window.arbora.invoke('projects.library'));
       expect(
@@ -175,7 +171,7 @@ test.describe('Stage 9 projects and project groups', () => {
           .filter((e) => e.open)
           .map((e) => e.folder)
           .sort(),
-      ).toEqual(['plain-html', 'vite-react']);
+      ).toEqual(['plain-html']);
       // A group survives the projects in it dropping out of the recents.
       const settings = JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')) as {
         projectGroups: { id: string }[];
@@ -197,37 +193,42 @@ test.describe('Stage 9 agent groups and attention', () => {
     const { app, page } = await launch(userData, [project]);
     try {
       await focusWindow(app);
-      await expect(page.getByTestId('thread-list')).toBeVisible();
-      await page.getByTestId('new-agent-group').click();
-      await page.getByTestId('new-group-input').fill('UI');
-      await page.getByTestId('new-group-input').press('Enter');
-      await expect(page.getByTestId('agent-group')).toHaveAttribute('data-group-id', 'ui');
-
-      // New thread in the group from its header.
-      await page.getByTestId('agent-group').hover();
-      await page.getByTestId('agent-group-new-thread').click();
+      // The default agent starts once in an empty project.
+      const rows = page.getByTestId('grove-row');
+      await expect(rows).toHaveCount(1, { timeout: 20_000 });
       await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', { timeout: 20_000 });
-      const grouped = (await threads(page)).find((t) => t.groupId === 'ui');
-      expect(grouped).toBeTruthy();
+      const [first] = await threads(page);
+      if (!first) throw new Error('no thread');
+      await page.evaluate(() =>
+        window.arbora.invoke('agent.saveGroups', {
+          groups: [{ id: 'ui', name: 'UI', color: 'gray', collapsed: false }],
+        }),
+      );
+      await page.evaluate(
+        (threadId) => window.arbora.invoke('agent.setThreadGroup', { threadId, groupId: 'ui' }),
+        first.id,
+      );
+      await expect.poll(async () => (await threads(page)).find((t) => t.id === first.id)?.groupId).toBe('ui');
 
       // A permission card counts as "needs you" until it is answered.
       await page.getByTestId('composer-input').fill('add a comment to `App.tsx`');
       await page.getByTestId('composer-input').press('Enter');
-      await expect(page.getByTestId('permission-card')).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByTestId('permission-card').first()).toBeVisible({ timeout: 20_000 });
       await expect(page.getByTestId('attention-badge')).toHaveText('1');
       await expect(page.getByTestId('app')).toHaveAttribute('data-last-cue', /^permission:/);
-      await page.getByTestId('permission-allow_once').click();
-      await expect(page.getByTestId('diff')).toBeVisible({ timeout: 20_000 });
+      await page.getByTestId('permission-allow_once').first().click();
+      await expect(page.getByTestId('diff').first()).toBeVisible({ timeout: 20_000 });
       await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready');
       // Once the window has focus with the thread on screen, its finish counts as seen.
       await focusWindow(app);
       await expect(page.getByTestId('attention-badge')).toHaveCount(0);
 
       // A second thread, outside any group, finishes while the first one is on screen.
-      await page.getByTestId('show-threads').click();
-      const second = await newThread(page);
-      await page.getByTestId('show-threads').click();
-      await expect(page.locator(`[data-thread-id="${second}"]`)).toHaveAttribute('data-group-id', '');
+      await startAgent(page, FAKE_ID);
+      const second = (await threads(page)).find((t) => t.id !== first.id)?.id;
+      if (!second) throw new Error('no second thread');
+      await page.locator(`[data-testid="grove-row"][data-thread-id="${first.id}"]`).click();
+      await expect(page.getByTestId('grove-pane')).toHaveAttribute('data-thread-id', first.id);
       await page.evaluate(
         (threadId) =>
           window.arbora.invoke('agent.prompt', {
@@ -237,11 +238,9 @@ test.describe('Stage 9 agent groups and attention', () => {
           }),
         second,
       );
-      const row = page.locator(`[data-thread-id="${second}"]`);
-      await expect(row.getByTestId('thread-attention')).toHaveAttribute('data-kind', 'finished');
-      await expect(page.getByTestId('attention-badge')).toHaveText('1');
+      await expect(page.getByTestId('attention-badge')).toHaveText('1', { timeout: 20_000 });
       await page.keyboard.press('ControlOrMeta+Alt+A');
-      await expect(page.getByTestId('thread-view')).toBeVisible();
+      await expect(page.getByTestId('grove-pane')).toHaveAttribute('data-thread-id', second);
       await focusWindow(app);
       await expect(page.getByTestId('attention-badge')).toHaveCount(0);
 

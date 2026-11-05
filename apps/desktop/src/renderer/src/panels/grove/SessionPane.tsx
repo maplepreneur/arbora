@@ -4,6 +4,7 @@ import { CommandId, SESSION_STATUS_LABEL } from '@arbora/shared';
 import { renameThread, useAgents } from '../../agent-store';
 import {
   archiveSession,
+  formatUsage,
   restartSession,
   restoreSession,
   selectSession,
@@ -12,6 +13,7 @@ import {
   type GroveTab,
 } from '../../grove-store';
 import type { GroveModel, GroveSession } from '../../grove-model';
+import { ModeSwitch } from '../../components/ModeSwitch';
 import { ipcError } from '../../ipc-error';
 import { useChordLabel } from '../../keybindings';
 import { showToast } from '../../store';
@@ -23,6 +25,16 @@ import { StatusDot } from './StatusDot';
 
 const iconButton =
   'flex h-7 w-7 shrink-0 items-center justify-center rounded text-fg-subtle hover:bg-bg-muted hover:text-fg';
+
+function Memory({ kind, id }: { kind: 'agent' | 'terminal'; id: string }) {
+  const sample = useGrove((s) => s.usage.find((entry) => entry.kind === kind && entry.id === id));
+  if (!sample || sample.rssKb <= 0) return null;
+  return (
+    <span data-testid="grove-memory" className="shrink-0 text-[11px] text-fg-subtle">
+      {formatUsage(sample.rssKb, sample.cpuPercent)}
+    </span>
+  );
+}
 
 function Lineage({ session, model }: { session: GroveSession; model: GroveModel }) {
   const lead = session.parentThreadId === null ? undefined : model.byId.get(session.parentThreadId);
@@ -64,6 +76,7 @@ function PaneHeader({ session, model }: { session: GroveSession; model: GroveMod
   const renaming = useGrove((s) => s.renamingId === session.id);
   const logOpen = useAgents((s) => s.logOpen);
   const archiveKey = useChordLabel(CommandId.groveArchiveSession);
+  const stopKey = useChordLabel(CommandId.groveStopSession);
   const archived = session.archivedAt !== null;
   const running = hasProcess(session);
   return (
@@ -97,6 +110,7 @@ function PaneHeader({ session, model }: { session: GroveSession; model: GroveMod
       <span data-testid="grove-session-status" className="shrink-0 text-[11px] text-fg-subtle">
         {archived ? 'Archived' : SESSION_STATUS_LABEL[session.status]} · {session.agentName}
       </span>
+      <Memory kind="agent" id={session.id} />
       <Lineage session={session} model={model} />
       <div className="flex-1" />
       {!archived &&
@@ -104,7 +118,7 @@ function PaneHeader({ session, model }: { session: GroveSession; model: GroveMod
           <button
             type="button"
             data-testid="grove-stop"
-            title="Stop the agent process. The session stays, and the next message starts it again."
+            title={`Stop the agent process${stopKey ? ` (${stopKey})` : ''}. The session stays, and the next message starts it again.`}
             aria-label="Stop the agent process"
             onClick={() => void stopSession(session.id)}
             className={clsx(iconButton, 'text-danger hover:text-danger')}
@@ -201,11 +215,12 @@ function Tabs({ tab, changes }: { tab: GroveTab; changes: number }) {
           )}
         </button>
       ))}
+      <ModeSwitch />
     </div>
   );
 }
 
-/** One session: its header, the Transcript (the docked thread view) and Changes tabs. */
+/** One session in the chat column: its header, the Transcript and Changes tabs, and the mode switch. */
 export function SessionPane({
   session,
   model,

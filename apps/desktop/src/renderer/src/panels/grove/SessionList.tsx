@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import clsx from 'clsx';
-import { ChevronDown, ChevronRight, MoreHorizontal, Pin, Plus, TriangleAlert } from 'lucide-react';
+import { Archive, ChevronDown, ChevronRight, MoreHorizontal, Pin, Plus, Square, TriangleAlert } from 'lucide-react';
 import {
   CommandId,
   formatElapsed,
@@ -13,10 +13,12 @@ import { updateGroup, useAgents } from '../../agent-store';
 import { useDefaultAgentId } from '../../agent-defaults';
 import { usePickableAgents } from '../../agent-pickers';
 import {
+  archiveSession,
   claimListFocus,
   openLauncher,
   RECENT_LIMIT,
   selectSession,
+  stopSession,
   setProjectDefaultAgent,
   setStartDefaultOnOpen,
   startDefaultSession,
@@ -27,21 +29,12 @@ import { useChordLabel } from '../../keybindings';
 import { openSettings, useApp } from '../../store';
 import { formatWhen, groupColor, showMenu } from '../agent/ThreadList';
 import { sessionStats, type EditStats } from './changes';
+import { onAgentListKeyDown } from './agent-list-keys';
 import { openRowMenu } from './session-actions';
+import { AgentMark } from './AgentMark';
 import { StatusDot } from './StatusDot';
 
 const ROW_SELECTOR = '[data-testid="grove-row"], [data-testid="grove-recent-row"]';
-
-/** Arrow keys move between rows; Enter (the button's click) selects one. */
-function moveRowFocus(event: KeyboardEvent<HTMLElement>): void {
-  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-  if (event.altKey || event.ctrlKey || event.metaKey) return;
-  const rows = [...event.currentTarget.querySelectorAll<HTMLElement>(ROW_SELECTOR)];
-  const index = rows.findIndex((row) => row === document.activeElement);
-  if (index === -1) return;
-  event.preventDefault();
-  rows[(index + (event.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length]?.focus();
-}
 
 /** Takes `listFocusRequest` once: the selected row, else the first one. */
 function useListFocus(container: RefObject<HTMLElement | null>, rowSelector: string): void {
@@ -163,19 +156,31 @@ const LINE_TONE: Partial<Record<GroveSession['status'], string>> = {
   failed: 'text-danger',
 };
 
-function SessionRow({
+export function SessionRow({
   session,
   helper,
   selected,
+  tabStop,
   groups,
   nameOf,
+  navId,
+  kbd = false,
+  onNavigate,
 }: {
   session: GroveSession;
   helper: boolean;
   selected: boolean;
+  /** Roving tabindex: one listed row is in the tab order. */
+  tabStop: boolean;
   groups: readonly AgentGroup[];
   nameOf: (threadId: string) => string;
+  navId?: string;
+  kbd?: boolean;
+  onNavigate?: () => void;
 }) {
+  const stopKey = useChordLabel(CommandId.groveStopSession);
+  const archiveKey = useChordLabel(CommandId.groveArchiveSession);
+  const revealed = selected || kbd;
   const stats = sessionStats(session.activity);
   const since = session.status === 'working' ? session.activity.turnStartedAt : null;
   const worked = since === null ? session.activity.lastTurnMs : null;
@@ -205,18 +210,27 @@ function SessionRow({
         aria-current={selected ? 'true' : undefined}
         aria-description={`${status}. ${session.line}`}
         title={title}
-        onClick={() => selectSession(session.id)}
+        tabIndex={tabStop ? 0 : -1}
+        data-nav-id={navId}
+        data-kbd={kbd || undefined}
+        onClick={() => {
+          onNavigate?.();
+          selectSession(session.id, { focus: false });
+        }}
         onContextMenu={(event) => {
           event.preventDefault();
           void openRowMenu(session, groups);
         }}
         className={clsx(
-          'flex w-full flex-col gap-0.5 py-1.5 pr-7 text-left outline-none focus-visible:ring-1 focus-visible:ring-accent focus-visible:ring-inset',
+          'flex w-full flex-col gap-0.5 py-1.5 pr-7 text-left outline-none focus-visible:ring-1 focus-visible:ring-accent focus-visible:ring-inset group-hover/row:pr-36 group-focus-within/row:pr-36',
           helper ? 'pl-7' : 'pl-3',
           selected ? 'bg-bg-muted' : 'hover:bg-bg-muted/60',
+          revealed && 'pr-36',
+          kbd && 'ring-1 ring-inset ring-accent',
         )}
       >
         <span className="flex min-w-0 items-center gap-2">
+          <AgentMark name={session.agentName} agentId={session.agentId} />
           <StatusDot status={session.status} />
           <span className="min-w-0 flex-1 truncate text-[12.5px]" data-testid="grove-row-name">
             {session.name}
@@ -240,20 +254,108 @@ function SessionRow({
           {session.line}
         </span>
       </button>
-      <button
-        type="button"
-        aria-label={`${session.name} actions`}
-        data-testid="grove-row-menu"
-        onClick={() => void openRowMenu(session, groups)}
-        className="absolute top-1.5 right-1 flex h-5 w-5 items-center justify-center rounded text-fg-subtle opacity-0 group-hover/row:opacity-100 hover:bg-bg hover:text-fg focus-visible:opacity-100"
+      <div
+        className={clsx(
+          'absolute top-1 right-0.5 flex items-center gap-0.5',
+          revealed
+            ? 'opacity-100'
+            : 'pointer-events-none opacity-0 group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100',
+        )}
       >
-        <MoreHorizontal size={12} />
-      </button>
+        {session.archivedAt === null && (
+          <RowAction
+            testId="grove-row-stop"
+            label="Stop"
+            chord={stopKey}
+            danger
+            onClick={() => void stopSession(session.id)}
+          >
+            <Square size={9} fill="currentColor" />
+          </RowAction>
+        )}
+        {session.archivedAt === null && (
+          <RowAction
+            testId="grove-row-archive"
+            label="Archive"
+            chord={archiveKey}
+            onClick={() => archiveSession(session.id)}
+          >
+            <Archive size={11} />
+          </RowAction>
+        )}
+        <button
+          type="button"
+          aria-label={`${session.name} actions`}
+          data-testid="grove-row-menu"
+          tabIndex={-1}
+          onClick={() => void openRowMenu(session, groups)}
+          className="flex h-5 w-5 items-center justify-center rounded text-fg-subtle hover:bg-bg hover:text-fg"
+        >
+          <MoreHorizontal size={12} />
+        </button>
+      </div>
     </li>
   );
 }
 
-function RecentSection({ recent, selectedId }: { recent: readonly GroveSession[]; selectedId: string | null }) {
+function RowAction({
+  testId,
+  label,
+  chord,
+  danger = false,
+  onClick,
+  children,
+}: {
+  testId: string;
+  label: string;
+  chord: string | undefined;
+  danger?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  const hint = chord ? `${label} (${chord})` : label;
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      tabIndex={-1}
+      title={hint}
+      aria-label={hint}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      className={clsx(
+        'flex h-5 w-5 shrink-0 items-center justify-center rounded text-fg-subtle hover:bg-bg hover:text-fg',
+        danger && 'hover:text-danger',
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function RecentSection({
+  recent,
+  selectedId,
+  navId,
+  kbd = false,
+  onNavigate,
+  rowNavId,
+  rowKbd,
+  showAllNavId,
+  showAllKbd = false,
+}: {
+  recent: readonly GroveSession[];
+  selectedId: string | null;
+  navId?: string;
+  kbd?: boolean;
+  onNavigate?: (id: string) => void;
+  rowNavId?: (threadId: string) => string;
+  rowKbd?: (threadId: string) => boolean;
+  showAllNavId?: string;
+  showAllKbd?: boolean;
+}) {
   const open = useGrove((s) => s.recentOpen);
   const showAll = useGrove((s) => s.showAllRecent);
   if (recent.length === 0) return null;
@@ -264,48 +366,74 @@ function RecentSection({ recent, selectedId }: { recent: readonly GroveSession[]
         type="button"
         aria-expanded={open}
         data-testid="grove-recent-toggle"
-        onClick={() => useGrove.setState({ recentOpen: !open })}
-        className="flex h-7 w-full items-center gap-1 px-1.5 text-[10px] font-semibold tracking-wide text-fg-subtle uppercase hover:text-fg"
+        data-nav-id={navId}
+        data-kbd={kbd || undefined}
+        onClick={() => {
+          if (navId) onNavigate?.(navId);
+          useGrove.setState({ recentOpen: !open });
+        }}
+        className={clsx(
+          'flex h-7 w-full items-center gap-1 px-1.5 text-left text-[10px] font-semibold tracking-wide text-fg-subtle uppercase outline-none hover:text-fg focus-visible:ring-1 focus-visible:ring-accent focus-visible:ring-inset',
+          kbd && 'ring-1 ring-inset ring-accent',
+        )}
       >
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         Recent ({recent.length})
       </button>
       {open && (
         <ul>
-          {shown.map((session) => (
-            <li key={session.id}>
-              <button
-                type="button"
-                data-testid="grove-recent-row"
-                data-thread-id={session.id}
-                aria-current={session.id === selectedId ? 'true' : undefined}
-                title={`${session.name}: archived. Select it to read the transcript or restore it.`}
-                onClick={() => selectSession(session.id, { focus: false })}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  void openRowMenu(session, []);
-                }}
-                className={clsx(
-                  'flex w-full items-center gap-2 py-1 pr-2 pl-3 text-left text-[12px] text-fg-muted outline-none focus-visible:ring-1 focus-visible:ring-accent focus-visible:ring-inset',
-                  session.id === selectedId ? 'bg-bg-muted text-fg' : 'hover:bg-bg-muted/60',
-                )}
-              >
-                <StatusDot status={session.status} />
-                <span className="min-w-0 flex-1 truncate">{session.name}</span>
-                <span className="shrink-0 text-[10px] text-fg-subtle tabular-nums">
-                  {formatWhen(session.archivedAt ?? session.updatedAt)}
-                </span>
-              </button>
-            </li>
-          ))}
+          {shown.map((session) => {
+            const rowId = rowNavId?.(session.id);
+            const rowFocused = rowKbd?.(session.id) === true;
+            return (
+              <li key={session.id}>
+                <button
+                  type="button"
+                  data-testid="grove-recent-row"
+                  data-thread-id={session.id}
+                  data-nav-id={rowId}
+                  data-kbd={rowFocused || undefined}
+                  aria-current={session.id === selectedId ? 'true' : undefined}
+                  title={`${session.name}: archived. Select it to read the transcript or restore it.`}
+                  onClick={() => {
+                    if (rowId) onNavigate?.(rowId);
+                    selectSession(session.id, { focus: false });
+                  }}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    void openRowMenu(session, []);
+                  }}
+                  className={clsx(
+                    'flex w-full items-center gap-2 py-1 pr-2 pl-3 text-left text-[12px] text-fg-muted outline-none focus-visible:ring-1 focus-visible:ring-accent focus-visible:ring-inset',
+                    session.id === selectedId ? 'bg-bg-muted text-fg' : 'hover:bg-bg-muted/60',
+                    rowFocused && 'ring-1 ring-inset ring-accent',
+                  )}
+                >
+                  <StatusDot status={session.status} />
+                  <span className="min-w-0 flex-1 truncate">{session.name}</span>
+                  <span className="shrink-0 text-[10px] text-fg-subtle tabular-nums">
+                    {formatWhen(session.archivedAt ?? session.updatedAt)}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
       {open && !showAll && recent.length > RECENT_LIMIT && (
         <button
           type="button"
           data-testid="grove-recent-all"
-          onClick={() => useGrove.setState({ showAllRecent: true })}
-          className="px-3 pb-1.5 text-[11px] text-accent hover:underline"
+          data-nav-id={showAllNavId}
+          data-kbd={showAllKbd || undefined}
+          onClick={() => {
+            if (showAllNavId) onNavigate?.(showAllNavId);
+            useGrove.setState({ showAllRecent: true });
+          }}
+          className={clsx(
+            'px-3 pb-1.5 text-left text-[11px] text-accent outline-none hover:underline focus-visible:ring-1 focus-visible:ring-accent',
+            showAllKbd && 'ring-1 ring-inset ring-accent',
+          )}
         >
           Show all
         </button>
@@ -315,7 +443,7 @@ function RecentSection({ recent, selectedId }: { recent: readonly GroveSession[]
 }
 
 /** The project's default agent, **Change**, and whether an empty Grove starts it. */
-function ListFooter() {
+export function ListFooter() {
   const defaultId = useDefaultAgentId();
   const defaultName = useAgents((s) => s.agents.find((agent) => agent.id === defaultId)?.name);
   const startOnOpen = useApp((s) => s.project?.settings.startDefaultOnOpen !== false);
@@ -371,6 +499,7 @@ export function SessionList({ model, selectedId }: { model: GroveModel; selected
   useListFocus(scroller, ROW_SELECTOR);
   const nameOf = (threadId: string): string => model.byId.get(threadId)?.name ?? 'another agent';
   const headings = model.sections.length > 1;
+  const tabId = model.order.some((session) => session.id === selectedId) ? selectedId : (model.order[0]?.id ?? null);
   return (
     <nav aria-label="Agent sessions" data-testid="grove-sessions" className="flex h-full min-w-0 flex-col bg-bg-subtle">
       <ListHeader summary={model.summary} />
@@ -378,7 +507,7 @@ export function SessionList({ model, selectedId }: { model: GroveModel; selected
         ref={scroller}
         tabIndex={-1}
         className="min-h-0 flex-1 overflow-y-auto py-1 outline-none"
-        onKeyDown={moveRowFocus}
+        onKeyDown={(event) => onAgentListKeyDown(event, { order: model.order, selectedId, rowTestId: 'grove-row' })}
       >
         {model.listed.length === 0 && (
           <p className="px-3 py-2 text-[11px] text-fg-subtle">No agents yet. Start one above.</p>
@@ -395,6 +524,7 @@ export function SessionList({ model, selectedId }: { model: GroveModel; selected
                       session={row.thread}
                       helper={row.helper}
                       selected={row.thread.id === selectedId}
+                      tabStop={row.thread.id === tabId}
                       groups={groups}
                       nameOf={nameOf}
                     />
@@ -412,10 +542,16 @@ export function SessionList({ model, selectedId }: { model: GroveModel; selected
 }
 
 /** Under 520px of content width: one status dot per session, with the name and line as its tooltip. */
-export function SessionRail({ model, selectedId }: { model: GroveModel; selectedId: string | null }) {
+export function SessionRail({
+  sessions,
+  selectedId,
+}: {
+  sessions: readonly GroveSession[];
+  selectedId: string | null;
+}) {
   const rail = useRef<HTMLElement>(null);
   useListFocus(rail, '[data-testid="grove-rail-row"]');
-  const sessions = model.sections.flatMap((section) => section.rows.map((row) => row.thread));
+  const tabId = sessions.some((session) => session.id === selectedId) ? selectedId : (sessions[0]?.id ?? null);
   return (
     <nav
       ref={rail}
@@ -423,6 +559,7 @@ export function SessionRail({ model, selectedId }: { model: GroveModel; selected
       data-testid="grove-rail"
       tabIndex={-1}
       className="flex w-11 shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-border bg-bg-subtle py-2 outline-none"
+      onKeyDown={(event) => onAgentListKeyDown(event, { order: sessions, selectedId, rowTestId: 'grove-rail-row' })}
     >
       <button
         type="button"
@@ -444,9 +581,10 @@ export function SessionRail({ model, selectedId }: { model: GroveModel; selected
           aria-current={session.id === selectedId ? 'true' : undefined}
           aria-label={`${session.name}: ${SESSION_STATUS_LABEL[session.status]}`}
           title={`${session.name}: ${SESSION_STATUS_LABEL[session.status]}. ${session.line}`}
-          onClick={() => selectSession(session.id)}
+          tabIndex={session.id === tabId ? 0 : -1}
+          onClick={() => selectSession(session.id, { focus: false })}
           className={clsx(
-            'flex h-8 w-8 shrink-0 items-center justify-center rounded-md',
+            'flex h-8 w-8 shrink-0 items-center justify-center rounded-md outline-none focus-visible:ring-1 focus-visible:ring-accent',
             session.id === selectedId ? 'bg-bg-muted' : 'hover:bg-bg-muted/60',
           )}
         >

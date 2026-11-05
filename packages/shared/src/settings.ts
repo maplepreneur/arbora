@@ -33,11 +33,26 @@ export type BottomTab = z.infer<typeof bottomTabSchema>;
 
 export const workspaceKindSchema = z.enum(['browser', 'grove']) satisfies z.ZodType<WorkspaceKind>;
 
+/** The tab the content pane shows. `editor` is the files store's active tab. */
+export const rightViewSchema = z.enum(['browser', 'terminal', 'editor', 'changes', 'problems']);
+export type RightView = z.infer<typeof rightViewSchema>;
+
 export const layoutStateSchema = z.object({
   groups: z.record(z.string(), panelGroupLayoutSchema).default({}),
   sidebarView: sidebarViewSchema.default('files'),
   bottomTab: bottomTabSchema.default('terminal'),
   workspace: workspaceKindSchema.default('browser'),
+  rightView: rightViewSchema.default('browser'),
+  /** Changes and Problems stay in the content pane's strip once opened, until closed. */
+  rightPanels: z
+    .array(z.enum(['changes', 'problems']))
+    .max(2)
+    .default([]),
+  /**
+   * The content pane (and the side column beside it) is hidden, so the window is the project tree
+   * and the agent chat. Default false, so settings files from before the field stay open.
+   */
+  contentHidden: z.boolean().default(false),
   /** The session Grove shows; the docked agent panel keeps its own open thread. */
   groveThreadId: z.string().nullable().default(null),
 });
@@ -161,17 +176,53 @@ export const onboardingSettingsSchema = z.object({
 });
 export type OnboardingSettings = z.infer<typeof onboardingSettingsSchema>;
 
+export const groveProjectSchema = z.object({
+  path: z.string().min(1),
+  collapsed: z.boolean().default(false),
+  /** Set when this folder is a git worktree of another Grove project. */
+  parentPath: z.string().min(1).optional(),
+});
+export type GroveProject = z.infer<typeof groveProjectSchema>;
+
+export const groveTrustedCommandSchema = z.object({
+  path: z.string().min(1),
+  /** The exact command line that was trusted. */
+  command: z.string().min(1).max(500),
+});
+
+/** Which workspace a new app start opens. Existing installs stay on the browser. */
+export const groveLaunchSchema = z.enum(['browser', 'grove']);
+export type GroveLaunch = z.infer<typeof groveLaunchSchema>;
+
 export const groveSettingsSchema = z.object({
   /** Sessions that are not helpers get the `grove_*` tools to start and steer helper sessions. */
   orchestration: z.boolean().default(true),
   /** Running helpers one lead may have at once. */
   maxChildren: z.number().int().min(1).max(10).default(4),
+  /** Projects Grove keeps running, in sidebar order. Paths are canonical. */
+  projects: z.array(groveProjectSchema).max(50).default([]),
+  /** Detected commands the user has allowed to run, per project folder. */
+  trustedCommands: z.array(groveTrustedCommandSchema).max(500).default([]),
+  /**
+   * Workspace opened on app start. `browser` is the default, including for settings files that
+   * were saved before this field existed. Quitting does not change the Grove project list.
+   */
+  launch: groveLaunchSchema.default('browser'),
 });
 export type GroveSettings = z.infer<typeof groveSettingsSchema>;
 
+/**
+ * Layout for a new app start. `grove` selects that workspace and does not need a project path.
+ * `browser` keeps the saved layout, including a layout that was already the browser workspace.
+ */
+export function layoutForAppLaunch(layout: Partial<LayoutState> | undefined, launch: GroveLaunch): LayoutState {
+  if (launch === 'browser') return layoutStateSchema.parse({ ...layout });
+  return layoutStateSchema.parse({ ...layout, workspace: 'grove' });
+}
+
 export const MAX_RECENT_PROJECTS = 10;
 
-export const SETTINGS_VERSION = 5;
+export const SETTINGS_VERSION = 6;
 
 export const browserSettingsSchema = z.object({
   /** Load the bundled React and Vue DevTools into the browser panel's session. */
@@ -451,8 +502,9 @@ export const appSettingsSchema = z.object({
   /** When a terminal is focused, plain `Ctrl+<key>` chords go to the shell. */
   terminalPassthrough: z.boolean().default(true),
   /**
-   * macOS only: quit when the last window closes, which also stops dev servers and agents. Off
-   * keeps Arbora in the dock with no window, as most Mac apps do. Other platforms always quit.
+   * macOS only: quit when the last window closes. Off keeps Arbora in the dock with no window, as
+   * most Mac apps do. Other platforms quit, unless Grove still has a terminal or agent process:
+   * those keep running after the last window closes until Quit is confirmed.
    */
   quitOnLastWindowClose: z.boolean().default(true),
   appearance: appearanceSettingsSchema.default(appearanceSettingsSchema.parse({})),
@@ -595,6 +647,8 @@ export const SETTINGS_MIGRATIONS: Readonly<Record<number, Migration>> = {
   },
   // v5 added `grove` (orchestration and the helper cap), defaulted by the schema.
   4: (input) => ({ ...input, version: 5 }),
+  // v6 added Grove's project list and trusted commands, defaulted by the schema.
+  5: (input) => ({ ...input, version: 6 }),
 };
 
 function objectField(input: Record<string, unknown>, key: string): Record<string, unknown> | null {

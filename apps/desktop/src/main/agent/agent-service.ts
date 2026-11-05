@@ -230,6 +230,12 @@ export class AgentService {
     return [...this.records.values()].map((r) => this.summary(r)).sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
+  /** The OS pid of the agent process for this thread, when one is running. */
+  processPid(threadId: string): number | null {
+    const pid = this.records.get(threadId)?.runtime?.process.pid;
+    return typeof pid === 'number' ? pid : null;
+  }
+
   getThread(threadId: string): Thread | null {
     const record = this.records.get(threadId);
     return record ? { ...record.thread, state: record.thread.state, events: [...record.normalizer.events] } : null;

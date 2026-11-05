@@ -1,14 +1,16 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   chordFromInput,
   DEFAULT_COMMANDS,
   formatChord,
   isModifierKey,
   KeybindingTable,
+  nextContentPaneFocus,
   resolveKeybindingSpecs,
 } from '@arbora/shared';
 import { executeCommand } from './commands';
 import { modeActive } from './mode';
+import { browserPageFocused, focusedShellLandmark, subscribeBrowserPageFocus } from './shell-focus';
 import { useApp } from './store';
 
 export function useKeybindingTable(): KeybindingTable {
@@ -56,8 +58,27 @@ export function useKeybindingDispatch(): void {
 
 let activeTable: KeybindingTable | null = null;
 
-/** Where the CLI-style thread keys apply: the docked agent panel and Grove's session pane. */
-const AGENT_THREAD_SELECTOR = '[data-testid="agent-panel"], [data-testid="grove-pane"]';
+/** Where the CLI-style thread keys and Archive / Stop apply: the chat column. */
+const AGENT_THREAD_SELECTOR = '[data-testid="panel-chat"]';
+
+/**
+ * Stays true after the content pane's terminal unmounts (focus falls on `body`), and after the
+ * live page had the keyboard, so the next Mod+1..9 still switches its tabs. Cleared when focus
+ * moves to the project tree or the chat. An error or empty browser counts once its DOM is focused.
+ */
+let contentPaneSticky = false;
+
+function contentPaneFocused(target: EventTarget | null, terminalFocused: boolean): boolean {
+  const decision = nextContentPaneFocus({
+    landmark: focusedShellLandmark(target),
+    terminalFocused,
+    pageFocused: browserPageFocused(),
+    documentFocused: document.hasFocus(),
+    sticky: contentPaneSticky,
+  });
+  contentPaneSticky = decision.sticky;
+  return decision.contentFocused;
+}
 
 /**
  * The Arbora binding a keydown triggers in the current context, if any. The terminal asks this
@@ -73,15 +94,17 @@ export function bindingForEvent(event: KeyboardEvent): ReturnType<KeybindingTabl
     alt: event.altKey,
     shift: event.shiftKey,
   });
-  const { mode, terminalFocused, settings, design, layout, project } = useApp.getState();
+  const { mode, terminalFocused, settings, design, layout } = useApp.getState();
+  const target = event.target instanceof Element ? event.target : null;
   const binding = activeTable.match(chord, {
     modeActive: modeActive(mode),
     terminalFocused,
     terminalPassthrough: settings.terminalPassthrough,
     designActive: mode.kind === 'design',
     textEditing: design.textEditing,
-    agentFocused: event.target instanceof Element && event.target.closest(AGENT_THREAD_SELECTOR) !== null,
-    workspace: project ? layout.workspace : 'browser',
+    agentFocused: target?.closest(AGENT_THREAD_SELECTOR) !== null,
+    workspace: layout.workspace,
+    contentFocused: contentPaneFocused(target, terminalFocused),
   });
   if (binding && design.textEditing && binding.commandId !== 'arbora.exitMode') return undefined;
   return binding;
@@ -94,7 +117,20 @@ export function useKeybindingContextSync(): void {
   const designActive = useApp((s) => s.mode.kind === 'design');
   const textEditing = useApp((s) => s.design.textEditing);
   const recording = useApp((s) => s.recordingShortcut);
-  const workspace = useApp((s) => (s.project ? s.layout.workspace : 'browser'));
+  const workspace = useApp((s) => s.layout.workspace);
+  const [contentFocused, setContentFocused] = useState(false);
+  useEffect(() => {
+    const update = (): void => {
+      setContentFocused(contentPaneFocused(document.activeElement, useApp.getState().terminalFocused));
+    };
+    update();
+    document.addEventListener('focusin', update);
+    const unsubscribe = subscribeBrowserPageFocus(update);
+    return () => {
+      document.removeEventListener('focusin', update);
+      unsubscribe();
+    };
+  }, [terminalFocused]);
   useEffect(() => {
     void window.arbora.invoke('keybindings.setContext', {
       modeActive: active,
@@ -103,6 +139,8 @@ export function useKeybindingContextSync(): void {
       textEditing,
       recording,
       workspace,
+      // A focused terminal swallows the DOM event, so main has to know the content pane has focus.
+      contentFocused: contentFocused || terminalFocused,
     });
-  }, [active, terminalFocused, designActive, textEditing, recording, workspace]);
+  }, [active, terminalFocused, designActive, textEditing, recording, workspace, contentFocused]);
 }

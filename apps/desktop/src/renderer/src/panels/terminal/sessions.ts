@@ -3,8 +3,15 @@ import { SearchAddon } from '@xterm/addon-search';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Terminal, type ILink, type ITheme } from '@xterm/xterm';
-import { findDevUrls, fontFamily, terminalClipboardAction, type ResolvedTheme } from '@arbora/shared';
-import { navigateBrowser, openFileAtLocation } from '../../commands';
+import {
+  findDevUrls,
+  fontFamily,
+  groveWebsiteAction,
+  terminalClipboardAction,
+  type ResolvedTheme,
+} from '@arbora/shared';
+import { navigateBrowser, openFileAtLocation, openGroveWebsite } from '../../commands';
+import { projectPathForTerminal } from '../../grove-store';
 import { bindingForEvent } from '../../keybindings';
 import { showToast, useApp } from '../../store';
 import { useTerminals } from '../../terminal-store';
@@ -96,7 +103,16 @@ export async function pasteClipboard(session: TerminalSession): Promise<void> {
   if (text) session.term.paste(text);
 }
 
-function openLink(uri: string): void {
+function openLink(terminalId: string, uri: string): void {
+  const grove = groveWebsiteAction({
+    workspace: useApp.getState().layout.workspace,
+    projectPath: projectPathForTerminal(terminalId),
+    url: uri,
+  });
+  if (grove) {
+    void openGroveWebsite(grove);
+    return;
+  }
   if (findDevUrls(uri).length > 0) void navigateBrowser(uri);
   else window.open(uri, '_blank');
 }
@@ -117,7 +133,7 @@ function createSession(id: string): TerminalSession {
   const search = new SearchAddon();
   term.loadAddon(fitAddon);
   term.loadAddon(search);
-  term.loadAddon(new WebLinksAddon((_event, uri) => openLink(uri)));
+  term.loadAddon(new WebLinksAddon((_event, uri) => openLink(id, uri)));
   term.registerLinkProvider({
     provideLinks(lineNumber, callback) {
       const line = term.buffer.active.getLine(lineNumber - 1)?.translateToString(true) ?? '';

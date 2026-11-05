@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import type { AppSettings, NavigationState, TerminalInfo, ThreadSummary } from '@arbora/shared';
-import { checkedAgents, DESKTOP_ROOT, launch, tempUserData } from './app';
+import { checkedAgents, DESKTOP_ROOT, focusChrome, launch, showRight, switchWorkspace, tempUserData } from './app';
 import { freePort } from './servers';
 
 const FAKE_AGENT = resolve(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
@@ -108,22 +108,6 @@ function inPage<T>(app: ElectronApplication, code: string): Promise<T> {
   }, code);
 }
 
-/** Native key input to the embedded page, which main's `before-input-event` sees first. */
-function keyInPage(app: ElectronApplication, keyCode: string, modifiers: string[]): Promise<void> {
-  return app.evaluate(
-    ({ webContents }, input) => {
-      const page = webContents
-        .getAllWebContents()
-        .find((wc) => wc.session.storagePath?.includes('arbora-browser-') && !wc.getURL().startsWith('devtools:'));
-      if (!page) throw new Error('No browser panel webContents');
-      page.focus();
-      page.sendInputEvent({ type: 'keyDown', keyCode: input.keyCode, modifiers: input.modifiers as ['control'] });
-      page.sendInputEvent({ type: 'keyUp', keyCode: input.keyCode, modifiers: input.modifiers as ['control'] });
-    },
-    { keyCode, modifiers },
-  );
-}
-
 /** Native key input to the app window, through main's interceptor (Playwright's keys skip it). */
 function keyInWindow(app: ElectronApplication, keyCode: string, modifiers: string[]): Promise<void> {
   return app.evaluate(
@@ -152,99 +136,73 @@ async function deleteThreads(page: Page): Promise<void> {
 }
 
 test.describe('Stage 10 Grove', () => {
-  test('swaps the whole window without reloading the page or stopping the dev server, and auto-starts once', async () => {
+  test('runs the dev server, an agent and the page side by side, and auto-starts once', async () => {
     const port = await freePort();
     const url = `http://127.0.0.1:${port}/`;
     const project = tempProject({ devCommand: 'node server.mjs', defaultAgent: FAKE_ID });
     writeFileSync(join(project, 'server.mjs'), devServerSource(port));
     const { app, page } = await launch(userDataWithFakeAgent(), [project]);
     try {
-      await page.getByTestId('devserver-run').click();
-      await expect.poll(async () => (await browserState(page))?.url, { timeout: 30_000 }).toBe(url);
-      await expect.poll(async () => (await browserState(page))?.pageReady, { timeout: 30_000 }).toBe(true);
-      await inPage(app, 'window.groveMarker = 42');
-      const dev = (await terminals(page)).find((t) => t.kind === 'dev');
-      if (!dev?.pid) throw new Error('dev server not running');
-
-      await expect(page.getByTestId('workspace-browser')).toHaveAttribute('aria-pressed', 'true');
-      await page.getByTestId('workspace-grove').click();
-      await expect(page.getByTestId('grove')).toBeVisible();
-      await expect(page.getByTestId('workspace')).toHaveCount(0);
-      await expect(page.getByTestId('workspace-grove')).toHaveAttribute('aria-pressed', 'true');
-      await expect.poll(() => viewVisible(app)).toBe(false);
-
-      // An empty Grove starts the project's default agent once, selects it and focuses its composer.
+      // An empty project starts its default agent once, selects it and focuses its composer.
       const row = page.getByTestId('grove-row');
       await expect(row).toHaveCount(1, { timeout: 20_000 });
       await expect(row).toHaveAttribute('data-status', 'idle', { timeout: 20_000 });
       const pane = page.getByTestId('grove-pane');
       const composer = pane.getByTestId('composer-input');
-      await expect(composer).toBeFocused();
       await expect(composer).toHaveAttribute('placeholder', /^Ask Fake agent…/);
 
-      // The dev server keeps printing while Grove is up.
-      expect((await fetch(`${url}while-grove`)).status).toBe(404);
-      await expect.poll(() => lines(page, dev.id)).toContain('request /while-grove');
+      await showRight(page, 'terminal');
+      await page.getByTestId('devserver-run').click();
+      await expect.poll(async () => (await browserState(page))?.url, { timeout: 30_000 }).toBe(url);
+      await expect.poll(async () => (await browserState(page))?.pageReady, { timeout: 30_000 }).toBe(true);
+      await switchWorkspace(page, 'browser');
+      await expect.poll(() => viewVisible(app)).toBe(true);
+      await inPage(app, 'window.groveMarker = 42');
+      const dev = (await terminals(page)).find((t) => t.kind === 'dev');
+      if (!dev?.pid) throw new Error('dev server not running');
+      expect((await fetch(`${url}from-test`)).status).toBe(404);
+      await expect.poll(() => lines(page, dev.id)).toContain('request /from-test');
 
-      // The parked page still answers the agent's browser tools, screenshots included.
+      // The agent's browser tools act on the page beside it, screenshots included.
       await composer.fill('browser check');
       await composer.press('Enter');
       const reply = pane.getByTestId('agent-message').last();
       await expect(reply).toContainText('Screenshot images: 1', { timeout: 30_000 });
       await expect(reply).toContainText(/After clicking e\d+: Clicked 1 times/);
-      expect(await viewVisible(app)).toBe(false);
+      await expect.poll(() => viewVisible(app)).toBe(true);
 
-      // Agent mode needs the page, so Mod+K goes back to the browser workspace first.
+      // Mod+Shift+K searches. Mod+K enters agent mode on the same page.
+      await focusChrome(page);
+      await page.keyboard.press('ControlOrMeta+Shift+K');
+      await expect(page.getByTestId('grove-search')).toBeVisible();
+      // The page is a native view above the DOM, so it steps aside while the search is open.
+      await expect.poll(() => viewVisible(app)).toBe(false);
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('grove-search')).toHaveCount(0);
+      await expect.poll(() => viewVisible(app)).toBe(true);
+      await focusChrome(page);
       await page.keyboard.press('ControlOrMeta+K');
-      await expect(page.getByTestId('workspace')).toBeVisible();
-      await expect(page.getByTestId('grove')).toHaveCount(0);
       await expect(page.getByTestId('mode-pills')).toHaveAttribute('data-mode', 'agent');
       await page.keyboard.press('Escape');
       await expect(page.getByTestId('mode-pills')).toHaveAttribute('data-mode', 'idle');
-      await expect.poll(() => viewVisible(app)).toBe(true);
       // Same URL, same document (not reloaded), and the agent's click really happened on it.
       expect((await browserState(page))?.url).toBe(url);
       expect(await inPage<number>(app, 'window.groveMarker')).toBe(42);
       expect(await inPage<string>(app, "document.getElementById('count').textContent")).toBe('Clicked 1 times');
-
-      // Main's interceptor knows the browser workspace is back: Mod+1 is panel focus again.
-      await keyInWindow(app, '1', [MOD]);
-      await expect(page.getByTestId('explorer-tree')).toBeFocused();
-
-      // The toggle chord works from inside the page; coming back does not start a second agent.
-      await keyInPage(app, 'G', [MOD, 'alt']);
-      await expect(page.getByTestId('grove')).toBeVisible();
-      await expect(page.getByTestId('grove-row')).toHaveCount(1);
-      await page.getByTestId('workspace-browser').click();
-      await expect(page.getByTestId('workspace')).toBeVisible();
       expect(await threads(page)).toHaveLength(1);
 
-      // While the browser workspace shows, the Grove segment says an agent is working.
-      const [session] = await threads(page);
-      if (!session) throw new Error('no session');
-      await page.evaluate((threadId) => {
-        void window.arbora.invoke('agent.prompt', {
-          threadId,
-          blocks: [{ type: 'text', text: 'slow' }],
-          attachments: [],
-        });
-      }, session.id);
-      await expect(page.getByTestId('grove-activity')).toBeVisible();
-      await page.evaluate((threadId) => window.arbora.invoke('agent.cancel', { threadId }), session.id);
-      await expect(page.getByTestId('grove-activity')).toHaveCount(0, { timeout: 15_000 });
-
-      // The same dev server process is running, and its xterm got the lines printed during the visit.
+      // The same dev server process is running, and its xterm has every line it printed.
       const after = (await terminals(page)).find((t) => t.kind === 'dev');
       expect(after?.pid).toBe(dev.pid);
       expect(after?.exitCode).toBeNull();
       await page.locator('[data-testid="terminal-tab"][data-kind="dev"]').click();
       await page.getByRole('button', { name: 'Find in Terminal' }).click();
       const search = page.getByTestId('terminal-search-input');
-      await search.fill('while-grove');
+      await search.fill('from-test');
       await search.press('Enter');
       await search.press('Escape');
       await page.keyboard.press(isMac ? 'Meta+C' : 'Control+C');
-      await expect.poll(() => page.evaluate(() => window.arbora.invoke('clipboard.readText'))).toBe('while-grove');
+      await expect.poll(() => page.evaluate(() => window.arbora.invoke('clipboard.readText'))).toBe('from-test');
       await deleteThreads(page);
     } finally {
       await app.close();
@@ -257,7 +215,6 @@ test.describe('Stage 10 Grove', () => {
     const { app, page } = await launch(userDataWithFakeAgent(), [project]);
     try {
       await focusWindow(app);
-      await page.keyboard.press('ControlOrMeta+Alt+G');
       await expect(page.getByTestId('grove')).toBeVisible();
       // No default agent: nothing starts, and the empty state offers a choice.
       await expect(page.getByTestId('grove-empty')).toContainText('No agents running.');
@@ -268,6 +225,7 @@ test.describe('Stage 10 Grove', () => {
       const launcher = page.getByTestId('grove-launcher');
       await expect(launcher).toBeVisible();
       await expect(page.getByTestId(`launcher-agent-${FAKE_ID}`)).toHaveAttribute('data-active', 'true');
+      await page.keyboard.press('Enter');
       const task = page.getByTestId('launcher-task');
       await expect(task).toBeFocused();
       await page.getByTestId('launcher-default').check();
@@ -317,13 +275,11 @@ test.describe('Stage 10 Grove', () => {
       await keyInWindow(app, '1', [MOD]);
       await expect(pane).toHaveAttribute('data-thread-id', firstId);
 
-      // In the browser workspace the bell still counts it, and the jump opens the docked panel.
-      await page.keyboard.press('ControlOrMeta+Alt+G');
-      await expect(page.getByTestId('workspace')).toBeVisible();
+      // The jump to who needs you works from the second agent too.
+      await page.keyboard.press('ControlOrMeta+2');
+      await expect(pane).toHaveAttribute('data-thread-id', secondId);
       await expect(page.getByTestId('attention-badge')).toHaveText('1');
       await page.keyboard.press('ControlOrMeta+Alt+A');
-      await expect(page.getByTestId('thread-view').getByTestId('user-message')).toContainText('add a comment to');
-      await page.keyboard.press('ControlOrMeta+Alt+G');
       await expect(pane).toHaveAttribute('data-thread-id', firstId);
 
       await pinned.getByTestId('permission-allow_once').click();
@@ -342,8 +298,9 @@ test.describe('Stage 10 Grove', () => {
       await expect(change.getByTestId('diff')).toContainText('Arbora fake agent was here');
       await page.getByTestId('grove-tab-transcript').click();
 
-      // Archiving a live session asks first, then moves it to Recent and selects the next row.
-      await page.keyboard.press('ControlOrMeta+Alt+W');
+      // Archiving a live session (Alt+A in the chat) asks first, then moves it to Recent and selects the next row.
+      await pane.getByTestId('composer-input').focus();
+      await page.keyboard.press('Alt+A');
       const ask = page.getByTestId('toast').filter({ hasText: 'and archive it?' });
       await expect(ask).toBeVisible();
       await ask.getByTestId('toast-action').click();
@@ -354,13 +311,7 @@ test.describe('Stage 10 Grove', () => {
         .poll(async () => (await threads(page)).find((t) => t.id === firstId)?.archivedAt ?? null)
         .not.toBeNull();
 
-      // The docked thread list hides it too.
-      await page.getByTestId('workspace-browser').click();
-      await expect(page.getByTestId('thread-row')).toHaveCount(1);
-      await expect(page.getByTestId('thread-row')).toHaveAttribute('data-thread-id', secondId);
-
       // Recent shows it read-only; Restore brings it back to the list.
-      await page.getByTestId('workspace-grove').click();
       await page.getByTestId('grove-recent-toggle').click();
       await page.getByTestId('grove-recent-row').click();
       await expect(pane).toHaveAttribute('data-thread-id', firstId);
@@ -389,7 +340,7 @@ test.describe('Stage 10 Grove', () => {
       }, size);
       await expect(page.getByTestId('grove-sessions')).toBeVisible();
       await expect
-        .poll(async () => (await page.getByTestId('grove-list').boundingBox())?.width ?? 0)
+        .poll(async () => (await page.getByTestId('panel-tree').boundingBox())?.width ?? 0)
         .toBeGreaterThan(150);
       await deleteThreads(page);
     } finally {
@@ -403,7 +354,6 @@ test.describe('Stage 10 Grove', () => {
     const project = tempProject({ defaultAgent: FAKE_ID, startDefaultOnOpen: false });
     const { app, page } = await launch(userData, [project]);
     try {
-      await page.keyboard.press('ControlOrMeta+Alt+G');
       // Start when empty is off: Grove offers the default agent and does not spawn it.
       await expect(page.getByTestId('grove-empty-start')).toHaveText('Start Fake agent');
       await expect(page.getByTestId('grove-empty-start-on-open')).not.toBeChecked();
@@ -422,9 +372,17 @@ test.describe('Stage 10 Grove', () => {
       await page.getByTestId('settings-nav-grove').click();
       await expect(page.getByTestId('setting-grove-default-agent')).toHaveValue(FAKE_ID);
       await expect(page.getByTestId('setting-grove-start-on-open')).toHaveAttribute('aria-checked', 'false');
-      await expect(page.getByTestId('grove-chords')).toContainText(isMac ? '⌥⌘G' : 'Ctrl+Alt+G');
+      await expect(page.getByTestId('grove-chords')).toContainText(isMac ? '⌥⌘M' : 'Ctrl+Alt+M');
       await page.getByTestId('setting-grove-max-children').selectOption('2');
-      await expect.poll(() => savedSettings(userData).grove).toEqual({ orchestration: true, maxChildren: 2 });
+      await expect
+        .poll(() => savedSettings(userData).grove)
+        .toEqual({
+          orchestration: true,
+          maxChildren: 2,
+          projects: [{ path: project, collapsed: false }],
+          trustedCommands: [],
+          launch: 'browser',
+        });
       await page.getByTestId('setting-grove-orchestration').click();
       await expect.poll(() => savedSettings(userData).grove.orchestration).toBe(false);
       await expect(page.getByTestId('setting-grove-max-children')).toBeDisabled();
@@ -467,6 +425,61 @@ test.describe('Stage 10 Grove', () => {
       await pane.getByTestId('grove-lead-link').click();
       await expect(pane).toHaveAttribute('data-thread-id', leadId);
       await deleteThreads(page);
+    } finally {
+      await app.close();
+      rmSync(project, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    }
+  });
+
+  test('lists detected commands and forgets a project only when it is closed', async () => {
+    const project = tempProject({ startDefaultOnOpen: false, defaultAgent: FAKE_ID });
+    writeFileSync(
+      join(project, 'package.json'),
+      JSON.stringify({
+        name: 'grove-fixture',
+        private: true,
+        scripts: {
+          dev: 'vite',
+          build: 'vite build',
+          preview: 'vite preview',
+          format: 'prettier',
+          pretest: 'echo no',
+          generate: 'nuxt generate',
+        },
+      }),
+    );
+    writeFileSync(join(project, 'Procfile.dev'), 'web: npm run dev\nworker: php artisan queue:work\n');
+    mkdirSync(join(project, 'bin'));
+    mkdirSync(join(project, 'config'));
+    writeFileSync(join(project, 'bin', 'rails'), '#!/bin/sh\n');
+    writeFileSync(join(project, 'bin', 'dev'), '#!/bin/sh\n');
+    writeFileSync(join(project, 'bin', 'jobs'), '#!/bin/sh\n');
+    writeFileSync(join(project, 'config', 'application.rb'), 'module App\nend\n');
+    const userData = userDataWithFakeAgent();
+    const { app, page } = await launch(userData, [project]);
+    try {
+      await expect(page.getByTestId('grove')).toBeVisible();
+      const before = (await terminals(page)).length;
+      // Opening a project on the window lists it in the tree.
+      await expect(page.getByTestId('grove-project')).toHaveCount(1);
+      await expect.poll(() => savedSettings(userData).grove.projects.length).toBe(1);
+      for (const title of ['npm:dev', 'npm:build', 'npm:preview', 'npm:generate', 'Dev server', 'Jobs', 'web']) {
+        await expect(page.getByTestId('grove-command').filter({ hasText: title }).first()).toBeVisible();
+      }
+      await expect(page.getByTestId('grove-command').filter({ hasText: 'format' })).toHaveCount(0);
+      await expect(page.getByTestId('grove-command').filter({ hasText: 'pretest' })).toHaveCount(0);
+      for (const title of ['Bundle install', 'Rollback', 'Seed', 'Routes']) {
+        await expect(page.getByTestId('grove-command').filter({ hasText: title }).first()).toBeVisible();
+      }
+      await expect(page.getByTestId('grove-commands')).toHaveAttribute('data-count', '0/15');
+      expect(await terminals(page)).toHaveLength(before);
+      await page.getByTestId('grove-close-project').click();
+      const ask = page.getByTestId('toast').filter({ hasText: 'Close' });
+      const projectRow = page.getByTestId('grove-project');
+      if (await ask.isVisible().catch(() => false)) await ask.getByTestId('toast-action').click();
+      await expect(projectRow).toHaveCount(0);
+      await expect.poll(() => savedSettings(userData).grove.projects).toEqual([]);
+      expect(savedSettings(userData).grove.launch).toBe('browser');
     } finally {
       await app.close();
       rmSync(project, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });

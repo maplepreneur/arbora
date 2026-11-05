@@ -331,6 +331,20 @@ export class GitService {
     });
   }
 
+  /** `git worktree add -b` at a sibling path. Throws `GitError` with git's message when it fails. */
+  addWorktree(branch: string, directory: string): Promise<void> {
+    return this.enqueue(async (env) => {
+      await runGit(this.options.root, env, ['worktree', 'add', '-b', branch, directory, 'HEAD']);
+    });
+  }
+
+  /** Removes a worktree git already knows about. Used to undo a Grove registration that failed. */
+  removeWorktree(directory: string): Promise<void> {
+    return this.enqueue(async (env) => {
+      await runGit(this.options.root, env, ['worktree', 'remove', '--force', directory]);
+    });
+  }
+
   private async refExists(env: NodeJS.ProcessEnv, ref: string): Promise<boolean> {
     try {
       await runGit(this.options.root, env, ['show-ref', '--verify', '--quiet', ref]);

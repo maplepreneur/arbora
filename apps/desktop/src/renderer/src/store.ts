@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   defaultSettings,
+  layoutForAppLaunch,
   layoutStateSchema,
   type AppInfo,
   type AppSettings,
@@ -13,6 +14,7 @@ import {
   type PanelGroupLayout,
   type ProblemEntry,
   type ProjectInfo,
+  type RightView,
   type ThemeState,
   type WindowState,
 } from '@arbora/shared';
@@ -86,7 +88,7 @@ export type SettingsSection =
   | 'keyboard'
   | 'updates';
 
-export type Overlay = 'onboarding' | 'switcher' | 'update';
+export type Overlay = 'onboarding' | 'switcher' | 'update' | 'keybindings';
 
 export function openOverlay(overlay: Overlay): void {
   useApp.setState({ overlay, paletteOpen: false });
@@ -145,7 +147,8 @@ export const useApp = create<AppState>()(() => ({
   info: {
     name: 'arbora',
     version: '',
-    platform: window.arbora.platform,
+    // Unit tests import the stores without a preload.
+    platform: (globalThis as { window?: Partial<Window> }).window?.arbora?.platform ?? 'linux',
     isPackaged: false,
     tilingCompositor: null,
     skipOnboarding: false,
@@ -176,8 +179,13 @@ export const useApp = create<AppState>()(() => ({
 /** The Problems tab keeps at most this many entries (main keeps 500 console + 500 network). */
 export const MAX_PROBLEMS = 1000;
 
+/** The shell is Grove's workspace: its tree, chat and right column are always on screen. */
+function shellLayout(layout: LayoutState | undefined): LayoutState {
+  return layoutForAppLaunch(layout, 'grove');
+}
+
 export function initStore(initial: InitialState): void {
-  useApp.setState({ ...initial, layout: initial.project?.layout ?? DEFAULT_LAYOUT });
+  useApp.setState({ ...initial, layout: shellLayout(initial.project?.layout) });
 }
 
 export function setProject(project: ProjectInfo | null): void {
@@ -187,8 +195,8 @@ export function setProject(project: ProjectInfo | null): void {
     project,
     ...(switched
       ? {
-          layout: project?.layout ?? DEFAULT_LAYOUT,
-          layoutEpoch: s.layoutEpoch + 1,
+          // Panel sizes belong to the window, so switching project does not move the columns.
+          layout: { ...shellLayout(project?.layout), groups: s.layout.groups },
           mode: IDLE,
           design: EMPTY_DESIGN,
           paletteOpen: false,
@@ -219,25 +227,31 @@ export function setGroupLayout(groupId: string, layout: PanelGroupLayout): void 
   updateLayout({ groups: { ...useApp.getState().layout.groups, [groupId]: layout } });
 }
 
-/** Grove's list and pane sizes (`panels/grove/GroveWorkspace.tsx`). */
-export const GROVE_GROUP = 'arbora.grove';
+/** The shell's tree, chat, right column and side panel sizes (`panels/grove/GroveWorkspace.tsx`). */
+export const SHELL_GROUP = 'arbora.shell';
 
-/** Resets the workspace that shows to its default sizes; the other workspace keeps its own. */
+/** Puts the shell's columns back to their default sizes. Tabs and the selection stay. */
 export function resetLayout(): void {
-  useApp.setState((s) => {
-    const { [GROVE_GROUP]: grove, ...browserGroups } = s.layout.groups;
-    const layout: LayoutState =
-      s.layout.workspace === 'grove'
-        ? { ...s.layout, groups: browserGroups }
-        : {
-            ...DEFAULT_LAYOUT,
-            workspace: s.layout.workspace,
-            groveThreadId: s.layout.groveThreadId,
-            groups: grove ? { [GROVE_GROUP]: grove } : {},
-          };
-    return { layout, layoutEpoch: s.layoutEpoch + 1 };
-  });
+  useApp.setState((s) => ({ layout: { ...s.layout, groups: {} }, layoutEpoch: s.layoutEpoch + 1 }));
   persistLayout();
+}
+
+/** Shows `view` in the right column. Changes and Problems join the strip the first time. */
+export function showRightView(view: RightView): void {
+  const { rightView, rightPanels } = useApp.getState().layout;
+  const panels =
+    (view === 'changes' || view === 'problems') && !rightPanels.includes(view) ? [...rightPanels, view] : rightPanels;
+  if (rightView === view && panels === rightPanels) return;
+  updateLayout({ rightView: view, rightPanels: panels });
+}
+
+/** Closes the Changes or Problems tab; the browser shows when it was the one on screen. */
+export function closeRightPanel(panel: 'changes' | 'problems'): void {
+  const { rightView, rightPanels } = useApp.getState().layout;
+  updateLayout({
+    rightPanels: rightPanels.filter((entry) => entry !== panel),
+    ...(rightView === panel ? { rightView: 'browser' as const } : {}),
+  });
 }
 
 /** Applies a mode event and starts or stops the page inspector and the design overlay. */
