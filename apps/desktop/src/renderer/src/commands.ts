@@ -762,6 +762,9 @@ async function runCommand(id: CommandId): Promise<void> {
     case CommandId.toggleSidebar:
       toggleSessionList();
       return;
+    case CommandId.toggleSideColumn:
+      withProject((w) => w.toggleSidebar());
+      return;
     case CommandId.toggleAgentPanel:
       withProject((w) => w.toggleAgentPanel());
       return;

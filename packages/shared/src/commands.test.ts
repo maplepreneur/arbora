@@ -116,6 +116,11 @@ describe('Grove commands', () => {
       intercept: true,
     });
     expect(DEFAULT_COMMANDS.some((c) => c.id === 'arbora.toggleWorkspace')).toBe(false);
+    expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.toggleSideColumn)).toMatchObject({
+      category: 'View',
+      keybinding: 'mod+shift+b',
+      intercept: true,
+    });
     expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.groveSearch)).toMatchObject({
       keybinding: 'mod+shift+k',
       intercept: true,

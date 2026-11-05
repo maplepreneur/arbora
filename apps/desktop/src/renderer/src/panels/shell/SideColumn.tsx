@@ -54,6 +54,8 @@ function SideContent({ view }: { view: SidebarView }) {
 
 /** Files, Source Control and Search for the selected project, on the window's right edge. */
 export function SideColumn({ onCollapse }: { onCollapse: () => void }) {
+  const toggleChord = useChordLabel(CommandId.toggleSideColumn);
+  const hideLabel = `Hide files, source control and search${toggleChord ? ` (${toggleChord})` : ''}`;
   const view = useApp((s) => s.layout.sidebarView);
   const hasProject = useApp((s) => s.project !== null);
   return (
@@ -73,8 +75,8 @@ export function SideColumn({ onCollapse }: { onCollapse: () => void }) {
         ))}
         <button
           type="button"
-          aria-label="Hide files, source control and search"
-          title="Hide files, source control and search"
+          aria-label={hideLabel}
+          title={hideLabel}
           data-testid="side-hide"
           onClick={onCollapse}
           className="ml-auto flex h-7 w-7 items-center justify-center rounded text-fg-subtle hover:bg-bg-muted hover:text-fg"

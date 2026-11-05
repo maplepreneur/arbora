@@ -117,6 +117,12 @@ test.describe('Stage 0 smoke', () => {
       await page.getByTestId('side-show').click();
       await expect.poll(sideWidth).toBeGreaterThan(100);
       await expect(page.getByTestId('side-show')).toHaveCount(0);
+      // Mod+Shift+B toggles it too.
+      await focusChrome(page);
+      await page.keyboard.press('ControlOrMeta+Shift+B');
+      await expect.poll(sideWidth).toBe(0);
+      await page.keyboard.press('ControlOrMeta+Shift+B');
+      await expect.poll(sideWidth).toBeGreaterThan(100);
 
       // Mod+B shows and hides the project tree, making room by closing Files when the window is full.
       const treeWidth = async (): Promise<number> => (await page.getByTestId('panel-tree').boundingBox())?.width ?? 0;

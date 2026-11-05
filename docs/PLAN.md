@@ -493,6 +493,7 @@ All of these are `intercept: true` and configurable, except the `Mod+1`–`Mod+9
 | Command | Id | Default | When |
 | --- | --- | --- | --- |
 | Maximize Right Column | `arbora.toggleMaximizeRight` | `mod+alt+m` | always |
+| Toggle Files, Source Control and Search | `arbora.toggleSideColumn` | `mod+shift+b` | always |
 | New Agent | `arbora.grove.newDefault` | `mod+alt+n` | grove |
 | New Agent with a Task… | `arbora.grove.launch` | none (`mod+shift+n` in Grove runs it) | always |
 | Next Agent | `arbora.grove.nextSession` | `mod+alt+down` | grove |

@@ -143,6 +143,8 @@ function Strip({ maximized, onToggleMaximize, sideOpen, onToggleSide }: ColumnCo
   const terminalTab = useTerminals((s) => s.activeTabId);
   const editorTab = useFiles((s) => s.active);
   const maximizeChord = useChordLabel(CommandId.toggleMaximizeRight);
+  const sideChord = useChordLabel(CommandId.toggleSideColumn);
+  const showSideLabel = `Show files, source control and search${sideChord ? ` (${sideChord})` : ''}`;
   const ref = useRef<HTMLDivElement>(null);
   useStripScroll(ref, `${view}:${terminalTab ?? ''}:${editorTab ?? ''}`);
   const maximizeLabel = `${maximized ? 'Restore columns' : 'Maximize'}${maximizeChord ? ` (${maximizeChord})` : ''}`;
@@ -205,8 +207,8 @@ function Strip({ maximized, onToggleMaximize, sideOpen, onToggleSide }: ColumnCo
       {!sideOpen && (
         <button
           type="button"
-          aria-label="Show files, source control and search"
-          title="Show files, source control and search"
+          aria-label={showSideLabel}
+          title={showSideLabel}
           data-testid="side-show"
           onClick={onToggleSide}
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-fg-subtle hover:bg-bg-muted hover:text-fg"
