@@ -1,5 +1,15 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 
+/**
+ * A lazy chunk that is gone: the app was rebuilt or updated under a running window. Retrying the
+ * import fails the same way, so only reloading the window helps.
+ */
+export function isMissingChunk(error: Error): boolean {
+  return /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(
+    error.message,
+  );
+}
+
 interface Props {
   readonly label: string;
   readonly children: ReactNode;
@@ -25,15 +35,30 @@ export class ErrorBoundary extends Component<Props, { error: Error | null }> {
   override render(): ReactNode {
     const { error } = this.state;
     if (!error) return this.props.children;
+    const stale = isMissingChunk(error);
     return (
       <div
         role="alert"
         data-testid="error-boundary"
         className="m-4 rounded-lg border border-danger/40 bg-bg p-4 text-sm"
       >
-        <p className="font-medium text-danger">{this.props.label} hit an error.</p>
+        <p className="font-medium text-danger">
+          {stale
+            ? `${this.props.label} needs a reload: Arbora was updated while it was open.`
+            : `${this.props.label} hit an error.`}
+        </p>
         <p className="mt-1 font-mono text-xs break-words text-fg-muted select-text">{error.message}</p>
         <div className="mt-3 flex gap-2">
+          {stale && (
+            <button
+              type="button"
+              data-testid="error-boundary-reload"
+              onClick={() => void window.arbora.invoke('window.control', { action: 'reload' })}
+              className="rounded bg-accent px-2.5 py-1 text-xs font-medium text-accent-fg hover:opacity-90"
+            >
+              Reload window
+            </button>
+          )}
           <button
             type="button"
             onClick={() => this.setState({ error: null })}
