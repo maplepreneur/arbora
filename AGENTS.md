@@ -39,6 +39,7 @@ When you finish a stage's code, point the next unstarted stage's Notes at "Next 
 - `pnpm typecheck && pnpm lint && pnpm test` before every code push; `pnpm e2e` for the Electron smoke tests (needs a display; use `xvfb-run -a` on headless Linux)
 - CI minutes are billed. Ship through pull requests into `beta` and keep runs few (see Shipping): drafts while iterating, Linux only, `ci:all-os` (10x and 2x minutes) only for platform-specific changes right before merge. Promote `beta` to `main` only when that line is ready to release.
 - `pnpm dev -- /absolute/path/to/project` to launch with a project open
+- A checkout instance runs from `apps/desktop/out/`, and `pnpm build:test` rewrites it under a running window. To test without touching it, build into another folder (`out-*/` is ignored) and run Playwright with `ARBORA_E2E_OUT=out-agent`.
 
 ## Where things go
 

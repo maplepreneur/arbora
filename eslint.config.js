@@ -22,6 +22,7 @@ export default defineConfig(
     ignores: [
       '**/node_modules/**',
       '**/out/**',
+      '**/out-*/**',
       '**/dist/**',
       '**/test-results/**',
       '**/playwright-report/**',

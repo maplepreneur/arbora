@@ -175,6 +175,16 @@ test.describe('Stage 1 browser panel', () => {
       await keyInPage(app, '0', [MOD]);
       await expect(page.getByTestId('zoom-indicator')).toBeHidden();
 
+      // Mod+Alt+Left / Right leave the page for the chat and the side column.
+      const landmark = () =>
+        page.evaluate(() => document.activeElement?.closest('[data-landmark]')?.getAttribute('data-landmark') ?? null);
+      await page.evaluate(() => window.arbora.invoke('browser.action', { action: 'focusPage' }));
+      await keyInPage(app, 'Left', [MOD, 'alt']);
+      await expect.poll(landmark).toBe('agent');
+      await page.evaluate(() => window.arbora.invoke('browser.action', { action: 'focusPage' }));
+      await keyInPage(app, 'Right', [MOD, 'alt']);
+      await expect.poll(landmark).toBe('sidebar');
+
       // History feeds the URL bar suggestions.
       const history = await page.evaluate(() => window.arbora.invoke('browser.history'));
       expect(history.map((h) => h.url)).toEqual(expect.arrayContaining([vite.url, `${vite.url}about`]));

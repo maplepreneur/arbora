@@ -107,6 +107,11 @@ const FOCUS_APP_COMMANDS: ReadonlySet<string> = new Set([
   CommandId.agentShowAttention,
   CommandId.focusNextPanel,
   CommandId.focusPreviousPanel,
+  CommandId.focusPanelLeft,
+  CommandId.focusPanelRight,
+  CommandId.focusSidebarPanel,
+  CommandId.focusAgentPanel,
+  CommandId.focusBottomPanel,
   CommandId.groveLaunch,
   CommandId.groveSearch,
   CommandId.groveSwitchProject,
@@ -562,7 +567,7 @@ export class ProjectWindow {
       page,
       this.interceptorSource((commandId) => {
         if (FOCUS_APP_COMMANDS.has(commandId)) this.contents.focus();
-        sendEvent(this.contents, 'command.invoke', { commandId });
+        sendEvent(this.contents, 'command.invoke', { commandId, fromPage: true });
       }),
     );
   }
