@@ -1,7 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Group, Panel, Separator, usePanelRef, type Layout } from 'react-resizable-panels';
+import { PanelRightOpen } from 'lucide-react';
+import { CommandId } from '@arbora/shared';
 import { loadThread, useAgents } from '../../agent-store';
-import { setWorkspaceController } from '../../commands';
+import { executeCommand, setWorkspaceController } from '../../commands';
+import { useChordLabel } from '../../keybindings';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { ModeSwitch } from '../../components/ModeSwitch';
 import {
@@ -16,7 +19,7 @@ import {
 } from '../../grove-store';
 import type { GroveModel } from '../../grove-model';
 import { setGroupLayout, SHELL_GROUP, showRightView, updateLayout, useApp } from '../../store';
-import { RightColumn } from '../shell/RightColumn';
+import { ContentPane } from '../shell/ContentPane';
 import { SideColumn } from '../shell/SideColumn';
 import { GroveEmpty } from './GroveEmpty';
 import { GroveLauncher } from './GroveLauncher';
@@ -74,14 +77,42 @@ function Handle({ id }: { id: string }) {
 
 function Chat({ model, projectPath }: { model: GroveModel; projectPath: string }) {
   const designMode = useApp((s) => s.mode.kind === 'design');
+  const contentHidden = useApp((s) => s.layout.contentHidden);
+  const showChord = useChordLabel(CommandId.toggleContentPane);
+  const showLabel = `Show content pane${showChord ? ` (${showChord})` : ''}`;
   const loaded = useAgents((s) => s.loaded);
   const selectedId = useApp((s) => s.layout.groveThreadId);
   const session = selectedId === null ? undefined : model.byId.get(selectedId);
-  if (session && !designMode) return <SessionPane session={session} model={model} projectPath={projectPath} />;
+  const showButton = contentHidden ? (
+    <button
+      type="button"
+      data-testid="content-show"
+      aria-label={showLabel}
+      title={showLabel}
+      onClick={() => executeCommand(CommandId.toggleContentPane)}
+      className="ml-auto flex h-6 items-center gap-1 rounded px-1.5 text-[11px] text-fg-subtle hover:bg-bg-muted hover:text-fg"
+    >
+      <PanelRightOpen size={13} />
+      Content
+    </button>
+  ) : null;
+  if (session && !designMode) {
+    return (
+      <div className="flex h-full min-w-0 flex-col">
+        {contentHidden && (
+          <div className="flex h-8 shrink-0 items-center border-b border-border px-2">{showButton}</div>
+        )}
+        <div className="min-h-0 flex-1">
+          <SessionPane session={session} model={model} projectPath={projectPath} />
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="flex h-full flex-col bg-bg">
-      <div className="flex h-8 shrink-0 items-center border-b border-border px-2">
+      <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border px-2">
         <ModeSwitch />
+        {showButton}
       </div>
       <div className="min-h-0 flex-1">
         {designMode ? (
@@ -147,6 +178,26 @@ function Columns({ model, projectPath, width }: { model: GroveModel; projectPath
     }
   }, [chatRef, treeRef, rightRef]);
 
+  const toggleContentPane = useCallback((): void => {
+    const hidden = useApp.getState().layout.contentHidden;
+    updateLayout({ contentHidden: !hidden });
+    if (hidden) {
+      reveal(rightRef);
+    } else {
+      rightRef.current?.collapse();
+      sideRef.current?.collapse();
+    }
+  }, [rightRef, sideRef]);
+
+  useEffect(() => {
+    if (!useApp.getState().layout.contentHidden) return;
+    const frame = requestAnimationFrame(() => {
+      rightRef.current?.collapse();
+      sideRef.current?.collapse();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [rightRef, sideRef]);
+
   useEffect(() => {
     setGroveLayoutController({ toggleList: () => toggle(treeRef, [sideRef, chatRef]) });
     setWorkspaceController({
@@ -155,6 +206,7 @@ function Columns({ model, projectPath, width }: { model: GroveModel; projectPath
       showAgentPanel: () => revealWithRoom(chatRef, [sideRef, treeRef]),
       toggleBottomPanel: () => toggle(rightRef, [sideRef, treeRef]),
       toggleMaximizeRight: toggleMaximize,
+      toggleContentPane,
       showSidebarView: (view) => {
         updateLayout({ sidebarView: view });
         revealWithRoom(sideRef, [treeRef, chatRef]);
@@ -173,7 +225,7 @@ function Columns({ model, projectPath, width }: { model: GroveModel; projectPath
       setGroveLayoutController(null);
       setWorkspaceController(null);
     };
-  }, [treeRef, chatRef, rightRef, sideRef, toggleMaximize]);
+  }, [treeRef, chatRef, rightRef, sideRef, toggleMaximize, toggleContentPane]);
 
   useEffect(() => {
     if (focusRequest === handledFocus.current) return;
@@ -213,7 +265,7 @@ function Columns({ model, projectPath, width }: { model: GroveModel; projectPath
         </Panel>
         <Handle id="sep-chat" />
         <Panel id="right" panelRef={rightRef} collapsible collapsedSize={0} minSize="240px">
-          <RightColumn
+          <ContentPane
             maximized={maximized}
             onToggleMaximize={toggleMaximize}
             sideOpen={sideOpen}

@@ -137,7 +137,7 @@ test.describe('Stage 7 files and editor', () => {
       await expect(page.getByTestId('browser-panel')).toBeVisible();
       await page.locator('[data-testid="editor-tab"][data-path="src/App.tsx"]').click();
       await expect(page.getByTestId('editor')).toBeVisible();
-      await page.getByTestId('right-tab-browser').click();
+      await page.getByTestId('content-tab-browser').click();
       await expect(page.getByTestId('editor')).toHaveCount(0);
       await expect(page.getByTestId('browser-panel')).toBeVisible();
     } finally {

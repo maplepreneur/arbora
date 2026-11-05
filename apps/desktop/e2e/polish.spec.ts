@@ -76,7 +76,7 @@ test.describe('Stage 9 onboarding', () => {
         'data-pressed',
         'true',
       );
-      await expect(page.getByTestId('right-maximize')).toHaveAttribute('aria-pressed', 'false');
+      await expect(page.getByTestId('content-maximize')).toHaveAttribute('aria-pressed', 'false');
       await page.getByTestId('onboarding-next').click();
       await expect(page.getByTestId('onboarding-step-keys')).toBeVisible();
       // Mode chords are intercepted in main; onboarding sees them instead of the modes starting.

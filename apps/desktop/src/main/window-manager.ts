@@ -109,6 +109,7 @@ const FOCUS_APP_COMMANDS: ReadonlySet<string> = new Set([
   CommandId.focusPreviousPanel,
   CommandId.focusPanelLeft,
   CommandId.focusPanelRight,
+  CommandId.toggleContentPane,
   CommandId.focusSidebarPanel,
   CommandId.focusAgentPanel,
   CommandId.focusBottomPanel,
@@ -265,6 +266,7 @@ export class ProjectWindow {
     textEditing?: boolean | undefined;
     recording?: boolean | undefined;
     workspace?: WorkspaceKind | undefined;
+    contentFocused?: boolean | undefined;
   }): void {
     this.context = {
       modeActive: context.modeActive,
@@ -273,6 +275,7 @@ export class ProjectWindow {
       textEditing: context.textEditing === true,
       recording: context.recording === true,
       workspace: context.workspace ?? 'browser',
+      contentFocused: context.contentFocused === true,
     };
   }
 
@@ -446,10 +449,17 @@ export class ProjectWindow {
     this.emitProject();
   }
 
-  private interceptorSource(dispatch: (commandId: string) => void): InterceptorSource {
+  private interceptorSource(
+    dispatch: (commandId: string) => void,
+    extra: { contentFocused?: boolean } = {},
+  ): InterceptorSource {
     return {
       table: () => this.keybindings,
-      context: () => ({ ...this.context, terminalPassthrough: this.options.settings.get().terminalPassthrough }),
+      context: () => ({
+        ...this.context,
+        terminalPassthrough: this.options.settings.get().terminalPassthrough,
+        ...extra,
+      }),
       dispatch,
     };
   }
@@ -565,10 +575,14 @@ export class ProjectWindow {
   private pageInterceptor(page: WebContents): () => void {
     return attachKeybindingInterceptor(
       page,
-      this.interceptorSource((commandId) => {
-        if (FOCUS_APP_COMMANDS.has(commandId)) this.contents.focus();
-        sendEvent(this.contents, 'command.invoke', { commandId, fromPage: true });
-      }),
+      this.interceptorSource(
+        (commandId) => {
+          if (FOCUS_APP_COMMANDS.has(commandId)) this.contents.focus();
+          sendEvent(this.contents, 'command.invoke', { commandId, fromPage: true });
+        },
+        // The page is the content pane's browser, so Mod+1..9 and the pane arrows apply here.
+        { contentFocused: true },
+      ),
     );
   }
 

@@ -30,7 +30,7 @@ export function rightTabAt(tabs: readonly RightTab[], index: number): RightTab |
   return (index < 0 ? tabs.at(index) : tabs[index]) ?? null;
 }
 
-/** Shows tab `index` of the right column (`Mod+Alt+1`..`9`). Does nothing past the last tab. */
+/** Shows tab `index` of the content pane (`Mod+1`..`9` while it is focused). Does nothing past the last tab. */
 export function showRightTab(index: number): void {
   const tab = rightTabAt(
     rightTabs({

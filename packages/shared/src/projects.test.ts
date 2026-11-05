@@ -68,6 +68,7 @@ describe('applyProjectMeta', () => {
       workspace: 'browser' as const,
       rightView: 'browser' as const,
       rightPanels: [],
+      contentHidden: false,
       groveThreadId: null,
     };
     const next = applyProjectMeta({ layout, alias: 'x' }, { pinned: true, groupId: 'work', alias: null });

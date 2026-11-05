@@ -228,8 +228,10 @@ export interface WorkspaceController {
   toggleAgentPanel(): void;
   showAgentPanel(): void;
   toggleBottomPanel(): void;
-  /** Collapses the tree and the chat so the right column fills the window, or puts them back. */
+  /** Collapses the tree and the chat so the content pane fills the window, or puts them back. */
   toggleMaximizeRight(): void;
+  /** Hides the content pane and the side column, or shows them again. */
+  toggleContentPane(): void;
   showSidebarView(view: SidebarView): void;
   showBottomTab(tab: BottomTab): void;
   /** Expands a collapsed panel. */
@@ -667,6 +669,7 @@ function focusPanelSoon(panel: WorkspacePanel): void {
         return;
       case 'center': {
         const { settingsOpen, browser, layout } = useApp.getState();
+        if (layout.contentHidden) workspace?.toggleContentPane();
         if (!settingsOpen && layout.rightView === 'editor' && useFiles.getState().active !== null)
           editorController()?.focus();
         else if (!settingsOpen && layout.rightView === 'terminal') focusActiveTerminal();
@@ -785,12 +788,16 @@ async function runCommand(id: CommandId): Promise<void> {
     case CommandId.rightTab8:
     case CommandId.rightTab9:
       withProject((w) => {
+        if (useApp.getState().layout.contentHidden) w.toggleContentPane();
         w.revealPanel('bottom');
         showRightTab(rightTabIndex(id) ?? 0);
       });
       return;
     case CommandId.toggleMaximizeRight:
       if (!chordProbe?.(id)) withProject((w) => w.toggleMaximizeRight());
+      return;
+    case CommandId.toggleContentPane:
+      if (!chordProbe?.(id)) withProject((w) => w.toggleContentPane());
       return;
     case CommandId.resetLayout:
       if (hasProject()) resetLayout();

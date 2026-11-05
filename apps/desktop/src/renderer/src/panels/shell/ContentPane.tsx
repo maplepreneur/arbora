@@ -1,5 +1,14 @@
-import { lazy, Suspense, useEffect, useRef, type ReactNode, type RefObject } from 'react';
-import { GitCompare, Globe, Maximize2, Minimize2, PanelRightOpen, Plus, TriangleAlert, X } from 'lucide-react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import {
+  GitCompare,
+  Globe,
+  Maximize2,
+  Minimize2,
+  PanelRightClose,
+  PanelRightOpen,
+  TriangleAlert,
+  X,
+} from 'lucide-react';
 import clsx from 'clsx';
 import { CommandId } from '@arbora/shared';
 import { executeCommand } from '../../commands';
@@ -10,6 +19,8 @@ import { useChordLabel } from '../../keybindings';
 import { closeRightPanel, showRightView, useApp } from '../../store';
 import { useTerminals } from '../../terminal-store';
 import { TerminalTabButtons } from '../terminal/TerminalTabs';
+import { AddTabButton } from './AddTabButton';
+import { menuContentInset, type AddTabId } from './add-tab-menu';
 
 const BrowserPanel = lazy(() => import('../BrowserPanel'));
 const TerminalPanel = lazy(() => import('../TerminalPanel'));
@@ -100,17 +111,7 @@ function useStripScroll(ref: RefObject<HTMLDivElement | null>, key: string): voi
   }, [ref, key]);
 }
 
-async function openAddMenu(): Promise<void> {
-  const { id } = await window.arbora.invoke('contextMenu.show', {
-    items: [
-      { id: 'file', label: 'File…' },
-      { id: 'terminal', label: 'Terminal' },
-      { id: 'browser', label: 'Browser' },
-      { type: 'separator' },
-      { id: 'changes', label: 'Changes' },
-      { id: 'problems', label: 'Problems' },
-    ],
-  });
+function chooseAddTab(id: AddTabId): void {
   switch (id) {
     case 'file':
       useFiles.setState({ quickOpen: true });
@@ -125,8 +126,10 @@ async function openAddMenu(): Promise<void> {
     case 'problems':
       showRightView(id);
       return;
-    default:
-      return;
+    default: {
+      const unreachable: never = id;
+      return unreachable;
+    }
   }
 }
 
@@ -137,34 +140,55 @@ interface ColumnControls {
   onToggleSide: () => void;
 }
 
-function Strip({ maximized, onToggleMaximize, sideOpen, onToggleSide }: ColumnControls) {
+function Strip({
+  maximized,
+  onToggleMaximize,
+  sideOpen,
+  onToggleSide,
+  coverBrowser,
+  onInset,
+}: ColumnControls & { coverBrowser: boolean; onInset: (px: number) => void }) {
   const view = useApp((s) => s.layout.rightView);
   const panels = useApp((s) => s.layout.rightPanels);
   const terminalTab = useTerminals((s) => s.activeTabId);
   const editorTab = useFiles((s) => s.active);
   const maximizeChord = useChordLabel(CommandId.toggleMaximizeRight);
+  const hideChord = useChordLabel(CommandId.toggleContentPane);
   const sideChord = useChordLabel(CommandId.toggleSideColumn);
   const showSideLabel = `Show files, source control and search${sideChord ? ` (${sideChord})` : ''}`;
   const ref = useRef<HTMLDivElement>(null);
+  const stripRef = useRef<HTMLDivElement>(null);
   useStripScroll(ref, `${view}:${terminalTab ?? ''}:${editorTab ?? ''}`);
   const maximizeLabel = `${maximized ? 'Restore columns' : 'Maximize'}${maximizeChord ? ` (${maximizeChord})` : ''}`;
+  const hideLabel = `Hide content pane${hideChord ? ` (${hideChord})` : ''}`;
+  const onFrame = useCallback(
+    (bottom: number | null): void => {
+      if (bottom === null || !coverBrowser) {
+        onInset(0);
+        return;
+      }
+      const stripBottom = stripRef.current?.getBoundingClientRect().bottom ?? bottom;
+      onInset(menuContentInset(stripBottom, bottom));
+    },
+    [coverBrowser, onInset],
+  );
   return (
-    <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-1.5">
+    <div ref={stripRef} className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-1.5">
       <div
         ref={ref}
         role="tablist"
-        aria-label="Project tabs"
-        data-testid="right-tabs"
+        aria-label="Content pane tabs"
+        data-testid="content-tabs"
         className="no-scrollbar flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto"
       >
-        <StripTab testId="right-tab-browser" active={view === 'browser'} onClick={showBrowserTab}>
+        <StripTab testId="content-tab-browser" active={view === 'browser'} onClick={showBrowserTab}>
           <Globe size={13} className="shrink-0" /> Browser
         </StripTab>
         <TerminalTabButtons showing={view === 'terminal'} />
         <EditorTabButtons showing={view === 'editor'} />
         {panels.includes('changes') && (
           <StripTab
-            testId="right-tab-changes"
+            testId="content-tab-changes"
             active={view === 'changes'}
             onClick={() => showRightView('changes')}
             onClose={() => closeRightPanel('changes')}
@@ -174,7 +198,7 @@ function Strip({ maximized, onToggleMaximize, sideOpen, onToggleSide }: ColumnCo
         )}
         {panels.includes('problems') && (
           <StripTab
-            testId="right-tab-problems"
+            testId="content-tab-problems"
             active={view === 'problems'}
             onClick={() => showRightView('problems')}
             onClose={() => closeRightPanel('problems')}
@@ -183,22 +207,23 @@ function Strip({ maximized, onToggleMaximize, sideOpen, onToggleSide }: ColumnCo
           </StripTab>
         )}
       </div>
+      <AddTabButton onChoose={chooseAddTab} onFrame={onFrame} />
       <button
         type="button"
-        aria-label="Open a tab"
-        title="Open a file, terminal, browser, changes or problems"
-        data-testid="right-add"
-        onClick={() => void openAddMenu()}
+        aria-label={hideLabel}
+        title={hideLabel}
+        data-testid="content-hide"
+        onClick={() => executeCommand(CommandId.toggleContentPane)}
         className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-fg-subtle hover:bg-bg-muted hover:text-fg"
       >
-        <Plus size={14} />
+        <PanelRightClose size={14} />
       </button>
       <button
         type="button"
         aria-label={maximizeLabel}
         aria-pressed={maximized}
         title={maximizeLabel}
-        data-testid="right-maximize"
+        data-testid="content-maximize"
         onClick={onToggleMaximize}
         className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-fg-subtle hover:bg-bg-muted hover:text-fg"
       >
@@ -245,18 +270,23 @@ function Content() {
  * The selected project's tools: its page, terminals, open files and diffs, Changes and Problems,
  * in one tab strip. Hidden behind Settings, so the native page view comes down with it.
  */
-export function RightColumn(controls: ColumnControls) {
+export function ContentPane(controls: ColumnControls) {
   const project = useApp((s) => s.project);
   const settingsOpen = useApp((s) => s.settingsOpen);
+  const view = useApp((s) => s.layout.rightView);
+  const editorActive = useFiles((s) => s.active !== null);
+  const [inset, setInset] = useState(0);
+  const coverBrowser =
+    project !== null && !settingsOpen && (view === 'browser' || (view === 'editor' && !editorActive));
   return (
     <section
-      data-testid="panel-right"
+      data-testid="panel-content"
       data-landmark="center"
-      aria-label="Project tabs"
+      aria-label="Content pane"
       className="flex h-full min-w-0 flex-col bg-bg"
     >
-      <Strip {...controls} />
-      <div className="min-h-0 flex-1">
+      <Strip {...controls} coverBrowser={coverBrowser} onInset={setInset} />
+      <div className="min-h-0 flex-1" style={inset > 0 ? { paddingTop: inset } : undefined}>
         {project && !settingsOpen ? (
           <ErrorBoundary label="Project tab">
             <Suspense fallback={<div className="h-full bg-bg" />}>

@@ -85,7 +85,14 @@ describe('loadSettings', () => {
     const layout = { groups: { main: { browser: 70, agent: 30 } }, sidebarView: 'git', bottomTab: 'problems' };
     expect(loadSettings({ version: 1, projects: { '/p': { layout } } }).settings.projects).toEqual({
       '/p': {
-        layout: { ...layout, workspace: 'browser', rightView: 'browser', rightPanels: [], groveThreadId: null },
+        layout: {
+          ...layout,
+          workspace: 'browser',
+          rightView: 'browser',
+          rightPanels: [],
+          groveThreadId: null,
+          contentHidden: false,
+        },
       },
     });
   });
