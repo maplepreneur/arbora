@@ -114,6 +114,10 @@ describe('KeybindingTable', () => {
     const terminal = { ...idle, terminalFocused: true };
     expect(table.match(parseChord('ctrl+k', 'linux'), terminal)).toBeUndefined();
     expect(table.match(parseChord('ctrl+d', 'linux'), terminal)).toBeUndefined();
+    // Show Terminal is Ctrl+`, and that chord still belongs to a focused shell.
+    expect(table.match(parseChord('ctrl+`', 'linux'), idle)?.commandId).toBe(CommandId.showTerminal);
+    expect(table.match(parseChord('ctrl+`', 'linux'), terminal)).toBeUndefined();
+    expect(table.match(parseChord('ctrl+shift+`', 'linux'), terminal)?.commandId).toBe(CommandId.terminalNew);
     expect(table.match(parseChord('ctrl+shift+p', 'linux'), terminal)?.commandId).toBe(CommandId.commandPalette);
     expect(table.match(parseChord('ctrl+k', 'linux'), { ...terminal, terminalPassthrough: false })?.commandId).toBe(
       CommandId.agentMode,
@@ -176,7 +180,12 @@ describe('KeybindingTable', () => {
     expect(table.match(parseChord('ctrl+alt+m', 'linux'), { ...grove, terminalFocused: true })?.commandId).toBe(
       CommandId.toggleMaximizeRight,
     );
-    expect(table.match(parseChord('ctrl+alt+g', 'linux'), grove)).toBeUndefined();
+    // The old Grove workspace toggle is gone. Ctrl+Alt+G opens the content pane's Changes tab.
+    expect(table.match(parseChord('ctrl+alt+g', 'linux'), grove)?.commandId).toBe(CommandId.showGitPanel);
+    expect(table.match(parseChord('ctrl+alt+g', 'linux'), idle)?.commandId).toBe(CommandId.showGitPanel);
+    expect(table.match(parseChord('ctrl+shift+l', 'linux'), idle)?.commandId).toBe(CommandId.showBrowser);
+    expect(table.match(parseChord('ctrl+shift+h', 'linux'), idle)?.commandId).toBe(CommandId.toggleContentPane);
+    expect(table.match(parseChord('ctrl+h', 'linux'), idle)?.commandId).toBe(CommandId.showKeybindings);
     // Mod+Alt+1..9 pick the right column's tabs, from the terminal too; Mod+1..9 stay agents.
     const content = { ...grove, contentFocused: true };
     expect(table.match(parseChord('ctrl+1', 'linux'), content)?.commandId).toBe(CommandId.rightTab1);

@@ -82,4 +82,12 @@ describe('interceptCommand', () => {
       CommandId.agentMode,
     );
   });
+
+  it('lets plain Ctrl+` through to a focused terminal, and shows the terminal otherwise', () => {
+    const tick = input({ key: '`', code: 'Backquote', control: true });
+    expect(interceptCommand(tick, source())).toBe(CommandId.showTerminal);
+    expect(interceptCommand(tick, source({ terminalFocused: true }))).toBeUndefined();
+    // New Terminal stays Ctrl+Shift+` and is not intercepted, so a focused shell still receives it.
+    expect(interceptCommand({ ...tick, shift: true }, source({ terminalFocused: true }))).toBeUndefined();
+  });
 });

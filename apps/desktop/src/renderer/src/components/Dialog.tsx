@@ -4,18 +4,22 @@ const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabi
 
 /**
  * A modal over the whole window: traps Tab, closes on Escape and on a backdrop click, and gives
- * focus back to what had it. The browser view is hidden while the store's `overlay` is set.
+ * focus back to what had it. `onEscape` returning true keeps the dialog open (a step back inside
+ * it). The browser view is hidden while the store's `overlay` is set.
  */
 export function Dialog({
   label,
   testId,
   onClose,
+  onEscape,
   width = 560,
   children,
 }: {
   label: string;
   testId: string;
   onClose: () => void;
+  /** Return true to handle Escape without closing. */
+  onEscape?: () => boolean;
   width?: number;
   children: ReactNode;
 }) {
@@ -46,6 +50,7 @@ export function Dialog({
         onKeyDown={(event) => {
           if (event.key === 'Escape') {
             event.stopPropagation();
+            if (onEscape?.()) return;
             onClose();
             return;
           }

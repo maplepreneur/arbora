@@ -3,6 +3,7 @@ import { Files, GitBranch, PanelRightClose, Search, type LucideIcon } from 'luci
 import clsx from 'clsx';
 import { CommandId, type SidebarView } from '@arbora/shared';
 import { useChordLabel } from '../../keybindings';
+import { useShellFocusPane } from '../../shell-focus';
 import { updateLayout, useApp } from '../../store';
 
 const FilesPanel = lazy(() => import('../FilesPanel'));
@@ -54,6 +55,7 @@ function SideContent({ view }: { view: SidebarView }) {
 
 /** Files, Source Control and Search for the selected project, on the window's right edge. */
 export function SideColumn({ onCollapse }: { onCollapse: () => void }) {
+  const keyboardFocus = useShellFocusPane() === 'sidebar' ? 'true' : undefined;
   const toggleChord = useChordLabel(CommandId.toggleSideColumn);
   const hideLabel = `Hide files, source control and search${toggleChord ? ` (${toggleChord})` : ''}`;
   const view = useApp((s) => s.layout.sidebarView);
@@ -62,6 +64,8 @@ export function SideColumn({ onCollapse }: { onCollapse: () => void }) {
     <aside
       data-testid="panel-side"
       data-landmark="sidebar"
+      data-keyboard-focus={keyboardFocus}
+      tabIndex={-1}
       aria-label="Files, source control and search"
       className="flex h-full min-w-0 flex-col overflow-hidden bg-bg-subtle"
     >

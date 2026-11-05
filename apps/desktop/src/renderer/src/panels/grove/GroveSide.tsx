@@ -382,7 +382,7 @@ export function GroveSide() {
                   navFocus === inboxNavId(row.projectPath, row.threadId) && 'ring-1 ring-inset ring-accent',
                 )}
               >
-                <AgentMark name={row.name} />
+                <AgentMark name={row.name} agentId={row.agentId} />
                 <StatusDot status={row.status} />
                 <span
                   className={clsx(

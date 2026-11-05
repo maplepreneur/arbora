@@ -12,7 +12,7 @@ function mount(onChoose: (id: AddTabId) => void): Root {
   document.body.append(host);
   const root = createRoot(host);
   act(() => {
-    root.render(createElement(AddTabButton, { onChoose, onFrame: () => undefined }));
+    root.render(createElement(AddTabButton, { onChoose }));
   });
   return root;
 }
@@ -48,6 +48,11 @@ describe('AddTabButton', () => {
     expect(menu?.textContent).toContain('Changes');
     expect(menu?.textContent).toContain('Problems');
     expect(menu?.querySelector('[role="separator"]')).not.toBeNull();
+    expect(menu?.querySelector('[data-testid="content-add-chord-file"]')?.textContent).toBe('Ctrl+P');
+    expect(menu?.querySelector('[data-testid="content-add-chord-terminal"]')?.textContent).toBe('Ctrl+`');
+    expect(menu?.querySelector('[data-testid="content-add-chord-browser"]')?.textContent).toBe('Ctrl+Shift+L');
+    expect(menu?.querySelector('[data-testid="content-add-chord-changes"]')?.textContent).toBe('Ctrl+Alt+G');
+    expect(menu?.querySelector('[data-testid="content-add-chord-problems"]')?.textContent).toBe('Ctrl+Shift+M');
   });
 
   it('chooses the highlighted row from the keyboard', () => {

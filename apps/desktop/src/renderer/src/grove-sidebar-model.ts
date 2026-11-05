@@ -29,6 +29,8 @@ export interface SidebarInboxRow extends GroveInboxItem {
   readonly name: string;
   readonly projectName: string;
   readonly status: SessionStatus;
+  /** The session's agent, so the row can show that product's logo. */
+  readonly agentId: string | undefined;
 }
 
 export interface GroveSidebarModel {
@@ -98,6 +100,7 @@ export function buildGroveSidebar(input: {
       name: session?.name ?? item.threadId,
       projectName: input.projectName(item.projectPath),
       status: session?.status ?? statusFor(item.reason),
+      agentId: session?.agentId,
     };
   });
   return {

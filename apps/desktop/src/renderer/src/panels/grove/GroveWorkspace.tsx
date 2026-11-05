@@ -19,6 +19,7 @@ import {
 } from '../../grove-store';
 import type { GroveModel } from '../../grove-model';
 import { setGroupLayout, SHELL_GROUP, showRightView, updateLayout, useApp } from '../../store';
+import { useShellFocusPane, useTrackShellFocus } from '../../shell-focus';
 import { ContentPane } from '../shell/ContentPane';
 import { SideColumn } from '../shell/SideColumn';
 import { GroveEmpty } from './GroveEmpty';
@@ -151,6 +152,7 @@ function SettingsLayer({ treeRef }: { treeRef: { current: HTMLElement | null } }
 }
 
 function Columns({ model, projectPath, width }: { model: GroveModel; projectPath: string; width: number }) {
+  const focusedPane = useShellFocusPane();
   const [initial] = useState(() => {
     const saved = useApp.getState().layout.groups[SHELL_GROUP];
     if (saved && Object.keys(saved).length === 4) return saved;
@@ -251,6 +253,8 @@ function Columns({ model, projectPath, width }: { model: GroveModel; projectPath
             ref={treeElement}
             data-testid="panel-tree"
             data-landmark="tree"
+            data-keyboard-focus={focusedPane === 'tree' ? 'true' : undefined}
+            tabIndex={-1}
             aria-label="Projects"
             className="h-full overflow-hidden"
           >
@@ -259,7 +263,14 @@ function Columns({ model, projectPath, width }: { model: GroveModel; projectPath
         </Panel>
         <Handle id="sep-tree" />
         <Panel id="chat" panelRef={chatRef} collapsible collapsedSize={0} minSize="260px">
-          <main data-testid="panel-chat" data-landmark="agent" aria-label="Agent chat" className="h-full min-w-0">
+          <main
+            data-testid="panel-chat"
+            data-landmark="agent"
+            data-keyboard-focus={focusedPane === 'agent' ? 'true' : undefined}
+            tabIndex={-1}
+            aria-label="Agent chat"
+            className="h-full min-w-0"
+          >
             <Chat model={model} projectPath={projectPath} />
           </main>
         </Panel>
@@ -288,6 +299,8 @@ function Columns({ model, projectPath, width }: { model: GroveModel; projectPath
  * whatever is selected.
  */
 export default function GroveWorkspace() {
+  useTrackShellFocus();
+  const focusedPane = useShellFocusPane();
   const model = useGroveModel();
   const sidebar = useGroveSidebar();
   const projectPath = useApp((s) => s.project?.path ?? '');
@@ -355,7 +368,14 @@ export default function GroveWorkspace() {
       {narrow === null ? null : narrow ? (
         <>
           <SessionRail sessions={sidebar.order.map((row) => row.session)} selectedId={selectedSessionId ?? null} />
-          <main data-testid="panel-chat" data-landmark="agent" aria-label="Agent chat" className="min-w-0 flex-1">
+          <main
+            data-testid="panel-chat"
+            data-landmark="agent"
+            data-keyboard-focus={focusedPane === 'agent' ? 'true' : undefined}
+            tabIndex={-1}
+            aria-label="Agent chat"
+            className="min-w-0 flex-1"
+          >
             <Chat model={model} projectPath={projectPath} />
           </main>
         </>

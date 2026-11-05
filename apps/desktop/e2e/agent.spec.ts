@@ -199,10 +199,12 @@ test.describe('Stage 3 agent panel', () => {
 
       // Picking another agent starts it; the shortcut then Enter starts the default on its model.
       await page.getByTestId('launcher-agent-first').click();
+      await page.keyboard.press('Enter');
       await page.getByTestId('launcher-start').click();
       await expect.poll(async () => (await threads(page)).map((t) => t.agentId).sort()).toEqual(['first', 'second']);
       await focusChrome(page);
       await page.keyboard.press('ControlOrMeta+Shift+N');
+      await page.keyboard.press('Enter');
       await expect(page.getByTestId('launcher-task')).toBeFocused();
       await page.keyboard.press('Enter');
       await expect
@@ -291,6 +293,7 @@ test.describe('Stage 3 agent panel', () => {
       await page.getByTestId('grove-new-choose').first().click();
       await page.getByTestId(`launcher-agent-${FAKE_ID}`).click();
       await expect(page.getByTestId('launcher-model-smart')).toHaveAttribute('data-active', 'true');
+      await page.keyboard.press('Enter');
       await page.getByTestId('launcher-start').click();
       await expect(page.getByTestId('model-select')).toHaveAttribute('data-value', 'smart', { timeout: 20_000 });
       expect(await threads(page)).toHaveLength(2);

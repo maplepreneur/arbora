@@ -23,6 +23,7 @@ export * from './page-ipc.js';
 export * from './platform.js';
 export * from './projects.js';
 export * from './settings.js';
+export * from './shell-focus.js';
 export * from './skills.js';
 export * from './terminal.js';
 export * from './updates.js';

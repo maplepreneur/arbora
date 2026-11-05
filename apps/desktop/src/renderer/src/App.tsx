@@ -31,7 +31,15 @@ import {
 } from './attention-store';
 import { applyLibrary } from './projects-store';
 import { applyUpdateState } from './update-store';
-import { executeCommand, navigateBrowser, openGroveWebsite, registerBuiltinCommands, revealThread } from './commands';
+import {
+  executeCommand,
+  navigateBrowser,
+  openGroveWebsite,
+  reclaimFocusFromParkedPage,
+  registerBuiltinCommands,
+  revealThread,
+} from './commands';
+import { setBrowserPageFocused } from './shell-focus';
 import { onFilesChanged, resetFiles, setDiagnostics } from './files-store';
 import { noteAgentWatcherChanges, refreshGit, scheduleGitRefresh, useGit } from './git-client';
 import {
@@ -103,6 +111,8 @@ function useMainEvents(): void {
       }),
       arbora.on('command.invoke', ({ commandId, fromPage }) => executeCommand(commandId, { fromPage })),
       arbora.on('browser.stateChanged', (browser) => useApp.setState({ browser })),
+      arbora.on('browser.pageFocused', ({ focused }) => setBrowserPageFocused(focused)),
+      arbora.on('browser.focusParked', () => reclaimFocusFromParkedPage()),
       arbora.on('browser.problemsAdded', ({ entries }) => addProblems(entries)),
       arbora.on('browser.problemsCleared', () => useApp.setState({ problems: [] })),
       arbora.on('browser.urlSuggested', ({ url }) => useApp.setState({ suggestedUrl: url })),

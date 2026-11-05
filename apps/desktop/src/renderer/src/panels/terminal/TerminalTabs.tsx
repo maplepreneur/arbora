@@ -64,6 +64,9 @@ function AgentTab({ tab, terminals, active }: { tab: TerminalTab; terminals: Ter
   const members = terminals.filter((t) => tab.panes.includes(t.id));
   const running = members.filter((t) => t.exitCode === null).length;
   const finished = members.length - running;
+  const close = (): void => {
+    for (const terminal of members) void window.arbora.invoke('terminal.close', { id: terminal.id });
+  };
   const onContextMenu = async (event: MouseEvent): Promise<void> => {
     event.preventDefault();
     const choice = await showMenu([
@@ -84,9 +87,12 @@ function AgentTab({ tab, terminals, active }: { tab: TerminalTab; terminals: Ter
       data-tab-id={tab.id}
       title={`Commands run by agents: ${running} running, ${finished} finished`}
       onClick={() => selectTab(tab, useTerminals.getState().activePaneId ?? tab.panes.at(-1) ?? tab.panes[0] ?? '')}
+      onAuxClick={(e) => {
+        if (e.button === 1) close();
+      }}
       onContextMenu={(e) => void onContextMenu(e)}
       className={clsx(
-        'flex h-6 shrink-0 cursor-default items-center gap-1.5 rounded px-2 text-xs',
+        'group flex h-6 shrink-0 cursor-default items-center gap-1.5 rounded pr-1 pl-2 text-xs',
         active ? 'bg-bg-muted text-fg' : 'text-fg-subtle hover:text-fg',
       )}
     >
@@ -99,6 +105,18 @@ function AgentTab({ tab, terminals, active }: { tab: TerminalTab; terminals: Ter
       <span className="rounded-full bg-bg-subtle px-1.5 text-[10px] leading-4 text-fg-muted tabular-nums">
         {members.length}
       </span>
+      <button
+        type="button"
+        aria-label="Close agent terminals"
+        data-testid="terminal-tab-close"
+        onClick={(event) => {
+          event.stopPropagation();
+          close();
+        }}
+        className="flex h-4 w-4 shrink-0 items-center justify-center rounded opacity-0 group-hover:opacity-100 group-aria-selected:opacity-100 hover:bg-bg-subtle focus-visible:opacity-100"
+      >
+        <X size={11} />
+      </button>
     </div>
   );
 }

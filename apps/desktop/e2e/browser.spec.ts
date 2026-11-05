@@ -35,6 +35,20 @@ function inPage<T>(app: ElectronApplication, code: string): Promise<T> {
   }, code);
 }
 
+/** Sends native input to the app window (a parked page does not deliver `before-input-event`). */
+function keyInWindow(app: ElectronApplication, keyCode: string, modifiers: string[] = []): Promise<void> {
+  return app.evaluate(
+    ({ BrowserWindow }, input) => {
+      const contents = BrowserWindow.getAllWindows()[0]?.webContents;
+      if (!contents) throw new Error('No app window');
+      contents.focus();
+      contents.sendInputEvent({ type: 'keyDown', keyCode: input.keyCode, modifiers: input.modifiers as ['control'] });
+      contents.sendInputEvent({ type: 'keyUp', keyCode: input.keyCode, modifiers: input.modifiers as ['control'] });
+    },
+    { keyCode, modifiers },
+  );
+}
+
 /** Sends native input to the page (goes through `before-input-event`, unlike CDP key events). */
 function keyInPage(app: ElectronApplication, keyCode: string, modifiers: string[] = []): Promise<void> {
   return app.evaluate(
@@ -411,6 +425,24 @@ test.describe('Stage 1 browser panel', () => {
       await input.press('Enter');
       await expect(page.getByTestId('browser-error')).toContainText('ERR_CONNECTION_REFUSED');
       await expect(page.getByTestId('browser-error')).toContainText('Is the dev server running?');
+      await expect.poll(async () => (await viewBounds(app)).visible).toBe(false);
+
+      // The parked view must not keep the keyboard: pane chords move, then Mod+1 returns to Browser.
+      const landmark = () =>
+        page.evaluate(() => document.activeElement?.closest('[data-landmark]')?.getAttribute('data-landmark') ?? null);
+      await expect.poll(landmark).toBe('center');
+      await expect(page.locator('[data-keyboard-focus="true"]')).toHaveAttribute('data-landmark', 'center');
+      await keyInWindow(app, 'Left', [MOD, 'alt']);
+      await expect.poll(landmark).toBe('agent');
+      await expect(page.locator('[data-keyboard-focus="true"]')).toHaveAttribute('data-landmark', 'agent');
+      await keyInWindow(app, 'Right', [MOD, 'alt']);
+      await expect.poll(landmark).toBe('center');
+      await expect(page.locator('[data-keyboard-focus="true"]')).toHaveAttribute('data-landmark', 'center');
+      await keyInWindow(app, 'M', [MOD, 'shift']);
+      await expect(page.getByTestId('content-tab-problems')).toHaveAttribute('aria-selected', 'true');
+      await keyInWindow(app, '1', [MOD]);
+      await expect(page.getByTestId('content-tab-browser')).toHaveAttribute('aria-selected', 'true');
+      await expect(page.getByTestId('browser-error')).toBeVisible();
 
       const result = await page.evaluate((url) => window.arbora.invoke('browser.suggestUrl', { url }), vite.url);
       expect(result).toEqual({ navigated: true });
