@@ -150,8 +150,13 @@ export class ProjectRuntime {
       onSessionEnded: (threadId) => {
         const closed = host.tabs?.()?.closeOpenedBy(threadId) ?? [];
         if (!host.grants || closed.length === 0) return;
-        for (const id of closed) host.grants.dropTab(path, id);
-        host.send('agent.grantsChanged', { threadId, tabIds: host.grants.list(path, threadId) });
+        const affected = new Set<string>();
+        for (const id of closed) {
+          for (const owner of host.grants.dropTab(path, id)) affected.add(owner);
+        }
+        for (const owner of affected) {
+          host.send('agent.grantsChanged', { threadId: owner, tabIds: host.grants.list(path, owner) });
+        }
       },
     });
   }
@@ -199,6 +204,7 @@ export class ProjectRuntime {
       threadId,
       tabs: () => host.tabs?.() ?? null,
       ...(host.grants ? { grants: host.grants } : {}),
+      grantsChanged: (threadId, tabIds) => host.send('agent.grantsChanged', { threadId, tabIds }),
       passwords: () => settings.get().passwords,
       passwordProvider: this.passwords,
       allowLoginOrigin: (origin) => {

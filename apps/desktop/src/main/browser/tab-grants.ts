@@ -49,15 +49,18 @@ export class TabGrantStore {
     for (const key of [...this.writes]) if (key.startsWith(prefix)) this.writes.delete(key);
   }
 
-  dropTab(projectPath: string, tabId: string): void {
+  /** Drops the tab from every thread in the project. Returns the threads that had it. */
+  dropTab(projectPath: string, tabId: string): string[] {
+    const affected: string[] = [];
     const prefix = `${projectPath}\0`;
     for (const [key, tabs] of this.grants) {
-      if (!key.startsWith(prefix)) continue;
-      tabs.delete(tabId);
+      if (!key.startsWith(prefix) || !tabs.delete(tabId)) continue;
+      affected.push(key.slice(prefix.length));
     }
     for (const key of [...this.writes]) {
       if (key.startsWith(`${projectPath}\0`) && key.endsWith(`\0${tabId}`)) this.writes.delete(key);
     }
+    return affected;
   }
 
   /** Tabs a running loop may be using. The LRU discard must leave these loaded. */

@@ -83,6 +83,8 @@ export interface ArboraToolHostOptions {
   readonly threadId?: string;
   readonly tabs?: () => BrowserTabs | null;
   readonly grants?: TabGrantStore;
+  /** Tells the thread header that a grant list changed, for example because a tab closed. */
+  readonly grantsChanged?: (threadId: string, tabIds: readonly string[]) => void;
   readonly passwords?: () => PasswordsSettings;
   readonly passwordProvider?: OnePasswordProvider;
   /** Remembers one origin after the user chooses Always on an agent login. */
@@ -208,7 +210,10 @@ export class ArboraToolHost implements BrowserToolHost {
     if (owner !== this.options.threadId) throw new ToolError('Only tabs this agent opened can be closed.');
     const result = tabs.close(id);
     if (!result.ok) throw new ToolError(result.error);
-    this.options.grants?.dropTab(tabs.projectPath, id);
+    const threads = this.options.grants?.dropTab(tabs.projectPath, id) ?? [];
+    for (const threadId of threads) {
+      this.options.grantsChanged?.(threadId, this.options.grants?.list(tabs.projectPath, threadId) ?? []);
+    }
     return Promise.resolve();
   }
 

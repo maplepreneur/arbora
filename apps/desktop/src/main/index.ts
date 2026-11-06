@@ -637,11 +637,21 @@ function main(): void {
     defineHandler('browser.tabs.open', isTrusted, async ({ url }, event) => ({
       id: await requireTabs(event.sender).open(url ?? 'about:blank'),
     }));
+    const publishClosedTab = (sender: WebContents, tabId: string): void => {
+      const projectWindow = windowFor(sender);
+      const path = projectWindow.project?.path;
+      if (!path) return;
+      for (const threadId of manager.grants.dropTab(path, tabId)) {
+        sendEvent(projectWindow.contents, 'agent.grantsChanged', {
+          threadId,
+          tabIds: manager.grants.list(path, threadId),
+        });
+      }
+    };
     defineHandler('browser.tabs.close', isTrusted, ({ id }, event) => {
       const result = requireTabs(event.sender).close(id);
       if (!result.ok) throw new Error(result.error);
-      const path = windowFor(event.sender).project?.path;
-      if (path) manager.grants.dropTab(path, id);
+      publishClosedTab(event.sender, id);
       return undefined;
     });
     defineHandler('browser.tabs.activate', isTrusted, async ({ id }, event) => {
@@ -677,7 +687,13 @@ function main(): void {
       id: await requireTabs(event.sender).reopen(),
     }));
     defineHandler('browser.tabs.closeOthers', isTrusted, ({ id }, event) => {
-      requireTabs(event.sender).closeOthers(id);
+      const tabs = requireTabs(event.sender);
+      const removed = tabs
+        .snapshots()
+        .filter((entry) => entry.role !== 'app' && entry.id !== id)
+        .map((entry) => entry.id);
+      tabs.closeOthers(id);
+      for (const tabId of removed) publishClosedTab(event.sender, tabId);
       return undefined;
     });
     defineHandler('browser.tabs.pin', isTrusted, ({ id, pinned }, event) => {

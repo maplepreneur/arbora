@@ -571,7 +571,10 @@ if (args[1] === 'create') {
       expect(await cookiesOn('arbora-web')).toEqual([]);
       expect((await tabs(page)).find((tab) => tab.id === reference.id)?.useProjectSession).toBe(true);
 
-      await page.evaluate((id) => window.arbora.invoke('browser.tabs.setSession', { id, project: false }), reference.id);
+      await page.evaluate(
+        (id) => window.arbora.invoke('browser.tabs.setSession', { id, project: false }),
+        reference.id,
+      );
       await expect
         .poll(async () => {
           const values = await cookiesOn('arbora-web');
@@ -650,18 +653,15 @@ if (args[1] === 'create') {
     const userData = tempUserData();
     const { app, page } = await launch(userData, [DESIGN]);
     const cookiesOn = (): Promise<string[]> =>
-      app.evaluate(
-        async ({ webContents }, url) => {
-          const pages = webContents.getAllWebContents().filter((wc) => {
-            const path = wc.session.storagePath ?? '';
-            return path.includes('arbora-web') && wc.getURL().startsWith(url);
-          });
-          const values: string[] = [];
-          for (const wc of pages) values.push(String(await wc.executeJavaScript('document.cookie')));
-          return values;
-        },
-        design.url,
-      );
+      app.evaluate(async ({ webContents }, url) => {
+        const pages = webContents.getAllWebContents().filter((wc) => {
+          const path = wc.session.storagePath ?? '';
+          return path.includes('arbora-web') && wc.getURL().startsWith(url);
+        });
+        const values: string[] = [];
+        for (const wc of pages) values.push(String(await wc.executeJavaScript('document.cookie')));
+        return values;
+      }, design.url);
     try {
       await openUrl(page, design.url);
       await page.evaluate((url) => window.arbora.invoke('browser.tabs.open', { url }), design.url);
@@ -733,6 +733,37 @@ if (args[1] === 'create') {
       await expect.poll(() => livePages(second.app)).toBe(1);
     } finally {
       await second.app.close();
+      await design.close();
+    }
+  });
+
+  test('drops the grant chip when that tab closes', async () => {
+    const design = await startStaticFixture(DESIGN);
+    const userData = tempUserData();
+    fakeAgentSettings(userData);
+    const { app, page } = await launch(userData, [DESIGN]);
+    try {
+      await openUrl(page, design.url);
+      const reference = await page.evaluate((url) => window.arbora.invoke('browser.tabs.open', { url }), design.url);
+      await startAgent(page, 'fake');
+      const sent = await page.evaluate(
+        (tabId) =>
+          window.arbora.invoke('browser.tabs.send', {
+            tabId,
+            text: 'Implement this design',
+            agentId: 'fake',
+          }),
+        reference.id,
+      );
+      await page.locator(`[data-testid="grove-row"][data-thread-id="${sent.threadId}"]`).click();
+      await expect(page.getByTestId('tab-grants')).toBeVisible({ timeout: 20_000 });
+      await page.evaluate((id) => window.arbora.invoke('browser.tabs.close', { id }), reference.id);
+      await expect(page.getByTestId('tab-grants')).toHaveCount(0);
+      expect(
+        await page.evaluate((threadId) => window.arbora.invoke('agent.listGrants', { threadId }), sent.threadId),
+      ).toEqual([]);
+    } finally {
+      await app.close();
       await design.close();
     }
   });
