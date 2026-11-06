@@ -110,6 +110,6 @@ ${VERIFY_LOOP.join('\n')}
 - Leaving the dev server's origin, \`browser_evaluate\` and \`terminal_run\` ask the user first. If
   they decline, do not retry; explain what you needed instead.
 - Prefer editing source over \`browser_evaluate\`; changes made in the page are lost on reload.
-- \`browser_tabs\` lists tabs. Target \`app\` is the project; a sent tab is granted, others say \`tab not granted\`. \`browser_compare\` scores two tabs. Figma is a canvas: screenshot the frame.
+- \`browser_tabs\` lists tabs. Target \`app\` is the project; a sent tab is granted, others say \`tab not granted\`. \`browser_compare\` scores two tabs; stop near 0.92 or after 5 rounds. Figma is a canvas: screenshot the frame. \`browser_login\` signs in; the password never appears in the result.
 ${grove}`;
 }

@@ -112,6 +112,15 @@ export async function startNuxtFixture(): Promise<RunningServer> {
   );
 }
 
+/** Serves `dir` with the dependency-free static server on a free port. */
+export async function startStaticFixture(dir: string): Promise<RunningServer> {
+  const port = await freePort();
+  return startProcess([join(FIXTURES, 'plain-html/server.mjs')], dir, `http://127.0.0.1:${port}/`, {
+    PORT: String(port),
+    ROOT: dir,
+  });
+}
+
 /** Runs `fixtures/plain-html/server.mjs` on a free port. */
 export async function startPlainHtmlFixture(): Promise<RunningServer> {
   const port = await freePort();

@@ -370,7 +370,13 @@ function PlanCard({ entries }: { entries: readonly PlanEntry[] }) {
   );
 }
 
-function ActionTraceCard({ event }: { event: Extract<ThreadEvent, { kind: 'action_trace' }> }) {
+function ActionTraceCard({
+  event,
+  onStop,
+}: {
+  event: Extract<ThreadEvent, { kind: 'action_trace' }>;
+  onStop?: () => void;
+}) {
   const [picked, setPicked] = useState<string | null>(null);
   const selected = event.steps.find((step) => step.id === picked) ?? event.steps[event.steps.length - 1];
   return (
@@ -381,6 +387,24 @@ function ActionTraceCard({ event }: { event: Extract<ThreadEvent, { kind: 'actio
           Trace · {event.steps.length} {event.steps.length === 1 ? 'step' : 'steps'}
         </span>
       </header>
+      {event.steps.some((step) => step.tool === 'browser_compare') && (
+        <div className="mb-1 flex items-center gap-1.5" data-testid="matching-design">
+          <span className="font-medium text-fg">Matching design</span>
+          <span className="min-w-0 flex-1 truncate text-fg-muted">
+            {event.steps.filter((step) => step.tool === 'browser_compare').at(-1)?.title}
+          </span>
+          {onStop && (
+            <button
+              type="button"
+              data-testid="matching-design-stop"
+              onClick={onStop}
+              className="rounded border border-border px-1.5 py-0.5 text-fg-muted hover:bg-bg-muted hover:text-fg"
+            >
+              Stop
+            </button>
+          )}
+        </div>
+      )}
       <ol className="flex flex-col gap-0.5">
         {event.steps.map((step, index) => {
           const current = step.id === selected?.id;
@@ -428,10 +452,12 @@ function EventView({
   event,
   projectPath,
   onRespond,
+  onStop,
 }: {
   event: ThreadEvent;
   projectPath: string;
   onRespond: (requestId: string, optionId: string) => void;
+  onStop?: () => void;
 }) {
   switch (event.kind) {
     case 'user_message':
@@ -501,7 +527,7 @@ function EventView({
         </div>
       );
     case 'action_trace':
-      return <ActionTraceCard event={event} />;
+      return <ActionTraceCard event={event} {...(onStop ? { onStop } : {})} />;
     case 'browser_preview':
       return (
         <figure className="rounded border border-border bg-bg px-2 py-1.5 text-[11px]" data-testid="browser-preview">
@@ -569,6 +595,7 @@ export function Transcript({
   busy,
   hidePending = false,
   onRespond,
+  onStop,
 }: {
   events: readonly ThreadEvent[];
   projectPath: string;
@@ -576,6 +603,8 @@ export function Transcript({
   /** Leave unanswered permission cards out: `PinnedPermissions` shows them. */
   hidePending?: boolean;
   onRespond: (requestId: string, optionId: string) => void;
+  /** Stops the turn from the matching-design card. */
+  onStop?: () => void;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
@@ -603,7 +632,13 @@ export function Transcript({
       ) : (
         <div className="flex flex-col gap-2">
           {shown.map((event) => (
-            <EventView key={event.id} event={event} projectPath={projectPath} onRespond={onRespond} />
+            <EventView
+              key={event.id}
+              event={event}
+              projectPath={projectPath}
+              onRespond={onRespond}
+              {...(onStop ? { onStop } : {})}
+            />
           ))}
           {busy && (
             <div className="flex items-center gap-1.5 px-1 text-[11px] text-fg-subtle" data-testid="agent-busy">

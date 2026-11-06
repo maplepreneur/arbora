@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Arbora fixture: login</title>
+  </head>
+  <body>
+    <form id="login">
+      <label>Email <input name="user" type="email" autocomplete="username" /></label>
+      <label>Password <input name="pass" type="password" autocomplete="current-password" /></label>
+      <button type="submit">Sign in</button>
+    </form>
+    <p id="out"></p>
+    <script>
+      document.getElementById('login').addEventListener('submit', (event) => {
+        event.preventDefault();
+        const user = document.querySelector('input[name="user"]').value;
+        const pass = document.querySelector('input[type="password"]').value;
+        document.getElementById('out').textContent =
+          user === 'ada@example.com' && pass === 's3cret-fixture-value' ? 'welcome' : 'denied';
+      });
+    </script>
+  </body>
+</html>

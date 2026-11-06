@@ -148,11 +148,11 @@ export class AgentModeService {
    * Hands the prompt to a thread and resolves with its id straight away. Starting the agent (and
    * learning whether it takes images) can take a while; the thread shows that progress.
    */
-  submit(request: AgentModeSubmit): { threadId: string } {
+  submit(request: AgentModeSubmit, agentsOverride?: AgentService): { threadId: string } {
     const stored = this.selection;
     if (stored?.id !== request.selectionId)
       throw new Error('The selection is no longer current; pick the element again');
-    const agents = this.options.agents();
+    const agents = agentsOverride ?? this.options.agents();
     const browser = this.options.browser();
     if (!agents || !browser) throw new Error('Open a project first');
 

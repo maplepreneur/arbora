@@ -264,6 +264,7 @@ describe('BrowserMcpServer', () => {
         'browser_get_element_source',
         'browser_get_url',
         'browser_hover',
+        'browser_login',
         'browser_navigate',
         'browser_network_errors',
         'browser_press_key',

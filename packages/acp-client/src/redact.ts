@@ -8,8 +8,12 @@ const SAFE_KEY =
   /^(toolCallId|sessionId|optionId|methodId|terminalId|requestId|configId|messageId|compactionId|id|jsonrpc)$/;
 const BEARER = /\bBearer\s+[A-Za-z0-9._~+/=-]+/g;
 
-function redactString(value: string): string {
-  return value.replace(BEARER, `Bearer ${REDACTED}`);
+function redactString(value: string, secrets: readonly string[]): string {
+  let out = value.replace(BEARER, `Bearer ${REDACTED}`);
+  for (const secret of secrets) {
+    if (secret.length >= 4) out = out.split(secret).join('•••');
+  }
+  return out;
 }
 
 function isNameValue(item: unknown): item is { name: string; value: unknown } {
@@ -21,29 +25,29 @@ function isNameValue(item: unknown): item is { name: string; value: unknown } {
  * secret-looking keys, every `env`/`headers` value (both `{ NAME: value }` records and ACP's
  * `[{ name, value }]` arrays), and bearer tokens inside strings.
  */
-export function redact(value: unknown): unknown {
-  if (typeof value === 'string') return redactString(value);
+export function redact(value: unknown, secrets: readonly string[] = []): unknown {
+  if (typeof value === 'string') return redactString(value, secrets);
   if (value === null || typeof value !== 'object') return value;
-  if (Array.isArray(value)) return value.map(redact);
+  if (Array.isArray(value)) return value.map((item) => redact(item, secrets));
   const out: Record<string, unknown> = {};
   for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
     if (key === 'env' || key === 'headers') {
-      out[key] = redactNamedValues(raw);
+      out[key] = redactNamedValues(raw, secrets);
     } else if (!SAFE_KEY.test(key) && SECRET_KEY.test(key)) {
       out[key] = REDACTED;
     } else {
-      out[key] = redact(raw);
+      out[key] = redact(raw, secrets);
     }
   }
   return out;
 }
 
-function redactNamedValues(raw: unknown): unknown {
+function redactNamedValues(raw: unknown, secrets: readonly string[]): unknown {
   if (Array.isArray(raw)) {
-    return raw.map((item) => (isNameValue(item) ? { ...item, value: REDACTED } : redact(item)));
+    return raw.map((item) => (isNameValue(item) ? { ...item, value: REDACTED } : redact(item, secrets)));
   }
   if (raw !== null && typeof raw === 'object') {
     return Object.fromEntries(Object.keys(raw as Record<string, unknown>).map((name) => [name, REDACTED]));
   }
-  return redact(raw);
+  return redact(raw, secrets);
 }

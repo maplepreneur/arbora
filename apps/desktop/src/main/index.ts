@@ -19,6 +19,7 @@ import {
   projectSettingsUpdates,
   pullRequestPrompt,
   resolveTaskAgent,
+  resolvedPasswordMode,
   toPlatform,
   updatePolicy,
   type AgentVerification,
@@ -34,6 +35,7 @@ import { describeAttachment, pastedImagePath, pickPastedImageType } from './agen
 import { BrowserSessions } from './browser/browser-sessions.js';
 import type { BrowserService } from './browser/browser-service.js';
 import { registerPageIpc } from './browser/page-ipc.js';
+import { runOp } from './passwords/one-password.js';
 import { devPluginStatus, findDevPluginRoot, installDevPlugin } from './dev-plugin/install.js';
 import { defineHandler, sendEvent } from './ipc.js';
 import { LspSession } from './lsp/lsp-session.js';
@@ -1061,6 +1063,64 @@ function main(): void {
       });
       return { threadId: thread.id };
     });
+    defineHandler('passwords.list', isTrusted, async ({ origin }, event) => {
+      const path = windowFor(event.sender).project?.path;
+      const runtime = path ? manager.runtime(path) : undefined;
+      if (!runtime || settings.get().passwords.provider !== '1password') return { items: [] };
+      const items = await runtime.passwords.listLogins(origin);
+      return { items: items.map((item) => ({ id: item.id, title: item.title })) };
+    });
+    defineHandler('passwords.fill', isTrusted, async ({ id, tabId }, event) => {
+      const projectWindow = windowFor(event.sender);
+      const path = projectWindow.project?.path;
+      const runtime = path ? manager.runtime(path) : undefined;
+      const tabs = projectWindow.browserTabs();
+      if (!runtime || !tabs) throw new Error('Open a project first');
+      if (settings.get().passwords.provider !== '1password') return { ok: false };
+      const resolved = await tabs.resolve(tabId);
+      const revealed = await runtime.passwords.reveal(id);
+      const fields = await resolved.service.loginFields();
+      if (!fields.password) return { ok: false };
+      if (fields.username && revealed.username) await resolved.service.insertText(fields.username, revealed.username);
+      await resolved.service.insertText(fields.password, revealed.password);
+      return { ok: true };
+    });
+    defineHandler(
+      'passwords.save',
+      isTrusted,
+      async ({ origin, usernameField, passwordField, tabId, title }, event) => {
+        const projectWindow = windowFor(event.sender);
+        const path = projectWindow.project?.path;
+        const runtime = path ? manager.runtime(path) : undefined;
+        const tabs = projectWindow.browserTabs();
+        if (!runtime || !tabs) throw new Error('Open a project first');
+        const service = (await tabs.resolve(tabId)).service;
+        const username = usernameField ? await service.fieldValue(usernameField) : '';
+        const password = await service.fieldValue(passwordField);
+        if (!password) return { ok: false };
+        await runtime.passwords.save({ title: title ?? new URL(origin).host, url: origin, username, password });
+        return { ok: true };
+      },
+    );
+    defineHandler('passwords.check', isTrusted, async (_req, event) => {
+      const mode = resolvedPasswordMode(settings.get().passwords.mode);
+      const path = windowFor(event.sender).project?.path;
+      const runtime = path ? manager.runtime(path) : undefined;
+      if (runtime) {
+        const version = await runtime.passwords.version();
+        return { installed: version !== null, version, mode };
+      }
+      await shellEnvironment.ready;
+      const env = shellEnvironment.env();
+      const command = findExecutable('op', env, platform) ?? 'op';
+      try {
+        const result = await runOp(command, env, ['--version']);
+        const version = result.code === 0 ? result.stdout.trim() || null : null;
+        return { installed: version !== null, version, mode };
+      } catch {
+        return { installed: false, version: null, mode };
+      }
+    });
     defineHandler('agent.renameThread', isTrusted, ({ threadId, title }, event) => {
       requireAgents(event.sender).renameThread(threadId, title);
       return undefined;
@@ -1192,8 +1252,15 @@ function main(): void {
       return undefined;
     });
     defineHandler('agentMode.submit', isTrusted, (request, event) => {
-      const agentMode = windowFor(event.sender).agentMode;
+      const projectWindow = windowFor(event.sender);
+      const agentMode = projectWindow.agentMode;
       if (!agentMode) throw new Error('Open a project first');
+      const current = projectWindow.project?.path;
+      if (request.projectPath && request.projectPath !== current) {
+        const runtime = manager.runtime(request.projectPath);
+        if (!runtime) throw new Error('Open project and send');
+        return agentMode.submit(request, runtime.agents);
+      }
       return agentMode.submit(request);
     });
 

@@ -471,6 +471,17 @@ async function handlePrompt(cx: AgentContext, params: PromptRequest): Promise<Pr
   }
   if (/browser check/i.test(text)) await browserCheck(cx, sessionId, state);
   if (/tool sweep/i.test(text)) await toolSweep(cx, sessionId, state);
+  if (/vault login/i.test(text)) {
+    const result = await callBrowserTool(cx, sessionId, state, 'browser_login', {});
+    await say(cx, sessionId, result.isError ? `Login failed: ${result.text}` : `Login status: ${result.text}`, state);
+    return { stopReason: 'end_turn' };
+  }
+  const grant = /tab grant (\S+)/i.exec(text);
+  if (grant?.[1]) {
+    const result = await callBrowserTool(cx, sessionId, state, 'browser_snapshot', { target: grant[1] });
+    await say(cx, sessionId, result.isError ? `Grant check: ${result.text}` : 'Grant check: allowed', state);
+    return { stopReason: 'end_turn' };
+  }
   const restart = /restart dev/i.test(text);
   if (restart) {
     const result = await callBrowserTool(cx, sessionId, state, 'devserver_restart', {});

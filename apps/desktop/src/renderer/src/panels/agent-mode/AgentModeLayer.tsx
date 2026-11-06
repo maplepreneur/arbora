@@ -21,6 +21,7 @@ import { defaultAgentModeTarget, isListed, useAgents } from '../../agent-store';
 import { taskModelFor, useDefaultAgentId, useTaskAgentId } from '../../agent-defaults';
 import { Picker } from '../../components/Picker';
 import { showAgentThread } from '../../commands';
+import { useProjects } from '../../projects-store';
 import { dispatchMode, useApp } from '../../store';
 
 const POPOVER_WIDTH = 380;
@@ -205,6 +206,12 @@ function AgentModePopover({ selection, targetIndex, onTargetIndex }: PopoverProp
   const target = chosenTarget ?? defaultTarget;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingOpen, setPendingOpen] = useState<string | null>(null);
+  const currentPath = useApp((s) => s.project?.path ?? '');
+  const openProjects = useProjects((s) =>
+    s.library.entries.filter((entry) => entry.open && entry.path !== currentPath),
+  );
+  const [projectPath, setProjectPath] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -229,17 +236,21 @@ function AgentModePopover({ selection, targetIndex, onTargetIndex }: PopoverProp
     setBusy(true);
     setError(null);
     try {
+      const chosen = projectPath && projectPath !== currentPath ? projectPath : undefined;
       const { threadId } = await window.arbora.invoke('agentMode.submit', {
         selectionId: selection.id,
         targetIndex,
         text: text.trim(),
         include,
         target: parsed,
+        ...(chosen ? { projectPath: chosen } : {}),
       });
       dispatchMode({ type: 'submitted' });
       await showAgentThread(threadId);
     } catch (caught) {
-      setError((caught as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''));
+      const message = (caught as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+      setError(message);
+      setPendingOpen(projectPath && message.includes('Open project and send') ? projectPath : null);
       setBusy(false);
     }
   };
@@ -350,6 +361,36 @@ function AgentModePopover({ selection, targetIndex, onTargetIndex }: PopoverProp
         <span className="shrink-0 text-[11px] text-fg-subtle">Send to</span>
         <TargetPicker value={target ?? ''} onChange={setChosenTarget} />
       </div>
+      {openProjects.length > 0 && (
+        <label className="flex items-center gap-1.5 text-[11px] text-fg-subtle">
+          Project
+          <select
+            data-testid="agent-mode-project"
+            value={projectPath}
+            onChange={(event) => setProjectPath(event.target.value)}
+            className="min-w-0 flex-1 rounded border border-border bg-bg px-1 py-0.5 text-fg"
+          >
+            <option value="">This project</option>
+            {openProjects.map((entry) => (
+              <option key={entry.path} value={entry.path}>
+                {entry.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {pendingOpen && (
+        <button
+          type="button"
+          data-testid="agent-mode-open-project"
+          onClick={() => {
+            void window.arbora.invoke('project.open', { path: pendingOpen }).then(() => submit());
+          }}
+          className="self-start rounded border border-border px-1.5 py-0.5 text-[11px] text-fg-muted hover:bg-bg-muted"
+        >
+          Open project and send
+        </button>
+      )}
       <div className="flex items-center justify-end gap-1.5">
         <button
           type="button"

@@ -18,7 +18,8 @@
     "test:watch": "vitest",
     "e2e": "pnpm --filter @arbora/desktop e2e",
     "package": "pnpm --filter @arbora/desktop package",
-    "perf": "pnpm --filter @arbora/desktop perf"
+    "perf": "pnpm --filter @arbora/desktop perf",
+    "setup:1password": "sh scripts/setup-1password.sh"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

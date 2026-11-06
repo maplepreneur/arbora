@@ -21,6 +21,8 @@ import type { TabGrantStore } from './browser/tab-grants.js';
 import { ArboraToolHost, type PermissionAnswer } from './mcp/browser-tool-host.js';
 import { openBrowserTools, type ShimCommand } from './mcp/browser-tools.js';
 import { GroveHost } from './mcp/grove-tool-host.js';
+import { OnePasswordProvider, runOp } from './passwords/one-password.js';
+import { SecretMask } from './passwords/secret-mask.js';
 import { readProjectSettings, updateProjectSettingsFile } from './project-settings.js';
 import { writeSkillFile } from './mcp/skill-file.js';
 import type { SettingsStore } from './settings-store.js';
@@ -57,6 +59,8 @@ export class ProjectRuntime {
   readonly terminals: TerminalService;
   readonly devServer: DevServer;
   readonly agents: AgentService;
+  readonly secrets = new SecretMask();
+  readonly passwords: OnePasswordProvider;
   private disposed = false;
 
   constructor(
@@ -64,6 +68,13 @@ export class ProjectRuntime {
     options: ProjectRuntimeOptions,
   ) {
     const { platform, settings, shellEnvironment, host } = options;
+    this.passwords = new OnePasswordProvider(async (args, stdin) => {
+      await shellEnvironment.ready;
+      const env = shellEnvironment.env();
+      const override = process.env['ARBORA_OP'];
+      const command = override ? override : (findExecutable('op', env, platform) ?? 'op');
+      return runOp(command, env, args, stdin);
+    }, this.secrets);
     const environment = async (): Promise<Record<string, string>> => {
       await shellEnvironment.ready;
       return shellEnvironment.env();
@@ -123,7 +134,11 @@ export class ProjectRuntime {
       },
       mcp: (threadId) => this.openBrowserTools(options, threadId),
       mcpTransport: process.env['ARBORA_MCP_TRANSPORT'] === 'stdio' ? 'stdio' : 'auto',
-      userMcpServers: (agentId, http) => mcpServersFor(settings.get().mcpServers, agentId, http),
+      userMcpServers: (agentId, http) => [
+        ...mcpServersFor(settings.get().mcpServers, agentId, http),
+        ...mcpServersFor(this.projectSettings().mcp?.extraServers ?? [], agentId, http),
+      ],
+      secrets: () => this.secrets.list(),
       events: {
         threadsChanged: (threads) => host.send('agent.threadsChanged', { projectPath: path, threads }),
         groupsChanged: (groups) => host.send('agent.groupsChanged', { projectPath: path, groups }),
@@ -178,6 +193,9 @@ export class ProjectRuntime {
       threadId,
       tabs: () => host.tabs?.() ?? null,
       ...(host.grants ? { grants: host.grants } : {}),
+      passwords: () => settings.get().passwords,
+      passwordProvider: this.passwords,
+      secrets: this.secrets,
       devServer: () => this.devServer,
       terminals: () => this.terminals,
       projectSettings: () => this.projectSettings(),

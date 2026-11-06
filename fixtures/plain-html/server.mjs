@@ -1,9 +1,9 @@
 // Minimal static file server so the fixture has no dependencies.
 import { createReadStream, statSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { extname, join, normalize, sep } from 'node:path';
+import { extname, join, normalize, resolve, sep } from 'node:path';
 
-const root = import.meta.dirname;
+const root = process.env['ROOT'] ? resolve(process.env['ROOT']) : import.meta.dirname;
 const port = Number(process.env['PORT'] ?? 5500);
 /** @type {Record<string, string>} */
 const types = {

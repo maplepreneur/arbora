@@ -376,6 +376,36 @@ export const channels = {
     }),
     z.object({ threadId: z.string() }),
   ),
+  'passwords.list': defineChannel(
+    'passwords.list',
+    z.object({ origin: z.string().max(300) }),
+    z.object({ items: z.array(z.object({ id: z.string(), title: z.string() })) }),
+  ),
+  'passwords.fill': defineChannel(
+    'passwords.fill',
+    z.object({ id: z.string().max(80), tabId: z.string().optional() }),
+    z.object({ ok: z.boolean() }),
+  ),
+  'passwords.save': defineChannel(
+    'passwords.save',
+    z.object({
+      origin: z.string().max(300),
+      usernameField: z.string().max(200).nullable(),
+      passwordField: z.string().max(200),
+      tabId: z.string(),
+      title: z.string().max(120).optional(),
+    }),
+    z.object({ ok: z.boolean() }),
+  ),
+  'passwords.check': defineChannel(
+    'passwords.check',
+    none,
+    z.object({
+      installed: z.boolean(),
+      version: z.string().nullable(),
+      mode: z.enum(['cli', 'extension']),
+    }),
+  ),
   'browser.suggestUrl': defineChannel(
     'browser.suggestUrl',
     z.object({ url: z.string() }),
@@ -724,6 +754,8 @@ export const channels = {
       text: z.string().min(1).max(20_000),
       include: agentModeIncludeSchema,
       target: agentModeTargetSchema,
+      /** Another open project's folder. The prompt goes there; the screenshot stays on this window. */
+      projectPath: z.string().min(1).optional(),
     }),
     z.object({ threadId: z.string() }),
   ),

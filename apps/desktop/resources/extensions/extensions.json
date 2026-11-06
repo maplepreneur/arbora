@@ -11,6 +11,12 @@
       "id": "nhdogjmejiglipccpnnnanhbledajbpd",
       "version": "7.7.7",
       "sha256": "bf565c23fd9e2c074ed47144d0504336f787e5f105388f73c62846dee92f0124"
+    },
+    {
+      "name": "1password",
+      "id": "aeblfdkhhhdcdjpifhhbdiojplfjncoa",
+      "version": "8.12.44.33",
+      "sha256": "1cdc5bfbe2d13f38bbceeeb6fb41ff08477939c42567bf7cbcd0016ac00b09cb"
     }
   ]
 }

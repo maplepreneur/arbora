@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatSnapshot, type AxNode } from './snapshot.js';
+import { formatSnapshot, maskSecretNodes, type AxNode } from './snapshot.js';
 
 function node(
   nodeId: string,
@@ -109,5 +109,19 @@ describe('formatSnapshot', () => {
     const nodes = [node('1', 'RootWebArea', '', ['2']), node('2', 'button', 'x'.repeat(500), [], { parentId: '1' })];
     const line = formatSnapshot(nodes, { maxNodes: 100, maxDepth: 10, maxText: 20 }).text;
     expect(line).toBe(`- button "${'x'.repeat(19)}…"`);
+  });
+
+  it('hides password field values before printing', () => {
+    const nodes = [
+      node('1', 'RootWebArea', '', ['2']),
+      node('2', 'textbox', 'Password', [], {
+        parentId: '1',
+        backendDOMNodeId: 9,
+        value: { value: 's3cret-fixture' },
+      }),
+    ];
+    const text = formatSnapshot(maskSecretNodes(nodes, new Set([9]))).text;
+    expect(text).toContain('•••');
+    expect(text).not.toContain('s3cret');
   });
 });

@@ -29,6 +29,7 @@ import {
   type ActionTraceImage,
   type BrowserToolPolicy,
   type ProblemEntry,
+  type PasswordsSettings,
   type ProjectSettings,
   type SourceCandidate,
 } from '@arbora/shared';
@@ -38,6 +39,8 @@ import { searchTerms, type SearchTerm } from '../agent-mode/source-search.js';
 import type { BrowserService } from '../browser/browser-service.js';
 import type { BrowserTabs } from '../browser/browser-tabs.js';
 import type { TabGrantStore } from '../browser/tab-grants.js';
+import type { OnePasswordProvider } from '../passwords/one-password.js';
+import type { SecretMask } from '../passwords/secret-mask.js';
 import { fitWithin } from '../browser/image.js';
 import type { DevServer } from '../terminal/dev-server.js';
 import type { TerminalService } from '../terminal/terminal-service.js';
@@ -79,6 +82,9 @@ export interface ArboraToolHostOptions {
   readonly threadId?: string;
   readonly tabs?: () => BrowserTabs | null;
   readonly grants?: TabGrantStore;
+  readonly passwords?: () => PasswordsSettings;
+  readonly passwordProvider?: OnePasswordProvider;
+  readonly secrets?: SecretMask;
 }
 
 function isFile(path: string): boolean {
@@ -190,6 +196,56 @@ export class ArboraToolHost implements BrowserToolHost {
     if (!result.ok) throw new ToolError(result.error);
     this.options.grants?.dropTab(tabs.projectPath, id);
     return Promise.resolve();
+  }
+
+  redactSecrets(text: string): string {
+    return this.options.secrets?.apply(text) ?? text;
+  }
+
+  async login(origin: string | undefined): Promise<'logged_in' | 'needs_user' | 'failed'> {
+    const settings = this.options.passwords?.();
+    const provider = this.options.passwordProvider;
+    if (!settings || settings.provider !== '1password' || !provider) return 'failed';
+    if (settings.agentLogins === 'never') return 'failed';
+    const page = this.page();
+    let pageOrigin = origin ?? '';
+    if (!pageOrigin) {
+      try {
+        pageOrigin = new URL(page.url).origin;
+      } catch {
+        return 'needs_user';
+      }
+    }
+    let items: { id: string; title: string }[];
+    try {
+      items = await provider.listLogins(pageOrigin);
+    } catch {
+      return 'needs_user';
+    }
+    if (items.length === 0) return 'needs_user';
+    const allowed = settings.alwaysAllow.includes(pageOrigin);
+    if (!allowed) {
+      const answer = await this.options.askPermission({
+        tool: 'navigate',
+        title: 'Sign in with 1Password',
+        detail: `The agent wants to sign in at ${pageOrigin} using: ${items.map((item) => item.title).join(', ')}`,
+      });
+      if (answer !== 'once' && answer !== 'always') return 'failed';
+    }
+    const item = items[0];
+    if (!item) return 'needs_user';
+    try {
+      const revealed = await provider.reveal(item.id);
+      const browser = this.browser();
+      const fields = await browser.loginFields();
+      if (!fields.password) return 'needs_user';
+      if (fields.username && revealed.username) await browser.insertText(fields.username, revealed.username);
+      await browser.insertText(fields.password, revealed.password);
+      await browser.pressEnter();
+      return 'logged_in';
+    } catch {
+      return 'failed';
+    }
   }
 
   async captureTab(tabId: string): Promise<TabCapture> {

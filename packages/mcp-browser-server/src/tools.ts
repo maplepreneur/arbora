@@ -6,9 +6,9 @@ import type { BrowserToolHost, GuardedTool, LogEntry, LogLevel, PageInfo } from 
 import { click, elementBox, hover, pressKey, scroll, selectOptions, typeText } from './input.js';
 import { evaluate, InflightRequests, truncate, waitFor } from './page.js';
 import { RefTable, resolveElement, type ElementTarget } from './refs.js';
-import { formatSnapshot, type AxNode } from './snapshot.js';
+import { formatSnapshot, maskSecretNodes, type AxNode } from './snapshot.js';
 import { comparePngs } from './compare.js';
-import { actionTraceTitle, isTracedBrowserTool } from './trace.js';
+import { actionTraceTitle, compareScoreTitle, isTracedBrowserTool } from './trace.js';
 
 export const DEFAULT_WAIT_MS = 5000;
 const MAX_WAIT_MS = 60_000;
@@ -22,6 +22,7 @@ const WRITE_TOOLS = new Set([
   'browser_type',
   'browser_press_key',
   'browser_select_option',
+  'browser_login',
 ]);
 
 /** Per-thread state shared by every MCP request of one agent session. */
@@ -129,12 +130,18 @@ export function isTrustedOrigin(url: URL, devUrl: string | null): boolean {
 export function registerBrowserTools(server: McpServer, context: ToolContext): void {
   const { host } = context;
 
-  const record = async (name: string, args: object, ok: boolean, error: string | null): Promise<void> => {
+  const record = async (
+    name: string,
+    args: object,
+    ok: boolean,
+    error: string | null,
+    title?: string,
+  ): Promise<void> => {
     if (!isTracedBrowserTool(name) || !host.recordTrace) return;
     try {
       await host.recordTrace({
         tool: name,
-        title: actionTraceTitle(name, args as Record<string, unknown>),
+        title: title ?? actionTraceTitle(name, args as Record<string, unknown>),
         ok,
         error: error === null ? null : clipError(error),
       });
@@ -160,7 +167,11 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
           else checkTarget(args.target);
           const result = await run(args);
           const failed = result.isError === true;
-          await record(name, args, !failed, failed ? resultError(result) : null);
+          const score =
+            name === 'browser_compare' && !failed
+              ? compareScoreTitle(result.content.find((item) => item.type === 'text')?.text ?? '')
+              : null;
+          await record(name, args, !failed, failed ? resultError(result) : null, score ?? undefined);
           return result;
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -236,7 +247,7 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
       const cdp = await context.cdp();
       await cdp.send('Accessibility.enable').catch(() => undefined);
       const { nodes } = (await cdp.send('Accessibility.getFullAXTree', {})) as { nodes: AxNode[] };
-      const snapshot = formatSnapshot(nodes);
+      const snapshot = formatSnapshot(maskSecretNodes(nodes, await secretBackendNodeIds(cdp)));
       context.refs.replace(snapshot.refs);
       return text(`${pageLine(host.page())}\nSnapshot:\n\`\`\`yaml\n${snapshot.text}\n\`\`\``);
     },
@@ -420,7 +431,8 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
         'Run JavaScript in the page',
         `The agent wants to run JavaScript in the browser panel:\n${expression.slice(0, 500)}`,
       );
-      return text(await evaluate(await context.cdp(), expression));
+      const value = await evaluate(await context.cdp(), expression);
+      return text(host.redactSecrets ? host.redactSecrets(value) : value);
     },
     { destructiveHint: true },
   );
@@ -486,6 +498,17 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
       return text(`${status}\n${truncate(result.output)}`);
     },
     { destructiveHint: true },
+  );
+
+  tool(
+    'browser_login',
+    'Sign the page in with 1Password. Asks the user with the item titles only, then fills the form. Returns logged_in, needs_user, or failed. The password is never in the result.',
+    { origin: z.string().optional().describe('Origin to match; defaults to the page') },
+    async ({ origin }) => {
+      if (!host.login) return { isError: true, content: [{ type: 'text', text: '1Password is not available.' }] };
+      const status = await host.login(origin);
+      return text(status);
+    },
   );
 
   tool(
@@ -565,4 +588,26 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
     },
     { readOnlyHint: true },
   );
+}
+
+/** Backend node ids of password and one-time-code fields, so the snapshot can hide their values. */
+async function secretBackendNodeIds(cdp: Cdp): Promise<Set<number>> {
+  const ids = new Set<number>();
+  try {
+    await cdp.send('DOM.enable').catch(() => undefined);
+    const doc = (await cdp.send('DOM.getDocument', { depth: 0 })) as { root?: { nodeId?: number } };
+    const nodeId = doc.root?.nodeId;
+    if (nodeId === undefined) return ids;
+    const queried = (await cdp.send('DOM.querySelectorAll', {
+      nodeId,
+      selector: 'input[type="password"], input[autocomplete="current-password"], input[autocomplete="one-time-code"]',
+    })) as { nodeIds?: number[] };
+    for (const id of queried.nodeIds ?? []) {
+      const described = (await cdp.send('DOM.describeNode', { nodeId: id })) as { node?: { backendNodeId?: number } };
+      if (described.node?.backendNodeId !== undefined) ids.add(described.node.backendNodeId);
+    }
+  } catch {
+    return ids;
+  }
+  return ids;
 }

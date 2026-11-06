@@ -26,7 +26,7 @@ import {
 } from '../../thread-controls';
 import { Picker, type PickerOption } from '../../components/Picker';
 import { showToast, useApp } from '../../store';
-import { isStoppable, showThreads, stopAgent, toggleLog, useAgents } from '../../agent-store';
+import { cancelTurn, isStoppable, showThreads, stopAgent, toggleLog, useAgents } from '../../agent-store';
 import { toggleDefaultModel, toggleFavoriteModel } from '../../agent-defaults';
 import { Composer } from './Composer';
 import { LogViewer } from './LogViewer';
@@ -363,6 +363,7 @@ export default function ThreadView({
           busy={state.status === 'prompting'}
           hidePending={pinning}
           onRespond={respond}
+          onStop={() => void cancelTurn(thread.id)}
         />
       ) : (
         <div className="flex flex-1 items-center justify-center text-xs text-fg-subtle">

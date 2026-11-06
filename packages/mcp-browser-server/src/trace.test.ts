@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { actionTraceTitle, isTracedBrowserTool } from './trace.js';
+import { actionTraceTitle, compareScoreTitle, isTracedBrowserTool } from './trace.js';
 
 describe('action traces', () => {
   it('names the action from the arguments', () => {
@@ -13,6 +13,9 @@ describe('action traces', () => {
     expect(actionTraceTitle('browser_set_viewport', { preset: 'mobile' })).toBe('Viewport mobile');
     expect(actionTraceTitle('browser_set_viewport', { width: 500, height: 700 })).toBe('Viewport 500×700');
     expect(actionTraceTitle('browser_screenshot', {})).toBe('Screenshot viewport');
+    expect(actionTraceTitle('browser_compare', {})).toBe('Compare tabs');
+    expect(compareScoreTitle(JSON.stringify({ score: 0.84 }))).toBe('Matching design · 0.84');
+    expect(compareScoreTitle('not json')).toBeNull();
   });
 
   it('traces page actions and skips reads', () => {

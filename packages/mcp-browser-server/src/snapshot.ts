@@ -73,6 +73,15 @@ function propertyText(node: AxNode, maxText: number): string {
  * already know how to read. Ignored nodes and unnamed wrappers are dropped (their children move
  * up), text that repeats the parent's name is skipped, and every printed element gets a `ref`.
  */
+/** Replaces values on password (and other secret) nodes before they are printed. */
+export function maskSecretNodes(nodes: readonly AxNode[], secretNodeIds: ReadonlySet<number>): AxNode[] {
+  if (secretNodeIds.size === 0) return [...nodes];
+  return nodes.map((node) => {
+    if (node.backendDOMNodeId === undefined || !secretNodeIds.has(node.backendDOMNodeId) || !node.value) return node;
+    return { ...node, value: { ...node.value, value: '•••' } };
+  });
+}
+
 export function formatSnapshot(nodes: readonly AxNode[], limits: SnapshotLimits = SNAPSHOT_LIMITS): Snapshot {
   const byId = new Map(nodes.map((node) => [node.nodeId, node]));
   const root = nodes.find((node) => !node.parentId || !byId.has(node.parentId));

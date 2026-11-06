@@ -86,3 +86,14 @@ export function actionTraceTitle(tool: string, args: Record<string, unknown>): s
       return tool;
   }
 }
+
+/** Title for a compare result, including the score. Null when the text is not a compare payload. */
+export function compareScoreTitle(resultText: string): string | null {
+  try {
+    const parsed = JSON.parse(resultText) as { score?: unknown };
+    if (typeof parsed.score !== 'number' || !Number.isFinite(parsed.score)) return null;
+    return `Matching design · ${parsed.score.toFixed(2)}`;
+  } catch {
+    return null;
+  }
+}

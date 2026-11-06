@@ -92,11 +92,31 @@ async function fetchOne(pinned) {
   return { ...pinned, version: manifest.version, sha256 };
 }
 
+/** Names passed as `--only <name>`, repeated for several. */
+function onlyNames() {
+  const names = [];
+  for (let i = 0; i < process.argv.length; i++) {
+    if (process.argv[i] === '--only' && process.argv[i + 1]) names.push(process.argv[i + 1]);
+  }
+  return names;
+}
+
 async function main() {
   const lock = readLock();
+  const only = onlyNames();
+  const selected = only.length === 0 ? lock.extensions : lock.extensions.filter((entry) => only.includes(entry.name));
+  const missing = only.filter((name) => !selected.some((entry) => entry.name === name));
+  if (missing.length > 0) throw new Error(`Unknown extension: ${missing.join(', ')}`);
   const results = [];
-  for (const pinned of lock.extensions) results.push(await fetchOne(pinned));
-  if (update) writeFileSync(lockFile, `${JSON.stringify({ extensions: results }, null, 2)}\n`);
+  for (const pinned of selected) results.push(await fetchOne(pinned));
+  if (update) {
+    const byName = new Map(lock.extensions.map((entry) => [entry.name, entry]));
+    for (const next of results) byName.set(next.name, next);
+    const order = lock.extensions.map((entry) => entry.name);
+    for (const next of results) if (!order.includes(next.name)) order.push(next.name);
+    const extensions = order.map((name) => byName.get(name));
+    writeFileSync(lockFile, `${JSON.stringify({ extensions }, null, 2)}\n`);
+  }
 }
 
 main().catch((/** @type {unknown} */ error) => {

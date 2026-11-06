@@ -106,6 +106,10 @@ export interface BrowserToolHost {
   openTab?(url: string | undefined): Promise<string>;
   closeTab?(id: string): Promise<void>;
   captureTab?(tabId: string): Promise<TabCapture>;
+  /** Replaces secrets filled this session. */
+  redactSecrets?(text: string): string;
+  /** Fills a granted tab from 1Password. The result is a status, never a secret. */
+  login?(origin: string | undefined): Promise<'logged_in' | 'needs_user' | 'failed'>;
 }
 
 export interface TabSummary {

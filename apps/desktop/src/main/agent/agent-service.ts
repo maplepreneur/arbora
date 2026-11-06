@@ -91,6 +91,8 @@ export interface AgentServiceOptions {
   readonly mcpTransport?: 'auto' | 'stdio';
   /** The user's own MCP servers (Settings > MCP servers) for a session of `agentId`. */
   readonly userMcpServers?: (agentId: string, http: boolean) => McpServer[];
+  /** Secrets typed into the page this session. Masked in the ACP log. */
+  readonly secrets?: () => readonly string[];
 }
 
 /** MCP servers Arbora runs for one agent session; closed when the agent process stops. */
@@ -1144,7 +1146,10 @@ export class AgentService {
   }
 
   private onLog(record: ThreadRecord, entry: AcpLogMessage): void {
-    this.pushLog(record, { direction: entry.direction, message: redact(entry.message) });
+    this.pushLog(record, {
+      direction: entry.direction,
+      message: redact(entry.message, this.options.secrets?.() ?? []),
+    });
   }
 
   private onClosed(record: ThreadRecord, runtime: Runtime, error: unknown): void {

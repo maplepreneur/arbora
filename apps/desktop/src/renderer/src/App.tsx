@@ -112,6 +112,23 @@ function useMainEvents(): void {
       arbora.on('command.invoke', ({ commandId, fromPage }) => executeCommand(commandId, { fromPage })),
       arbora.on('browser.stateChanged', (browser) => useApp.setState({ browser })),
       arbora.on('browser.tabsChanged', ({ tabs }) => useApp.setState({ browserTabs: tabs })),
+      arbora.on('passwords.offerSave', ({ origin, usernameField, passwordField, tabId }) => {
+        let host: string;
+        try {
+          host = new URL(origin).host;
+        } catch {
+          host = origin;
+        }
+        showToast(`Save the login for ${host} in 1Password?`, {
+          label: 'Save',
+          run: () => {
+            void window.arbora
+              .invoke('passwords.save', { origin, usernameField, passwordField, tabId })
+              .then((result) => showToast(result.ok ? 'Saved to 1Password' : 'Could not read the password field'))
+              .catch((error: unknown) => showToast((error as Error).message));
+          },
+        });
+      }),
       arbora.on('browser.pageFocused', ({ focused }) => setBrowserPageFocused(focused)),
       arbora.on('browser.focusParked', () => reclaimFocusFromParkedPage()),
       arbora.on('browser.problemsAdded', ({ entries }) => addProblems(entries)),
@@ -218,10 +235,12 @@ function useBrowserSnapshot(): void {
       arbora.invoke('browser.getState'),
       arbora.invoke('browser.getConsole'),
       arbora.invoke('browser.getNetworkErrors'),
-    ]).then(([browser, consoleEntries, network]) => {
+      arbora.invoke('browser.tabs.list'),
+    ]).then(([browser, consoleEntries, network, tabs]) => {
       if (!active) return;
       // Events may have arrived first; never replace a live state with an older null.
       if (browser) useApp.setState({ browser });
+      useApp.setState((current) => ({ browserTabs: tabs.length > 0 ? tabs : current.browserTabs }));
       setProblems(consoleEntries, network);
     });
     return () => {

@@ -71,6 +71,7 @@ describe('redact', () => {
 
   it('handles arrays, null and primitives', () => {
     expect(redact([1, null, 'x', { password: 'p' }])).toEqual([1, null, 'x', { password: REDACTED }]);
+    expect(redact('the password is s3cret-fixture', ['s3cret-fixture'])).toBe('the password is •••');
     expect(redact(null)).toBeNull();
     expect(redact(42)).toBe(42);
   });

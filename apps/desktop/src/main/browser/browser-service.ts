@@ -1015,13 +1015,86 @@ export class BrowserService {
   }
 
   /** Types into the focused field. The text is not sent to the renderer. */
+  /** CSS selectors for the login form, read in the isolated world. No field values. */
+  async loginFields(): Promise<{ username: string | null; password: string | null }> {
+    const value: unknown = await this.contents.executeJavaScriptInIsolatedWorld(PROBE_WORLD_ID, [
+      {
+        code: `(() => {
+          const css = (el) => {
+            if (el.id) return '#' + CSS.escape(el.id);
+            if (el.name) return 'input[name="' + CSS.escape(el.name) + '"]';
+            return el.type === 'password' ? 'input[type="password"]' : 'input[type="text"], input[type="email"]';
+          };
+          const password = document.querySelector('input[type="password"]');
+          if (!password) return { username: null, password: null };
+          const inputs = [...document.querySelectorAll('input')];
+          const user = [...inputs.slice(0, inputs.indexOf(password))].reverse().find((input) => input.type !== 'hidden' && input.type !== 'password');
+          return { username: user ? css(user) : null, password: css(password) };
+        })()`,
+      },
+    ]);
+    if (!value || typeof value !== 'object') return { username: null, password: null };
+    const record = value as { username?: unknown; password?: unknown };
+    return {
+      username: typeof record.username === 'string' ? record.username : null,
+      password: typeof record.password === 'string' ? record.password : null,
+    };
+  }
+
+  async pressEnter(): Promise<void> {
+    if (!this.debuggerAttached) await this.attachDebugger();
+    if (!this.debuggerAttached) throw new Error('Submitting a login needs the debugger; close DevTools and retry');
+    const base = {
+      key: 'Enter',
+      code: 'Enter',
+      windowsVirtualKeyCode: 13,
+      nativeVirtualKeyCode: 13,
+    };
+    await this.contents.debugger.sendCommand('Input.dispatchKeyEvent', {
+      ...base,
+      type: 'keyDown',
+      text: '\r',
+      unmodifiedText: '\r',
+    });
+    await this.contents.debugger.sendCommand('Input.dispatchKeyEvent', { ...base, type: 'keyUp' });
+    // A hidden tab does not receive synthesized keys. Submit from the page so its listener runs.
+    await this.contents.executeJavaScript(`document.querySelector('input[type="password"]')?.form?.requestSubmit?.()`);
+  }
+
   async insertText(selector: string, value: string): Promise<void> {
     if (!this.debuggerAttached) await this.attachDebugger();
     if (!this.debuggerAttached) throw new Error('Filling a login needs the debugger; close DevTools and retry');
-    await this.contents.executeJavaScriptInIsolatedWorld(PROBE_WORLD_ID, [
-      { code: `document.querySelector(${JSON.stringify(selector)})?.focus()` },
+    const cdp = this.contents.debugger;
+    await cdp.sendCommand('DOM.enable').catch(() => undefined);
+    const doc = (await cdp.sendCommand('DOM.getDocument', { depth: 0 })) as { root?: { nodeId?: number } };
+    const rootId = doc.root?.nodeId;
+    if (rootId === undefined) throw new Error('The page is not ready to fill');
+    const queried = (await cdp.sendCommand('DOM.querySelector', { nodeId: rootId, selector })) as { nodeId?: number };
+    if (!queried.nodeId) throw new Error('Could not find the login field');
+    const described = (await cdp.sendCommand('DOM.describeNode', { nodeId: queried.nodeId })) as {
+      node?: { backendNodeId?: number };
+    };
+    const backendNodeId = described.node?.backendNodeId;
+    if (backendNodeId === undefined) throw new Error('Could not find the login field');
+    await cdp.sendCommand('DOM.focus', { backendNodeId });
+    if (value) await cdp.sendCommand('Input.insertText', { text: value });
+    if ((await this.fieldValue(selector)) === value) return;
+    // Input.insertText does nothing while the view is parked. Set the value in the page instead.
+    const written: unknown = await this.contents.executeJavaScriptInIsolatedWorld(PROBE_WORLD_ID, [
+      {
+        code: `(() => {
+          const el = document.querySelector(${JSON.stringify(selector)});
+          if (!el) return false;
+          const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value')?.set;
+          if (setter) setter.call(el, ${JSON.stringify(value)});
+          else el.value = ${JSON.stringify(value)};
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+          return el.value === ${JSON.stringify(value)};
+        })()`,
+      },
     ]);
-    await this.contents.debugger.sendCommand('Input.insertText', { text: value });
+    if (written !== true) throw new Error('Could not fill the login field');
   }
 
   /** Selected text and visible page text, for a tab the user sent to an agent. Truncate before logging. */

@@ -791,6 +791,34 @@ async function sendActiveTab(): Promise<void> {
   }
 }
 
+/** Lists 1Password titles for this origin and fills the chosen login. The password stays in main. */
+async function fillFromPasswordManager(): Promise<void> {
+  const url = useApp.getState().browser?.url ?? '';
+  let origin: string;
+  try {
+    origin = new URL(url).origin;
+  } catch {
+    showToast('This page has no login origin');
+    return;
+  }
+  try {
+    const { items } = await window.arbora.invoke('passwords.list', { origin });
+    if (items.length === 0) {
+      showToast('No 1Password login for this site');
+      return;
+    }
+    const { id } = await window.arbora.invoke('contextMenu.show', {
+      items: items.map((item) => ({ id: item.id, label: item.title })),
+    });
+    if (!id) return;
+    const active = useApp.getState().browserTabs.find((tab) => tab.active);
+    const result = await window.arbora.invoke('passwords.fill', active ? { id, tabId: active.id } : { id });
+    showToast(result.ok ? 'Filled from 1Password' : 'Could not find a password field');
+  } catch (error) {
+    showToast((error as Error).message);
+  }
+}
+
 async function exportDiagnostics(): Promise<void> {
   try {
     const { path } = await window.arbora.invoke('diagnostics.export');
@@ -1284,7 +1312,7 @@ async function runCommand(id: CommandId): Promise<void> {
       await sendActiveTab();
       return;
     case CommandId.browserFillPassword:
-      showToast('1Password fill is not connected yet');
+      await fillFromPasswordManager();
       return;
     case CommandId.groveSearch:
       openGroveSearch();
