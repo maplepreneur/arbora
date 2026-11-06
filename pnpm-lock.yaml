@@ -301,6 +301,8 @@ importers:
         specifier: 21.0.4
         version: 21.0.4
 
+  packages/dev-plugin: {}
+
   packages/mcp-browser-server:
     dependencies:
       '@modelcontextprotocol/sdk':

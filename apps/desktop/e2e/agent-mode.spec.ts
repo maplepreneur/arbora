@@ -407,6 +407,8 @@ test.describe('Stage 4 agent mode on Next.js (React 19)', () => {
         'Button ← Card ← Counter ← Page (server) ← RootLayout (server)',
       );
       await expect(page.getByTestId('agent-mode-tier')).toHaveAttribute('data-tier', '3');
+      // Tier 3 on Vite, Next or Nuxt offers the dev plugin. This fixture is Next and does not have it yet.
+      await expect(page.getByTestId('dev-plugin-install')).toBeVisible();
       const sources = page.getByTestId('agent-mode-include-sources');
       await expect(sources).toHaveText(/\d+ candidate files?/);
       await expect(sources).toHaveAttribute('title', /app\/components\/Button\.tsx/);

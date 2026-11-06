@@ -7,8 +7,10 @@ import type { ComponentEntry } from '@arbora/shared';
  *
  * React <= 18 dev builds give file:line per fiber (`_debugSource`); React 19 only gives owner
  * stacks (`_debugStack`), whose line numbers refer to transformed code and are dropped. Vue gives
- * `type.__file` without a line. Components with no source information at all are library
- * internals when the page provides source information elsewhere, and are dropped.
+ * `type.__file` without a line. `@arbora/dev-plugin` writes `data-arbora-src="file:line:column"`
+ * on host elements; that wins over a framework location that has no line. Components with no
+ * source information at all are library internals when the page provides source information
+ * elsewhere, and are dropped.
  */
 export function resolveComponents(start: Element, limit: number): ComponentEntry[] {
   interface Source {
@@ -83,9 +85,46 @@ export function resolveComponents(start: Element, limit: number): ComponentEntry
   };
   const isMinified = (name: string): boolean => /^[A-Za-z_$][\w$]?$/.test(name);
 
+  const arboraSrc = (el: Element): Source | null => {
+    const raw = el.getAttribute('data-arbora-src');
+    if (!raw) return null;
+    const match = /^(.*):(\d+):(\d+)$/.exec(raw);
+    if (!match?.[1] || match[2] === undefined || match[3] === undefined) return null;
+    const line = Number(match[2]);
+    const column = Number(match[3]);
+    if (!Number.isInteger(line) || !Number.isInteger(column)) return null;
+    return { file: match[1], line, column };
+  };
+  const filesMatch = (a: string, b: string): boolean => {
+    const norm = (value: string): string => value.replace(/\\/g, '/').replace(/[?#].*$/, '');
+    const left = norm(a);
+    const right = norm(b);
+    return left === right || left.endsWith(`/${right}`) || right.endsWith(`/${left}`);
+  };
   // --- React ---------------------------------------------------------------------------------
   const FUNCTION_TAGS = new Set([0, 1, 2, 11, 14, 15]);
   const HOST_TAGS = new Set([5, 26, 27]);
+  /** Host elements this component rendered, not ones that belong to a nested component. */
+  const ownHostElements = (fiber: Fiber): Element[] => {
+    const out: Element[] = [];
+    const visit = (node: Fiber | null): void => {
+      for (let current = node; current && out.length < 30; current = current.sibling) {
+        if (HOST_TAGS.has(current.tag) && isElement(current.stateNode)) {
+          out.push(current.stateNode);
+          visit(current.child);
+        } else if (!FUNCTION_TAGS.has(current.tag)) visit(current.child);
+      }
+    };
+    visit(fiber.child);
+    return out;
+  };
+  const attrDefined = (elements: readonly Element[]): Source | null => {
+    for (const el of elements) {
+      const source = arboraSrc(el);
+      if (source) return source;
+    }
+    return null;
+  };
   const fiberOf = (node: Node | null): Fiber | null => {
     for (let current: Node | null = node; current;) {
       const key = Object.keys(current).find(
@@ -179,7 +218,7 @@ export function resolveComponents(start: Element, limit: number): ComponentEntry
             name,
             minified: isMinified(name),
             server: false,
-            definedAt: ownedSource(fiber, name),
+            definedAt: attrDefined(ownHostElements(fiber)) ?? ownedSource(fiber, name),
             renderedAt: renderedAt && !isLibrary(renderedAt.file) ? renderedAt : null,
             rect: unionRect(hostNodes(fiber)),
           });
@@ -240,8 +279,14 @@ export function resolveComponents(start: Element, limit: number): ComponentEntry
       if (!name) continue;
       const elements: Element[] = [];
       vueElements(current.subTree, 0, elements);
-      const definedAt = vueFile(current);
+      let definedAt = vueFile(current);
       const renderedAt = vueFile(current.parent);
+      const marked = elements
+        .map((el) => arboraSrc(el))
+        .find((source) => source && (!definedAt || filesMatch(definedAt.file, source.file)));
+      if (marked) {
+        definedAt = definedAt ? { file: definedAt.file, line: marked.line, column: marked.column } : marked;
+      }
       out.push({
         name,
         minified: isMinified(name),
@@ -257,5 +302,25 @@ export function resolveComponents(start: Element, limit: number): ComponentEntry
   const all = react() ?? vue() ?? [];
   const anySource = all.some((c) => c.definedAt ?? c.renderedAt);
   const user = anySource ? all.filter((c) => c.server || c.definedAt || c.renderedAt) : all;
-  return user.slice(0, limit);
+  if (user.length > 0) return user.slice(0, limit);
+  let node: Node | null = start;
+  while (node) {
+    if (isElement(node)) {
+      const source = arboraSrc(node);
+      if (source) {
+        return [
+          {
+            name: node.tagName.toLowerCase(),
+            minified: false,
+            server: false,
+            definedAt: source,
+            renderedAt: null,
+            rect: unionRect([node]),
+          },
+        ];
+      }
+    }
+    node = node.parentNode ?? (node as unknown as { host?: Node }).host ?? null;
+  }
+  return [];
 }

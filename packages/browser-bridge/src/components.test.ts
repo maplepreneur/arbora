@@ -151,6 +151,25 @@ describe('resolveComponents (React 19)', () => {
     expect(chain[0]?.renderedAt?.file).toBe('http://h/src/Counter.tsx?t=1');
     expect(chain[1]?.renderedAt?.file).toBe('about://React/Server/file:///p/app/page.tsx?3');
   });
+
+  it('prefers data-arbora-src on the host element the component rendered', () => {
+    const card = fiber(0, named('Card'), { _debugStack: stack('    at App (http://h/src/App.tsx:4:1)') });
+    const section = host('section', card);
+    section.el.setAttribute('data-arbora-src', 'src/components/Card.tsx:12:3');
+    const button = fiber(0, named('Button'), {
+      _debugOwner: card,
+      _debugStack: stack('    at Card (http://h/src/components/Card.tsx:19:1)'),
+    });
+    const el = host('button', button, { _debugStack: stack('    at Button (http://h/src/components/Button.tsx:5:1)') });
+    el.el.setAttribute('data-arbora-src', 'src/components/Button.tsx:8:5');
+    link(card, section.f);
+    link(section.f, button);
+    link(button, el.f);
+    const chain = resolveComponents(el.el, 12);
+    expect(chain.map((c) => c.name)).toEqual(['Button', 'Card']);
+    expect(chain[0]?.definedAt).toEqual({ file: 'src/components/Button.tsx', line: 8, column: 5 });
+    expect(chain[1]?.definedAt).toEqual({ file: 'src/components/Card.tsx', line: 12, column: 3 });
+  });
 });
 
 describe('resolveComponents (Vue)', () => {
@@ -181,6 +200,24 @@ describe('resolveComponents (Vue)', () => {
     expect(chain[0]?.renderedAt?.file).toBe('/p/app/components/CounterCard.vue');
     expect(chain[0]?.definedAt?.line).toBeNull();
   });
+
+  it('fills the Vue file line from data-arbora-src', () => {
+    const buttonEl = document.createElement('button');
+    buttonEl.setAttribute('data-arbora-src', 'app/components/AppButton.vue:14:5');
+    const button = {
+      type: { __name: 'AppButton', __file: '/p/app/components/AppButton.vue' },
+      parent: null,
+      subTree: { el: buttonEl },
+    };
+    (buttonEl as unknown as Record<string, unknown>)['__vueParentComponent'] = button;
+    document.body.append(buttonEl);
+    const chain = resolveComponents(buttonEl, 12);
+    expect(chain[0]?.definedAt).toEqual({
+      file: '/p/app/components/AppButton.vue',
+      line: 14,
+      column: 5,
+    });
+  });
 });
 
 describe('resolveComponents (plain HTML)', () => {
@@ -188,5 +225,12 @@ describe('resolveComponents (plain HTML)', () => {
     const div = document.createElement('div');
     document.body.append(div);
     expect(resolveComponents(div, 12)).toEqual([]);
+  });
+
+  it('reports the dev-plugin attribute when there is no component', () => {
+    const div = document.createElement('div');
+    div.setAttribute('data-arbora-src', 'index.html:3:1');
+    document.body.append(div);
+    expect(resolveComponents(div, 12)[0]?.definedAt).toEqual({ file: 'index.html', line: 3, column: 1 });
   });
 });
