@@ -26,6 +26,7 @@
     "release": "node scripts/fetch-devtools-extensions.mjs && electron-vite build && electron-builder --publish always"
   },
   "dependencies": {
+    "@jridgewell/trace-mapping": "0.3.31",
     "chokidar": "6.0.0",
     "electron-updater": "6.8.11",
     "fflate": "0.8.3",

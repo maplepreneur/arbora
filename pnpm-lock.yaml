@@ -44,6 +44,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@jridgewell/trace-mapping':
+        specifier: 0.3.31
+        version: 0.3.31
       chokidar:
         specifier: 6.0.0
         version: 6.0.0

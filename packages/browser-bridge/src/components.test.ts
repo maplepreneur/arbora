@@ -178,6 +178,19 @@ describe('resolveComponents (React 19)', () => {
     expect(chain[0]?.definedAt).toEqual({ file: 'src/components/Button.tsx', line: 8, column: 5 });
     expect(chain[1]?.definedAt).toEqual({ file: 'src/components/Card.tsx', line: 12, column: 3 });
   });
+
+  it('keeps the line and column of a production bundle so a source map can place it', () => {
+    const button = fiber(0, named('Button'), {
+      _debugStack: stack('    at Button (http://h/assets/index-abc.js:1:80)'),
+    });
+    const el = host('button', button);
+    link(button, el.f);
+    expect(resolveComponents(el.el, 4)[0]?.renderedAt).toEqual({
+      file: 'http://h/assets/index-abc.js',
+      line: 1,
+      column: 80,
+    });
+  });
 });
 
 describe('resolveComponents (Vue)', () => {

@@ -987,6 +987,8 @@ User feedback from the first macOS installs, landed as a stack of pull requests 
    - Gotcha: the language server must be the project's TypeScript version; resolve `node_modules/typescript` first. The binary is the project's `typescript-language-server` (`lib/cli.mjs`), spawned with Electron as Node. Main adds the Content-Length framing; the renderer only sends JSON. The renderer must not call `lsp.stop` and then `lsp.start`: the stop can kill the process that `start` just spawned. Turning the setting off stops it. Switching projects lets `lsp.start` replace the process.
    - Gotcha: CodeMirror requests a hover only when the pointer is within about one character of a glyph. A hover on the empty part of the line does nothing.
 8. **Agent-mode on production builds**: heuristics to map minified components via source maps when available (`//# sourceMappingURL`), using CDP `Debugger.getScriptSource`.
+   - Gotcha: a production `.js` bundle stack keeps its line and column. A `.tsx` or `.vue` frame still drops them, because those numbers belong to transformed code.
+   - Gotcha: mapping reads the script with `Debugger.getScriptSource`, then the `sourceMappingURL`. The map is fetched only from the script's own host, or decoded from a `data:` URL. `Debugger.enable` runs the first time a bundle needs a map. A mapped file outside the project is still dropped.
 9. **Grove orchestration**: moved to Stage 10 (`F-GROVE-12`) on 4 Nov 2026. The `grove_*` tools ride on the browser MCP server every session already has.
 
 ### Checklist
@@ -998,7 +1000,7 @@ User feedback from the first macOS installs, landed as a stack of pull requests 
 - [x] Design session history
 - [x] Action traces
 - [x] LSP opt-in
-- [ ] Source-map assisted mapping
+- [x] Source-map assisted mapping
 - [x] Grove orchestration MCP tools (moved to Stage 10)
 
 ---
