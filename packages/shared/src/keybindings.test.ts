@@ -184,6 +184,9 @@ describe('KeybindingTable', () => {
     expect(table.match(parseChord('ctrl+alt+g', 'linux'), grove)?.commandId).toBe(CommandId.showGitPanel);
     expect(table.match(parseChord('ctrl+alt+g', 'linux'), idle)?.commandId).toBe(CommandId.showGitPanel);
     expect(table.match(parseChord('ctrl+shift+l', 'linux'), idle)?.commandId).toBe(CommandId.showBrowser);
+    expect(table.match(parseChord('ctrl+shift+l', 'linux'), { ...idle, browserPage: true })?.commandId).toBe(
+      CommandId.browserFillPassword,
+    );
     expect(table.match(parseChord('ctrl+shift+h', 'linux'), idle)?.commandId).toBe(CommandId.toggleContentPane);
     expect(table.match(parseChord('ctrl+h', 'linux'), idle)?.commandId).toBe(CommandId.showKeybindings);
     // Mod+Alt+1..9 pick the right column's tabs, from the terminal too; Mod+1..9 stay agents.

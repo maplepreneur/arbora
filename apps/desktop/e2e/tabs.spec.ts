@@ -206,6 +206,80 @@ process.exit(2);
     }
   });
 
+  test('saves a submitted login through op and keeps the password out of the window', async () => {
+    const login = await startStaticFixture(LOGIN);
+    const userData = tempUserData();
+    const opDir = mkdtempSync(join(tmpdir(), 'arbora-op-save-'));
+    const saveFile = join(opDir, 'saved.json');
+    const savedPassword = 'saved-fixture-secret';
+    const op = join(opDir, 'op');
+    writeFileSync(
+      op,
+      `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args.join(' ').includes(${JSON.stringify(savedPassword)})) {
+  process.stderr.write('secret leaked to argv\\n');
+  process.exit(3);
+}
+if (args[1] === 'create') {
+  const chunks = [];
+  process.stdin.on('data', (chunk) => chunks.push(chunk));
+  process.stdin.on('end', () => {
+    require('fs').writeFileSync(${JSON.stringify(saveFile)}, Buffer.concat(chunks));
+    process.stdout.write('{"id":"saved"}\\n');
+    process.exit(0);
+  });
+} else {
+  process.stderr.write('unexpected op\\n');
+  process.exit(2);
+}
+`,
+    );
+    chmodSync(op, 0o755);
+    writeFileSync(
+      join(userData, 'settings.json'),
+      JSON.stringify({
+        version: 7,
+        passwords: { provider: '1password', mode: 'cli', agentLogins: 'ask', alwaysAllow: [] },
+      }),
+    );
+    const { app, page } = await launch(userData, [LOGIN], { ARBORA_OP: op });
+    try {
+      await openUrl(page, login.url);
+      await expect(page.getByTestId('browser-fill-password')).toBeVisible();
+      await app.evaluate(
+        ({ webContents }, input) => {
+          const view = webContents.getAllWebContents().find((wc) => wc.getURL().startsWith(input.url));
+          if (!view) throw new Error('Login page is not open');
+          return view.executeJavaScript(`(() => {
+          const set = (el, value) => {
+            const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value')?.set;
+            if (setter) setter.call(el, value);
+            else el.value = value;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+          };
+          set(document.querySelector('input[name="user"]'), ${JSON.stringify(input.user)});
+          set(document.querySelector('input[type="password"]'), ${JSON.stringify(input.password)});
+          document.getElementById('login').requestSubmit();
+        })()`);
+        },
+        { url: login.url, user: 'ada@example.com', password: savedPassword },
+      );
+      await expect(page.getByTestId('toast')).toContainText('Save the login', { timeout: 15_000 });
+      expect(await page.locator('body').innerText()).not.toContain(savedPassword);
+      await page.getByTestId('toast-action').click();
+      await expect(page.getByTestId('toast')).toContainText('Saved to 1Password', { timeout: 15_000 });
+      const saved = JSON.parse(readFileSync(saveFile, 'utf8')) as {
+        fields: { purpose: string; value: string }[];
+      };
+      expect(saved.fields.find((field) => field.purpose === 'PASSWORD')?.value).toBe(savedPassword);
+      expect(await page.locator('body').innerText()).not.toContain(savedPassword);
+    } finally {
+      await app.close();
+      await login.close();
+    }
+  });
+
   test('opens and closes a tab from the page, and the app tab stays', async () => {
     const design = await startStaticFixture(DESIGN);
     const { app, page } = await launch(tempUserData(), [DESIGN]);

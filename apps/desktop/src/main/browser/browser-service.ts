@@ -1165,6 +1165,24 @@ export class BrowserService {
     };
   }
 
+  /**
+   * The current value of a named login field, read in the isolated world. The page sends a name
+   * or id, not a CSS selector, and the value never goes to the renderer.
+   */
+  async namedFieldValue(name: string): Promise<string> {
+    const value: unknown = await this.contents.executeJavaScriptInIsolatedWorld(PROBE_WORLD_ID, [
+      {
+        code: `(() => {
+          const name = ${JSON.stringify(name)};
+          const el =
+            document.querySelector('input[name="' + CSS.escape(name) + '"]') || document.getElementById(name);
+          return el && 'value' in el ? String(el.value) : '';
+        })()`,
+      },
+    ]);
+    return typeof value === 'string' ? value : '';
+  }
+
   /** The current value of a field, read in the isolated world. Never forward this to the renderer. */
   async fieldValue(selector: string): Promise<string> {
     const value: unknown = await this.contents.executeJavaScriptInIsolatedWorld(PROBE_WORLD_ID, [

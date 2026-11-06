@@ -14,6 +14,7 @@ import {
   Camera,
   ExternalLink,
   Globe,
+  KeyRound,
   Lock,
   LockOpen,
   RotateCw,
@@ -249,6 +250,20 @@ function UrlBar({ state }: { state: NavigationState | null }) {
   );
 }
 
+function FillPasswordButton({ hasPage }: { hasPage: boolean }) {
+  const provider = useApp((s) => s.settings.passwords.provider);
+  if (provider !== '1password') return null;
+  return (
+    <ToolButton
+      icon={KeyRound}
+      label="Fill from 1Password"
+      testId="browser-fill-password"
+      disabled={!hasPage}
+      onClick={() => executeCommand(CommandId.browserFillPassword)}
+    />
+  );
+}
+
 function Toolbar({ state }: { state: NavigationState | null }) {
   const reloadLabel = useChordLabel(CommandId.browserReload);
   const devToolsLabel = useChordLabel(CommandId.browserToggleDevTools);
@@ -290,6 +305,7 @@ function Toolbar({ state }: { state: NavigationState | null }) {
         />
       )}
       <UrlBar state={state} />
+      <FillPasswordButton hasPage={hasPage} />
       <select
         aria-label="Viewport"
         data-testid="viewport-preset"

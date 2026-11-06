@@ -1111,9 +1111,11 @@ function main(): void {
         const runtime = path ? manager.runtime(path) : undefined;
         const tabs = projectWindow.browserTabs();
         if (!runtime || !tabs) throw new Error('Open a project first');
+        if (settings.get().passwords.provider !== '1password')
+          throw new Error('1Password is not the password provider');
         const service = (await tabs.resolve(tabId)).service;
-        const username = usernameField ? await service.fieldValue(usernameField) : '';
-        const password = await service.fieldValue(passwordField);
+        const username = usernameField ? await service.namedFieldValue(usernameField) : '';
+        const password = await service.namedFieldValue(passwordField);
         if (!password) return { ok: false };
         await runtime.passwords.save({ title: title ?? new URL(origin).host, url: origin, username, password });
         return { ok: true };

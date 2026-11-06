@@ -24,7 +24,15 @@ export interface OpRunResult {
 /** Runs `op`. Stdout and stderr are secret and must not be logged. */
 export type OpRunner = (args: readonly string[], stdin?: string) => Promise<OpRunResult>;
 
-export class OnePasswordProvider {
+/** What a password manager can do for a tab. Other providers stay unimplemented. */
+export interface PasswordProvider {
+  listLogins(origin: string): Promise<LoginSummary[]>;
+  reveal(id: string): Promise<RevealedLogin>;
+  otp(id: string): Promise<string>;
+  save(input: { title: string; url: string; username: string; password: string }): Promise<void>;
+}
+
+export class OnePasswordProvider implements PasswordProvider {
   constructor(
     private readonly run: OpRunner,
     private readonly secrets: SecretMask,

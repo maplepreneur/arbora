@@ -578,7 +578,10 @@ export class ProjectWindow {
         this.browser = this.tabs?.activeService() ?? null;
         sendEvent(this.contents, 'browser.tabsChanged', { tabs });
       },
-      passwordOffer: (offer) => sendEvent(this.contents, 'passwords.offerSave', offer),
+      passwordOffer: (offer) => {
+        if (this.options.settings.get().passwords.provider !== '1password') return;
+        sendEvent(this.contents, 'passwords.offerSave', offer);
+      },
     };
   }
 
