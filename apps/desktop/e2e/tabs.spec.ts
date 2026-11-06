@@ -918,6 +918,66 @@ if (args[1] === 'create') {
     }
   });
 
+  test('sends a tab to another open project and stays on this window', async () => {
+    test.setTimeout(90_000);
+    const design = await startStaticFixture(DESIGN);
+    const other = realpathSync(mkdtempSync(join(tmpdir(), 'arbora-send-')));
+    const userData = tempUserData();
+    fakeAgentSettings(userData);
+    const { app, page } = await launch(userData, [DESIGN]);
+    try {
+      await openUrl(page, design.url);
+      const name = basename(other);
+      await page.evaluate((path) => {
+        setTimeout(() => {
+          void window.arbora.invoke('project.openInWindow', { path });
+        }, 0);
+      }, other);
+      await expect
+        .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), { timeout: 15_000 })
+        .toBeGreaterThan(1);
+      await page.getByTestId('browser-tab-send').click();
+      const project = page.getByTestId('browser-send-project');
+      await expect(project.locator('option', { hasText: name })).toHaveCount(1, { timeout: 10_000 });
+      await project.selectOption(other);
+      await page.getByTestId('browser-send-text').fill('Carry this design');
+      await page.getByTestId('browser-send-target').selectOption('new:fake');
+      await page.getByTestId('browser-send-confirm').click();
+      await expect(page.getByTestId('browser-send-sent')).toBeVisible({ timeout: 20_000 });
+      await page.getByTestId('browser-send-stay').click();
+      await expect(page.getByTestId('browser-tabs')).toBeVisible();
+      await expect
+        .poll(
+          () =>
+            app.evaluate(
+              async ({ BrowserWindow }, input) => {
+                const win = BrowserWindow.getAllWindows().find((item) => item.getTitle().startsWith(input.name));
+                if (!win) return '';
+                return win.webContents.executeJavaScript(`(async () => {
+                const threads = await window.arbora.invoke('agent.listThreads');
+                const thread = threads.find((item) => item.title === 'Carry this design');
+                if (!thread) return '';
+                const full = await window.arbora.invoke('agent.getThread', { threadId: thread.id });
+                return JSON.stringify(full?.events ?? []).includes('live tab stays') ? 'ok' : '';
+              })()`);
+              },
+              { name },
+            ),
+          { timeout: 20_000 },
+        )
+        .toBe('ok');
+    } finally {
+      await app
+        .evaluate(({ BrowserWindow }) => {
+          for (const win of BrowserWindow.getAllWindows().slice(1)) win.destroy();
+        })
+        .catch(() => undefined);
+      await app.close();
+      await design.close();
+      rmSync(other, { recursive: true, force: true });
+    }
+  });
+
   test('reads a canvas frame, ignores its chrome, and matches the card', async () => {
     test.setTimeout(120_000);
     const appFile = join(VITE_REACT, 'src/App.tsx');

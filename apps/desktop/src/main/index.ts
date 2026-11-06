@@ -1115,22 +1115,25 @@ function main(): void {
         }
       }
     };
-    defineHandler('browser.tabs.send', isTrusted, async ({ tabId, text, fullPage, target }, event) => {
+    defineHandler('browser.tabs.send', isTrusted, async ({ tabId, text, fullPage, target, projectPath }, event) => {
       const projectWindow = windowFor(event.sender);
       const tabs = projectWindow.browserTabs();
       const path = projectWindow.project?.path;
-      const agents = projectWindow.agents;
-      if (!tabs || !path || !agents) throw new Error('Open a project first');
+      if (!tabs || !path) throw new Error('Open a project first');
+      const destination = projectPath && projectPath !== path ? projectPath : path;
+      const agents = destination === path ? projectWindow.agents : manager.runtime(destination)?.agents;
+      if (!agents) throw new Error('Open project and send');
       const resolved = await tabs.resolve(tabId);
       const viewport = await resolved.service.screenshot({ mode: 'viewport' });
       const full = fullPage ? await resolved.service.screenshot({ mode: 'fullPage' }) : null;
       const summary = await resolved.service.pageSummary().catch(() => ({ selection: '', text: '' }));
       const accessibility = await resolved.service.accessibilitySummary().catch(() => '');
       const threadId = threadForSentTab(agents, target, text);
-      manager.grants.grant(path, threadId, resolved.id);
+      const sameWindow = destination === path;
+      if (sameWindow) manager.grants.grant(path, threadId, resolved.id);
       const state = resolved.service.getState();
       const app = tabs.snapshots().find((entry) => entry.role === 'app');
-      const match = readProjectSettings(path).settings.designMatch;
+      const match = readProjectSettings(destination).settings.designMatch;
       const threshold = match?.threshold ?? 0.92;
       const maxRounds = match?.maxRounds ?? 5;
       const excerpt = summary.text.replace(/\s+/g, ' ').trim().slice(0, 4000);
@@ -1138,11 +1141,13 @@ function main(): void {
       const body = [
         text,
         '',
-        `Tab ${resolved.id} (${resolved.role}) is granted to this thread.`,
+        sameWindow
+          ? `Tab ${resolved.id} (${resolved.role}) is granted to this thread.`
+          : `Screenshots of tab ${resolved.id} (${resolved.role}) are attached. The live tab stays on the sending window, so work from these images.`,
         `Title: ${state.title || '(untitled)'}`,
         `URL: ${state.url || '(none)'}`,
-        `App tab: ${app?.id ?? 'app'}`,
-        'Use browser tools with this tab id as target. The project page is target "app".',
+        sameWindow ? `App tab: ${app?.id ?? 'app'}` : 'Implement this in the app tab of this project.',
+        sameWindow ? 'Use browser tools with this tab id as target. The project page is target "app".' : '',
         `Compare the design with the app using browser_compare. Stop at ${threshold}, after ${maxRounds} rounds, or list the differences that remain.`,
         'Figma is a canvas: browser_snapshot shows the Figma chrome, not the layers. Screenshot the frame. A node-id in the URL selects one frame.',
         full ? 'A full-page screenshot follows the viewport.' : '',
@@ -1159,11 +1164,13 @@ function main(): void {
           ...(full ? [{ type: 'image' as const, data: full.pngBase64, mimeType: 'image/png' as const }] : []),
         ])
         .catch((error: unknown) => console.warn(`[tabs] send failed: ${(error as Error).message}`));
-      sendEvent(projectWindow.contents, 'agent.grantsChanged', {
-        threadId,
-        tabIds: manager.grants.list(path, threadId),
-      });
-      return { threadId };
+      if (sameWindow) {
+        sendEvent(projectWindow.contents, 'agent.grantsChanged', {
+          threadId,
+          tabIds: manager.grants.list(path, threadId),
+        });
+      }
+      return { threadId, projectPath: destination };
     });
     defineHandler('passwords.list', isTrusted, async ({ origin }, event) => {
       const path = windowFor(event.sender).project?.path;

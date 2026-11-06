@@ -1,10 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppWindow, Globe, LoaderCircle, Plus, Send, X } from 'lucide-react';
 import clsx from 'clsx';
-import { CommandId, type AgentModeTarget, type BrowserTabSnapshot, type ContextMenuItem } from '@arbora/shared';
-import { defaultAgentModeTarget, isListed, useAgents } from '../agent-store';
+import {
+  CommandId,
+  resolveDefaultAgent,
+  type AgentModeTarget,
+  type BrowserTabSnapshot,
+  type ContextMenuItem,
+  type ThreadSummary,
+} from '@arbora/shared';
+import {
+  agentModeProjectOrder,
+  agentModeTargetForProject,
+  defaultAgentModeTarget,
+  isListed,
+  useAgents,
+} from '../agent-store';
 import { useDefaultAgentId } from '../agent-defaults';
 import { executeCommand, registerSendTabOpener, sendActiveTab } from '../commands';
+import { noteProjectThreads } from '../grove-store';
+import { useProjects } from '../projects-store';
 import { useApp } from '../store';
 
 /**
@@ -95,7 +110,7 @@ function parseSendTarget(key: string): AgentModeTarget | null {
   return null;
 }
 
-/** Prompt and thread for one tab. The text defaults to the design-match ask. */
+/** Prompt, thread and project for one tab. The text defaults to the design-match ask. */
 function SendTabForm({
   tabId,
   fullPage,
@@ -109,21 +124,80 @@ function SendTabForm({
 }) {
   const [text, setText] = useState('Implement this design');
   const [chosen, setChosen] = useState<string | null>(null);
-  const threads = useAgents((s) => s.threads);
+  const [projectPath, setProjectPath] = useState('');
+  const [foreign, setForeign] = useState<Record<string, { threads: ThreadSummary[]; defaultAgent: string | null }>>({});
+  const [sent, setSent] = useState<{ threadId: string; path: string } | null>(null);
+  const [pendingOpen, setPendingOpen] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const localThreads = useAgents((s) => s.threads);
   const agents = useAgents((s) => s.agents);
   const availability = useAgents((s) => s.availability);
   const defaultAgent = useDefaultAgentId();
+  const appDefault = useApp((s) => s.settings.agents.defaultAgent);
   const chatThread = useApp((s) => s.layout.groveThreadId);
-  const fallback = useMemo(
-    () => defaultAgentModeTarget({ threads, agents, availability }, chatThread, defaultAgent),
-    [threads, agents, availability, chatThread, defaultAgent],
+  const currentPath = useApp((s) => s.project?.path ?? '');
+  const otherProjects = agentModeProjectOrder(
+    useProjects((s) => s.library.entries).filter((entry) => entry.path !== currentPath && (entry.open || entry.recent)),
   );
-  const target = chosen ?? fallback ?? '';
+  const foreignInfo = projectPath ? foreign[projectPath] : undefined;
+  const threads = projectPath ? (foreignInfo?.threads ?? []) : localThreads;
+  const localFallback = useMemo(
+    () => defaultAgentModeTarget({ threads: localThreads, agents, availability }, chatThread, defaultAgent),
+    [localThreads, agents, availability, chatThread, defaultAgent],
+  );
+  const foreignFallback = projectPath
+    ? agentModeTargetForProject(
+        threads,
+        agents,
+        availability,
+        resolveDefaultAgent(
+          agents.map((agent) => agent.id),
+          foreignInfo?.defaultAgent ?? undefined,
+          appDefault,
+        ),
+      )
+    : null;
+  const target = chosen ?? (projectPath ? foreignFallback : localFallback) ?? '';
   const options = [
     ...threads.filter(isListed).map((thread) => ({ value: `thread:${thread.id}`, label: thread.title })),
     ...agents.map((agent) => ({ value: `new:${agent.id}`, label: `New ${agent.name} thread` })),
   ];
   const selected = options.some((option) => option.value === target) ? target : (options[0]?.value ?? '');
+
+  useEffect(() => {
+    if (!projectPath) return;
+    let cancelled = false;
+    void window.arbora.invoke('grove.agents').then((result) => {
+      if (cancelled) return;
+      const next: Record<string, { threads: ThreadSummary[]; defaultAgent: string | null }> = {};
+      for (const project of result.projects) {
+        noteProjectThreads(project.path, project.threads);
+        next[project.path] = { threads: project.threads, defaultAgent: project.defaultAgent };
+      }
+      if (!next[projectPath]) next[projectPath] = { threads: [], defaultAgent: null };
+      setForeign(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectPath]);
+
+  const submit = (): void => {
+    const parsed = parseSendTarget(selected);
+    setError(null);
+    setPendingOpen(null);
+    void sendActiveTab(fullPage, tabId, text, parsed ?? undefined, projectPath || undefined).then((result) => {
+      if (!result) return;
+      if (result.needsOpen) {
+        setPendingOpen(result.path);
+        setError('That project is not open');
+        return;
+      }
+      if (result.path !== currentPath) setSent(result);
+      else onClose();
+    });
+  };
+
   return (
     <form
       data-testid="browser-send-tab"
@@ -131,9 +205,7 @@ function SendTabForm({
       className="absolute right-1 top-full z-30 mt-1 flex w-72 flex-col gap-2 rounded border border-border bg-bg-elevated p-2 text-xs shadow-lg"
       onSubmit={(event) => {
         event.preventDefault();
-        const parsed = parseSendTarget(selected);
-        onClose();
-        void sendActiveTab(fullPage, tabId, text, parsed ?? undefined);
+        submit();
       }}
     >
       <label className="flex flex-col gap-1">
@@ -142,16 +214,43 @@ function SendTabForm({
           data-testid="browser-send-text"
           rows={2}
           value={text}
+          disabled={sent !== null}
           onChange={(event) => setText(event.target.value)}
           className="w-full resize-none rounded border border-border bg-bg px-1.5 py-1 text-fg outline-none focus:border-accent"
         />
       </label>
+      {otherProjects.length > 0 && (
+        <label className="flex items-center gap-1.5 text-fg-subtle">
+          Project
+          <select
+            data-testid="browser-send-project"
+            value={projectPath}
+            disabled={sent !== null}
+            onChange={(event) => {
+              setProjectPath(event.target.value);
+              setChosen(null);
+              setSent(null);
+              setPendingOpen(null);
+              setError(null);
+            }}
+            className="min-w-0 flex-1 rounded border border-border bg-bg px-1 py-0.5 text-fg"
+          >
+            <option value="">This project</option>
+            {otherProjects.map((entry) => (
+              <option key={entry.path} value={entry.path}>
+                {entry.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {options.length > 0 && (
         <label className="flex items-center gap-1.5 text-fg-subtle">
           Thread
           <select
             data-testid="browser-send-target"
             value={selected}
+            disabled={sent !== null}
             onChange={(event) => setChosen(event.target.value)}
             className="min-w-0 flex-1 rounded border border-border bg-bg px-1 py-0.5 text-fg"
           >
@@ -168,18 +267,66 @@ function SendTabForm({
           type="checkbox"
           data-testid="browser-send-full-page"
           checked={fullPage}
+          disabled={sent !== null}
           onChange={(event) => onFullPage(event.target.checked)}
         />
         Include a full-page screenshot
       </label>
-      <div className="flex justify-end gap-1">
-        <button type="button" className="rounded px-2 py-1 hover:bg-bg-muted" onClick={onClose}>
-          Cancel
+      {error && (
+        <p className="text-danger" data-testid="browser-send-error">
+          {error}
+        </p>
+      )}
+      {pendingOpen && (
+        <button
+          type="button"
+          data-testid="browser-send-open-project"
+          onClick={() => {
+            void window.arbora.invoke('project.openInWindow', { path: pendingOpen }).then(() => submit());
+          }}
+          className="self-start rounded border border-border px-1.5 py-0.5 text-fg-muted hover:bg-bg-muted"
+        >
+          Open project and send
         </button>
-        <button type="submit" data-testid="browser-send-confirm" className="rounded bg-accent px-2 py-1 text-accent-fg">
-          Send
-        </button>
-      </div>
+      )}
+      {sent ? (
+        <div className="flex items-center justify-end gap-1" data-testid="browser-send-sent">
+          <span className="mr-auto text-fg-muted">Sent. This window stays put.</span>
+          <button
+            type="button"
+            data-testid="browser-send-stay"
+            className="rounded px-2 py-1 hover:bg-bg-muted"
+            onClick={onClose}
+          >
+            Stay here
+          </button>
+          <button
+            type="button"
+            data-testid="browser-send-open-thread"
+            className="rounded bg-accent px-2 py-1 text-accent-fg"
+            onClick={() => {
+              void window.arbora
+                .invoke('project.showThread', { path: sent.path, threadId: sent.threadId })
+                .finally(onClose);
+            }}
+          >
+            Open thread
+          </button>
+        </div>
+      ) : (
+        <div className="flex justify-end gap-1">
+          <button type="button" className="rounded px-2 py-1 hover:bg-bg-muted" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            data-testid="browser-send-confirm"
+            className="rounded bg-accent px-2 py-1 text-accent-fg"
+          >
+            Send
+          </button>
+        </div>
+      )}
     </form>
   );
 }

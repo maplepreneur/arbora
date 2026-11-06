@@ -398,8 +398,10 @@ export const channels = {
       fullPage: z.boolean().default(false),
       /** An existing thread, or a new one with `agentId`. */
       target: agentModeTargetSchema,
+      /** Another open project's folder. The prompt goes there; this window keeps the tab. */
+      projectPath: z.string().min(1).optional(),
     }),
-    z.object({ threadId: z.string() }),
+    z.object({ threadId: z.string(), projectPath: z.string() }),
   ),
   'passwords.list': defineChannel(
     'passwords.list',

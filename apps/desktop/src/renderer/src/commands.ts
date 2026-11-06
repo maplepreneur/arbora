@@ -793,37 +793,47 @@ export async function sendActiveTab(
   tabId?: string,
   text = 'Implement this design',
   target?: AgentModeTarget,
-): Promise<void> {
-  if (sendInFlight) return;
+  projectPath?: string,
+): Promise<{ threadId: string; path: string; needsOpen: boolean } | null> {
+  if (sendInFlight) return null;
   const agentId = defaultAgentId();
   const resolved = target ?? (agentId ? { type: 'new' as const, agentId } : null);
   if (!resolved) {
     showToast('Choose an agent first');
-    return;
+    return null;
   }
   const tab = tabId
     ? useApp.getState().browserTabs.find((entry) => entry.id === tabId)
     : useApp.getState().browserTabs.find((entry) => entry.active);
   if (tabId && !tab) {
     showToast('That tab is closed');
-    return;
+    return null;
   }
   const prompt = text.trim();
   if (!prompt) {
     showToast('Write what the agent should do');
-    return;
+    return null;
   }
+  const here = useApp.getState().project?.path ?? '';
+  const destination = projectPath && projectPath !== here ? projectPath : undefined;
   sendInFlight = true;
   try {
-    const { threadId } = await window.arbora.invoke('browser.tabs.send', {
+    const sent = await window.arbora.invoke('browser.tabs.send', {
       ...(tab ? { tabId: tab.id } : {}),
       text: prompt,
       fullPage,
       target: resolved,
+      ...(destination ? { projectPath: destination } : {}),
     });
-    await openThread(threadId);
+    if (sent.projectPath === here) await openThread(sent.threadId);
+    return { threadId: sent.threadId, path: sent.projectPath, needsOpen: false };
   } catch (error) {
-    showToast((error as Error).message);
+    const message = (error as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+    if (destination && message.includes('Open project and send')) {
+      return { threadId: '', path: destination, needsOpen: true };
+    }
+    showToast(message);
+    return null;
   } finally {
     sendInFlight = false;
   }
