@@ -8,7 +8,7 @@ The companion document [BUILD_STAGES.md](./BUILD_STAGES.md) breaks the build int
 
 Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents must update this section and that table at the end of every piece of work.
 
-**Now (6 Nov 2026):** Stage 11 worktree sessions are in progress. A Grove worktree gets its own dev port and the browser opens it. The project row merges that branch into the parent or opens a pull request. Best-of-N starts the same task on up to four agents; Keep merges one and discards the rest. `node_modules` is linked from the parent, and a separate install removes only the link. 751 unit tests passed. e2e was 53 passed and 1 skipped (the budget spec). Not `arch-ok`.
+**Now (6 Nov 2026):** Stage 11 worktree sessions are in progress ([PR #82](https://github.com/maplepreneur/arbora/pull/82)). A Grove worktree gets its own dev port and the browser opens it. The project row merges that branch into the parent or opens a pull request. Best-of-N starts the same task on up to four agents; Keep merges one and discards the rest. `node_modules` is linked from the parent, and a separate install removes only the link. 751 unit tests passed. e2e was 53 passed and 1 skipped (the budget spec). Not `arch-ok`.
 
 **Next:** the rest of Stage 11: the dev plugin, Tailwind write-through, design session history, MCP action traces, LSP opt-in, and source-map mapping for production builds. Stage 10 still needs `arch-ok` on Omarchy/Hyprland. Do not mark Stage 11 `Done`.
 
