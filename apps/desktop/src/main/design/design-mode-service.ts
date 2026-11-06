@@ -8,6 +8,7 @@ import { composeDesignPrompt, type PromptScreenshot } from '@arbora/browser-brid
 import {
   activeOps,
   designOpSchema,
+  planWriteThrough,
   renderChangeList,
   type AgentModeTarget,
   type ContentBlock,
@@ -25,6 +26,7 @@ import { fitWithin } from '../browser/image.js';
 import type { BrowserService } from '../browser/browser-service.js';
 import { projectRelative, resolveSource } from '../agent-mode/source-paths.js';
 import type { SearchTerm } from '../agent-mode/source-search.js';
+import { commitWriteThrough, prepareWriteThrough } from './apply-write-through.js';
 import { detectProjectStyling } from './styling.js';
 
 /** Agents downscale anything larger; Claude's documented limit is 1568 px on the long edge. */
@@ -209,6 +211,54 @@ export class DesignModeService {
     });
     this.before = null;
     return { threadId };
+  }
+
+  /** Tailwind, CSS modules, or plain CSS, plus config colours the class mapper knows. */
+  styling(): { approach: StylingApproach; colors: { hex: string; name: string }[] } {
+    const styling = detectProjectStyling(this.options.projectPath);
+    return {
+      approach: styling.approach,
+      colors: [...styling.colors.entries()].slice(0, 400).map(([hex, name]) => ({ hex, name })),
+    };
+  }
+
+  /**
+   * Writes every applied style as a Tailwind class on its tier-1 source tag, reverts the live
+   * DOM, and records a session. The agent is not prompted.
+   */
+  async writeThrough(): Promise<{ files: string[]; sessionId: string }> {
+    const browser = this.options.browser();
+    const state = this.state;
+    if (!this.active || !browser || !state) throw new Error('Design mode is not active');
+    if (!this.before) throw new Error('There is no before screenshot yet. Load the page, then edit it.');
+    const applied = activeOps(state.ops, state.cursor);
+    if (applied.length === 0) throw new Error('Nothing to apply: every change is switched off');
+    const styling = detectProjectStyling(this.options.projectPath);
+    const plan = planWriteThrough(applied, styling.approach, styling.colors);
+    if (!plan.ok) throw new Error(plan.reason);
+    // Refuse before touching the disk when a tag cannot take a class edit.
+    const prepared = prepareWriteThrough(this.options.projectPath, plan.edits);
+    browser.sendDesignCommand({ type: 'showOriginal', on: false });
+    await browser.setDesignOverlayVisible(false);
+    const after = this.prepare(browser, await browser.screenshot({ mode: 'viewport' }), 'design-after');
+    commitWriteThrough(prepared);
+    const files = prepared.map((file) => file.relative);
+    const changes = `Applied to source.\n\n${renderChangeList(applied, styling.approach, styling.colors)}`;
+    const sources = await this.sourcesFor(applied);
+    const session = this.writeSession({
+      url: browser.getState().url,
+      approach: styling.approach,
+      changes,
+      framework: state.framework,
+      sources,
+      before: this.before.path,
+      after: after.path,
+      opCount: applied.length,
+    });
+    this.deleteDraft();
+    this.leave(true);
+    this.before = null;
+    return { files, sessionId: session.id };
   }
 
   resend(id: string, target: AgentModeTarget): { threadId: string } {

@@ -1048,6 +1048,16 @@ function main(): void {
       if (!design) throw new Error('Open a project first');
       return design.resend(request.id, request.target);
     });
+    defineHandler('design.styling', isTrusted, (_request, event) => {
+      const design = windowFor(event.sender).designMode;
+      if (!design) throw new Error('Open a project first');
+      return design.styling();
+    });
+    defineHandler('design.writeThrough', isTrusted, (_request, event) => {
+      const design = windowFor(event.sender).designMode;
+      if (!design) throw new Error('Open a project first');
+      return design.writeThrough();
+    });
 
     const requireWorkspace = (sender: WebContents): WorkspaceService => {
       const workspace = windowFor(sender).workspace;

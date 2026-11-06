@@ -27,3 +27,4 @@ export * from './shell-focus.js';
 export * from './skills.js';
 export * from './terminal.js';
 export * from './updates.js';
+export * from './write-through.js';

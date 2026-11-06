@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest';
-import { resolveComponents } from './components.js';
+import { resolveComponents, resolveHostSource } from './components.js';
 
 interface FakeFiber {
   tag: number;
@@ -70,6 +70,14 @@ describe('resolveComponents (React <= 18)', () => {
     document.body.append(appRoot.el);
     return el.el;
   }
+
+  it('reports the host element source, not the component call site', () => {
+    const button = react18();
+    expect(resolveHostSource(button)).toEqual({ file: '/p/src/components/Button.tsx', line: 5 });
+    const section = button.parentElement;
+    expect(section?.tagName).toBe('SECTION');
+    if (section) expect(resolveHostSource(section)).toEqual({ file: '/p/src/components/Card.tsx', line: 12 });
+  });
 
   it('walks fibers to the chain with definition and usage sites', () => {
     const chain = resolveComponents(react18(), 12);
