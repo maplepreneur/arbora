@@ -266,6 +266,19 @@ test.describe('Stage 6 design mode', () => {
       await page.keyboard.press('ControlOrMeta+D');
       await page.getByTestId('design-tab-changes').click();
       await expect(page.getByTestId('design-sessions')).toBeVisible();
+      await page.getByTestId('design-compare-session').click();
+      await expect(page.getByTestId('design-history')).toBeVisible();
+      await expect(page.getByTestId('design-history-before').locator('img')).toBeVisible();
+      await expect(page.getByTestId('design-history-after').locator('img')).toBeVisible();
+      await expect(page.getByTestId('design-history-changes')).toContainText('padding-top');
+      const sessionId = await page.getByTestId('design-compare-session').getAttribute('data-session-id');
+      const markdown = await page.evaluate(async (id) => {
+        if (!id) return '';
+        return (await window.arbora.invoke('design.readSession', { id })).markdown;
+      }, sessionId);
+      expect(markdown).toContain('# Design session');
+      expect(markdown).toContain('pt-10');
+      expect(markdown).toContain('## Screenshots');
       await page.getByTestId('design-resend').click();
       // The agent picked earlier is remembered, so the resend starts another Fake agent thread.
       await expect.poll(threadCount, { timeout: 30_000 }).toBe(beforeResend + 1);
