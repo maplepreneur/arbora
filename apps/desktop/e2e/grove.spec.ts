@@ -367,13 +367,15 @@ test.describe('Stage 10 Grove', () => {
       const leadId = await rows.getAttribute('data-thread-id');
       if (!leadId) throw new Error('no lead');
 
-      // Settings opens in the pane while Grove shows, with a Grove section.
+      // Settings opens in the pane. The old Grove page is split across General, Agents and Keyboard.
       await page.keyboard.press('ControlOrMeta+,');
       await expect(page.getByTestId('grove').getByTestId('settings-page')).toBeVisible();
-      await page.getByTestId('settings-nav-grove').click();
+      await page.getByTestId('settings-nav-general').click();
       await expect(page.getByTestId('setting-grove-default-agent')).toHaveValue(FAKE_ID);
       await expect(page.getByTestId('setting-grove-start-on-open')).toHaveAttribute('aria-checked', 'false');
+      await page.getByTestId('settings-nav-keyboard').click();
       await expect(page.getByTestId('grove-chords')).toContainText(isMac ? '⌥⌘M' : 'Ctrl+Alt+M');
+      await page.getByTestId('settings-nav-agents').click();
       await page.getByTestId('setting-grove-max-children').selectOption('2');
       await expect
         .poll(() => savedSettings(userData).grove)

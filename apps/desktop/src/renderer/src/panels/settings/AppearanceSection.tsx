@@ -1,11 +1,24 @@
 import { useState } from 'react';
 import clsx from 'clsx';
-import { fontFamily, MONO_FONT_STACK, SANS_FONT_STACK, UI_SCALE_MAX, UI_SCALE_MIN } from '@arbora/shared';
+import {
+  fontFamily,
+  MONO_FONT_STACK,
+  SANS_FONT_STACK,
+  UI_SCALE_MAX,
+  UI_SCALE_MIN,
+  type ThemeMode,
+} from '@arbora/shared';
 import { updateSettings } from '../../settings-client';
 import { useApp } from '../../store';
 import { inputClass, SectionTitle, SettingRow } from './controls';
 
 const SCALE_PRESETS = [90, 100, 110, 125, 150] as const;
+
+const THEMES: readonly { value: ThemeMode; label: string }[] = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+];
 
 type FontKey = 'interfaceFont' | 'codeFont' | 'agentFont';
 
@@ -71,10 +84,38 @@ function NumberInput({
 
 export function AppearanceSection() {
   const appearance = useApp((s) => s.settings.appearance);
+  const theme = useApp((s) => s.theme.mode);
   const editorSize = useApp((s) => s.settings.editor.fontSize);
   const terminalSize = useApp((s) => s.settings.terminal.fontSize);
   return (
     <div>
+      <SectionTitle>Theme</SectionTitle>
+      <SettingRow
+        title="Colour scheme"
+        detail="System follows the operating system. This does not change the page in the browser."
+      >
+        <div role="radiogroup" aria-label="Theme" className="flex rounded-md border border-border bg-bg-muted p-0.5">
+          {THEMES.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={theme === option.value}
+              onClick={() => {
+                void window.arbora.invoke('theme.set', { mode: option.value }).then((next) => {
+                  useApp.setState({ theme: next });
+                });
+              }}
+              className={clsx(
+                'rounded px-2 py-0.5 text-xs',
+                theme === option.value ? 'bg-bg text-fg shadow-sm' : 'text-fg-subtle hover:text-fg',
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </SettingRow>
       <SectionTitle>Size</SectionTitle>
       <SettingRow title="Interface size" detail="Zooms the whole window. The page in the browser panel keeps its size.">
         <div className="flex items-center gap-2">

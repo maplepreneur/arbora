@@ -23,6 +23,8 @@ const AGENT_CLIS: readonly { readonly bin: string; readonly name: string }[] = [
   { bin: 'opencode', name: 'OpenCode' },
   { bin: 'kimi', name: 'Kimi' },
   { bin: 'grok', name: 'Grok' },
+  { bin: 'agy', name: 'Antigravity' },
+  { bin: 'antigravity', name: 'Antigravity' },
   { bin: 'gemini', name: 'Gemini' },
   { bin: 'amp', name: 'Amp' },
   { bin: 'copilot', name: 'Copilot' },

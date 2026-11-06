@@ -23,7 +23,8 @@ import { loadAgentSnapshot, useAgents } from '../../agent-store';
 import { toggleDefaultAgent, updateAgentSettings, useDefaultAgentId } from '../../agent-defaults';
 import { useAutoVerify, usePickableAgents, verifyAgent } from '../../agent-pickers';
 import { Picker } from '../../components/Picker';
-import { showToast, useApp } from '../../store';
+import { updateSettings } from '../../settings-client';
+import { openSettings, showToast, useApp } from '../../store';
 import { inputClass, SectionTitle, SettingRow, Toggle } from './controls';
 import { TaskDefaults } from './TaskAgentPicker';
 
@@ -346,7 +347,10 @@ function CurrentDefault() {
       {projectDefault && (
         <p className="text-xs text-fg-subtle">
           This project sets its own default agent in <span className="font-mono">.arbora/project.json</span>, which wins
-          over the star here.
+          over the star here.{' '}
+          <button type="button" onClick={() => openSettings('general')} className="text-accent hover:underline">
+            Change it in General
+          </button>
         </p>
       )}
     </section>
@@ -386,6 +390,7 @@ export function AgentsSection() {
         </p>
         <TaskDefaults />
       </div>
+      <HelperSettings />
       <div className="flex items-start gap-4">
         <p className="flex-1 text-sm text-fg-muted">
           Arbora starts each agent once to check that you are signed in and to read its models. Only signed-in agents
@@ -421,6 +426,44 @@ export function AgentsSection() {
           label="Check new agents automatically"
           onChange={(on) => void updateAgentSettings({ autoVerify: on })}
         />
+      </SettingRow>
+    </div>
+  );
+}
+
+const MAX_HELPERS = 10;
+
+function HelperSettings() {
+  const grove = useApp((s) => s.settings.grove);
+  return (
+    <div>
+      <SectionTitle>Helper agents</SectionTitle>
+      <SettingRow
+        title="Let agents start helpers"
+        detail="Gives each session the grove_* tools to start, prompt, wait for and read helper agents. A session asks you before its first helper. Applies to agents started after the change."
+      >
+        <Toggle
+          on={grove.orchestration}
+          label="Let agents start helpers"
+          testId="setting-grove-orchestration"
+          onChange={(orchestration) => void updateSettings({ grove: { orchestration } })}
+        />
+      </SettingRow>
+      <SettingRow title="Helpers per agent" detail="How many helpers one agent can have running at once.">
+        <select
+          aria-label="Helpers per agent"
+          data-testid="setting-grove-max-children"
+          value={grove.maxChildren}
+          disabled={!grove.orchestration}
+          onChange={(e) => void updateSettings({ grove: { maxChildren: Number(e.target.value) } })}
+          className="h-7 rounded border border-border bg-bg px-1.5 text-xs disabled:opacity-50"
+        >
+          {Array.from({ length: MAX_HELPERS }, (_, i) => i + 1).map((count) => (
+            <option key={count} value={count}>
+              {count}
+            </option>
+          ))}
+        </select>
       </SettingRow>
     </div>
   );

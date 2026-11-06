@@ -125,7 +125,7 @@ function createSession(id: string): TerminalSession {
     fontSize: settings.terminal.fontSize,
     lineHeight: 1.15,
     scrollback: 5000,
-    cursorBlink: true,
+    cursorBlink: settings.terminal.cursorBlink,
     macOptionIsMeta: true,
     theme: THEMES[theme.resolved],
   });
@@ -301,6 +301,9 @@ export function initTerminalSessions(): void {
         session.term.options.fontFamily = fontFamily(state.settings.appearance.codeFont, FONT_FAMILY);
         session.fit();
       }
+    }
+    if (state.settings.terminal.cursorBlink !== previous.settings.terminal.cursorBlink) {
+      for (const session of sessions.values()) session.term.options.cursorBlink = state.settings.terminal.cursorBlink;
     }
   });
 }

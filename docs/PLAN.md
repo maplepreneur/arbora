@@ -8,7 +8,7 @@ The companion document [BUILD_STAGES.md](./BUILD_STAGES.md) breaks the build int
 
 Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents must update this section and that table at the end of every piece of work.
 
-**Now:** Stages 0–9 are `Done`. Stage 9 is `Done` for now (6 Nov 2026, `v0.0.5`). Launch checks wait: **Cut a beta**, the packaged memory budget, a macOS `.dmg` open check, fresh installs per OS, and `arch-ok`. Stage 10 (Grove) is `In progress (PR #76, merged)` and is not `arch-ok`. Stage 11 (Stretch) is `In progress (PR #88, merged)` on `beta` ([PR #88](https://github.com/maplepreneur/arbora/pull/88), Linux CI [run 42239297446](https://github.com/maplepreneur/arbora/actions/runs/42239297446), green): the dev plugin ([PR #81](https://github.com/maplepreneur/arbora/pull/81)), worktrees ([PR #82](https://github.com/maplepreneur/arbora/pull/82)), Tailwind write-through ([PR #83](https://github.com/maplepreneur/arbora/pull/83)), design session history ([PR #84](https://github.com/maplepreneur/arbora/pull/84)), MCP action traces ([PR #85](https://github.com/maplepreneur/arbora/pull/85)), the opt-in TypeScript language server ([PR #86](https://github.com/maplepreneur/arbora/pull/86)) and source maps ([PR #87](https://github.com/maplepreneur/arbora/pull/87)). Local check of that combination on 6 Nov 2026: `pnpm typecheck`, `pnpm lint`, 812 unit tests, and e2e 56 passed / 1 skipped (the packaged memory budget). Not `arch-ok`.
+**Now:** Stages 0–9 are `Done`. Stage 9 is `Done` for now (6 Nov 2026, `v0.0.5`). Launch checks wait: **Cut a beta**, the packaged memory budget, a macOS `.dmg` open check, fresh installs per OS, and `arch-ok`. Stage 10 (Grove) is `In progress (PR #76, merged)` and is not `arch-ok`. Stage 11 (Stretch) is `In progress (PR #88, merged)` on `beta` ([PR #88](https://github.com/maplepreneur/arbora/pull/88), Linux CI [run 42239297446](https://github.com/maplepreneur/arbora/actions/runs/42239297446), green): the dev plugin ([PR #81](https://github.com/maplepreneur/arbora/pull/81)), worktrees ([PR #82](https://github.com/maplepreneur/arbora/pull/82)), Tailwind write-through ([PR #83](https://github.com/maplepreneur/arbora/pull/83)), design session history ([PR #84](https://github.com/maplepreneur/arbora/pull/84)), MCP action traces ([PR #85](https://github.com/maplepreneur/arbora/pull/85)), the opt-in TypeScript language server ([PR #86](https://github.com/maplepreneur/arbora/pull/86)) and source maps ([PR #87](https://github.com/maplepreneur/arbora/pull/87)). Local check of that combination on 6 Nov 2026: `pnpm typecheck`, `pnpm lint`, 812 unit tests, and e2e 56 passed / 1 skipped (the packaged memory budget). Not `arch-ok`. Antigravity (`agy acp`, CLI 1.5.2) and the settings reorganization are `In progress (PR #92)` ([PR #92](https://github.com/maplepreneur/arbora/pull/92), open, not merged). `initialize`, `session/new` and a one-word prompt succeeded with a cached login. The Stage 3 file-edit matrix for it is not run. There is no Grove settings page: General, Agents and Keyboard hold the old Grove controls. Local check on 6 Nov 2026: `pnpm typecheck`, `pnpm lint`, 813 unit tests, and e2e 56 passed / 1 skipped (the packaged memory budget). Not `arch-ok`.
 
 **Next:** `arch-ok` for Grove and for Stage 11 on Omarchy/Hyprland, and the Appendix B Grove row with a real agent. Stages 12–17 stay specified and not started. Stages 16 and 17 were specified in [PR #80](https://github.com/maplepreneur/arbora/pull/80).
 
@@ -21,7 +21,7 @@ Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents 
 | Area | Summary |
 | --- | --- |
 | Browser panel | Embedded Chromium showing the user's dev server. URL bar, navigation, viewport presets, screenshots, console/network capture, React/Vue DevTools. |
-| Agent panel | Any ACP agent (Claude Code, Codex, Kimi Code, Grok Build, OpenCode, custom). Streaming messages, tool calls, diffs, permissions, plans, slash commands. Docked beside the browser. |
+| Agent panel | Any ACP agent (Claude Code, Codex, Kimi Code, Grok Build, OpenCode, Antigravity, custom). Streaming messages, tool calls, diffs, permissions, plans, slash commands. Docked beside the browser. |
 | Grove | A second workspace that takes the whole window: every ACP session in the project with a live status, one transcript, a task-first launcher, and helper agents a lead agent can start and steer over MCP. Title-bar switch, hotkeys, a default agent, and the bell when an agent needs you. |
 | Agent mode (`Mod+K`) | Inspector-style hover/click on components. Click opens a prompt popover. Submit sends prompt + component source + screenshot to the agent. |
 | Browser control for agents | An MCP server exposing browser and dev-server tools (navigate, click, type, scroll, screenshot, snapshot, logs, restart) so the agent can verify its own work. |
@@ -88,6 +88,7 @@ Tauri uses the OS webview (WebKitGTK on Linux, WKWebView on macOS, WebView2 on W
 | Kimi Code | `kimi acp` | Prior `kimi` login. Supports image prompts and http/sse/stdio MCP |
 | Grok Build | `grok agent stdio` (or `npx @xai-official/grok agent stdio`) | `grok login` or `XAI_API_KEY`; auth method ids `xai.api_key` / `cached_token` |
 | OpenCode | `opencode acp` (OpenCode v2+) | `opencode auth login` (auth method id `opencode-login`). Does its own fs, shell and permissions; one `model` config option covering every configured provider |
+| Antigravity | `agy acp` | `agy` or `agy acp --login` (Google). Auth method ids include `oauth-personal` and `gemini-api-key`. CLI 1.5.2 does not advertise HTTP MCP, so browser tools use the stdio shim. Model, thinking and mode come from `configOptions` |
 | Custom | User-supplied `command`, `args`, `env` | Same shape as Zed's `agent_servers` |
 
 ---
@@ -118,7 +119,7 @@ flowchart LR
   subgraph page [User web app in WebContentsView]
     Preload[arbora browser-preload: inspector and design overlays, framework detection]
   end
-  Agents[ACP agents: claude-code-acp, codex-acp, kimi acp, grok agent stdio]
+  Agents[ACP agents: claude-code-acp, codex-acp, kimi acp, grok agent stdio, agy acp]
   Layout <-->|typed IPC| AppShell
   BrowserUI <--> BrowserSvc
   BrowserSvc <-->|CDP + ipc| Preload
@@ -246,7 +247,7 @@ Feature IDs (`F-AREA-NN`) are referenced from [BUILD_STAGES.md](./BUILD_STAGES.m
 
 ### 4.4 Agent panel (`F-AGENT`)
 
-- `F-AGENT-01` Agent registry: built-ins (Claude Code, Codex, Kimi Code, Grok Build, OpenCode) and custom entries; binary detection with install hints; per-agent env overrides.
+- `F-AGENT-01` Agent registry: built-ins (Claude Code, Codex, Kimi Code, Grok Build, OpenCode, Antigravity) and custom entries; binary detection with install hints; per-agent env overrides.
 - `F-AGENT-02` Session lifecycle: `initialize` (advertise `fs.readTextFile`, `fs.writeTextFile`, `terminal: true`), `authenticate` with the agent's advertised methods (device/browser logins surfaced in UI), `session/new` with project cwd and the Arbora MCP server, `session/load` / `session/resume` when supported, `session/cancel`.
 - `F-AGENT-03` Mode and model pickers via `session/set_mode` / `session/set_model` when advertised.
 - `F-AGENT-04` Streaming UI for `session/update`: message chunks (markdown), thoughts (collapsible), tool calls with status, locations and diffs, plan/todo lists, available commands (slash commands).
@@ -443,7 +444,7 @@ Row menu (right-click or `⋯`): Pin, Rename, Move to group, Set as default agen
 
 #### Default agent
 
-The default is the project `defaultAgent` in `.arbora/project.json`, then `settings.agents.defaultAgent` (the app-wide star from the agent picker), then none (`resolveDefaultAgent`). An id that is not in the registry is treated as none. The launcher's "Use as default for this project", the row's **Set as default agent**, the footer's **Change** and Settings → Grove write the project `defaultAgent`. None of them spawn a session.
+The default is the project `defaultAgent` in `.arbora/project.json`, then `settings.agents.defaultAgent` (the app-wide star from the agent picker), then none (`resolveDefaultAgent`). An id that is not in the registry is treated as none. The launcher's "Use as default for this project", the row's **Set as default agent**, the footer's **Change** and Settings → General write the project `defaultAgent`. None of them spawn a session.
 
 Opening Grove starts one session of the default agent only when all of these are true: the project has no unarchived sessions, a default is set, that agent is detected, `startDefaultOnOpen` is on (`.arbora/project.json`, default on), and this visit has not already tried (`shouldStartDefaultSession`). Toggling Browser → Grove → Browser does not start another. A failed start does not retry on its own; the pane shows the Stage 3 install or login hint and **Retry**. The "already tried" flag resets when leaving Grove.
 
@@ -700,7 +701,7 @@ Detailed instructions, gotchas and progress live in [BUILD_STAGES.md](./BUILD_ST
 | 0 | Foundation | Monorepo, Electron shell, IPC layer, layout skeleton, keybindings, CI, unsigned builds |
 | 1 | Browser panel | Load a dev server, CDP capture, screenshots, DevTools extensions |
 | 2 | Terminal panel | Run dev servers, URL detection, ring buffer |
-| 3 | Agent panel (ACP) | Talk to Claude Code, Codex, Kimi Code, Grok Build, OpenCode |
+| 3 | Agent panel (ACP) | Talk to Claude Code, Codex, Kimi Code, Grok Build, OpenCode, Antigravity |
 | 4 | Agent mode (`Mod+K`) | Point at a component, prompt the agent with source + screenshot |
 | 5 | Browser control MCP server | Agent drives the browser to verify its work |
 | 6 | Design mode (`Mod+D`) | Visual editing, save to agent with before/after and change list |
