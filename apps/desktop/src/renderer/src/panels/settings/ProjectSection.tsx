@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { FileJson, FolderOpen } from 'lucide-react';
 import { CommandId, type BrowserToolPolicy } from '@arbora/shared';
-import { useAgents } from '../../agent-store';
 import { executeCommand } from '../../commands';
 import { updateProjectSettings } from '../../settings-client';
 import { showToast, useApp } from '../../store';
@@ -55,7 +54,6 @@ function TextSetting({
 /** `.arbora/project.json` fields (committed with the project) and this project's agent permissions. */
 export function ProjectSection() {
   const project = useApp((s) => s.project);
-  const agents = useAgents((s) => s.agents);
   const [detected, setDetected] = useState<string | null>(null);
   useEffect(() => {
     if (project) void window.arbora.invoke('project.detectDevCommand').then(({ command }) => setDetected(command));
@@ -113,26 +111,6 @@ export function ProjectSection() {
           label="Open detected dev URLs"
           onChange={(on) => void updateProjectSettings({ autoOpenDevUrl: on ? null : false })}
         />
-      </SettingRow>
-
-      <SectionTitle>Agents</SectionTitle>
-      <SettingRow
-        title="Project default agent"
-        detail="Wins over your own default for everyone who opens this project."
-      >
-        <select
-          aria-label="Project default agent"
-          value={settings.defaultAgent ?? ''}
-          onChange={(e) => void updateProjectSettings({ defaultAgent: e.target.value || null })}
-          className="h-7 rounded border border-border bg-bg px-1.5 text-xs"
-        >
-          <option value="">Use my default</option>
-          {agents.map((agent) => (
-            <option key={agent.id} value={agent.id}>
-              {agent.name}
-            </option>
-          ))}
-        </select>
       </SettingRow>
 
       <SectionTitle>Browser tools for agents (MCP)</SectionTitle>

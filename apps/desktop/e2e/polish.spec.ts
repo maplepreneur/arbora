@@ -281,15 +281,21 @@ test.describe('Stage 9 settings', () => {
       for (const section of [
         'general',
         'appearance',
-        'notifications',
+        'agents',
         'editor',
+        'terminal',
+        'git',
         'browser',
         'project',
+        'skills',
+        'mcp',
+        'notifications',
+        'keyboard',
         'updates',
-        'agents',
       ]) {
         await page.getByTestId(`settings-nav-${section}`).click();
       }
+      await expect(page.getByTestId('settings-nav-grove')).toHaveCount(0);
       await page.getByTestId('settings-nav-project').click();
       await page.getByTestId('project-dev-command').fill('pnpm start');
       await page.getByTestId('project-dev-command').press('Enter');

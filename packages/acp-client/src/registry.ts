@@ -55,6 +55,17 @@ export const BUILT_IN_AGENTS: readonly AgentDefinition[] = [
     docsUrl: 'https://opencode.ai/docs/acp/',
     builtIn: true,
   },
+  {
+    id: 'antigravity',
+    name: 'Antigravity',
+    command: 'agy',
+    args: ['acp'],
+    env: {},
+    installHint:
+      'Install the Antigravity CLI, then sign in with `agy` or `agy acp --login`. A GEMINI_API_KEY also works.',
+    docsUrl: 'https://antigravity.google/docs/cli/acp/',
+    builtIn: true,
+  },
 ];
 
 /** Resolves a command name (or absolute path) to an executable path, or undefined when missing. */
