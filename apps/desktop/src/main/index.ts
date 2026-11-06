@@ -1132,7 +1132,8 @@ function main(): void {
       const sameWindow = destination === path;
       if (sameWindow) manager.grants.grant(path, threadId, resolved.id);
       const state = resolved.service.getState();
-      const app = tabs.snapshots().find((entry) => entry.role === 'app');
+      const destinationTabs = sameWindow ? tabs : (manager.findByProject(destination)?.browserTabs() ?? null);
+      const appId = destinationTabs?.snapshots().find((entry) => entry.role === 'app')?.id ?? 'app';
       const match = readProjectSettings(destination).settings.designMatch;
       const threshold = match?.threshold ?? 0.92;
       const maxRounds = match?.maxRounds ?? 5;
@@ -1146,8 +1147,10 @@ function main(): void {
           : `Screenshots of tab ${resolved.id} (${resolved.role}) are attached. The live tab stays on the sending window, so work from these images.`,
         `Title: ${state.title || '(untitled)'}`,
         `URL: ${state.url || '(none)'}`,
-        sameWindow ? `App tab: ${app?.id ?? 'app'}` : 'Implement this in the app tab of this project.',
-        sameWindow ? 'Use browser tools with this tab id as target. The project page is target "app".' : '',
+        `App tab: ${appId}`,
+        sameWindow
+          ? 'Use browser tools with this tab id as target. The project page is target "app".'
+          : `Use browser tools with target "app" (${appId}) for this project's page.`,
         `Compare the design with the app using browser_compare. Stop at ${threshold}, after ${maxRounds} rounds, or list the differences that remain.`,
         'Figma is a canvas: browser_snapshot shows the Figma chrome, not the layers. Screenshot the frame. A node-id in the URL selects one frame.',
         full ? 'A full-page screenshot follows the viewport.' : '',

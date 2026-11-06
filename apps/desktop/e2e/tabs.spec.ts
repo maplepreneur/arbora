@@ -936,6 +936,26 @@ if (args[1] === 'create') {
       await expect
         .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), { timeout: 15_000 })
         .toBeGreaterThan(1);
+      let appTabId = '';
+      await expect
+        .poll(
+          async () => {
+            appTabId = await app.evaluate(
+              async ({ BrowserWindow }, input) => {
+                const win = BrowserWindow.getAllWindows().find((item) => item.getTitle().startsWith(input.name));
+                if (!win) return '';
+                return win.webContents.executeJavaScript(`(async () => {
+              const tabs = await window.arbora.invoke('browser.tabs.list');
+              return tabs.find((tab) => tab.role === 'app')?.id ?? '';
+            })()`);
+              },
+              { name },
+            );
+            return appTabId;
+          },
+          { timeout: 20_000 },
+        )
+        .not.toBe('');
       await page.getByTestId('browser-tab-send').click();
       const project = page.getByTestId('browser-send-project');
       await expect(project.locator('option', { hasText: name })).toHaveCount(1, { timeout: 10_000 });
@@ -958,10 +978,11 @@ if (args[1] === 'create') {
                 const thread = threads.find((item) => item.title === 'Carry this design');
                 if (!thread) return '';
                 const full = await window.arbora.invoke('agent.getThread', { threadId: thread.id });
-                return JSON.stringify(full?.events ?? []).includes('live tab stays') ? 'ok' : '';
+                const text = JSON.stringify(full?.events ?? []);
+                return text.includes('live tab stays') && text.includes(${JSON.stringify(input.appTabId)}) ? 'ok' : '';
               })()`);
               },
-              { name },
+              { name, appTabId },
             ),
           { timeout: 20_000 },
         )
