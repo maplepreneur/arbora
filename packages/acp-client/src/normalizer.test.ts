@@ -235,6 +235,38 @@ describe('UpdateNormalizer', () => {
     expect(n.events[1]?.id).toBe('e1');
   });
 
+  it('folds browser actions into one trace per turn', () => {
+    const n = normalizer();
+    const click = {
+      tool: 'browser_click',
+      title: 'Click e2',
+      ok: true,
+      error: null,
+      image: { data: 'abc', mimeType: 'image/jpeg', width: 10, height: 8 },
+    };
+    const first = n.actionTrace(click);
+    expect(first).toEqual([
+      {
+        type: 'append',
+        event: {
+          id: 'e2',
+          at: 1001,
+          kind: 'action_trace',
+          steps: [{ id: 'e1', at: 1000, ...click }],
+        },
+      },
+    ]);
+    const second = n.actionTrace({ ...click, title: 'Click e3' });
+    expect(second[0]).toMatchObject({ type: 'replace', index: 0 });
+    expect(n.events).toHaveLength(1);
+    const trace = n.events[0];
+    expect(trace?.kind === 'action_trace' && trace.steps.map((step) => step.title)).toEqual(['Click e2', 'Click e3']);
+
+    n.apply(chunk('user_message_chunk', 'again'));
+    n.actionTrace({ ...click, title: 'Reload' });
+    expect(n.events.filter((event) => event.kind === 'action_trace')).toHaveLength(2);
+  });
+
   it('records errors and turn ends', () => {
     const n = normalizer();
     n.error('agent exited with code 1');

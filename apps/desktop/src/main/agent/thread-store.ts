@@ -87,6 +87,13 @@ export function truncateEventForPersistence(event: ThreadEvent): ThreadEvent {
     case 'error':
     case 'browser_preview':
       return event;
+    case 'action_trace': {
+      const keepFrom = Math.max(0, event.steps.length - 4);
+      return {
+        ...event,
+        steps: event.steps.map((step, index) => (index < keepFrom ? { ...step, image: null } : step)),
+      };
+    }
     default: {
       const unreachable: never = event;
       return unreachable;

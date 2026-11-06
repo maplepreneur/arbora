@@ -87,6 +87,7 @@ function applyEvent(current: ThreadAttention, event: ThreadEvent, at: number): T
     case 'plan':
     case 'notice':
     case 'browser_preview':
+    case 'action_trace':
       return current;
     default: {
       const unreachable: never = event;

@@ -124,6 +124,10 @@ test.describe('Stage 5 browser tools (MCP)', () => {
       );
       await expect(page.getByTestId('browser-preview')).toBeVisible();
       await expect(page.getByTestId('tool-call').filter({ hasText: 'browser_click' })).toBeVisible();
+      const trace = page.getByTestId('action-trace');
+      await expect(trace.getByTestId('action-trace-step').filter({ hasText: 'Click' })).toBeVisible();
+      await trace.getByTestId('action-trace-step').filter({ hasText: 'Click' }).click();
+      await expect(trace.getByTestId('action-trace-shot')).toBeVisible();
       // No "tools not loaded" warning, and the guide the preface points at exists.
       await expect(page.getByTestId('notice')).toHaveCount(0);
       const skill = join(VITE_REACT, '.arbora/SKILL.md');
