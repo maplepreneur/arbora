@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import {
   ArrowLeft,
@@ -169,6 +169,7 @@ export default function ThreadView({
           <span className="min-w-0 flex-1 truncate font-medium" title={thread.title} data-testid="thread-title">
             {thread.title}
           </span>
+          <GrantChips threadId={thread.id} />
           {isStoppable(state.status) && (
             <button
               type="button"
@@ -402,6 +403,43 @@ function sessionControlIcon(role: SessionControlRole): LucideIcon {
 }
 
 /** One quiet line under the composer naming the CLI-style keys this agent supports. */
+function GrantChips({ threadId }: { threadId: string }) {
+  const [tabIds, setTabIds] = useState<string[]>([]);
+  const titles = useApp((s) => s.browserTabs);
+  useEffect(() => {
+    let live = true;
+    void window.arbora.invoke('agent.listGrants', { threadId }).then((ids) => {
+      if (live) setTabIds(ids);
+    });
+    const off = window.arbora.on('agent.grantsChanged', (event) => {
+      if (event.threadId === threadId) setTabIds(event.tabIds);
+    });
+    return () => {
+      live = false;
+      off();
+    };
+  }, [threadId]);
+  if (tabIds.length === 0) return null;
+  return (
+    <span className="flex shrink-0 items-center gap-1" data-testid="tab-grants">
+      {tabIds.map((id) => {
+        const tab = titles.find((entry) => entry.id === id);
+        return (
+          <button
+            key={id}
+            type="button"
+            title="Stop the agent using this tab"
+            className="max-w-24 truncate rounded bg-accent-soft px-1 text-[10px] text-accent"
+            onClick={() => void window.arbora.invoke('agent.revokeGrant', { threadId, tabId: id })}
+          >
+            {tab?.title || 'Tab'}
+          </button>
+        );
+      })}
+    </span>
+  );
+}
+
 function KeyHints({ hints }: { hints: readonly (string | null)[] }) {
   const shown = hints.filter((hint): hint is string => hint !== null);
   if (shown.length === 0) return null;

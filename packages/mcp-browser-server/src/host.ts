@@ -97,6 +97,32 @@ export interface BrowserToolHost {
    * tools. A throw here must not fail the tool.
    */
   recordTrace?(step: TraceStepInput): void | Promise<void>;
+  /**
+   * Points later calls at a tab. `app` (the default) is the project page. A reference tab throws
+   * `tab not granted` until the user sends it. `write` asks once before changing that tab.
+   */
+  resolveTarget?(target: string | undefined, intent: 'read' | 'write'): Promise<void> | void;
+  listTabs?(): TabSummary[];
+  openTab?(url: string | undefined): Promise<string>;
+  closeTab?(id: string): Promise<void>;
+  captureTab?(tabId: string): Promise<TabCapture>;
+}
+
+export interface TabSummary {
+  readonly id: string;
+  readonly role: 'app' | 'reference';
+  readonly title: string;
+  readonly url: string;
+  readonly active: boolean;
+  readonly granted: boolean;
+}
+
+export interface TabCapture {
+  readonly png: Uint8Array;
+  readonly cssWidth: number;
+  readonly cssHeight: number;
+  readonly title: string;
+  readonly url: string;
 }
 
 /** What the MCP server knows about one traced browser action, before the app attaches a screenshot. */

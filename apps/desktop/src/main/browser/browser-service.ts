@@ -6,6 +6,7 @@ import {
   shell,
   WebContentsView,
   type BrowserWindow,
+  type BrowserWindowConstructorOptions,
   type InputEvent,
   type NativeImage,
   type Session,
@@ -87,6 +88,13 @@ export interface BrowserServiceEvents {
   pageFocused(focused: boolean): void;
   /** A hidden view had the keyboard. The renderer reclaims it for the content pane when the page is not showing. */
   focusParked(): void;
+  /** A submitted login form. Field names only; the values stay in the page until main reads them. */
+  passwordOffer?(offer: { origin: string; usernameField: string | null; passwordField: string }): void;
+}
+
+export interface WindowOpenDecision {
+  readonly action: 'deny' | 'allow';
+  readonly overrideBrowserWindowOptions?: BrowserWindowConstructorOptions;
 }
 
 export interface BrowserServiceOptions {
@@ -102,6 +110,17 @@ export interface BrowserServiceOptions {
   readonly saveState: (state: ProjectBrowserState) => void;
   /** Runs before page DevTools open; true means extensions were just loaded and the page must reload. */
   readonly beforeDevTools?: () => Promise<boolean>;
+  /**
+   * http(s) window.open. Returning a decision replaces the single-tab behaviour (same origin stays
+   * in this tab, everything else goes to the OS). OAuth popups return `allow`.
+   */
+  readonly onWindowOpen?: (details: {
+    url: string;
+    disposition: string;
+    features: string;
+  }) => WindowOpenDecision | null;
+  /** A popup BrowserWindow this page was allowed to open. */
+  readonly onChildWindow?: (child: BrowserWindow) => void;
 }
 
 interface Metrics {
@@ -636,6 +655,9 @@ export class BrowserService {
       case 'design.overlayApplied':
         this.overlayAcks.get(message.payload.nonce)?.();
         break;
+      case 'passwords.offerSave':
+        this.events.passwordOffer?.(message.payload);
+        break;
       default: {
         const unreachable: never = message;
         throw new Error(`Unhandled page message ${JSON.stringify(unreachable)}`);
@@ -672,12 +694,27 @@ export class BrowserService {
     const contents = this.contents;
     const refresh = (): void => this.update({});
 
-    contents.setWindowOpenHandler(({ url }) => {
-      // Single-tab browser until Stage 11: local links stay in the panel, everything else goes to the OS.
-      const normalized = normalizeUrl(url);
-      if (normalized && new URL(normalized).origin === safeOrigin(this.state.url)) this.navigate(normalized);
-      else if (/^https?:/.test(url)) void shell.openExternal(url);
+    contents.setWindowOpenHandler(({ url, disposition, features }) => {
+      const decision = this.options.onWindowOpen?.({ url, disposition, features });
+      if (!decision) {
+        const normalized = normalizeUrl(url);
+        if (normalized && new URL(normalized).origin === safeOrigin(this.state.url)) this.navigate(normalized);
+        else if (/^https?:/.test(url)) void shell.openExternal(url);
+        return { action: 'deny' };
+      }
+      if (decision.action === 'allow') {
+        return {
+          action: 'allow',
+          ...(decision.overrideBrowserWindowOptions
+            ? { overrideBrowserWindowOptions: decision.overrideBrowserWindowOptions }
+            : {}),
+        };
+      }
       return { action: 'deny' };
+    });
+    contents.on('did-create-window', (child) => {
+      child.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+      this.options.onChildWindow?.(child);
     });
     contents.on('will-navigate', (event, url) => {
       if (!/^https?:/.test(url)) {
@@ -964,8 +1001,69 @@ export class BrowserService {
     return { innerWidth: metrics.innerWidth, devicePixelRatio: metrics.devicePixelRatio };
   }
 
+  /**
+   * Viewport PNG plus the page's CSS size. A parked tab is captured with CDP, because
+   * `capturePage()` on a hidden view is empty.
+   */
+  async captureQuiet(): Promise<{ png: Buffer; cssWidth: number; cssHeight: number }> {
+    const shot = await this.screenshot({ mode: 'viewport' });
+    return {
+      png: Buffer.from(shot.pngBase64, 'base64'),
+      cssWidth: shot.dpr > 0 ? shot.width / shot.dpr : shot.width,
+      cssHeight: shot.dpr > 0 ? shot.height / shot.dpr : shot.height,
+    };
+  }
+
+  /** Types into the focused field. The text is not sent to the renderer. */
+  async insertText(selector: string, value: string): Promise<void> {
+    if (!this.debuggerAttached) await this.attachDebugger();
+    if (!this.debuggerAttached) throw new Error('Filling a login needs the debugger; close DevTools and retry');
+    await this.contents.executeJavaScriptInIsolatedWorld(PROBE_WORLD_ID, [
+      { code: `document.querySelector(${JSON.stringify(selector)})?.focus()` },
+    ]);
+    await this.contents.debugger.sendCommand('Input.insertText', { text: value });
+  }
+
+  /** Selected text and visible page text, for a tab the user sent to an agent. Truncate before logging. */
+  async pageSummary(): Promise<{ selection: string; text: string }> {
+    const value: unknown = await this.contents.executeJavaScript(
+      `({ selection: window.getSelection()?.toString() ?? '', text: document.body?.innerText ?? '' })`,
+    );
+    if (!value || typeof value !== 'object') return { selection: '', text: '' };
+    const record = value as { selection?: unknown; text?: unknown };
+    return {
+      selection: typeof record.selection === 'string' ? record.selection : '',
+      text: typeof record.text === 'string' ? record.text : '',
+    };
+  }
+
+  /** The current value of a field, read in the isolated world. Never forward this to the renderer. */
+  async fieldValue(selector: string): Promise<string> {
+    const value: unknown = await this.contents.executeJavaScriptInIsolatedWorld(PROBE_WORLD_ID, [
+      { code: `document.querySelector(${JSON.stringify(selector)})?.value ?? ''` },
+    ]);
+    return typeof value === 'string' ? value : '';
+  }
+
+  private async captureSurface(): Promise<NativeImage> {
+    if (this.visible) return this.contents.capturePage();
+    this.contents.setBackgroundThrottling(false);
+    try {
+      if (!this.debuggerAttached) await this.attachDebugger();
+      if (!this.debuggerAttached)
+        throw new Error('A background tab needs the debugger to capture; close DevTools and retry');
+      const shot = (await this.contents.debugger.sendCommand('Page.captureScreenshot', {
+        format: 'png',
+        fromSurface: true,
+      })) as { data: string };
+      return nativeImage.createFromBuffer(Buffer.from(shot.data, 'base64'));
+    } finally {
+      this.contents.setBackgroundThrottling(true);
+    }
+  }
+
   private async captureViewport(request: ScreenshotRequest): Promise<ScreenshotResult> {
-    const [{ innerWidth }, captured] = await Promise.all([this.metrics(), this.contents.capturePage()]);
+    const [{ innerWidth }, captured] = await Promise.all([this.metrics(), this.captureSurface()]);
     let pixels = toPixels(captured);
     const dpr = pixels.width / innerWidth;
     let highlight = request.highlight;

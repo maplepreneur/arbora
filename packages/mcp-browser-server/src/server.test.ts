@@ -257,6 +257,7 @@ describe('BrowserMcpServer', () => {
       [
         'browser_back',
         'browser_click',
+        'browser_compare',
         'browser_console_logs',
         'browser_evaluate',
         'browser_forward',
@@ -272,6 +273,9 @@ describe('BrowserMcpServer', () => {
         'browser_select_option',
         'browser_set_viewport',
         'browser_snapshot',
+        'browser_tab_close',
+        'browser_tab_open',
+        'browser_tabs',
         'browser_type',
         'browser_wait_for',
         'devserver_logs',

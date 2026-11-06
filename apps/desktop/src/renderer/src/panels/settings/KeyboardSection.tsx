@@ -37,6 +37,7 @@ const WHEN_LABEL: Readonly<Record<KeybindingRow['when'], string | null>> = {
   agentPanel: 'in the chat',
   grove: 'in Grove',
   contentPane: 'in the content pane',
+  browserPage: 'on the page',
 };
 
 interface Pending {

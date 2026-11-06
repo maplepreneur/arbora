@@ -7,6 +7,7 @@ import { click, elementBox, hover, pressKey, scroll, selectOptions, typeText } f
 import { evaluate, InflightRequests, truncate, waitFor } from './page.js';
 import { RefTable, resolveElement, type ElementTarget } from './refs.js';
 import { formatSnapshot, type AxNode } from './snapshot.js';
+import { comparePngs } from './compare.js';
 import { actionTraceTitle, isTracedBrowserTool } from './trace.js';
 
 export const DEFAULT_WAIT_MS = 5000;
@@ -15,6 +16,13 @@ const DEFAULT_TERMINAL_TIMEOUT_MS = 60_000;
 const MAX_TERMINAL_TIMEOUT_MS = 10 * 60_000;
 const DEFAULT_LOG_LINES = 100;
 const MAX_LOG_ENTRIES = 200;
+const WRITE_TOOLS = new Set([
+  'browser_navigate',
+  'browser_click',
+  'browser_type',
+  'browser_press_key',
+  'browser_select_option',
+]);
 
 /** Per-thread state shared by every MCP request of one agent session. */
 export class ToolContext {
@@ -148,7 +156,8 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
       // The SDK infers the callback's argument type from the shape; the cast keeps `run` generic.
       (async (args: z.infer<z.ZodObject<Shape>> & { target?: string }) => {
         try {
-          checkTarget(args.target);
+          if (host.resolveTarget) await host.resolveTarget(args.target, WRITE_TOOLS.has(name) ? 'write' : 'read');
+          else checkTarget(args.target);
           const result = await run(args);
           const failed = result.isError === true;
           await record(name, args, !failed, failed ? resultError(result) : null);
@@ -477,5 +486,83 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
       return text(`${status}\n${truncate(result.output)}`);
     },
     { destructiveHint: true },
+  );
+
+  tool(
+    'browser_tabs',
+    'List the browser tabs. The app tab is the project. A reference tab (docs, Figma) can be used only after the user sends it; otherwise tools say "tab not granted". Pass a tab id as `target` on the other browser tools. The default target is "app".',
+    {},
+    () => {
+      if (!host.listTabs) return Promise.resolve(text('This Arbora build has one browser tab. Omit "target".'));
+      const tabs = host.listTabs();
+      if (tabs.length === 0) return Promise.resolve(text('No browser tabs are open.'));
+      return Promise.resolve(
+        text(
+          tabs
+            .map(
+              (tab) =>
+                `${tab.id} [${tab.role}${tab.active ? ', active' : ''}${tab.granted ? ', granted' : ''}] ${tab.title || '(untitled)'} ${tab.url}`,
+            )
+            .join('\n'),
+        ),
+      );
+    },
+    { readOnlyHint: true },
+  );
+
+  tool(
+    'browser_tab_open',
+    'Open a reference tab in the background (the user keeps their current tab) and grant it to this thread. Close it with browser_tab_close when you are done.',
+    { url: z.string().optional().describe('http(s) URL; omit for a blank tab') },
+    async ({ url }) => {
+      if (!host.openTab) return { isError: true, content: [{ type: 'text', text: 'Opening tabs is not available.' }] };
+      const id = await host.openTab(url);
+      return text(`Opened tab ${id}. Pass it as target.`);
+    },
+  );
+
+  tool(
+    'browser_tab_close',
+    'Close a tab this thread opened. Tabs the user opened stay open.',
+    { id: z.string() },
+    async ({ id }) => {
+      if (!host.closeTab) return { isError: true, content: [{ type: 'text', text: 'Closing tabs is not available.' }] };
+      await host.closeTab(id);
+      return text(`Closed tab ${id}.`);
+    },
+  );
+
+  tool(
+    'browser_compare',
+    'Screenshot two granted tabs and score how alike they look. Use this to match a Figma (or other design) tab against the app tab. Returns a score from 0 to 1, the worst cells, and a side-by-side, overlay, or diff image. Fonts and pixel density differ from Figma, so a perfect score is not the goal: repeat the edit-and-compare loop until the score stops moving or list the remaining differences.',
+    {
+      left: z.string().describe('Tab id, "app", or "active"'),
+      right: z.string().describe('Tab id, "app", or "active"'),
+      mode: z.enum(['side_by_side', 'overlay', 'diff']).optional(),
+    },
+    async ({ left, right, mode }) => {
+      if (!host.captureTab) {
+        return { isError: true, content: [{ type: 'text', text: 'Comparing tabs is not available.' }] };
+      }
+      const [a, b] = await Promise.all([host.captureTab(left), host.captureTab(right)]);
+      const output = comparePngs(Buffer.from(a.png), Buffer.from(b.png), mode ?? 'side_by_side', {
+        aWidth: a.cssWidth,
+        aHeight: a.cssHeight,
+        bWidth: b.cssWidth,
+        bHeight: b.cssHeight,
+      });
+      const json = JSON.stringify({
+        ...output.json,
+        left: { title: a.title, url: a.url },
+        right: { title: b.title, url: b.url },
+      });
+      return {
+        content: [
+          { type: 'text', text: json },
+          { type: 'image', data: output.png.toString('base64'), mimeType: 'image/png' },
+        ],
+      };
+    },
+    { readOnlyHint: true },
   );
 }

@@ -53,7 +53,7 @@ export function firstPromptPreface(context: PrefaceContext): string {
       '',
       'You can see and drive that browser with the `arbora-browser` MCP tools (`browser_*`, `devserver_*`, `terminal_run`). The page is already open; do not start another browser. Verify your own work:',
       ...VERIFY_LOOP,
-      `Interaction tools take a \`ref\` from the latest \`browser_snapshot\`. The full guide is in ${project}/${SKILL_FILE}.`,
+      `Interaction tools take a \`ref\` from the latest \`browser_snapshot\`. The default browser target is \`app\`. A reference tab works only after the user sends it (\`tab not granted\` otherwise). Match a design tab with \`browser_compare\`. The full guide is in ${project}/${SKILL_FILE}.`,
     );
   }
   if (context.browserTools && context.groveTools) {
@@ -68,11 +68,10 @@ export function firstPromptPreface(context: PrefaceContext): string {
 const GROVE_SKILL = `
 ## Grove helpers
 
-Sessions the user starts also have \`grove_*\` tools on this server: \`grove_list_agents\` (agents and
-sessions), \`grove_start_agent\` (a helper with a task that stands on its own; the first call asks the
-user), \`grove_wait\` (until your helpers are done or need the user; call it again after a timeout),
-\`grove_read\` (a helper's transcript), \`grove_send\` and \`grove_stop\`. Helpers do not get these
-tools. When a helper needs the user, tell the user; you cannot answer for it.
+Lead sessions also have \`grove_*\` tools: \`grove_list_agents\`, \`grove_start_agent\` (a helper with
+its own task; the first call asks the user), \`grove_wait\` (call again after a timeout),
+\`grove_read\`, \`grove_send\` and \`grove_stop\`. Helpers do not get these tools. When a helper needs
+the user, tell the user.
 `;
 
 /** `.arbora/SKILL.md`: how an agent uses Arbora's browser tools (kept under 400 words). */
@@ -81,10 +80,8 @@ export function browserSkill(context: PrefaceContext): string {
   const grove = context.groveTools ? GROVE_SKILL : '';
   return `# Arbora browser tools
 
-You are working inside Arbora, a desktop app that shows this project's running dev server
-(${dev}) in an embedded browser next to you. The \`arbora-browser\` MCP server lets you see and
-drive that browser, so you can check your own changes without asking the user. The page is
-already open: do not launch another browser, and do not ask the user for screenshots.
+Arbora shows this project's dev server (${dev}) in an embedded browser. The \`arbora-browser\`
+tools let you see and drive it. The page is already open: do not launch another browser.
 
 ## Verify loop
 
@@ -113,5 +110,6 @@ ${VERIFY_LOOP.join('\n')}
 - Leaving the dev server's origin, \`browser_evaluate\` and \`terminal_run\` ask the user first. If
   they decline, do not retry; explain what you needed instead.
 - Prefer editing source over \`browser_evaluate\`; changes made in the page are lost on reload.
+- \`browser_tabs\` lists tabs. Target \`app\` is the project; a sent tab is granted, others say \`tab not granted\`. \`browser_compare\` scores two tabs. Figma is a canvas: screenshot the frame.
 ${grove}`;
 }

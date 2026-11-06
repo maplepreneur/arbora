@@ -227,6 +227,8 @@ export interface KeybindingContext {
   readonly recording?: boolean;
   /** The workspace that fills the window; missing means the browser workspace. */
   readonly workspace?: WorkspaceKind;
+  /** The embedded browser page has the keyboard, so tab chords beat the editor. */
+  readonly browserPage?: boolean;
   /**
    * Keyboard focus is in the content pane, including its browser page. Mod+1..9 then switch that
    * pane's tabs instead of Grove's agent rows.
@@ -243,7 +245,8 @@ export type WorkspaceKind = 'browser' | 'grove';
  * `grove`: the Grove workspace is showing.
  * `contentPane`: focus is in the content pane (its tabs, terminal, or browser page).
  */
-export type KeybindingWhen = 'always' | 'modeActive' | 'design' | 'agentPanel' | 'grove' | 'contentPane';
+export type KeybindingWhen =
+  'always' | 'modeActive' | 'design' | 'agentPanel' | 'grove' | 'contentPane' | 'browserPage';
 
 function bindingApplies(when: KeybindingWhen, context: KeybindingContext): boolean {
   switch (when) {
@@ -259,6 +262,8 @@ function bindingApplies(when: KeybindingWhen, context: KeybindingContext): boole
       return context.workspace === 'grove';
     case 'contentPane':
       return context.contentFocused === true;
+    case 'browserPage':
+      return context.browserPage === true;
     default: {
       const unreachable: never = when;
       return unreachable;
@@ -334,6 +339,8 @@ export class KeybindingTable {
     const applicable = candidates.filter((binding) => bindingApplies(binding.when, context));
     // The content pane sits inside the Grove shell, so its chords beat Grove's on the same keys
     // (Mod+1..9 are agent rows in the tree and tabs while the content pane is focused).
+    const page = applicable.find((binding) => binding.when === 'browserPage');
+    if (page) return page;
     const content = applicable.find((binding) => binding.when === 'contentPane');
     if (content) return content;
     const specific = applicable.find((binding) => binding.when !== 'always');

@@ -42,8 +42,9 @@ import { DesignModeService } from './design/design-mode-service.js';
 import { findCandidates } from './agent-mode/source-search.js';
 import { ProjectRuntime } from './project-runtime.js';
 import { RuntimeTable } from './runtime-table.js';
-import { BrowserHistory } from './browser/browser-history.js';
-import { BrowserService, type BrowserServiceEvents } from './browser/browser-service.js';
+import { BrowserTabs, type BrowserTabsHooks } from './browser/browser-tabs.js';
+import { TabGrantStore } from './browser/tab-grants.js';
+import { type BrowserService } from './browser/browser-service.js';
 import { browserPartition, type BrowserSessions } from './browser/browser-sessions.js';
 import { sendEvent } from './ipc.js';
 import { attachKeybindingInterceptor, type InterceptorSource } from './keybinding-interceptor.js';
@@ -123,8 +124,7 @@ const BOUNDS_SAVE_DELAY_MS = 500;
 
 /** A project's page, kept alive so switching back does not load it again. */
 interface LiveBrowser {
-  readonly browser: BrowserService;
-  readonly history: BrowserHistory;
+  readonly tabs: BrowserTabs;
 }
 
 export class ProjectWindowError extends Error {}
@@ -152,7 +152,7 @@ export class ProjectWindow {
   private boundsTimer: NodeJS.Timeout | undefined;
   private readonly disposers: (() => void)[] = [];
   browser: BrowserService | null = null;
-  private browserHistory: BrowserHistory | null = null;
+  private tabs: BrowserTabs | null = null;
   /** Pages for projects this window has shown, hidden while another project is current. */
   private readonly parkedBrowsers = new Map<string, LiveBrowser>();
   /** Bumped whenever the browser is (re)started or stopped, to drop stale async starts. */
@@ -280,7 +280,31 @@ export class ProjectWindow {
   }
 
   browserHistoryEntries(): BrowserHistoryEntry[] {
-    return this.browserHistory?.list() ?? [];
+    return this.tabs?.historyEntries() ?? [];
+  }
+
+  /** The tab an agent tool should use. Hidden tabs stay hidden. */
+  resolveBrowserTab(target: string | undefined): ReturnType<BrowserTabs['resolve']> {
+    const tabs = this.tabs;
+    if (!tabs) return Promise.reject(new Error('The browser panel is not open.'));
+    return tabs.resolve(target);
+  }
+
+  browserTabs(): BrowserTabs | null {
+    return this.tabs;
+  }
+
+  parkedMatch(contents: WebContents): BrowserService | undefined {
+    for (const live of this.parkedBrowsers.values()) {
+      const match = live.tabs.serviceForContents(contents);
+      if (match) return match;
+    }
+    return undefined;
+  }
+
+  async activateAppTab(): Promise<void> {
+    await this.tabs?.activateApp();
+    this.browser = this.tabs?.activeService() ?? null;
   }
 
   applyZoom(): void {
@@ -288,7 +312,7 @@ export class ProjectWindow {
     this.window.webContents.setZoomFactor(zoom);
     if (zoom === this.zoom) return;
     this.zoom = zoom;
-    this.browser?.setBounds(this.scaledBrowserRect(), this.browserBounds.emulation);
+    this.tabs?.setBounds(this.scaledBrowserRect(), this.browserBounds.emulation);
   }
 
   /** Restarts the background sync timer when its settings changed. */
@@ -315,7 +339,7 @@ export class ProjectWindow {
 
   setBrowserBounds(rect: Rect | null, emulation: ViewportEmulation | null): void {
     this.browserBounds = { rect, emulation };
-    this.browser?.setBounds(this.scaledBrowserRect(), emulation);
+    this.tabs?.setBounds(this.scaledBrowserRect(), emulation);
   }
 
   rebuildKeybindings(): void {
@@ -375,7 +399,11 @@ export class ProjectWindow {
     });
     if (launch) this.context = { ...this.context, workspace: launch };
     this.emitProject();
-    if (live) sendEvent(this.contents, 'browser.stateChanged', live.browser.getState());
+    if (live) {
+      const state = live.tabs.activeService()?.getState();
+      if (state) sendEvent(this.contents, 'browser.stateChanged', state);
+      sendEvent(this.contents, 'browser.tabsChanged', { tabs: live.tabs.snapshots() });
+    }
     this.manager.projectsChanged();
   }
 
@@ -390,11 +418,11 @@ export class ProjectWindow {
     this.agentMode?.setInspecting(false);
     const parked = this.unpark(path);
     if (parked) return parked;
-    if (!this.browser || !this.browserHistory) return null;
-    const live = { browser: this.browser, history: this.browserHistory };
+    if (!this.tabs) return null;
+    const live = { tabs: this.tabs };
+    this.tabs = null;
     this.browser = null;
-    this.browserHistory = null;
-    live.browser.setBounds(null, null);
+    live.tabs.setBounds(null, null);
     return live;
   }
 
@@ -451,7 +479,7 @@ export class ProjectWindow {
 
   private interceptorSource(
     dispatch: (commandId: string) => void,
-    extra: { contentFocused?: boolean } = {},
+    extra: { contentFocused?: boolean; browserPage?: boolean } = {},
   ): InterceptorSource {
     return {
       table: () => this.keybindings,
@@ -467,35 +495,37 @@ export class ProjectWindow {
   private async startBrowser(projectPath: string): Promise<void> {
     const generation = ++this.browserGeneration;
     const partition = browserPartition(projectPath);
-    const session = await this.options.browserSessions.prepare(partition);
+    await this.options.browserSessions.prepare(partition);
     if (generation !== this.browserGeneration || this.window.isDestroyed()) return;
 
-    const history = new BrowserHistory(
-      join(this.options.userDataPath, 'browser', partition.replace(/^persist:/, ''), 'history.json'),
-    );
-    const holder: { current: BrowserService | null } = { current: null };
-    const browser = new BrowserService({
+    const tabs = new BrowserTabs({
       window: this.window,
-      session,
-      preloadPath: this.options.browserPreloadPath,
       projectPath,
-      history,
+      projectPartition: partition,
+      preloadPath: this.options.browserPreloadPath,
+      historyRoot: join(this.options.userDataPath, 'browser'),
       initial: this.options.settings.get().projects[projectPath]?.browser,
-      events: this.browserEvents(() => holder.current),
+      prepareSession: (name) => this.options.browserSessions.prepare(name),
       attachInterceptor: (page) => this.pageInterceptor(page),
       saveState: (state) => this.saveBrowserState(projectPath, state),
-      beforeDevTools: () => this.options.browserSessions.ensureExtensions(session),
+      beforeDevTools: (session) => this.options.browserSessions.ensureExtensions(session),
+      openLinksInTabs: () => this.options.settings.get().browser.openLinksInTabs,
+      protectedIds: () => this.manager.grantedTabIds(projectPath),
+      hooks: this.tabHooks(),
     });
-    holder.current = browser;
     if (generation !== this.browserGeneration || this.window.isDestroyed()) {
-      browser.dispose();
-      history.dispose();
+      tabs.dispose();
       return;
     }
-    this.browserHistory = history;
-    this.browser = browser;
-    browser.setBounds(this.scaledBrowserRect(), this.browserBounds.emulation);
-    sendEvent(this.contents, 'browser.stateChanged', browser.getState());
+    this.tabs = tabs;
+    await tabs.start();
+    if (generation !== this.browserGeneration || this.window.isDestroyed()) {
+      tabs.dispose();
+      if (this.tabs === tabs) this.tabs = null;
+      return;
+    }
+    this.browser = tabs.activeService();
+    tabs.setBounds(this.scaledBrowserRect(), this.browserBounds.emulation);
   }
 
   /** Hide the current page and remember it under the project it belongs to. */
@@ -506,13 +536,12 @@ export class ProjectWindow {
     this.agentMode = null;
     this.browserGeneration++;
     const path = this.project?.path;
-    const browser = this.browser;
-    const history = this.browserHistory;
+    const tabs = this.tabs;
+    this.tabs = null;
     this.browser = null;
-    this.browserHistory = null;
-    if (!path || !browser || !history) return;
-    browser.setBounds(null, null);
-    this.parkedBrowsers.set(path, { browser, history });
+    if (!path || !tabs) return;
+    tabs.setBounds(null, null);
+    this.parkedBrowsers.set(path, { tabs });
   }
 
   private unpark(path: string): LiveBrowser | null {
@@ -522,59 +551,34 @@ export class ProjectWindow {
   }
 
   private installLive(live: LiveBrowser): void {
-    this.browser = live.browser;
-    this.browserHistory = live.history;
-    live.browser.rebind(
-      this.window,
-      this.browserEvents(() => live.browser),
-      (page) => this.pageInterceptor(page),
-    );
-    live.browser.setBounds(this.scaledBrowserRect(), this.browserBounds.emulation);
+    this.tabs = live.tabs;
+    live.tabs.rebind(this.window, this.tabHooks(), (page) => this.pageInterceptor(page));
+    live.tabs.setBounds(this.scaledBrowserRect(), this.browserBounds.emulation);
+    this.browser = live.tabs.activeService();
   }
 
-  /** Events from a parked page are ignored. `owner` is that page, compared with the one on screen. */
-  private browserEvents(owner: () => BrowserService | null): BrowserServiceEvents {
-    const active = (): boolean => {
-      const browser = owner();
-      return browser !== null && browser === this.browser;
-    };
+  private tabHooks(): BrowserTabsHooks {
     return {
       state: (state) => {
-        if (active()) sendEvent(this.contents, 'browser.stateChanged', state);
+        this.browser = this.tabs?.activeService() ?? null;
+        sendEvent(this.contents, 'browser.stateChanged', state);
       },
-      problemsAdded: (entries) => {
-        if (active()) sendEvent(this.contents, 'browser.problemsAdded', { entries });
+      problemsAdded: (entries) => sendEvent(this.contents, 'browser.problemsAdded', { entries }),
+      problemsCleared: () => sendEvent(this.contents, 'browser.problemsCleared', {}),
+      urlSuggested: (url) => sendEvent(this.contents, 'browser.urlSuggested', { url }),
+      inspectorSelected: (selection) => void this.agentMode?.select(selection),
+      inspectorCancelled: () => this.agentMode?.cancelledInPage(),
+      designState: (state) => this.designMode?.onState(state),
+      designExitRequested: () => sendEvent(this.contents, 'command.invoke', { commandId: CommandId.exitMode }),
+      designNavigationBlocked: (url) => sendEvent(this.contents, 'design.navigationBlocked', { url }),
+      designDocumentNavigated: () => void this.designMode?.onDocumentNavigated(),
+      pageFocused: (focused) => sendEvent(this.contents, 'browser.pageFocused', { focused }),
+      focusParked: () => sendEvent(this.contents, 'browser.focusParked', {}),
+      tabsChanged: (tabs) => {
+        this.browser = this.tabs?.activeService() ?? null;
+        sendEvent(this.contents, 'browser.tabsChanged', { tabs });
       },
-      problemsCleared: () => {
-        if (active()) sendEvent(this.contents, 'browser.problemsCleared', {});
-      },
-      urlSuggested: (url) => {
-        if (active()) sendEvent(this.contents, 'browser.urlSuggested', { url });
-      },
-      inspectorSelected: (selection) => {
-        if (active()) void this.agentMode?.select(selection);
-      },
-      inspectorCancelled: () => {
-        if (active()) this.agentMode?.cancelledInPage();
-      },
-      designState: (state) => {
-        if (active()) this.designMode?.onState(state);
-      },
-      designExitRequested: () => {
-        if (active()) sendEvent(this.contents, 'command.invoke', { commandId: CommandId.exitMode });
-      },
-      designNavigationBlocked: (url) => {
-        if (active()) sendEvent(this.contents, 'design.navigationBlocked', { url });
-      },
-      designDocumentNavigated: () => {
-        if (active()) void this.designMode?.onDocumentNavigated();
-      },
-      pageFocused: (focused) => {
-        if (active()) sendEvent(this.contents, 'browser.pageFocused', { focused });
-      },
-      focusParked: () => {
-        if (active()) sendEvent(this.contents, 'browser.focusParked', {});
-      },
+      passwordOffer: (offer) => sendEvent(this.contents, 'passwords.offerSave', offer),
     };
   }
 
@@ -587,24 +591,21 @@ export class ProjectWindow {
           sendEvent(this.contents, 'command.invoke', { commandId, fromPage: true });
         },
         // The page is the content pane's browser, so Mod+1..9 and the pane arrows apply here.
-        { contentFocused: true },
+        // `browserPage` lets tab chords beat the editor's Mod+W.
+        { contentFocused: true, browserPage: true },
       ),
     );
   }
 
   private stopBrowser(): void {
     this.browserGeneration++;
-    this.browser?.dispose();
+    this.tabs?.dispose();
+    this.tabs = null;
     this.browser = null;
-    this.browserHistory?.dispose();
-    this.browserHistory = null;
   }
 
   private disposeParked(): void {
-    for (const live of this.parkedBrowsers.values()) {
-      live.browser.dispose();
-      live.history.dispose();
-    }
+    for (const live of this.parkedBrowsers.values()) live.tabs.dispose();
     this.parkedBrowsers.clear();
   }
 
@@ -623,7 +624,7 @@ export class ProjectWindow {
     const project = this.project;
     if (!project) return false;
     const autoOpen = project.settings.autoOpenDevUrl !== false;
-    return autoOpen ? (this.browser?.suggestUrl(url) ?? false) : false;
+    return autoOpen ? (this.tabs?.suggestUrl(url) ?? false) : false;
   }
 
   private attachRuntime(projectPath: string): void {
@@ -835,6 +836,7 @@ function isVisibleOnSomeDisplay(bounds: WindowBounds): boolean {
 
 /** Owns every window, and one runtime per project those windows or Grove are using. */
 export class WindowManager {
+  readonly grants = new TabGrantStore();
   private readonly windows = new Set<ProjectWindow>();
   private readonly runtimes = new RuntimeTable<ProjectRuntime>();
   private usageTimer: NodeJS.Timeout | undefined;
@@ -965,6 +967,8 @@ export class WindowManager {
       appVersion: options.appVersion,
       host: {
         browser: () => this.findByProject(path)?.browser ?? null,
+        tabs: () => this.findByProject(path)?.browserTabs() ?? null,
+        grants: this.grants,
         suggestUrl: (url) => this.findByProject(path)?.offerTerminalUrl(url) ?? false,
         reloadProjectSettings: () => this.findByProject(path)?.reloadProjectSettings(),
         send: (name, payload) => this.sendRuntimeEvent(path, name, payload),
@@ -1153,8 +1157,16 @@ export class WindowManager {
 
   /** The browser panel whose page is `contents`, for the private page channel. */
   browserFromPage(contents: WebContents): BrowserService | undefined {
-    for (const w of this.windows) if (w.browser?.contents === contents) return w.browser;
+    for (const w of this.windows) {
+      const match = w.browserTabs()?.serviceForContents(contents) ?? w.parkedMatch(contents);
+      if (match) return match;
+    }
     return undefined;
+  }
+
+  /** Tab ids granted to a running agent in `projectPath`, so the LRU discard leaves them loaded. */
+  grantedTabIds(projectPath: string): ReadonlySet<string> {
+    return this.grants.protectedIds(projectPath);
   }
 
   findByProject(path: string): ProjectWindow | undefined {

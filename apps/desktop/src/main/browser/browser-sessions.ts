@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { app, session, type Certificate, type Event, type Session, type WebContents } from 'electron';
 import { isLocalHostname, type BrowserSettings } from '@arbora/shared';
 
@@ -22,7 +22,12 @@ export function findExtensionDirs(root: string | null): string[] {
 export interface BrowserSessionsOptions {
   /** Directory of unpacked DevTools extensions, or null when none are bundled. */
   readonly extensionsDir: string | null;
-  readonly settings: () => BrowserSettings;
+  /**
+   * `enabledExtensions` is the store selection. When it is omitted, every unpacked directory loads
+   * (the tests). 1Password loads at startup whenever it is selected; React and Vue stay behind
+   * the DevTools setting.
+   */
+  readonly settings: () => BrowserSettings & { enabledExtensions?: readonly string[] };
 }
 
 /**
@@ -115,15 +120,21 @@ export class BrowserSessions {
 
   private async syncExtensions(ses: Session): Promise<void> {
     const settings = this.options.settings();
-    const wanted =
+    const selected = settings.enabledExtensions;
+    const devtoolsReady =
       settings.devToolsExtensions && (settings.devToolsExtensionsLoad === 'startup' || this.demanded.has(ses));
-    const loaded = ses.extensions.getAllExtensions();
-    if (!wanted) {
-      for (const extension of loaded) ses.extensions.removeExtension(extension.id);
-      return;
+    const wanted = findExtensionDirs(this.options.extensionsDir).filter((dir) => {
+      const id = basename(dir);
+      if (selected && !selected.includes(id)) return false;
+      if (id === '1password') return true;
+      return devtoolsReady;
+    });
+    const wantedPaths = new Set(wanted);
+    for (const extension of ses.extensions.getAllExtensions()) {
+      if (!wantedPaths.has(extension.path)) ses.extensions.removeExtension(extension.id);
     }
-    const loadedPaths = new Set(loaded.map((e) => e.path));
-    for (const dir of findExtensionDirs(this.options.extensionsDir)) {
+    const loadedPaths = new Set(ses.extensions.getAllExtensions().map((extension) => extension.path));
+    for (const dir of wanted) {
       if (loadedPaths.has(dir)) continue;
       try {
         await ses.extensions.loadExtension(dir, { allowFileAccess: true });

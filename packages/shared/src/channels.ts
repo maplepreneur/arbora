@@ -22,6 +22,7 @@ import {
   viewportEmulationSchema,
   viewportPresetIdSchema,
 } from './browser.js';
+import { browserTabSnapshotSchema, tabRoleSchema } from './browser-tabs.js';
 import { designSessionDetailSchema } from './design-session.js';
 import { designCommandSchema, designSessionSummarySchema, designStateSchema, stylingApproachSchema } from './design.js';
 import { agentModeIncludeSchema, agentModeSelectionSchema, agentModeTargetSchema } from './inspector.js';
@@ -333,6 +334,48 @@ export const channels = {
   /** Round trip over the page's private channel; `ok: false` means the browser preload is not running. */
   'browser.pingPage': defineChannel('browser.pingPage', none, z.object({ ok: z.boolean() })),
   /** Dev-server URL detected elsewhere (the terminal in Stage 2). Loads it if the browser is empty. */
+  'browser.tabs.list': defineChannel('browser.tabs.list', none, z.array(browserTabSnapshotSchema)),
+  'browser.tabs.open': defineChannel(
+    'browser.tabs.open',
+    z.object({ url: z.string().max(8000).optional() }),
+    z.object({ id: z.string() }),
+  ),
+  'browser.tabs.close': defineChannel('browser.tabs.close', z.object({ id: z.string() }), none),
+  'browser.tabs.activate': defineChannel('browser.tabs.activate', z.object({ id: z.string() }), none),
+  'browser.tabs.move': defineChannel(
+    'browser.tabs.move',
+    z.object({ id: z.string(), index: z.number().int().min(0) }),
+    none,
+  ),
+  'browser.tabs.setRole': defineChannel(
+    'browser.tabs.setRole',
+    z.object({ id: z.string(), role: tabRoleSchema }),
+    none,
+  ),
+  'browser.tabs.duplicate': defineChannel(
+    'browser.tabs.duplicate',
+    z.object({ id: z.string() }),
+    z.object({ id: z.string().nullable() }),
+  ),
+  'browser.tabs.setSession': defineChannel(
+    'browser.tabs.setSession',
+    z.object({ id: z.string(), project: z.boolean() }),
+    none,
+  ),
+  'browser.tabs.discard': defineChannel('browser.tabs.discard', z.object({ id: z.string() }), none),
+  'browser.tabs.reopen': defineChannel('browser.tabs.reopen', none, z.object({ id: z.string().nullable() })),
+  'browser.tabs.closeOthers': defineChannel('browser.tabs.closeOthers', z.object({ id: z.string() }), none),
+  'browser.tabs.pin': defineChannel('browser.tabs.pin', z.object({ id: z.string(), pinned: z.boolean() }), none),
+  'browser.tabs.send': defineChannel(
+    'browser.tabs.send',
+    z.object({
+      tabId: z.string().optional(),
+      text: z.string().trim().min(1).max(8000),
+      fullPage: z.boolean().default(false),
+      agentId: z.string().min(1),
+    }),
+    z.object({ threadId: z.string() }),
+  ),
   'browser.suggestUrl': defineChannel(
     'browser.suggestUrl',
     z.object({ url: z.string() }),
@@ -542,6 +585,8 @@ export const channels = {
    */
   'agent.verify': defineChannel('agent.verify', z.object({ agentId: z.string() }), agentVerificationSchema),
   'agent.listThreads': defineChannel('agent.listThreads', none, z.array(threadSummarySchema)),
+  'agent.listGrants': defineChannel('agent.listGrants', threadId, z.array(z.string())),
+  'agent.revokeGrant': defineChannel('agent.revokeGrant', threadId.extend({ tabId: z.string() }), none),
   /**
    * `model` is a value of the agent's `model` config option; it wins over the agent's default model.
    * `title` names the thread before its first prompt (Grove's launcher titles it with the task).
@@ -873,6 +918,20 @@ export const events = {
   'browser.problemsAdded': defineEvent('browser.problemsAdded', z.object({ entries: z.array(problemEntrySchema) })),
   'browser.problemsCleared': defineEvent('browser.problemsCleared', z.object({})),
   'browser.urlSuggested': defineEvent('browser.urlSuggested', z.object({ url: z.string() })),
+  'browser.tabsChanged': defineEvent('browser.tabsChanged', z.object({ tabs: z.array(browserTabSnapshotSchema) })),
+  'agent.grantsChanged': defineEvent(
+    'agent.grantsChanged',
+    z.object({ threadId: z.string(), tabIds: z.array(z.string()) }),
+  ),
+  'passwords.offerSave': defineEvent(
+    'passwords.offerSave',
+    z.object({
+      origin: z.string(),
+      usernameField: z.string().nullable(),
+      passwordField: z.string(),
+      tabId: z.string(),
+    }),
+  ),
   /** Output from one terminal, batched per animation frame or so. */
   'terminal.data': defineEvent(
     'terminal.data',

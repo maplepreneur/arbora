@@ -13,6 +13,8 @@ import {
   type PageInfo,
   type PermissionRequest,
   type ScreenshotImage,
+  type TabCapture,
+  type TabSummary,
   type ScreenshotMode,
   type TerminalRunResult,
   type ToolPolicy,
@@ -34,6 +36,8 @@ import { MAX_IMAGE_EDGE } from '../agent-mode/agent-mode-service.js';
 import { resolveSource } from '../agent-mode/source-paths.js';
 import { searchTerms, type SearchTerm } from '../agent-mode/source-search.js';
 import type { BrowserService } from '../browser/browser-service.js';
+import type { BrowserTabs } from '../browser/browser-tabs.js';
+import type { TabGrantStore } from '../browser/tab-grants.js';
 import { fitWithin } from '../browser/image.js';
 import type { DevServer } from '../terminal/dev-server.js';
 import type { TerminalService } from '../terminal/terminal-service.js';
@@ -71,6 +75,10 @@ export interface ArboraToolHostOptions {
   readonly preview: (preview: BrowserPreview) => void;
   /** Adds one step to the thread's action trace. */
   readonly trace?: (step: TraceStepInput & { image: ActionTraceImage | null }) => void;
+  /** The thread these tools belong to. Grants are checked against it. */
+  readonly threadId?: string;
+  readonly tabs?: () => BrowserTabs | null;
+  readonly grants?: TabGrantStore;
 }
 
 function isFile(path: string): boolean {
@@ -117,12 +125,108 @@ function sourceLine(source: { relative: string; line: number | null } | null): s
  * permission cards, and screenshot thumbnails mirrored into the transcript.
  */
 export class ArboraToolHost implements BrowserToolHost {
+  /** Set by resolveTarget so a hidden tab is used without showing it. */
+  private selected: BrowserService | null = null;
+
   constructor(private readonly options: ArboraToolHostOptions) {}
 
   private browser(): BrowserService {
-    const browser = this.options.browser();
+    const browser = this.selected ?? this.options.browser();
     if (!browser) throw new ToolError('The browser panel is not open.');
     return browser;
+  }
+
+  async resolveTarget(target: string | undefined, intent: 'read' | 'write'): Promise<void> {
+    const tabs = this.options.tabs?.() ?? null;
+    if (!tabs) {
+      if (target !== undefined && target !== '' && target !== 'current' && target !== 'app' && target !== 'active') {
+        throw new ToolError(`Unknown tab ${target}; Arbora has a single browser tab for now (omit "target").`);
+      }
+      this.selected = null;
+      return;
+    }
+    const resolved = await tabs.resolve(target);
+    this.assertGranted(tabs, resolved.id, resolved.role);
+    if (intent === 'write' && resolved.role === 'reference') await this.permitWrite(tabs, resolved.id);
+    this.selected = resolved.service;
+  }
+
+  listTabs(): TabSummary[] {
+    const tabs = this.options.tabs?.() ?? null;
+    if (!tabs) return [];
+    const threadId = this.options.threadId;
+    const grants = this.options.grants;
+    return tabs.snapshots().map((tab) => ({
+      id: tab.id,
+      role: tab.role,
+      title: tab.title,
+      url: tab.url,
+      active: tab.active,
+      granted:
+        tab.role === 'app' ||
+        (grants !== undefined &&
+          threadId !== undefined &&
+          grants.canRead(tabs.projectPath, threadId, tab.id, tab.role)),
+    }));
+  }
+
+  async openTab(url: string | undefined): Promise<string> {
+    const tabs = this.requireTabs();
+    const id = await tabs.open(url && url.length > 0 ? url : 'about:blank', {
+      activate: false,
+      openedByThreadId: this.options.threadId ?? null,
+    });
+    if (this.options.grants && this.options.threadId)
+      this.options.grants.grant(tabs.projectPath, this.options.threadId, id);
+    return id;
+  }
+
+  closeTab(id: string): Promise<void> {
+    const tabs = this.requireTabs();
+    const owner = tabs.openedBy(id);
+    if (owner === undefined) throw new ToolError(`Unknown tab ${id}`);
+    if (owner !== this.options.threadId) throw new ToolError('Only tabs this agent opened can be closed.');
+    const result = tabs.close(id);
+    if (!result.ok) throw new ToolError(result.error);
+    this.options.grants?.dropTab(tabs.projectPath, id);
+    return Promise.resolve();
+  }
+
+  async captureTab(tabId: string): Promise<TabCapture> {
+    const tabs = this.requireTabs();
+    const resolved = await tabs.resolve(tabId);
+    this.assertGranted(tabs, resolved.id, resolved.role);
+    const shot = await resolved.service.captureQuiet();
+    const state = resolved.service.getState();
+    return { png: shot.png, cssWidth: shot.cssWidth, cssHeight: shot.cssHeight, title: state.title, url: state.url };
+  }
+
+  private requireTabs(): BrowserTabs {
+    const tabs = this.options.tabs?.() ?? null;
+    if (!tabs) throw new ToolError('Open a project first.');
+    return tabs;
+  }
+
+  private assertGranted(tabs: BrowserTabs, id: string, role: 'app' | 'reference'): void {
+    const grants = this.options.grants;
+    const threadId = this.options.threadId;
+    if (!grants || !threadId) return;
+    if (!grants.canRead(tabs.projectPath, threadId, id, role)) throw new ToolError('tab not granted');
+  }
+
+  private async permitWrite(tabs: BrowserTabs, id: string): Promise<void> {
+    const grants = this.options.grants;
+    const threadId = this.options.threadId;
+    if (!grants || !threadId) return;
+    const key = { projectPath: tabs.projectPath, threadId, tabId: id };
+    if (grants.canWrite(key)) return;
+    const answer = await this.options.askPermission({
+      tool: 'navigate',
+      title: 'Change this tab',
+      detail: 'The agent wants to type, click, or navigate in a reference tab you sent.',
+    });
+    if (answer !== 'once' && answer !== 'always') throw new ToolError('tab not granted');
+    grants.allowWrite(key);
   }
 
   cdp(): Promise<Cdp> {
@@ -130,7 +234,7 @@ export class ArboraToolHost implements BrowserToolHost {
   }
 
   page(): PageInfo {
-    const browser = this.options.browser();
+    const browser = this.selected ?? this.options.browser();
     if (!browser) return { url: '', title: '', loading: false, error: 'The browser panel is not open' };
     const state = browser.getState();
     return {

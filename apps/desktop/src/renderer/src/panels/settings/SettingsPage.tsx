@@ -6,6 +6,8 @@ import { executeCommand } from '../../commands';
 import { updateSettings } from '../../settings-client';
 import { useApp, type SettingsSection } from '../../store';
 import { AgentsSection } from './AgentsSection';
+import { ExtensionsSection } from './ExtensionsSection';
+import { PasswordsSection } from './PasswordsSection';
 import { AppearanceSection } from './AppearanceSection';
 import { GitSection } from './GitSection';
 import { GroveSection } from './GroveSection';
@@ -30,6 +32,8 @@ const SECTIONS: readonly { id: Section; label: string }[] = [
   { id: 'skills', label: 'Skills' },
   { id: 'mcp', label: 'MCP servers' },
   { id: 'browser', label: 'Browser' },
+  { id: 'extensions', label: 'Extensions' },
+  { id: 'passwords', label: 'Passwords' },
   { id: 'project', label: 'Project' },
   { id: 'keyboard', label: 'Keyboard' },
   { id: 'updates', label: 'Updates & diagnostics' },
@@ -191,6 +195,16 @@ function BrowserSection() {
         />
       </SettingRow>
       <SettingRow
+        title="Open links in tabs"
+        detail="Links that would open a new window open a reference tab instead. Sign-in popups still open their own window."
+      >
+        <Toggle
+          on={browser.openLinksInTabs}
+          label="Open links in tabs"
+          onChange={(on) => void updateSettings({ browser: { openLinksInTabs: on } })}
+        />
+      </SettingRow>
+      <SettingRow
         title="Trust localhost certificates"
         detail="Accept self-signed certificates from local dev servers (Vite https, mkcert)."
       >
@@ -275,6 +289,8 @@ export default function SettingsPage() {
           {section === 'skills' && <SkillsSection />}
           {section === 'mcp' && <McpSection />}
           {section === 'browser' && <BrowserSection />}
+          {section === 'extensions' && <ExtensionsSection />}
+          {section === 'passwords' && <PasswordsSection />}
           {section === 'notifications' && <NotificationsSection />}
           {section === 'project' && <ProjectSection />}
           {section === 'keyboard' && <KeyboardSection />}

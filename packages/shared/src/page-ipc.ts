@@ -29,6 +29,15 @@ export const pageMessages = {
   /** Design mode: Escape with nothing selected (main normally intercepts Escape first). */
   'design.exitRequested': z.object({}),
   'design.overlayApplied': z.object({ nonce: z.string() }),
+  /**
+   * A login form was submitted after a password field was filled. Names only: main reads the
+   * values itself when the user saves, so they never cross into the renderer.
+   */
+  'passwords.offerSave': z.object({
+    origin: z.string().max(500),
+    usernameField: z.string().max(200).nullable(),
+    passwordField: z.string().max(200),
+  }),
 } as const;
 
 export type PageMessageName = keyof typeof pageMessages;

@@ -158,3 +158,40 @@ if (document.readyState === 'loading') {
 } else {
   reportReady();
 }
+
+// A filled password field that is submitted (or left by a navigation) offers a save. The values
+// stay in the page; main reads them over CDP only after the user accepts.
+let passwordTouched = false;
+document.addEventListener(
+  'input',
+  (event) => {
+    const target = event.target;
+    if (target instanceof HTMLInputElement && target.type === 'password' && target.value.length > 0) {
+      passwordTouched = true;
+    }
+  },
+  true,
+);
+
+function offerSave(form: HTMLFormElement): void {
+  if (!passwordTouched) return;
+  const password = form.querySelector('input[type="password"]');
+  if (!(password instanceof HTMLInputElement)) return;
+  const username = form.querySelector(
+    'input[type="email"], input[autocomplete="username"], input[name="username" i], input[name="email" i], input[type="text"]',
+  );
+  send('passwords.offerSave', {
+    origin: location.origin,
+    usernameField: username instanceof HTMLInputElement ? username.name || username.id || null : null,
+    passwordField: password.name || password.id || 'password',
+  });
+  passwordTouched = false;
+}
+
+document.addEventListener(
+  'submit',
+  (event) => {
+    if (event.target instanceof HTMLFormElement) offerSave(event.target);
+  },
+  true,
+);

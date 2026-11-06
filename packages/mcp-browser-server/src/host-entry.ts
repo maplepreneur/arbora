@@ -22,6 +22,8 @@ export type {
   PageInfo,
   PermissionRequest,
   ScreenshotImage,
+  TabCapture,
+  TabSummary,
   ScreenshotMode,
   TerminalRunResult,
   ToolPolicy,

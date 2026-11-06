@@ -16,6 +16,8 @@ import type { AgentRegistry } from '@arbora/acp-client';
 import { AgentService } from './agent/agent-service.js';
 import { findCandidates } from './agent-mode/source-search.js';
 import type { BrowserService } from './browser/browser-service.js';
+import type { BrowserTabs } from './browser/browser-tabs.js';
+import type { TabGrantStore } from './browser/tab-grants.js';
 import { ArboraToolHost, type PermissionAnswer } from './mcp/browser-tool-host.js';
 import { openBrowserTools, type ShimCommand } from './mcp/browser-tools.js';
 import { GroveHost } from './mcp/grove-tool-host.js';
@@ -28,6 +30,8 @@ import { TerminalService } from './terminal/terminal-service.js';
 
 export interface ProjectRuntimeHost {
   browser(): BrowserService | null;
+  tabs?: () => BrowserTabs | null;
+  grants?: TabGrantStore;
   /** A window showing this project loaded the URL in its browser. */
   suggestUrl(url: string): boolean;
   reloadProjectSettings(): void;
@@ -171,6 +175,9 @@ export class ProjectRuntime {
     const toolHost = new ArboraToolHost({
       projectPath,
       browser: () => host.browser(),
+      threadId,
+      tabs: () => host.tabs?.() ?? null,
+      ...(host.grants ? { grants: host.grants } : {}),
       devServer: () => this.devServer,
       terminals: () => this.terminals,
       projectSettings: () => this.projectSettings(),

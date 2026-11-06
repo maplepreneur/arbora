@@ -2,6 +2,7 @@ export * from './action-trace.js';
 export * from './agent.js';
 export * from './attention.js';
 export * from './browser.js';
+export * from './browser-tabs.js';
 export * from './channels.js';
 export * from './commands.js';
 export * from './design.js';

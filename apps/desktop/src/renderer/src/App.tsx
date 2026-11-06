@@ -111,6 +111,7 @@ function useMainEvents(): void {
       }),
       arbora.on('command.invoke', ({ commandId, fromPage }) => executeCommand(commandId, { fromPage })),
       arbora.on('browser.stateChanged', (browser) => useApp.setState({ browser })),
+      arbora.on('browser.tabsChanged', ({ tabs }) => useApp.setState({ browserTabs: tabs })),
       arbora.on('browser.pageFocused', ({ focused }) => setBrowserPageFocused(focused)),
       arbora.on('browser.focusParked', () => reclaimFocusFromParkedPage()),
       arbora.on('browser.problemsAdded', ({ entries }) => addProblems(entries)),

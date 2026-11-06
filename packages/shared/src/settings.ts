@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { customAgentSchema, rememberedPermissionsSchema } from './agent.js';
 import { viewportPresetIdSchema } from './browser.js';
+import { persistedBrowserTabSchema } from './browser-tabs.js';
 import type { WorkspaceKind } from './keybindings.js';
 import { mcpServerConfigSchema } from './mcp-servers.js';
 
@@ -70,6 +71,9 @@ export const projectBrowserStateSchema = z.object({
   lastUrl: z.string().optional(),
   preset: viewportPresetIdSchema.default('responsive'),
   zoomFactor: z.number().min(0.25).max(5).default(1),
+  /** Restored tab strip. Missing on projects last opened before tabs existed. */
+  tabs: z.array(persistedBrowserTabSchema).max(50).optional(),
+  activeTabId: z.string().optional(),
 });
 export type ProjectBrowserState = z.infer<typeof projectBrowserStateSchema>;
 
@@ -248,7 +252,41 @@ export function layoutForAppLaunch(layout: Partial<LayoutState> | undefined, lau
 
 export const MAX_RECENT_PROJECTS = 10;
 
-export const SETTINGS_VERSION = 6;
+export const SETTINGS_VERSION = 7;
+
+/** Pre-approved browser extensions. Adding one is a code change, not a settings paste. */
+export const CATALOG_EXTENSION_IDS = ['react-devtools', 'vue-devtools', '1password'] as const;
+export const catalogExtensionIdSchema = z.enum(CATALOG_EXTENSION_IDS);
+export type CatalogExtensionId = z.infer<typeof catalogExtensionIdSchema>;
+
+export const extensionSettingsSchema = z.object({
+  /**
+   * Catalog ids loaded into the browser. React and Vue DevTools stay on, matching the previous
+   * single toggle. 1Password stays off until the user turns it on.
+   */
+  enabled: z.array(catalogExtensionIdSchema).max(10).default(['react-devtools', 'vue-devtools']),
+});
+export type ExtensionSettings = z.infer<typeof extensionSettingsSchema>;
+
+export const passwordModeSchema = z.enum(['auto', 'extension', 'cli']);
+export type PasswordModeSetting = z.infer<typeof passwordModeSchema>;
+
+/**
+ * `auto` follows the Stage 12 spike: Electron 45 has no `chrome.runtime.connectNative`, so the
+ * 1Password extension cannot unlock through the desktop app. Fill and save use the `op` CLI.
+ */
+export function resolvedPasswordMode(mode: PasswordModeSetting): 'extension' | 'cli' {
+  return mode === 'extension' ? 'extension' : 'cli';
+}
+
+export const passwordsSettingsSchema = z.object({
+  provider: z.enum(['none', '1password']).default('none'),
+  mode: passwordModeSchema.default('auto'),
+  agentLogins: z.enum(['ask', 'never']).default('ask'),
+  /** Origins an agent may log in to without asking again. */
+  alwaysAllow: z.array(z.string().max(300)).max(100).default([]),
+});
+export type PasswordsSettings = z.infer<typeof passwordsSettingsSchema>;
 
 export const browserSettingsSchema = z.object({
   /** Load the bundled React and Vue DevTools into the browser panel's session. */
@@ -261,6 +299,8 @@ export const browserSettingsSchema = z.object({
   devToolsExtensionsLoad: z.enum(['onDemand', 'startup']).default('onDemand'),
   /** Accept self-signed certificates from localhost dev servers (Vite `https: true`, mkcert, ...). */
   trustLocalhostCertificates: z.boolean().default(true),
+  /** `window.open` and `target="_blank"` to http(s) become a reference tab. OAuth popups stay windows. */
+  openLinksInTabs: z.boolean().default(true),
 });
 export type BrowserSettings = z.infer<typeof browserSettingsSchema>;
 
@@ -541,6 +581,8 @@ export const appSettingsSchema = z.object({
   quitOnLastWindowClose: z.boolean().default(true),
   appearance: appearanceSettingsSchema.default(appearanceSettingsSchema.parse({})),
   browser: browserSettingsSchema.default(browserSettingsSchema.parse({})),
+  extensions: extensionSettingsSchema.default(extensionSettingsSchema.parse({})),
+  passwords: passwordsSettingsSchema.default(passwordsSettingsSchema.parse({})),
   terminal: terminalSettingsSchema.default(terminalSettingsSchema.parse({})),
   editor: editorSettingsSchema.default(editorSettingsSchema.parse({})),
   agents: agentSettingsSchema.default(agentSettingsSchema.parse({})),
@@ -587,6 +629,8 @@ export const appSettingsPatchSchema = z
     quitOnLastWindowClose: z.boolean(),
     appearance: patchSchema(appearanceSettingsSchema),
     browser: patchSchema(browserSettingsSchema),
+    extensions: patchSchema(extensionSettingsSchema),
+    passwords: patchSchema(passwordsSettingsSchema),
     terminal: patchSchema(terminalSettingsSchema),
     editor: patchSchema(editorSettingsSchema),
     agents: agentSettingsPatchSchema,
@@ -630,6 +674,8 @@ export function applySettingsPatch(current: AppSettings, patch: AppSettingsPatch
     ...(patch.quitOnLastWindowClose !== undefined ? { quitOnLastWindowClose: patch.quitOnLastWindowClose } : {}),
     ...(patch.appearance !== undefined ? { appearance: mergeDefined(current.appearance, patch.appearance) } : {}),
     ...(patch.browser !== undefined ? { browser: mergeDefined(current.browser, patch.browser) } : {}),
+    ...(patch.extensions !== undefined ? { extensions: mergeDefined(current.extensions, patch.extensions) } : {}),
+    ...(patch.passwords !== undefined ? { passwords: mergeDefined(current.passwords, patch.passwords) } : {}),
     ...(patch.terminal !== undefined ? { terminal: mergeDefined(current.terminal, patch.terminal) } : {}),
     ...(patch.editor !== undefined ? { editor: mergeEditorSettings(current.editor, patch.editor) } : {}),
     ...(patch.agents !== undefined ? { agents: mergeAgentSettings(current.agents, patch.agents) } : {}),
@@ -681,6 +727,8 @@ export const SETTINGS_MIGRATIONS: Readonly<Record<number, Migration>> = {
   4: (input) => ({ ...input, version: 5 }),
   // v6 added Grove's project list and trusted commands, defaulted by the schema.
   5: (input) => ({ ...input, version: 6 }),
+  // v7 added the extension catalog and 1Password settings, defaulted by the schema.
+  6: (input) => ({ ...input, version: 7 }),
 };
 
 function objectField(input: Record<string, unknown>, key: string): Record<string, unknown> | null {
@@ -783,6 +831,22 @@ export const projectSettingsSchema = z.object({
    */
   browserTools: z
     .object({ evaluate: browserToolPolicySchema.optional(), terminalRun: browserToolPolicySchema.optional() })
+    .optional(),
+  /** Design-match loop. Missing means the defaults (0.92, 5 rounds). */
+  designMatch: z
+    .object({
+      threshold: z.number().min(0).max(1).default(0.92),
+      maxRounds: z.number().int().min(1).max(20).default(5),
+    })
+    .optional(),
+  /**
+   * Extra MCP servers passed through on `session/new` (the user's Figma server, for example).
+   * Arbora never writes a token here.
+   */
+  mcp: z
+    .object({
+      extraServers: z.array(mcpServerConfigSchema).max(20).default([]),
+    })
     .optional(),
 });
 export type ProjectSettings = z.infer<typeof projectSettingsSchema>;

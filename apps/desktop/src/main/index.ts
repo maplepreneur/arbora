@@ -61,6 +61,7 @@ import {
 } from './grove/worktree-session.js';
 import type { WorkspaceService } from './workspace/workspace-service.js';
 import { ThemeService } from './theme-service.js';
+import type { BrowserTabs } from './browser/browser-tabs.js';
 import { ProjectWindowError, resolveProjectPath, WindowManager, type ProjectWindow } from './window-manager.js';
 
 const platform = toPlatform(process.platform);
@@ -151,7 +152,7 @@ function main(): void {
       extensionsDir: app.isPackaged
         ? join(process.resourcesPath, 'extensions')
         : join(import.meta.dirname, '../../resources/extensions'),
-      settings: () => settings.get().browser,
+      settings: () => ({ ...settings.get().browser, enabledExtensions: settings.get().extensions.enabled }),
     });
 
     const agentRegistry = new AgentRegistry(
@@ -581,6 +582,60 @@ function main(): void {
     defineHandler('browser.suggestUrl', isTrusted, ({ url }, event) => ({
       navigated: windowFor(event.sender).browser?.suggestUrl(url) ?? false,
     }));
+    const requireTabs = (sender: WebContents): BrowserTabs => {
+      const tabs = windowFor(sender).browserTabs();
+      if (!tabs) throw new Error('Open a project first');
+      return tabs;
+    };
+    defineHandler(
+      'browser.tabs.list',
+      isTrusted,
+      (_req, event) => windowFor(event.sender).browserTabs()?.snapshots() ?? [],
+    );
+    defineHandler('browser.tabs.open', isTrusted, async ({ url }, event) => ({
+      id: await requireTabs(event.sender).open(url ?? 'about:blank'),
+    }));
+    defineHandler('browser.tabs.close', isTrusted, ({ id }, event) => {
+      const result = requireTabs(event.sender).close(id);
+      if (!result.ok) throw new Error(result.error);
+      const path = windowFor(event.sender).project?.path;
+      if (path) manager.grants.dropTab(path, id);
+      return undefined;
+    });
+    defineHandler('browser.tabs.activate', isTrusted, async ({ id }, event) => {
+      await requireTabs(event.sender).activate(id);
+      return undefined;
+    });
+    defineHandler('browser.tabs.move', isTrusted, ({ id, index }, event) => {
+      requireTabs(event.sender).move(id, index);
+      return undefined;
+    });
+    defineHandler('browser.tabs.setRole', isTrusted, async ({ id, role }, event) => {
+      await requireTabs(event.sender).setRole(id, role);
+      return undefined;
+    });
+    defineHandler('browser.tabs.duplicate', isTrusted, async ({ id }, event) => ({
+      id: await requireTabs(event.sender).duplicate(id),
+    }));
+    defineHandler('browser.tabs.setSession', isTrusted, async ({ id, project }, event) => {
+      await requireTabs(event.sender).setUseProjectSession(id, project);
+      return undefined;
+    });
+    defineHandler('browser.tabs.discard', isTrusted, ({ id }, event) => {
+      requireTabs(event.sender).discard(id);
+      return undefined;
+    });
+    defineHandler('browser.tabs.reopen', isTrusted, async (_req, event) => ({
+      id: await requireTabs(event.sender).reopen(),
+    }));
+    defineHandler('browser.tabs.closeOthers', isTrusted, ({ id }, event) => {
+      requireTabs(event.sender).closeOthers(id);
+      return undefined;
+    });
+    defineHandler('browser.tabs.pin', isTrusted, ({ id, pinned }, event) => {
+      requireTabs(event.sender).pin(id, pinned);
+      return undefined;
+    });
 
     defineHandler(
       'contextMenu.show',
@@ -942,7 +997,69 @@ function main(): void {
     );
     defineHandler('agent.deleteThread', isTrusted, async ({ threadId }, event) => {
       await requireAgents(event.sender).deleteThread(threadId);
+      const projectWindow = windowFor(event.sender);
+      const path = projectWindow.project?.path;
+      if (path) {
+        projectWindow.browserTabs()?.closeOpenedBy(threadId);
+        manager.grants.dropThread(path, threadId);
+        sendEvent(projectWindow.contents, 'agent.grantsChanged', { threadId, tabIds: [] });
+      }
       return undefined;
+    });
+    defineHandler('agent.listGrants', isTrusted, ({ threadId }, event) => {
+      const path = windowFor(event.sender).project?.path;
+      return path ? manager.grants.list(path, threadId) : [];
+    });
+    defineHandler('agent.revokeGrant', isTrusted, ({ threadId, tabId }, event) => {
+      const projectWindow = windowFor(event.sender);
+      const path = projectWindow.project?.path;
+      if (!path) return undefined;
+      manager.grants.revoke(path, threadId, tabId);
+      sendEvent(projectWindow.contents, 'agent.grantsChanged', {
+        threadId,
+        tabIds: manager.grants.list(path, threadId),
+      });
+      return undefined;
+    });
+    defineHandler('browser.tabs.send', isTrusted, async ({ tabId, text, fullPage, agentId }, event) => {
+      const projectWindow = windowFor(event.sender);
+      const tabs = projectWindow.browserTabs();
+      const path = projectWindow.project?.path;
+      const agents = projectWindow.agents;
+      if (!tabs || !path || !agents) throw new Error('Open a project first');
+      const resolved = await tabs.resolve(tabId);
+      const shot = await resolved.service.screenshot({ mode: fullPage ? 'fullPage' : 'viewport' });
+      const summary = await resolved.service.pageSummary().catch(() => ({ selection: '', text: '' }));
+      const thread = agents.createThread(agentId, { title: text.slice(0, 80) });
+      manager.grants.grant(path, thread.id, resolved.id);
+      const state = resolved.service.getState();
+      const excerpt = summary.text.replace(/\s+/g, ' ').trim().slice(0, 4000);
+      const selection = summary.selection.replace(/\s+/g, ' ').trim().slice(0, 2000);
+      const body = [
+        text,
+        '',
+        `Tab ${resolved.id} (${resolved.role}) is granted to this thread.`,
+        `Title: ${state.title || '(untitled)'}`,
+        `URL: ${state.url || '(none)'}`,
+        'Use browser tools with this tab id as target. The project page is target "app".',
+        'Compare the design with the app using browser_compare. Repeat until the score stops moving, or list the differences that remain.',
+        'Figma is a canvas: browser_snapshot shows the Figma chrome, not the layers. Screenshot the frame. A node-id in the URL selects one frame.',
+        selection ? `Selected text: ${selection}` : '',
+        excerpt ? `Visible text: ${excerpt}` : '',
+      ]
+        .filter((line) => line !== '')
+        .join('\n');
+      void agents
+        .prompt(thread.id, [
+          { type: 'text', text: body },
+          { type: 'image', data: shot.pngBase64, mimeType: 'image/png' },
+        ])
+        .catch((error: unknown) => console.warn(`[tabs] send failed: ${(error as Error).message}`));
+      sendEvent(projectWindow.contents, 'agent.grantsChanged', {
+        threadId: thread.id,
+        tabIds: manager.grants.list(path, thread.id),
+      });
+      return { threadId: thread.id };
     });
     defineHandler('agent.renameThread', isTrusted, ({ threadId, title }, event) => {
       requireAgents(event.sender).renameThread(threadId, title);
@@ -1080,8 +1197,10 @@ function main(): void {
       return agentMode.submit(request);
     });
 
-    defineHandler('design.setActive', isTrusted, ({ active }, event) => {
-      windowFor(event.sender).designMode?.setActive(active);
+    defineHandler('design.setActive', isTrusted, async ({ active }, event) => {
+      const projectWindow = windowFor(event.sender);
+      if (active) await projectWindow.activateAppTab();
+      projectWindow.designMode?.setActive(active);
       return undefined;
     });
     defineHandler('design.command', isTrusted, (command, event) => {

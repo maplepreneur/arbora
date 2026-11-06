@@ -10,6 +10,7 @@ const SCOPE_LABEL: Readonly<Record<KeybindingWhen, string | null>> = {
   agentPanel: 'in the chat',
   grove: 'in Grove',
   contentPane: 'in the content pane',
+  browserPage: 'on the page',
 };
 
 export interface KeybindingCheatRow {

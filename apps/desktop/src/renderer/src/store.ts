@@ -5,6 +5,7 @@ import {
   layoutStateSchema,
   type AppInfo,
   type AppSettings,
+  type BrowserTabSnapshot,
   type DesignSelection,
   type DesignSessionSummary,
   type DesignState,
@@ -57,6 +58,8 @@ export interface AppState {
   toasts: Toast[];
   /** Browser panel state from main; null until the project's browser view exists. */
   browser: NavigationState | null;
+  /** Open browser tabs for the project this window is showing. */
+  browserTabs: BrowserTabSnapshot[];
   /** Console, exception and network entries for the Problems tab, oldest first. */
   problems: ProblemEntry[];
   /** Dev-server URL offered by `browser.suggestUrl` while another page is open. */
@@ -84,6 +87,8 @@ export type SettingsSection =
   | 'skills'
   | 'mcp'
   | 'browser'
+  | 'extensions'
+  | 'passwords'
   | 'project'
   | 'keyboard'
   | 'updates';
@@ -171,6 +176,7 @@ export const useApp = create<AppState>()(() => ({
   terminalFocused: false,
   toasts: [],
   browser: null,
+  browserTabs: [],
   problems: [],
   suggestedUrl: null,
   urlFocusRequest: 0,
@@ -201,6 +207,7 @@ export function setProject(project: ProjectInfo | null): void {
           design: EMPTY_DESIGN,
           paletteOpen: false,
           browser: null,
+          browserTabs: [],
           problems: [],
           suggestedUrl: null,
         }

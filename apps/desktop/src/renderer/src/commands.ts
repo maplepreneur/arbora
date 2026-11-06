@@ -28,6 +28,7 @@ import {
   isStoppable,
   focusComposer,
   loadThread,
+  openThread,
   requestNewGroup,
   stopAgent,
   toggleLog,
@@ -762,6 +763,34 @@ function showAttentionThread(): void {
   if (hasProject()) revealThread(threadId);
 }
 
+async function cycleBrowserTab(direction: 1 | -1): Promise<void> {
+  const tabs = useApp.getState().browserTabs;
+  if (tabs.length < 2) return;
+  const index = tabs.findIndex((tab) => tab.active);
+  const next = tabs[(index + direction + tabs.length) % tabs.length];
+  if (next) await window.arbora.invoke('browser.tabs.activate', { id: next.id });
+}
+
+async function sendActiveTab(): Promise<void> {
+  const agentId = defaultAgentId();
+  if (!agentId) {
+    showToast('Choose an agent first');
+    return;
+  }
+  const active = useApp.getState().browserTabs.find((tab) => tab.active);
+  try {
+    const { threadId } = await window.arbora.invoke('browser.tabs.send', {
+      ...(active ? { tabId: active.id } : {}),
+      text: 'Implement this design',
+      fullPage: false,
+      agentId,
+    });
+    await openThread(threadId);
+  } catch (error) {
+    showToast((error as Error).message);
+  }
+}
+
 async function exportDiagnostics(): Promise<void> {
   try {
     const { path } = await window.arbora.invoke('diagnostics.export');
@@ -1233,6 +1262,29 @@ async function runCommand(id: CommandId): Promise<void> {
       return;
     case CommandId.groveSetDefaultAgent:
       withGroveSession((session) => void setProjectDefaultAgent(session.agentId));
+      return;
+    case CommandId.browserNewTab:
+      if (hasProject()) await arbora.invoke('browser.tabs.open', {});
+      return;
+    case CommandId.browserCloseTab: {
+      const active = useApp.getState().browserTabs.find((tab) => tab.active);
+      if (active && active.role !== 'app') await arbora.invoke('browser.tabs.close', { id: active.id });
+      return;
+    }
+    case CommandId.browserReopenTab:
+      if (hasProject()) await arbora.invoke('browser.tabs.reopen');
+      return;
+    case CommandId.browserNextTab:
+      await cycleBrowserTab(1);
+      return;
+    case CommandId.browserPreviousTab:
+      await cycleBrowserTab(-1);
+      return;
+    case CommandId.browserSendTab:
+      await sendActiveTab();
+      return;
+    case CommandId.browserFillPassword:
+      showToast('1Password fill is not connected yet');
       return;
     case CommandId.groveSearch:
       openGroveSearch();

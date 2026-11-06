@@ -37,6 +37,7 @@ import {
   type ViewportPresetId,
 } from '@arbora/shared';
 import { executeCommand, navigateBrowser } from '../commands';
+import { BrowserTabStrip } from './BrowserTabs';
 import type { ModeState } from '../mode';
 import { useChordLabel } from '../keybindings';
 import { useGrove } from '../grove-store';
@@ -499,6 +500,7 @@ export default function BrowserPanel({
 
   return (
     <div className="flex h-full flex-col bg-bg" data-testid="browser-panel">
+      <BrowserTabStrip />
       <Toolbar state={state} />
       {mode.kind !== 'idle' && (
         <div
