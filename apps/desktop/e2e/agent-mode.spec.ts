@@ -407,6 +407,7 @@ test.describe('Stage 4 agent mode on Next.js (React 19)', () => {
         'Button ← Card ← Counter ← Page (server) ← RootLayout (server)',
       );
       await expect(page.getByTestId('agent-mode-tier')).toHaveAttribute('data-tier', '3');
+      await expect(page.getByTestId('dev-plugin-install')).toBeVisible();
       const sources = page.getByTestId('agent-mode-include-sources');
       await expect(sources).toHaveText(/\d+ candidate files?/);
       await expect(sources).toHaveAttribute('title', /app\/components\/Button\.tsx/);
