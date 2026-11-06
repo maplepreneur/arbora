@@ -1128,6 +1128,37 @@ if (args[1] === 'create') {
     }
   });
 
+  test('design mode opens on the app tab, not the reference tab', async () => {
+    const design = await startStaticFixture(DESIGN);
+    const { app, page } = await launch(tempUserData(), [DESIGN]);
+    const designOn = (kind: 'app' | 'reference'): Promise<boolean> =>
+      app.evaluate(({ webContents }, which) => {
+        const target = webContents.getAllWebContents().find((wc) => {
+          const path = wc.session.storagePath ?? '';
+          if (wc.getURL().startsWith('devtools:')) return false;
+          return which === 'app' ? path.includes('arbora-browser-') : path.includes('arbora-web');
+        });
+        if (!target) return false;
+        return target.executeJavaScript('!!document.querySelector("[data-arbora-design]")') as Promise<boolean>;
+      }, kind);
+    try {
+      await openUrl(page, design.url);
+      const reference = await page.evaluate((url) => window.arbora.invoke('browser.tabs.open', { url }), design.url);
+      await page.evaluate((id) => window.arbora.invoke('browser.tabs.activate', { id }), reference.id);
+      await focusChrome(page);
+      await page.keyboard.press('ControlOrMeta+D');
+      await expect(page.getByTestId('mode-banner')).toHaveAttribute('data-mode', 'design');
+      await expect.poll(async () => (await tabs(page)).find((tab) => tab.active)?.role).toBe('app');
+      await expect.poll(() => designOn('app')).toBe(true);
+      expect(await designOn('reference')).toBe(false);
+      await page.evaluate((id) => window.arbora.invoke('browser.tabs.activate', { id }), reference.id);
+      await expect.poll(async () => (await tabs(page)).find((tab) => tab.active)?.role).toBe('app');
+    } finally {
+      await app.close();
+      await design.close();
+    }
+  });
+
   test('inspects a reference tab and follows the visible tab', async () => {
     const design = await startStaticFixture(DESIGN);
     const userData = tempUserData();

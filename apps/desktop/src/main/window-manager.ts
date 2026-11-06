@@ -567,7 +567,13 @@ export class ProjectWindow {
 
   /** Points `browser` at the visible tab and keeps agent mode's inspector on that tab. */
   private rememberActiveBrowser(): void {
-    this.browser = this.tabs?.activeService() ?? null;
+    const active = this.tabs?.activeService() ?? null;
+    const app = this.tabs?.appService() ?? null;
+    if (this.designMode?.editing && app && active && active !== app) {
+      void this.tabs?.activateApp();
+      return;
+    }
+    this.browser = active;
     this.agentMode?.followActiveTab();
   }
 
@@ -692,7 +698,8 @@ export class ProjectWindow {
     const { platform, shellEnvironment } = this.options;
     this.designMode = new DesignModeService({
       projectPath,
-      browser: () => this.browser,
+      // Design edits the project's page. A visible reference tab must not receive them.
+      browser: () => this.tabs?.appService() ?? this.browser,
       agents: () => this.agents,
       findCandidates: async (terms) => {
         await shellEnvironment.ready;
