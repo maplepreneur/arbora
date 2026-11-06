@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { nativeImage } from 'electron';
 import { composeDesignPrompt, type PromptScreenshot } from '@arbora/browser-bridge';
@@ -10,6 +10,8 @@ import {
   designOpSchema,
   planWriteThrough,
   renderChangeList,
+  renderSessionMarkdown,
+  type DesignSessionDetail,
   type AgentModeTarget,
   type ContentBlock,
   type DesignCommand,
@@ -261,8 +263,43 @@ export class DesignModeService {
     return { files, sessionId: session.id };
   }
 
+  /** Change list, Markdown, and the before/after screenshots for one saved session. */
+  readSessionDetail(id: string): DesignSessionDetail {
+    const session = this.readSession(this.sessionFile(id));
+    if (!session) throw new Error('That design session is gone');
+    const beforeRelative = this.projectFile(session.before);
+    const afterRelative = this.projectFile(session.after);
+    const sources = session.sources.slice(0, 8).map((source) => ({
+      relative: source.relative,
+      line: source.line,
+    }));
+    const markdown = renderSessionMarkdown({
+      createdAt: session.createdAt,
+      url: session.url,
+      approach: session.approach,
+      opCount: session.opCount,
+      changes: session.changes,
+      framework: session.framework.id,
+      sources,
+      beforeRelative,
+      afterRelative,
+    });
+    return {
+      id: session.id,
+      createdAt: session.createdAt,
+      url: session.url,
+      approach: session.approach,
+      opCount: session.opCount,
+      changes: session.changes,
+      markdown,
+      sources,
+      beforeUrl: beforeRelative ? this.imageDataUrl(session.before) : null,
+      afterUrl: afterRelative ? this.imageDataUrl(session.after) : null,
+    };
+  }
+
   resend(id: string, target: AgentModeTarget): { threadId: string } {
-    const session = this.readSession(join(this.sessionsDir(), `${id}.json`));
+    const session = this.readSession(this.sessionFile(id));
     if (!session) throw new Error('That design session is gone');
     const before = this.shotFromFile(session.before);
     const after = this.shotFromFile(session.after);
@@ -420,6 +457,31 @@ export class DesignModeService {
       mimeType,
       data: data.toString('base64'),
     };
+  }
+
+  private sessionFile(id: string): string {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      throw new Error('That design session is gone');
+    }
+    return join(this.sessionsDir(), `${id}.json`);
+  }
+
+  /** Project-relative path, or null when `path` is outside the project. */
+  private projectFile(path: string): string | null {
+    const relative = projectRelative(path, this.options.projectPath);
+    if (!relative || relative.startsWith('..') || isAbsolute(relative)) return null;
+    return relative;
+  }
+
+  private imageDataUrl(path: string): string | null {
+    try {
+      const info = statSync(path);
+      if (!info.isFile() || info.size > 1_800_000) return null;
+      const mime = path.endsWith('.jpg') || path.endsWith('.jpeg') ? 'image/jpeg' : 'image/png';
+      return `data:${mime};base64,${readFileSync(path).toString('base64')}`;
+    } catch {
+      return null;
+    }
   }
 
   private sessionsDir(): string {

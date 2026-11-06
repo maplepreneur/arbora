@@ -408,6 +408,18 @@ export async function discardDesign(): Promise<void> {
   }
 }
 
+/** Asks where to save a design session as Markdown, and writes it. */
+export async function exportDesignSession(id: string): Promise<void> {
+  try {
+    const { path } = await window.arbora.invoke('design.exportSession', { id });
+    if (!path) return;
+    const name = path.split(/[/\\]/).pop() ?? path;
+    showToast(`Saved ${name}`);
+  } catch (error) {
+    showToast(ipcError(error));
+  }
+}
+
 /** Sends a saved design session to an agent again. The live page is left alone. */
 export async function resendDesignSession(id: string, target: AgentModeTarget | null): Promise<void> {
   if (!target) {

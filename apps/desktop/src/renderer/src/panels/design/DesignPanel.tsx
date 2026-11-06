@@ -42,6 +42,7 @@ import { toggleDefaultModel } from '../../agent-defaults';
 import { useAutoVerify, usePickableAgents } from '../../agent-pickers';
 import { Picker } from '../../components/Picker';
 import { applyDesignToSource, discardDesign, resendDesignSession, saveDesignTo } from '../../commands';
+import { SessionHistory } from './SessionHistory';
 import type { DesignPending } from '../../mode';
 import { dispatchMode, openSettings, setDesignTarget, showToast, useApp } from '../../store';
 
@@ -761,27 +762,7 @@ function ChangesPanel({ target, onEdit }: { target: AgentModeTarget | null; onEd
           ))}
         </ol>
       )}
-      {sessions.length > 0 && (
-        <section className="flex flex-col gap-1 px-3 py-3" data-testid="design-sessions">
-          <h3 className="text-[11px] font-semibold tracking-wide text-fg-muted uppercase">Earlier sessions</h3>
-          {sessions.slice(0, 8).map((session) => (
-            <div key={session.id} className="flex items-center gap-2 text-[11px]">
-              <span className="min-w-0 flex-1 truncate text-fg-muted" title={session.url}>
-                {new Date(session.createdAt).toLocaleString()} · {session.opCount} change
-                {session.opCount === 1 ? '' : 's'}
-              </span>
-              <button
-                type="button"
-                data-testid="design-resend"
-                className="shrink-0 text-accent hover:underline"
-                onClick={() => void resendDesignSession(session.id, target)}
-              >
-                Resend
-              </button>
-            </div>
-          ))}
-        </section>
-      )}
+      <SessionHistory sessions={sessions} target={target} />
     </div>
   );
 }

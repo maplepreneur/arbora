@@ -22,6 +22,7 @@ import {
   viewportEmulationSchema,
   viewportPresetIdSchema,
 } from './browser.js';
+import { designSessionDetailSchema } from './design-session.js';
 import { designCommandSchema, designSessionSummarySchema, designStateSchema, stylingApproachSchema } from './design.js';
 import { agentModeIncludeSchema, agentModeSelectionSchema, agentModeTargetSchema } from './inspector.js';
 import {
@@ -713,6 +714,18 @@ export const channels = {
     'design.writeThrough',
     none,
     z.object({ files: z.array(z.string().max(2000)).max(20), sessionId: z.string() }),
+  ),
+  /** One saved session: change list, Markdown export, and before/after screenshots. */
+  'design.readSession': defineChannel(
+    'design.readSession',
+    z.object({ id: z.string().max(80) }),
+    designSessionDetailSchema,
+  ),
+  /** Writes the session Markdown to a path the user picks. `path` is null when the dialog is cancelled. */
+  'design.exportSession': defineChannel(
+    'design.exportSession',
+    z.object({ id: z.string().max(80) }),
+    z.object({ path: z.string().nullable() }),
   ),
 
   /** Children of a project folder, folders first. The watcher covers folders listed here. */

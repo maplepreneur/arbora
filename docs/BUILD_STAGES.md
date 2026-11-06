@@ -980,6 +980,7 @@ User feedback from the first macOS installs, landed as a stack of pull requests 
 4. **Design-mode direct write-through**: for tier 1 targets in Tailwind projects, apply class edits directly to the source file and skip the agent round trip; keep a one-click "Ask agent instead".
    - Gotcha: write-through runs only when every applied change is a style with a Tailwind class and a file and line on the edited element (the host fiber's `_debugSource`, not the component's call site). A text or structure change keeps the agent button. A directional utility (`pt-10`) is added beside a shorthand (`p-6`); the shorthand is replaced only when the edit is that shorthand. `className={clsx(...)}` is refused. The live inline style is reverted after the file is written, so the dev server's reload shows the class.
 5. **Design session history**: list, compare, resend, export as Markdown.
+   - Gotcha: Compare reads the before and after screenshots only when they are inside the project. The Markdown export names those paths; it does not embed the image bytes. A session id that is not a UUID is refused, so a crafted id cannot read another file.
 6. **Agent action traces**: record MCP browser actions as a Playwright-like trace (screenshots per step) viewable in the thread.
 7. **LSP opt-in**: `@codemirror/lsp-client` + `typescript-language-server` spawned per project; hover, go-to-definition, completions.
    - Gotcha: the language server must be the project's TypeScript version; resolve `node_modules/typescript` first.
@@ -990,9 +991,9 @@ User feedback from the first macOS installs, landed as a stack of pull requests 
 
 - [x] Dev plugin (Vite, webpack/Next, Nuxt) and inspector integration
 - [x] Browser tabs (moved to Stage 12)
-- [ ] Worktree sessions
+- [x] Worktree sessions
 - [x] Tailwind write-through
-- [ ] Design session history
+- [x] Design session history
 - [ ] Action traces
 - [ ] LSP opt-in
 - [ ] Source-map assisted mapping
