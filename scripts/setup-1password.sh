@@ -47,14 +47,14 @@ check_row() {
   fi
 }
 
-if [ "$CHECK" = 1 ]; then
+report_check() {
   echo "os: $(uname -s)"
   if op_status; then
-    status=0
+    CHECK_STATUS=0
   else
-    status=1
+    CHECK_STATUS=1
   fi
-  if [ "$status" = 0 ]; then
+  if [ "$CHECK_STATUS" = 0 ]; then
     accounts=$(op account list --format json 2>/dev/null || true)
     case "$accounts" in
       \[\]) check_row account fail "no account" ;;
@@ -91,8 +91,12 @@ if [ "$CHECK" = 1 ]; then
   else
     check_row extension fail "not downloaded"
   fi
+}
+
+if [ "$CHECK" = 1 ]; then
+  report_check
   echo "This check does not install anything and does not use sudo."
-  exit "$status"
+  exit "$CHECK_STATUS"
 fi
 
 linux_family() {
@@ -125,12 +129,24 @@ print_linux_install() {
       fi
       ;;
     debian)
-      echo "Install from 1Password's apt repository, then: apt install 1password 1password-cli"
-      echo "The repository steps need a root prompt. They are not run from here."
+      cat <<'EOF'
+Install from 1Password's apt repository. These commands need a root prompt. They are not run from here.
+  curl -sS https://downloads.1password.com/linux/keys/1password.asc | sudo gpg --dearmor --output /usr/share/keyrings/1password-archive-keyring.gpg
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/1password-archive-keyring.gpg] https://downloads.1password.com/linux/debian/$(dpkg --print-architecture) stable main" | sudo tee /etc/apt/sources.list.d/1password.list
+  sudo mkdir -p /etc/debsig/policies/AC2D62742012EA22/
+  curl -sS https://downloads.1password.com/linux/debian/debsig/1password.pol | sudo tee /etc/debsig/policies/AC2D62742012EA22/1password.pol
+  sudo mkdir -p /usr/share/debsig/keyrings/AC2D62742012EA22
+  curl -sS https://downloads.1password.com/linux/keys/1password.asc | sudo gpg --dearmor --output /usr/share/debsig/keyrings/AC2D62742012EA22/debsig.gpg
+  sudo apt update && sudo apt install 1password 1password-cli
+EOF
       ;;
     fedora)
-      echo "Install from 1Password's rpm repository, then: dnf install 1password 1password-cli"
-      echo "The repository steps need a root prompt. They are not run from here."
+      cat <<'EOF'
+Install from 1Password's rpm repository. These commands need a root prompt. They are not run from here.
+  sudo rpm --import https://downloads.1password.com/linux/keys/1password.asc
+  sudo sh -c 'echo -e "[1password]\nname=1Password Stable Channel\nbaseurl=https://downloads.1password.com/linux/rpm/stable/\$basearch\nenabled=1\ngpgcheck=1\nrepo_gpgcheck=1\ngpgkey=https://downloads.1password.com/linux/keys/1password.asc" > /etc/yum.repos.d/1password.repo'
+  sudo dnf install 1password 1password-cli
+EOF
       ;;
     *)
       echo "Install from https://downloads.1password.com (apt, rpm, or the Arch package)."
@@ -150,7 +166,8 @@ fetch_extension() {
 }
 
 os=$(uname -s)
-echo "1Password for Arbora. Turn on Integrate with 1Password CLI in the 1Password app."
+echo "1Password for Arbora. In the app, open Settings, Developer, and turn on Integrate with 1Password CLI."
+echo "On Linux, also turn on Settings, Security, Unlock using system authentication."
 echo "Browser integration lets the extension fill pages. Arbora's agent uses the op command."
 
 if [ "$UNINSTALL" = 1 ]; then
@@ -207,4 +224,5 @@ case "$os" in
     ;;
 esac
 
-echo "When op is on your PATH, pnpm setup:1password --check should print its version."
+echo "Verification:"
+report_check

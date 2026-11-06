@@ -48,7 +48,10 @@ describe('setup-1password --yes and --uninstall', () => {
     expect(result.code).toBe(0);
     expect(result.out).toContain('Not writing that file');
     expect(result.out).toContain('did not install packages');
+    expect(result.out).toContain('https://downloads.1password.com/linux/debian/');
     expect(result.out).toContain('1password-cli');
+    expect(result.out).toContain('account: fail');
+    expect(result.out).toContain('Integrate with 1Password CLI');
     expect(result.out).not.toMatch(/\[sudo\]|password for/);
   });
 
