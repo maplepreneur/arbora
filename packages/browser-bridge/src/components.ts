@@ -324,3 +324,35 @@ export function resolveComponents(start: Element, limit: number): ComponentEntry
   }
   return [];
 }
+
+/**
+ * File and line of the DOM node itself, from its host fiber's `_debugSource`. This is the tag a
+ * class edit has to change. The component chain's render site is where the component is used,
+ * which is a different element. Library frames are ignored. Self-contained so it can be injected
+ * into the page.
+ */
+export function resolveHostSource(start: Element): { file: string; line: number | null } | null {
+  const LIBRARY =
+    /node_modules|\/\.vite\/deps\/|next[/_]dist[/_]|react-dom[/_.-]|react-server-dom|\/@vite\/|\/@id\/|^node:|<anonymous>/;
+  interface Fiber {
+    tag: number;
+    return: Fiber | null;
+    stateNode: unknown;
+    _debugSource?: { fileName?: unknown; lineNumber?: unknown } | null;
+  }
+  const fiberOf = (node: Node): Fiber | null => {
+    for (let current: Node | null = node; current;) {
+      const key = Object.keys(current).find(
+        (name) => name.startsWith('__reactFiber$') || name.startsWith('__reactInternalInstance$'),
+      );
+      if (key) return (current as unknown as Record<string, Fiber>)[key] ?? null;
+      current = current.parentNode ?? (current as unknown as { host?: Node }).host ?? null;
+    }
+    return null;
+  };
+  const fiber = fiberOf(start);
+  if (!fiber || fiber.tag !== 5) return null;
+  const src = fiber._debugSource;
+  if (!src || typeof src.fileName !== 'string' || LIBRARY.test(src.fileName)) return null;
+  return { file: src.fileName, line: typeof src.lineNumber === 'number' ? src.lineNumber : null };
+}

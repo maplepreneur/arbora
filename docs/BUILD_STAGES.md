@@ -978,6 +978,7 @@ User feedback from the first macOS installs, landed as a stack of pull requests 
 3. **Parallel agent sessions with git worktrees** ("Worktree sessions"): the launcher starts one or more agents, each in a sibling worktree. The worktree's dev command is pinned to the next free port (package scripts get ` -- --port`), the browser opens that URL, and the project row can merge the branch into the parent or open a pull request. Best-of-N runs the same task on up to four agents; each row can keep one (merge it and discard the rest) or discard itself.
    - Gotcha: `node_modules` is not copied. When the parent has one, the worktree links it (a symlink, or a junction on Windows). "Install a separate copy" unlinks that path only and runs the package manager; it does not delete the parent's directory. A worktree with no link offers "Install dependencies". The port comes from the parent's dev URL when that URL has one, otherwise the search starts at 5174.
 4. **Design-mode direct write-through**: for tier 1 targets in Tailwind projects, apply class edits directly to the source file and skip the agent round trip; keep a one-click "Ask agent instead".
+   - Gotcha: write-through runs only when every applied change is a style with a Tailwind class and a file and line on the edited element (the host fiber's `_debugSource`, not the component's call site). A text or structure change keeps the agent button. A directional utility (`pt-10`) is added beside a shorthand (`p-6`); the shorthand is replaced only when the edit is that shorthand. `className={clsx(...)}` is refused. The live inline style is reverted after the file is written, so the dev server's reload shows the class.
 5. **Design session history**: list, compare, resend, export as Markdown.
 6. **Agent action traces**: record MCP browser actions as a Playwright-like trace (screenshots per step) viewable in the thread.
 7. **LSP opt-in**: `@codemirror/lsp-client` + `typescript-language-server` spawned per project; hover, go-to-definition, completions.
@@ -989,8 +990,8 @@ User feedback from the first macOS installs, landed as a stack of pull requests 
 
 - [x] Dev plugin (Vite, webpack/Next, Nuxt) and inspector integration
 - [x] Browser tabs (moved to Stage 12)
-- [x] Worktree sessions
-- [ ] Tailwind write-through
+- [ ] Worktree sessions
+- [x] Tailwind write-through
 - [ ] Design session history
 - [ ] Action traces
 - [ ] LSP opt-in

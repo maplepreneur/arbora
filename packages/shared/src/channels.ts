@@ -22,7 +22,7 @@ import {
   viewportEmulationSchema,
   viewportPresetIdSchema,
 } from './browser.js';
-import { designCommandSchema, designSessionSummarySchema, designStateSchema } from './design.js';
+import { designCommandSchema, designSessionSummarySchema, designStateSchema, stylingApproachSchema } from './design.js';
 import { agentModeIncludeSchema, agentModeSelectionSchema, agentModeTargetSchema } from './inspector.js';
 import {
   generatedTextSchema,
@@ -698,6 +698,21 @@ export const channels = {
     'design.resend',
     z.object({ id: z.string(), target: agentModeTargetSchema }),
     z.object({ threadId: z.string() }),
+  ),
+  /** Tailwind or another styling approach, so the design panel can offer write-through. */
+  'design.styling': defineChannel(
+    'design.styling',
+    none,
+    z.object({
+      approach: stylingApproachSchema,
+      colors: z.array(z.object({ hex: z.string().max(20), name: z.string().max(80) })).max(400),
+    }),
+  ),
+  /** Writes tier-1 Tailwind class edits into source and leaves design mode. No agent prompt. */
+  'design.writeThrough': defineChannel(
+    'design.writeThrough',
+    none,
+    z.object({ files: z.array(z.string().max(2000)).max(20), sessionId: z.string() }),
   ),
 
   /** Children of a project folder, folders first. The watcher covers folders listed here. */

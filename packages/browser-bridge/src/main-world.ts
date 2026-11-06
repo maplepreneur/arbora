@@ -1,5 +1,5 @@
 import type { ComponentEntry, FrameworkInfo } from '@arbora/shared';
-import { resolveComponents } from './components.js';
+import { resolveComponents, resolveHostSource } from './components.js';
 import { detectFramework } from './detect.js';
 
 /** Global (non-enumerable) the installed script exposes in the page's main world. */
@@ -15,6 +15,8 @@ export interface MainWorldApi {
   atPoint(x: number, y: number, limit: number): ComponentEntry[];
   /** Chain for the element carrying `data-arbora-ref="<ref>"`. */
   forRef(ref: string, limit: number): ComponentEntry[];
+  /** Host-fiber file and line for that element, when the dev build reports one. */
+  hostSource(ref: string): { file: string; line: number | null } | null;
 }
 
 /**
@@ -29,6 +31,7 @@ export function mainWorldInstallScript(): string {
   if (Object.prototype.hasOwnProperty.call(window, ${key})) return true;
   const detectFramework = ${detectFramework.toString()};
   const resolveComponents = ${resolveComponents.toString()};
+  const resolveHostSource = ${resolveHostSource.toString()};
   let framework = null;
   const deepAtPoint = (x, y) => {
     let el = document.elementFromPoint(x, y);
@@ -62,6 +65,10 @@ export function mainWorldInstallScript(): string {
     forRef(ref, limit) {
       const el = deepQuery(document, '[' + ${refAttribute} + '="' + String(ref).replace(/["\\\\]/g, '') + '"]');
       return el ? resolveComponents(el, limit) : [];
+    },
+    hostSource(ref) {
+      const el = deepQuery(document, '[' + ${refAttribute} + '="' + String(ref).replace(/["\\\\]/g, '') + '"]');
+      return el ? resolveHostSource(el) : null;
     },
   });
   Object.defineProperty(window, ${key}, { value: api, enumerable: false, configurable: false, writable: false });
