@@ -208,8 +208,9 @@ function AgentModePopover({ selection, targetIndex, onTargetIndex }: PopoverProp
   const [error, setError] = useState<string | null>(null);
   const [pendingOpen, setPendingOpen] = useState<string | null>(null);
   const currentPath = useApp((s) => s.project?.path ?? '');
-  const openProjects = useProjects((s) =>
-    s.library.entries.filter((entry) => entry.open && entry.path !== currentPath),
+  const library = useProjects((s) => s.library);
+  const openProjects = library.entries.filter(
+    (entry) => entry.path !== currentPath && (entry.open || entry.recent),
   );
   const [projectPath, setProjectPath] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -246,7 +247,9 @@ function AgentModePopover({ selection, targetIndex, onTargetIndex }: PopoverProp
         ...(chosen ? { projectPath: chosen } : {}),
       });
       dispatchMode({ type: 'submitted' });
-      await showAgentThread(threadId);
+      // A cross-project send already has a window. Showing the thread here would open that
+      // project on this window and tear down the runtime the prompt was just handed to.
+      if (!chosen) await showAgentThread(threadId);
     } catch (caught) {
       const message = (caught as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
       setError(message);
@@ -384,7 +387,7 @@ function AgentModePopover({ selection, targetIndex, onTargetIndex }: PopoverProp
           type="button"
           data-testid="agent-mode-open-project"
           onClick={() => {
-            void window.arbora.invoke('project.open', { path: pendingOpen }).then(() => submit());
+            void window.arbora.invoke('project.openInWindow', { path: pendingOpen }).then(() => submit());
           }}
           className="self-start rounded border border-border px-1.5 py-0.5 text-[11px] text-fg-muted hover:bg-bg-muted"
         >

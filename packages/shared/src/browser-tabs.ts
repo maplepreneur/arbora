@@ -456,3 +456,12 @@ export function resolveBrowserTarget(
   if (!found) return { error: `Unknown tab ${wanted}` };
   return { id: found.id, role: found.role };
 }
+
+/**
+ * OAuth and other popups need `window.opener`. A plain http(s) link does not, so it becomes a tab.
+ * `new-window` and `other` are treated as popups, as are feature strings that set a size.
+ */
+export function windowOpenNeedsOpener(details: { disposition: string; features: string }): boolean {
+  if (details.disposition === 'new-window' || details.disposition === 'other') return true;
+  return /(?:^|,)\s*(width|height|popup)\s*=/i.test(details.features);
+}

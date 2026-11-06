@@ -150,6 +150,7 @@ export default function ThreadView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="thread-view" data-thread-status={state.status}>
+      {!showHeader && <GrantChips threadId={thread.id} />}
       {showHeader && (
         <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border px-1.5 text-[12px]">
           <button

@@ -58,6 +58,7 @@ export function decodePng(png: Buffer): Bitmap {
   let offset = 8;
   let width = 0;
   let height = 0;
+  let channels = 4;
   const idat: Buffer[] = [];
   while (offset + 12 <= png.length) {
     const length = png.readUInt32BE(offset);
@@ -67,7 +68,10 @@ export function decodePng(png: Buffer): Bitmap {
     if (type === 'IHDR') {
       width = data.readUInt32BE(0);
       height = data.readUInt32BE(4);
-      if (data[8] !== 8 || data[9] !== 6) throw new Error('Only 8-bit RGBA PNGs can be compared');
+      const color = data[9];
+      if (data[8] !== 8 || (color !== 6 && color !== 2))
+        throw new Error('Only 8-bit RGB or RGBA PNGs can be compared');
+      channels = color === 6 ? 4 : 3;
     } else if (type === 'IDAT') {
       idat.push(Buffer.from(data));
     } else if (type === 'IEND') {
@@ -76,7 +80,7 @@ export function decodePng(png: Buffer): Bitmap {
   }
   if (width === 0 || height === 0) throw new Error('PNG is missing its header');
   const inflated = inflateSync(Buffer.concat(idat));
-  const stride = width * 4;
+  const stride = width * channels;
   const rgba = new Uint8Array(width * height * 4);
   let src = 0;
   let previous = new Uint8Array(stride);
@@ -87,9 +91,9 @@ export function decodePng(png: Buffer): Bitmap {
     for (let index = 0; index < stride; index += 1) {
       const value = inflated[src] ?? 0;
       src += 1;
-      const left = index >= 4 ? (row[index - 4] ?? 0) : 0;
+      const left = index >= channels ? (row[index - channels] ?? 0) : 0;
       const up = previous[index] ?? 0;
-      const upLeft = index >= 4 ? (previous[index - 4] ?? 0) : 0;
+      const upLeft = index >= channels ? (previous[index - channels] ?? 0) : 0;
       switch (filter) {
         case 0:
           row[index] = value;
@@ -110,7 +114,18 @@ export function decodePng(png: Buffer): Bitmap {
           throw new Error(`Unsupported PNG filter ${filter}`);
       }
     }
-    rgba.set(row, y * stride);
+    if (channels === 4) {
+      rgba.set(row, y * width * 4);
+    } else {
+      for (let x = 0; x < width; x += 1) {
+        const from = x * 3;
+        const to = (y * width + x) * 4;
+        rgba[to] = row[from] ?? 0;
+        rgba[to + 1] = row[from + 1] ?? 0;
+        rgba[to + 2] = row[from + 2] ?? 0;
+        rgba[to + 3] = 255;
+      }
+    }
     previous = row;
   }
   return { width, height, rgba };

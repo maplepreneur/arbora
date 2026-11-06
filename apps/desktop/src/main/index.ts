@@ -490,6 +490,23 @@ function main(): void {
         throw error;
       }
     });
+    defineHandler('project.openInWindow', isTrusted, ({ path }) => {
+      let resolved: string;
+      try {
+        resolved = resolveProjectPath(path);
+      } catch (error) {
+        if (error instanceof ProjectWindowError) return { opened: false };
+        throw error;
+      }
+      const existing = manager.findByProject(resolved);
+      if (existing) {
+        if (existing.window.isMinimized()) existing.window.restore();
+        existing.window.focus();
+        return { opened: true };
+      }
+      manager.create(resolved);
+      return { opened: true };
+    });
     defineHandler('project.close', isTrusted, (_req, event) => {
       windowFor(event.sender).closeProject();
       return undefined;

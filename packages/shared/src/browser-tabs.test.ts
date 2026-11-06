@@ -13,6 +13,7 @@ import {
   resolveBrowserTarget,
   restoreBrowserTabSet,
   setBrowserTabRole,
+  windowOpenNeedsOpener,
 } from './browser-tabs.js';
 
 const ids = (): (() => string) => {
@@ -138,5 +139,14 @@ describe('browser tabs', () => {
     const next = activateBrowserTab(set, 'a', 10);
     expect(next.activeId).toBe('a');
     expect(next.tabs.find((tab) => tab.id === 'a')).toMatchObject({ discarded: false, usedAt: 10 });
+  });
+
+  it('treats sized popups as windows and plain links as tabs', () => {
+    expect(windowOpenNeedsOpener({ disposition: 'new-window', features: '' })).toBe(true);
+    expect(windowOpenNeedsOpener({ disposition: 'other', features: '' })).toBe(true);
+    expect(windowOpenNeedsOpener({ disposition: 'foreground-tab', features: 'width=480,height=640' })).toBe(true);
+    expect(windowOpenNeedsOpener({ disposition: 'foreground-tab', features: 'popup=yes' })).toBe(true);
+    expect(windowOpenNeedsOpener({ disposition: 'foreground-tab', features: '' })).toBe(false);
+    expect(windowOpenNeedsOpener({ disposition: 'background-tab', features: 'noopener' })).toBe(false);
   });
 });

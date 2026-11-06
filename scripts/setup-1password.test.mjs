@@ -38,3 +38,19 @@ describe('setup-1password --check', () => {
     expect(result.out).not.toMatch(/sudo /);
   });
 });
+
+describe('setup-1password --yes and --uninstall', () => {
+  it('does not write the browser allow-list without a terminal', async () => {
+    const result = await run(['--yes'], '/usr/bin:/bin');
+    expect(result.code).toBe(0);
+    expect(result.out).toContain('Not writing that file');
+    expect(result.out).not.toMatch(/sudo /);
+  });
+
+  it('prints how to uninstall and removes nothing', async () => {
+    const result = await run(['--uninstall'], '/usr/bin:/bin');
+    expect(result.code).toBe(0);
+    expect(result.out).toContain('not removed by surprise');
+    expect(result.out).not.toMatch(/sudo /);
+  });
+});

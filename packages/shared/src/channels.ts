@@ -274,6 +274,12 @@ export const channels = {
     }),
     z.object({ opened: z.boolean(), error: z.string().optional(), focusedElsewhere: z.boolean().optional() }),
   ),
+  /** A second window for a project, leaving the current window on its own project. */
+  'project.openInWindow': defineChannel(
+    'project.openInWindow',
+    z.object({ path: z.string().min(1) }),
+    z.object({ opened: z.boolean() }),
+  ),
   'project.close': defineChannel('project.close', none, none),
   'project.recents': defineChannel('project.recents', none, z.array(recentProjectSchema)),
   'project.removeRecent': defineChannel(

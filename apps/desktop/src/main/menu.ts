@@ -30,12 +30,13 @@ export function buildMacMenu(dispatch: (commandId: string) => void): Menu {
         { label: 'Open Project…', click: () => dispatch(CommandId.openProject) },
         { label: 'Close Project', click: () => dispatch(CommandId.closeProject) },
         { type: 'separator' },
-        // Cmd+W closes the editor tab (the renderer's keybinding); the label only shows the chord.
+        // The chord is not a menu accelerator: the page intercepts it and closes a browser tab.
+        // Close Window stays on Shift+Cmd+W so Electron's default Cmd+W does not close the window.
         {
           label: 'Close Tab',
           accelerator: 'Cmd+W',
           registerAccelerator: false,
-          click: () => dispatch(CommandId.editorCloseTab),
+          click: () => dispatch(CommandId.browserCloseTab),
         },
         { role: 'close', accelerator: 'Shift+Cmd+W' },
       ],

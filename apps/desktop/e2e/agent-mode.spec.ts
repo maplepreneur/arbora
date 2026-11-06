@@ -1,5 +1,6 @@
-import { existsSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, join, resolve } from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import type { NavigationState } from '@arbora/shared';
 import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, startAgent, tempUserData } from './app';
@@ -339,6 +340,87 @@ test.describe('Stage 4 agent mode on Vite + React 18', () => {
       await deleteThreads(page).catch(() => undefined);
       await app.close();
       removeAgentModeScreenshots(VITE_REACT, before);
+    }
+  });
+
+  test('sends to another project and opens its window when it is not running', async () => {
+    test.setTimeout(90_000);
+    const other = realpathSync(mkdtempSync(join(tmpdir(), 'arbora-other-')));
+    const { app, page } = await launch(userDataWithFakeAgents(), [VITE_REACT]);
+    try {
+      const missing = await page.evaluate(async () => {
+        try {
+          await window.arbora.invoke('agentMode.submit', {
+            selectionId: 'missing',
+            targetIndex: 0,
+            text: 'hi',
+            include: { screenshot: false, sources: false, context: false },
+            target: { type: 'new', agentId: 'fake' },
+            projectPath: '/tmp/arbora-not-running',
+          });
+          return '';
+        } catch (error) {
+          return error instanceof Error ? error.message : String(error);
+        }
+      });
+      expect(missing).toContain('Open project and send');
+
+      await openAndWait(page, vite.url);
+      await waitForHydration(app, BUTTON);
+      await enterAgentMode(app, page);
+      await clickInPage(app, BUTTON);
+      await expect(page.getByTestId('agent-mode-popover')).toBeVisible({ timeout: 20_000 });
+      await choose(page, 'agent-mode-target', `new:${FAKE_ID}`);
+      await page.getByTestId('agent-mode-include-screenshot').click();
+      await page.getByTestId('agent-mode-include-sources').click();
+      await page.getByTestId('agent-mode-include-context').click();
+      // Creating the window inside evaluate deadlocks Playwright's Electron driver: the new
+      // target is handled on the same CDP session that is waiting for the invoke to return.
+      const name = basename(other);
+      await page.evaluate((path) => {
+        setTimeout(() => {
+          void window.arbora.invoke('project.openInWindow', { path });
+        }, 0);
+      }, other);
+      const windowCount = (): Promise<number> =>
+        app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length);
+      await expect.poll(windowCount, { timeout: 15_000 }).toBeGreaterThan(1);
+      const project = page.getByTestId('agent-mode-project');
+      await expect(project.locator('option', { hasText: name })).toHaveCount(1, { timeout: 10_000 });
+      await project.selectOption(other);
+      await app.evaluate(({ BrowserWindow }, title) => {
+        BrowserWindow.getAllWindows()
+          .find((win) => win.getTitle().startsWith(title))
+          ?.destroy();
+      }, name);
+      await expect.poll(windowCount).toBe(1);
+      await page.getByTestId('agent-mode-input').fill('cross project hello');
+      await page.getByTestId('agent-mode-input').press('Enter');
+      await expect(page.getByTestId('agent-mode-open-project')).toBeVisible({ timeout: 20_000 });
+      await page.getByTestId('agent-mode-open-project').click();
+      await expect.poll(windowCount, { timeout: 20_000 }).toBeGreaterThan(1);
+      await expect
+        .poll(
+          () =>
+            app.evaluate(async ({ BrowserWindow }, projectPath) => {
+              const win = BrowserWindow.getAllWindows().find((item) => item.getTitle().startsWith(projectPath.split(/[/\\]/).pop() ?? projectPath));
+              if (!win) return [];
+              return win.webContents.executeJavaScript(
+                `(async () => (await window.arbora.invoke('agent.listThreads')).map((thread) => thread.title))()`,
+              ) as Promise<string[]>;
+            }, other),
+          { timeout: 20_000 },
+        )
+        .toContain('cross project hello');
+    } finally {
+      await app
+        .evaluate(({ BrowserWindow }) => {
+          for (const win of BrowserWindow.getAllWindows().slice(1)) win.destroy();
+        })
+        .catch(() => undefined);
+      await deleteThreads(page).catch(() => undefined);
+      await app.close();
+      rmSync(other, { recursive: true, force: true });
     }
   });
 });

@@ -1,3 +1,4 @@
+import { crc32, deflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { compareBitmaps } from './compare.js';
 import { decodePng, encodePng, type Bitmap } from './png.js';
@@ -39,6 +40,30 @@ describe('compareBitmaps', () => {
     const decoded = decodePng(result.png);
     expect(decoded.width).toBeGreaterThan(image.width);
     expect(decodePng(encodePng(image)).rgba).toEqual(image.rgba);
+  });
+
+  it('decodes an 8-bit RGB PNG from a browser screenshot', () => {
+    const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(1, 0);
+    ihdr.writeUInt32BE(1, 4);
+    ihdr[8] = 8;
+    ihdr[9] = 2;
+    const chunk = (type: string, data: Buffer): Buffer => {
+      const body = Buffer.concat([Buffer.from(type), data]);
+      const out = Buffer.alloc(12 + data.length);
+      out.writeUInt32BE(data.length, 0);
+      body.copy(out, 4);
+      out.writeUInt32BE(crc32(body) >>> 0, 8 + data.length);
+      return out;
+    };
+    const png = Buffer.concat([
+      signature,
+      chunk('IHDR', ihdr),
+      chunk('IDAT', deflateSync(Buffer.from([0, 31, 107, 74]))),
+      chunk('IEND', Buffer.alloc(0)),
+    ]);
+    expect(Array.from(decodePng(png).rgba)).toEqual([31, 107, 74, 255]);
   });
 
   it('drops the score when a box moves and names that cell as the worst', () => {

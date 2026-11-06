@@ -24,6 +24,10 @@
  * - "list mcp servers": every server `session/new` passed, with its tool count or "not connected"
  * - "grove delegate": `grove_list_agents`, `grove_start_agent` with "say hello from the helper",
  *   `grove_wait` and `grove_read`, then quotes the helper's last message (the Stage 10 e2e)
+ * - "vault login": `browser_login`
+ * - "tab grant <id>": `browser_snapshot` of that tab
+ * - "match design <url>": open that design, compare, rewrite `src/App.tsx`, compare again
+ * - a prompt that says a tab "is granted to this thread" snapshots that tab
  */
 import { Readable, Writable } from 'node:stream';
 import { basename, isAbsolute, join } from 'node:path';
@@ -299,6 +303,151 @@ async function say(cx: AgentContext, sessionId: string, text: string, state: Ses
   });
 }
 
+/** The static design in `fixtures/design-reference`, written so a second compare can clear 0.92. */
+const MATCHED_APP = `export function App() {
+  const font = 'ui-sans-serif, system-ui, sans-serif';
+  return (
+    <>
+      <style>{'html, body, #root { margin: 0; background: #f3f0e8; color: #1c1915; }'}</style>
+      <header style={{ height: 140, background: '#1f6b4a', color: '#fff', display: 'flex', alignItems: 'center', padding: '0 40px', boxSizing: 'border-box' }}>
+        <h1 style={{ margin: 0, fontSize: 32, lineHeight: 1.2, fontWeight: 700, fontFamily: font }}>Design reference</h1>
+      </header>
+      <main style={{ padding: 40 }}>
+        <section style={{ width: 360, background: '#fff', borderRadius: 16, padding: 24, boxSizing: 'border-box' }}>
+          <h2 style={{ margin: 0, fontSize: 20, lineHeight: 1.2, fontWeight: 700, fontFamily: font }}>Counter</h2>
+          <p style={{ margin: '12px 0 0', fontSize: 16, lineHeight: 1.2, fontFamily: font }}>Clicked 0 times</p>
+          <button type="button" style={{ marginTop: 20, background: '#1f6b4a', color: '#fff', border: 0, borderRadius: 8, padding: '10px 16px', font: '700 16px/1.2 ui-sans-serif, system-ui, sans-serif' }}>Increment</button>
+        </section>
+      </main>
+    </>
+  );
+}
+`;
+
+function scoreOf(text: string): string | null {
+  const match = /"score"\s*:\s*([0-9]+(?:\.[0-9]+)?)/.exec(text);
+  return match?.[1] ?? null;
+}
+
+async function matchDesign(cx: AgentContext, sessionId: string, state: SessionState, url: string): Promise<void> {
+  const opened = await callBrowserTool(cx, sessionId, state, 'browser_tab_open', { url });
+  const id = /Opened tab (\S+)\./.exec(opened.text)?.[1];
+  if (opened.isError || !id) {
+    await say(cx, sessionId, `Compare failed: ${opened.text}`, state);
+    return;
+  }
+  const ready = await callBrowserTool(cx, sessionId, state, 'browser_wait_for', {
+    target: id,
+    text: 'Design reference',
+    timeoutMs: 20_000,
+  });
+  if (ready.isError) {
+    await say(cx, sessionId, `Compare failed: ${ready.text}`, state);
+    return;
+  }
+  const first = await callBrowserTool(cx, sessionId, state, 'browser_compare', {
+    left: 'app',
+    right: id,
+    mode: 'side_by_side',
+  });
+  const firstScore = first.isError ? null : scoreOf(first.text);
+  if (first.isError || !firstScore) {
+    await say(cx, sessionId, `Compare failed: ${first.text.slice(0, 400)}`, state);
+    return;
+  }
+  const wrote = await writeMatchedApp(cx, sessionId, state);
+  if (!wrote) return;
+  await sleep(500);
+  const reloaded = await callBrowserTool(cx, sessionId, state, 'browser_reload', {});
+  if (reloaded.isError) {
+    await say(cx, sessionId, `Compare failed: ${reloaded.text}`, state);
+    return;
+  }
+  const settled = await callBrowserTool(cx, sessionId, state, 'browser_wait_for', {
+    text: 'Design reference',
+    timeoutMs: 20_000,
+  });
+  if (settled.isError) {
+    await say(cx, sessionId, `Compare failed: ${settled.text}`, state);
+    return;
+  }
+  const second = await callBrowserTool(cx, sessionId, state, 'browser_compare', {
+    left: 'app',
+    right: id,
+    mode: 'side_by_side',
+  });
+  const secondScore = second.isError ? null : scoreOf(second.text);
+  if (second.isError || !secondScore) {
+    await say(cx, sessionId, `Compare failed: ${second.text.slice(0, 400)}`, state);
+    return;
+  }
+  await say(cx, sessionId, `Compare scores: ${firstScore} then ${secondScore}`, state);
+}
+
+async function writeMatchedApp(cx: AgentContext, sessionId: string, state: SessionState): Promise<boolean> {
+  const path = join(state.cwd, 'src/App.tsx');
+  const toolCallId = `edit-${Date.now()}`;
+  await cx.notify(methods.client.session.update, {
+    sessionId,
+    update: {
+      sessionUpdate: 'tool_call',
+      toolCallId,
+      title: 'Match the design in src/App.tsx',
+      kind: 'edit',
+      status: 'pending',
+      locations: [{ path, line: 1 }],
+      rawInput: { path },
+    },
+  });
+  const permission = await cx.request(methods.client.session.requestPermission, {
+    sessionId,
+    toolCall: { toolCallId, title: 'Match the design in src/App.tsx', kind: 'edit', rawInput: { path } },
+    options: [
+      { optionId: 'allow-once', name: 'Allow once', kind: 'allow_once' },
+      { optionId: 'reject-once', name: 'Reject', kind: 'reject_once' },
+    ],
+  });
+  const outcome = permission.outcome;
+  const allowed = outcome.outcome === 'selected' && outcome.optionId.startsWith('allow');
+  if (!allowed) {
+    await cx.notify(methods.client.session.update, {
+      sessionId,
+      update: { sessionUpdate: 'tool_call_update', toolCallId, status: 'failed' },
+    });
+    await say(cx, sessionId, 'Permission denied; nothing was changed.', state);
+    return false;
+  }
+  const oldText = await cx.request(methods.client.fs.readTextFile, { sessionId, path }).then(
+    (response) => response.content,
+    () => '',
+  );
+  try {
+    await cx.request(methods.client.fs.writeTextFile, { sessionId, path, content: MATCHED_APP });
+  } catch (error) {
+    await cx.notify(methods.client.session.update, {
+      sessionId,
+      update: { sessionUpdate: 'tool_call_update', toolCallId, status: 'failed' },
+    });
+    await say(
+      cx,
+      sessionId,
+      `Could not write ${path}: ${error instanceof Error ? error.message : String(error)}`,
+      state,
+    );
+    return false;
+  }
+  await cx.notify(methods.client.session.update, {
+    sessionId,
+    update: {
+      sessionUpdate: 'tool_call_update',
+      toolCallId,
+      status: 'completed',
+      content: [{ type: 'diff', path, oldText, newText: MATCHED_APP }],
+    },
+  });
+  return true;
+}
+
 async function editFile(cx: AgentContext, sessionId: string, state: SessionState, file: string): Promise<void> {
   const path = isAbsolute(file) ? file : join(state.cwd, file);
   const toolCallId = `edit-${Date.now()}`;
@@ -471,6 +620,17 @@ async function handlePrompt(cx: AgentContext, params: PromptRequest): Promise<Pr
   }
   if (/browser check/i.test(text)) await browserCheck(cx, sessionId, state);
   if (/tool sweep/i.test(text)) await toolSweep(cx, sessionId, state);
+  const sent = /Tab (\S+) \(/.exec(text);
+  if (sent?.[1] && /is granted to this thread/.test(text)) {
+    const result = await callBrowserTool(cx, sessionId, state, 'browser_snapshot', { target: sent[1] });
+    await say(cx, sessionId, result.isError ? `Grant check: ${result.text}` : 'Grant check: allowed', state);
+    return { stopReason: 'end_turn' };
+  }
+  const design = /match design (https?:\/\/\S+)/i.exec(text);
+  if (design?.[1]) {
+    await matchDesign(cx, sessionId, state, design[1]);
+    return { stopReason: 'end_turn' };
+  }
   if (/vault login/i.test(text)) {
     const result = await callBrowserTool(cx, sessionId, state, 'browser_login', {});
     await say(cx, sessionId, result.isError ? `Login failed: ${result.text}` : `Login status: ${result.text}`, state);

@@ -510,6 +510,31 @@ export class BrowserService {
     void this.applyEmulation();
   }
 
+  /**
+   * Gives a hidden tab the same box as the visible one. Bounds stay put so CDP can capture it;
+   * the view stays invisible and does not take the keyboard.
+   */
+  parkSize(rect: Rect, emulation: ViewportEmulation | null): void {
+    this.viewRect = rect;
+    this.view.setBounds({
+      x: Math.round(rect.x),
+      y: Math.round(rect.y),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+    });
+    if (this.visible) {
+      this.visible = false;
+      const wasFocused = !this.contents.isDestroyed() && this.contents.isFocused();
+      this.view.setVisible(false);
+      const stillFocused = !this.contents.isDestroyed() && this.contents.isFocused();
+      if (wasFocused || stillFocused) this.releaseParkedFocus();
+    } else {
+      this.view.setVisible(false);
+    }
+    this.emulation = emulation;
+    void this.applyEmulation();
+  }
+
   async screenshot(request: ScreenshotRequest): Promise<ScreenshotResult> {
     if (!this.state.url || this.state.error) throw new Error('No page is loaded in the browser panel');
     const result =
@@ -1006,12 +1031,39 @@ export class BrowserService {
    * `capturePage()` on a hidden view is empty.
    */
   async captureQuiet(): Promise<{ png: Buffer; cssWidth: number; cssHeight: number }> {
-    const shot = await this.screenshot({ mode: 'viewport' });
-    return {
-      png: Buffer.from(shot.pngBase64, 'base64'),
-      cssWidth: shot.dpr > 0 ? shot.width / shot.dpr : shot.width,
-      cssHeight: shot.dpr > 0 ? shot.height / shot.dpr : shot.height,
-    };
+    const hidden = !this.visible;
+    const rect = this.viewRect;
+    // A hidden view does not paint, so `capturePage()` is empty and CDP waits forever. Put it
+    // behind the visible tab, at the same size, just long enough to paint a frame.
+    if (hidden) {
+      const width = Math.max(1, Math.round(rect?.width ?? 800));
+      const height = Math.max(1, Math.round(rect?.height ?? 600));
+      this.view.setBounds({ x: Math.round(rect?.x ?? 0), y: Math.round(rect?.y ?? 0), width, height });
+      this.hostWindow.contentView.addChildView(this.view, 0);
+      this.view.setVisible(true);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    try {
+      const image = await Promise.race([
+        this.contents.capturePage(),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Screenshot timed out')), 8_000)),
+      ]);
+      const size = image.getSize();
+      if (size.width === 0 || size.height === 0) throw new Error('The tab screenshot was empty');
+      const { innerWidth } = await this.metrics();
+      const dpr = innerWidth > 0 ? size.width / innerWidth : 1;
+      return {
+        png: image.toPNG(),
+        cssWidth: dpr > 0 ? size.width / dpr : size.width,
+        cssHeight: dpr > 0 ? size.height / dpr : size.height,
+      };
+    } finally {
+      if (hidden) {
+        this.view.setVisible(false);
+        const ui = this.hostWindow.webContents;
+        if (!ui.isDestroyed()) ui.focus();
+      }
+    }
   }
 
   /** Types into the focused field. The text is not sent to the renderer. */

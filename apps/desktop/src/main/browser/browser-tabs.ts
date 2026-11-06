@@ -21,6 +21,7 @@ import {
   restoreBrowserTabSet,
   setBrowserTabRole,
   setTabSession,
+  windowOpenNeedsOpener,
   type BrowserTabRecord,
   type BrowserTabSet,
   type BrowserTabSnapshot,
@@ -300,7 +301,7 @@ export class BrowserTabs {
     const service = await this.materialize(record, show);
     if (!show) {
       this.set = patchBrowserTab(this.set, record.id, { usedAt: Date.now() });
-      service.setBounds(null, null);
+      this.park(service);
     }
     return { id: record.id, role: record.role, service };
   }
@@ -388,7 +389,7 @@ export class BrowserTabs {
     slot = { service, history, partition, popups: slot?.popups ?? [] };
     this.slots.set(record.id, slot);
     this.set = patchBrowserTab(this.set, record.id, { discarded: false });
-    if (!visible) service.setBounds(null, null);
+    if (!visible) this.park(service);
     return service;
   }
 
@@ -424,7 +425,7 @@ export class BrowserTabs {
     if (!/^https?:/.test(details.url)) {
       return { action: 'deny' };
     }
-    if (needsOpener(details)) {
+    if (windowOpenNeedsOpener(details)) {
       return {
         action: 'allow',
         overrideBrowserWindowOptions: {
@@ -502,8 +503,15 @@ export class BrowserTabs {
     for (const [id, slot] of this.slots) {
       if (!slot.service) continue;
       if (id === this.set.activeId && rect) slot.service.setBounds(rect, emulation);
-      else slot.service.setBounds(null, null);
+      else this.park(slot.service);
     }
+  }
+
+  /** A hidden tab keeps the panel's box, so a background screenshot is not an empty surface. */
+  private park(service: BrowserService): void {
+    const { rect, emulation } = this.bounds;
+    if (rect && rect.width > 0 && rect.height > 0) service.parkSize(rect, emulation);
+    else service.setBounds(null, null);
   }
 
   private dropSlot(id: string): void {
@@ -543,7 +551,3 @@ export class BrowserTabs {
   }
 }
 
-function needsOpener(details: { disposition: string; features: string }): boolean {
-  if (details.disposition === 'new-window' || details.disposition === 'other') return true;
-  return /(?:^|,)\s*(width|height|popup)\s*=/i.test(details.features);
-}
