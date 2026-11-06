@@ -45,7 +45,7 @@ export function cropBitmap(
   cssWidth: number,
   cssHeight: number,
   rect: CompareRect,
-): { bitmap: Bitmap; cssWidth: number; cssHeight: number } {
+): { bitmap: Bitmap; cssWidth: number; cssHeight: number; origin: { x: number; y: number } } {
   if (cssWidth <= 0 || cssHeight <= 0 || bitmap.width <= 0 || bitmap.height <= 0) {
     throw new Error('The capture has no size');
   }
@@ -60,7 +60,12 @@ export function cropBitmap(
     const src = ((y + row) * bitmap.width + x) * 4;
     rgba.set(bitmap.rgba.subarray(src, src + width * 4), row * width * 4);
   }
-  return { bitmap: { width, height, rgba }, cssWidth: width / scaleX, cssHeight: height / scaleY };
+  return {
+    bitmap: { width, height, rgba },
+    cssWidth: width / scaleX,
+    cssHeight: height / scaleY,
+    origin: { x: x / scaleX, y: y / scaleY },
+  };
 }
 
 function clampInt(value: number, min: number, max: number): number {
@@ -315,6 +320,19 @@ function worstCells(
   return cells
     .sort((left, right) => right.difference - left.difference || left.row - right.row || left.col - right.col)
     .slice(0, TOP_K);
+}
+
+/** Moves crop-relative cells into the tab's own CSS pixels. */
+export function placeCompareCells(
+  cells: readonly CompareCell[],
+  originA: { readonly x: number; readonly y: number },
+  originB: { readonly x: number; readonly y: number },
+): CompareCell[] {
+  return cells.map((cell) => ({
+    ...cell,
+    a: { ...cell.a, x: round(cell.a.x + originA.x), y: round(cell.a.y + originA.y) },
+    b: { ...cell.b, x: round(cell.b.x + originB.x), y: round(cell.b.y + originB.y) },
+  }));
 }
 
 function cssRect(col: number, row: number, width: number, height: number): CompareRect {

@@ -7,7 +7,7 @@ import { click, elementBox, hover, pressKey, scroll, selectOptions, typeText } f
 import { evaluate, InflightRequests, truncate, waitFor } from './page.js';
 import { RefTable, resolveElement, type ElementTarget } from './refs.js';
 import { formatSnapshot, maskSecretNodes, type AxNode } from './snapshot.js';
-import { cropBitmap, comparePngs, type CompareRect } from './compare.js';
+import { cropBitmap, comparePngs, placeCompareCells, type CompareRect } from './compare.js';
 import { decodePng, encodePng } from './png.js';
 import { actionTraceTitle, compareSavedPath, compareScoreTitle, isTracedBrowserTool } from './trace.js';
 
@@ -638,6 +638,7 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
       const stop = host.designMatch?.() ?? { threshold: 0.92, maxRounds: 5 };
       const json = JSON.stringify({
         ...output.json,
+        cells: placeCompareCells(output.json.cells, first.origin, second.origin),
         ...(saved ? { saved } : {}),
         stop,
         left: { id: first.id, role: first.role, title: first.title, url: first.url },
@@ -684,6 +685,7 @@ async function framedCapture(
   url: string;
   id: string;
   role: 'app' | 'reference';
+  origin: { x: number; y: number };
 }> {
   const spec = typeof side === 'string' ? { target: side } : side;
   if (!host.captureTab) throw new ToolError('Comparing tabs is not available.');
@@ -704,6 +706,7 @@ async function framedCapture(
       url: shot.url,
       id: shot.id,
       role: shot.role,
+      origin: { x: 0, y: 0 },
     };
   }
   const cropped = cropBitmap(decodePng(Buffer.from(shot.png)), shot.cssWidth, shot.cssHeight, rect);
@@ -715,6 +718,7 @@ async function framedCapture(
     url: shot.url,
     id: shot.id,
     role: shot.role,
+    origin: cropped.origin,
   };
 }
 

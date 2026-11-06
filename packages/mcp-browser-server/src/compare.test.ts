@@ -1,6 +1,6 @@
 import { crc32, deflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { compareBitmaps, cropBitmap } from './compare.js';
+import { compareBitmaps, cropBitmap, placeCompareCells } from './compare.js';
 import { decodePng, encodePng, type Bitmap } from './png.js';
 
 function solid(width: number, height: number, rgba: [number, number, number, number]): Bitmap {
@@ -37,6 +37,7 @@ describe('cropBitmap', () => {
     const red = solid(frame.bitmap.width, frame.bitmap.height, [200, 30, 30, 255]);
     expect(frame.cssWidth).toBe(16);
     expect(frame.cssHeight).toBe(16);
+    expect(frame.origin).toEqual({ x: 16, y: 16 });
     expect(
       compareBitmaps(frame.bitmap, red, 'side_by_side', {
         aWidth: frame.cssWidth,
@@ -97,6 +98,24 @@ describe('compareBitmaps', () => {
     );
     expect(changed).toBe(true);
     expect(worst && worst.a.width).toBeGreaterThan(0);
+  });
+
+  it('places cropped cells back in the tab', () => {
+    const cells = placeCompareCells(
+      [
+        {
+          col: 0,
+          row: 0,
+          difference: 1,
+          a: { x: 2, y: 4, width: 8, height: 8 },
+          b: { x: 1, y: 1, width: 8, height: 8 },
+        },
+      ],
+      { x: 24, y: 40 },
+      { x: 0, y: 0 },
+    );
+    expect(cells[0]?.a).toEqual({ x: 26, y: 44, width: 8, height: 8 });
+    expect(cells[0]?.b).toEqual({ x: 1, y: 1, width: 8, height: 8 });
   });
 
   it('is deterministic', () => {
