@@ -25,6 +25,7 @@ export type {
   ScreenshotMode,
   TerminalRunResult,
   ToolPolicy,
+  TraceStepInput,
   ViewportPreset,
   ViewportRequest,
 } from './host.js';

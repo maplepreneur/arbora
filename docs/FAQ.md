@@ -49,6 +49,8 @@ Electron needs a notification daemon (mako, dunst, swaync; Omarchy ships mako). 
 
 No telemetry, no crash upload. Crash dumps and `logs/main.log` stay in the user-data folder. **Export Diagnostics…** writes a zip you can attach to a bug report yourself; it removes agent environment values, tokens and your home folder path. Update checks ask GitHub Releases on `maplepreneur/arbora`. Pick the **Development** channel in Settings → Updates & diagnostics (or start Arbora with `ARBORA_UPDATES=off`) and Arbora never checks.
 
+Stage 16 (not built yet) will store each agent's token counts, model, list-price cost and working time in the project, under `.arbora/usage/`. A later switch, **Save usage to my account**, copies those rows into your account's database so they are kept off this computer. It stays off until you turn it on, and the copy does not include prompts or file paths.
+
 ## How do I try betas, or stop updates while I build Arbora?
 
 Settings → Updates & diagnostics → **Channel**. **Beta** installs prereleases (`x.y.z-beta.n`) built from the `beta` branch as they are published, and then each stable release. **Stable** gets only `x.y.z`. **Development** turns updates off. Copies you build yourself never update or get replaced: `pnpm dev`, `pnpm e2e`, the checkout launcher (`scripts/install-local.sh`) and local `pnpm package` builds. For the launcher, the channel decides which branch a clean checkout follows: `main`, `beta`, or none on Development. A feature branch is never switched.

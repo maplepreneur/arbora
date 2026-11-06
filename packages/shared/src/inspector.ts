@@ -112,7 +112,7 @@ export const sourceCandidateSchema = z.object({
 export type SourceCandidate = z.infer<typeof sourceCandidateSchema>;
 
 /**
- * 1: a file and line from the framework (React <= 18 dev builds).
+ * 1: a file and line (React <= 18 debug info, or `data-arbora-src` from `@arbora/dev-plugin`).
  * 2: a file without a reliable line (Vue `__file`, React 19 stack frames).
  * 3: names and HTML only; the agent gets grep candidates.
  */

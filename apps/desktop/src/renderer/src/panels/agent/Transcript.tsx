@@ -13,6 +13,7 @@ import {
   Image as ImageIcon,
   Info,
   Loader2,
+  MousePointerClick,
   Paperclip,
   Pencil,
   Play,
@@ -369,6 +370,60 @@ function PlanCard({ entries }: { entries: readonly PlanEntry[] }) {
   );
 }
 
+function ActionTraceCard({ event }: { event: Extract<ThreadEvent, { kind: 'action_trace' }> }) {
+  const [picked, setPicked] = useState<string | null>(null);
+  const selected = event.steps.find((step) => step.id === picked) ?? event.steps[event.steps.length - 1];
+  return (
+    <section className="rounded border border-border bg-bg px-2 py-1.5 text-[11px]" data-testid="action-trace">
+      <header className="mb-1 flex items-center gap-1.5 text-fg-subtle">
+        <MousePointerClick size={12} className="shrink-0" />
+        <span>
+          Trace · {event.steps.length} {event.steps.length === 1 ? 'step' : 'steps'}
+        </span>
+      </header>
+      <ol className="flex flex-col gap-0.5">
+        {event.steps.map((step, index) => {
+          const current = step.id === selected?.id;
+          return (
+            <li key={step.id}>
+              <button
+                type="button"
+                className={clsx(
+                  'flex w-full items-center gap-1.5 rounded px-1 py-0.5 text-left',
+                  current ? 'bg-accent-soft text-fg' : 'text-fg-muted hover:bg-bg-subtle',
+                  !step.ok && 'text-danger',
+                )}
+                data-testid="action-trace-step"
+                aria-current={current ? 'true' : undefined}
+                onClick={() => setPicked(step.id)}
+              >
+                <span className="w-4 shrink-0 tabular-nums text-fg-subtle">{index + 1}</span>
+                <span className="truncate" title={step.error ?? step.title}>
+                  {step.title}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+      {selected?.image ? (
+        <img
+          src={`data:${selected.image.mimeType};base64,${selected.image.data}`}
+          alt={selected.title}
+          width={selected.image.width}
+          height={selected.image.height}
+          className="mt-1.5 h-auto max-h-48 max-w-full rounded border border-border"
+          data-testid="action-trace-shot"
+        />
+      ) : (
+        <p className="mt-1.5 text-fg-subtle" data-testid="action-trace-shot-missing">
+          No screenshot for this step.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function EventView({
   event,
   projectPath,
@@ -445,6 +500,8 @@ function EventView({
           <span className="whitespace-pre-wrap select-text">{event.message}</span>
         </div>
       );
+    case 'action_trace':
+      return <ActionTraceCard event={event} />;
     case 'browser_preview':
       return (
         <figure className="rounded border border-border bg-bg px-2 py-1.5 text-[11px]" data-testid="browser-preview">

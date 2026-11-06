@@ -3,6 +3,7 @@
   "references": [
     { "path": "./tsconfig.tools.json" },
     { "path": "./packages/shared" },
+    { "path": "./packages/dev-plugin" },
     { "path": "./packages/acp-client" },
     { "path": "./packages/browser-bridge" },
     { "path": "./packages/mcp-browser-server" },

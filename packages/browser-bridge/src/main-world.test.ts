@@ -32,10 +32,13 @@ describe('mainWorldInstallScript', () => {
       child: null,
       sibling: null,
       stateNode: el,
+      _debugSource: { fileName: '/p/src/Button.tsx', lineNumber: 5 },
     };
     document.body.append(el);
     const chain = run(mainWorldCall('forRef', '7', 5)) as ComponentEntry[];
     expect(chain.map((c) => c.name)).toEqual(['Widget']);
+    expect(run(mainWorldCall('hostSource', '7'))).toEqual({ file: '/p/src/Button.tsx', line: 5 });
+    expect(run(mainWorldCall('hostSource', 'missing'))).toBeNull();
     expect(run(mainWorldCall('forRef', 'missing', 5))).toEqual([]);
     expect((run(mainWorldCall('detect')) as FrameworkInfo).id).toBe('react');
   });

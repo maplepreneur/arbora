@@ -117,6 +117,17 @@ function EditorSection() {
         />
       </SettingRow>
       <SettingRow
+        title="Language server"
+        detail="Hover, completion and go to definition in JavaScript and TypeScript, from the project's typescript-language-server. It uses that project's TypeScript. Off until you turn it on."
+      >
+        <Toggle
+          on={editor.lsp}
+          label="Language server"
+          testId="setting-lsp"
+          onChange={(on) => void updateSettings({ editor: { lsp: on } })}
+        />
+      </SettingRow>
+      <SettingRow
         title="Type-check on save"
         detail="Run tsc --noEmit after saving a TypeScript file. Slow on large projects, so off by default."
       >

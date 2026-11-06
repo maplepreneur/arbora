@@ -382,6 +382,20 @@ export async function saveDesignTo(target: AgentModeTarget | null): Promise<void
   }
 }
 
+/** Writes tier-1 Tailwind class edits into source and leaves design mode. */
+export async function applyDesignToSource(): Promise<void> {
+  const pending = designPending();
+  try {
+    const { files } = await window.arbora.invoke('design.writeThrough');
+    dispatchMode({ type: 'designLeave' });
+    const where = files.length === 1 ? files[0] : `${files.length} files`;
+    showToast(`Applied Tailwind classes in ${where ?? 'the source'}`);
+    continueAfterDesign(pending);
+  } catch (error) {
+    showToast(ipcError(error));
+  }
+}
+
 /** Reverts the live DOM and leaves design mode. */
 export async function discardDesign(): Promise<void> {
   const pending = designPending();
@@ -389,6 +403,18 @@ export async function discardDesign(): Promise<void> {
     await window.arbora.invoke('design.discard');
     dispatchMode({ type: 'designLeave' });
     continueAfterDesign(pending);
+  } catch (error) {
+    showToast(ipcError(error));
+  }
+}
+
+/** Asks where to save a design session as Markdown, and writes it. */
+export async function exportDesignSession(id: string): Promise<void> {
+  try {
+    const { path } = await window.arbora.invoke('design.exportSession', { id });
+    if (!path) return;
+    const name = path.split(/[/\\]/).pop() ?? path;
+    showToast(`Saved ${name}`);
   } catch (error) {
     showToast(ipcError(error));
   }

@@ -9,14 +9,17 @@ import {
   type AgentModeSelection,
   type AgentModeTarget,
   type InspectorSelection,
+  type RawSource,
   type Rect,
   type ResolvedComponent,
+  type ResolvedSource,
   type ScreenshotResult,
   type SourceCandidate,
 } from '@arbora/shared';
 import type { AgentService } from '../agent/agent-service.js';
 import type { BrowserService } from '../browser/browser-service.js';
 import { drawOutline, fitWithin, scaleRect } from '../browser/image.js';
+import { isGeneratedScript } from '../browser/script-map.js';
 import { projectRelative, resolveSource } from './source-paths.js';
 import { searchTerms, type SearchTerm } from './source-search.js';
 
@@ -98,11 +101,13 @@ export class AgentModeService {
       await browser.setOverlayVisible(false);
       const shot = await browser.screenshot({ mode: 'viewport' });
       const root = this.options.projectPath;
-      const components = raw.components.map((c) => ({
-        ...c,
-        definedIn: resolveSource(c.definedAt, root, isFile),
-        renderedIn: resolveSource(c.renderedAt, root, isFile),
-      }));
+      const components = await Promise.all(
+        raw.components.map(async (c) => ({
+          ...c,
+          definedIn: await this.locate(browser, c.definedAt, root),
+          renderedIn: await this.locate(browser, c.renderedAt, root),
+        })),
+      );
       const candidates = await this.options.findCandidates(searchTerms(raw)).catch(() => []);
       // `setInspecting` bumps `seq`, so this also drops results that arrive after leaving the mode.
       if (seq !== this.seq) return;
@@ -126,6 +131,17 @@ export class AgentModeService {
     } catch (error) {
       if (seq === this.seq) this.options.events.ended((error as Error).message);
     }
+  }
+
+  /**
+   * A project file when one matches. A production bundle (an http `.js` URL with a line) is mapped
+   * through that script's source map first.
+   */
+  private async locate(browser: BrowserService, raw: RawSource | null, root: string): Promise<ResolvedSource | null> {
+    const direct = resolveSource(raw, root, isFile);
+    if (direct || !raw || raw.line === null || raw.column === null || !isGeneratedScript(raw.file)) return direct;
+    const mapped = await browser.mapGeneratedPosition(raw.file, raw.line, raw.column).catch(() => null);
+    return mapped ? resolveSource(mapped, root, isFile) : null;
   }
 
   /**

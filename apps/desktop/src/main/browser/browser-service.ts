@@ -27,12 +27,21 @@ import {
   type ProblemEntry,
   type ProjectBrowserState,
   type Rect,
+  type RawSource,
   type ScreenshotRequest,
   type ScreenshotResult,
   type ViewportEmulation,
   type ViewportPresetId,
 } from '@arbora/shared';
 import type { BrowserHistory } from './browser-history.js';
+import {
+  allowedMapUrl,
+  decodeDataUrl,
+  fetchSourceMap,
+  originalFromMap,
+  resolveMappingUrl,
+  sourceMappingUrl,
+} from './script-map.js';
 import {
   fromConsoleApiCalled,
   fromExceptionThrown,
@@ -119,6 +128,8 @@ export class BrowserService {
   private saveTimer: NodeJS.Timeout | undefined;
   private nextProblemId = 1;
   private debuggerAttached = false;
+  private debuggerDomain = false;
+  private readonly scriptIds = new Map<string, string>();
   private emulation: ViewportEmulation | null = null;
   private appliedEmulation = 'null';
   private visible = false;
@@ -744,6 +755,8 @@ export class BrowserService {
 
     contents.debugger.on('detach', () => {
       this.debuggerAttached = false;
+      this.debuggerDomain = false;
+      this.scriptIds.clear();
       this.appliedEmulation = 'null';
     });
     contents.debugger.on('message', (_event, method, params) => this.onCdpMessage(method, params));
@@ -861,9 +874,61 @@ export class BrowserService {
     }
   }
 
+  /**
+   * Maps a position in a page script back to the original file named by its source map.
+   * Returns null when the script, the map, or the position cannot be resolved.
+   */
+  async mapGeneratedPosition(file: string, line: number, column: number): Promise<RawSource | null> {
+    try {
+      if (!(await this.ensureDebuggerDomain())) return null;
+      const scriptId = this.scriptIds.get(file);
+      if (!scriptId) return null;
+      const body = (await this.contents.debugger.sendCommand('Debugger.getScriptSource', { scriptId })) as {
+        scriptSource?: string;
+      };
+      const mapping = body.scriptSource ? sourceMappingUrl(body.scriptSource) : null;
+      if (!mapping) return null;
+      const mapUrl = resolveMappingUrl(file, mapping);
+      if (!mapUrl || !allowedMapUrl(file, mapUrl)) return null;
+      const mapText = mapUrl.startsWith('data:') ? decodeDataUrl(mapUrl) : await fetchSourceMap(mapUrl);
+      if (!mapText) return null;
+      const original = originalFromMap(mapText, mapUrl, line, column);
+      if (!original) return null;
+      return { file: original.source, line: original.line, column: original.column };
+    } catch {
+      return null;
+    }
+  }
+
+  private rememberScript(params: unknown): void {
+    if (!params || typeof params !== 'object') return;
+    const { scriptId, url } = params as { scriptId?: unknown; url?: unknown };
+    if (typeof scriptId !== 'string' || typeof url !== 'string' || !url) return;
+    this.scriptIds.set(url, scriptId);
+  }
+
+  private async ensureDebuggerDomain(): Promise<boolean> {
+    if (!this.debuggerAttached) await this.attachDebugger();
+    if (!this.debuggerAttached || this.contents.isDestroyed()) return false;
+    if (this.debuggerDomain) return true;
+    this.debuggerDomain = true;
+    try {
+      await this.contents.debugger.sendCommand('Debugger.enable');
+      // `scriptParsed` is delivered as a message. Let it land before the lookup.
+      await new Promise((resolve) => setImmediate(resolve));
+    } catch (error) {
+      this.debuggerDomain = false;
+      throw error;
+    }
+    return true;
+  }
+
   private onCdpMessage(method: string, params: unknown): void {
     for (const listener of this.cdpListeners) listener(method, params);
     switch (method) {
+      case 'Debugger.scriptParsed':
+        this.rememberScript(params);
+        break;
       case 'Runtime.consoleAPICalled':
         this.addProblem(this.consoleEntries, fromConsoleApiCalled(params));
         break;

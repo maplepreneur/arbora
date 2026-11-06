@@ -285,6 +285,7 @@ export function reduceActivity(current: SessionActivity, event: ThreadEvent): Se
     case 'permission':
     case 'notice':
     case 'browser_preview':
+    case 'action_trace':
       return current;
     default: {
       const unreachable: never = event;
@@ -432,6 +433,10 @@ export function transcriptLines(events: readonly ThreadEvent[], limit: number): 
       case 'agent_thought':
       case 'browser_preview':
         return [];
+      case 'action_trace': {
+        const last = event.steps.at(-1);
+        return last ? [`Trace: ${event.steps.length} steps, last ${last.title}`] : [];
+      }
       default: {
         const unreachable: never = event;
         return unreachable;

@@ -230,7 +230,10 @@ export async function resumeProjectSwitch(): Promise<void> {
 export async function focusGroveProject(path: string | null): Promise<boolean> {
   useGrove.setState({ focusPath: null, searchOpen: false });
   const open = useApp.getState().project?.path ?? null;
-  if (path === null || path === open) return true;
+  if (path === null || path === open) {
+    if (open) await window.arbora.invoke('grove.focusProject', { path: open }).catch(() => undefined);
+    return true;
+  }
   const { mode, design } = useApp.getState();
   if (mode.kind === 'agent') dispatchMode({ type: 'exit' });
   if (mode.kind === 'design') {
@@ -253,6 +256,7 @@ export async function focusGroveProject(path: string | null): Promise<boolean> {
     return false;
   }
   await projectBecomes(path);
+  await window.arbora.invoke('grove.focusProject', { path }).catch(() => undefined);
   return true;
 }
 
@@ -715,6 +719,8 @@ export interface StartSessionOptions {
   readonly task?: string | undefined;
   /** Start the agent in a new git worktree, registered as its own Grove project. */
   readonly worktree?: boolean;
+  /** Other agents that run the same task, each in its own worktree. */
+  readonly also?: { agentId: string; model?: string }[];
 }
 
 /** Creates a session, selects it, and sends the task as its first prompt. Resolves to its id. */
@@ -731,14 +737,27 @@ export async function startSession(options: StartSessionOptions): Promise<string
         title: title || 'grove-session',
         agentId: options.agentId,
         ...(options.model ? { model: options.model } : {}),
+        ...(options.also && options.also.length > 0 ? { also: options.also } : {}),
       });
-      if (result.error || !result.path || !result.threadId) {
+      const candidates = result.candidates ?? [];
+      if (candidates.length === 0 || !result.path || !result.threadId) {
         throw new Error(result.error ?? 'Could not create the worktree');
       }
-      const open = useApp.getState().project?.path;
-      await focusGroveProject(result.path === open ? null : result.path);
+      if (result.error) showToast(result.error);
+      for (const candidate of candidates) {
+        const openNow = useApp.getState().project?.path;
+        const switched = await focusGroveProject(candidate.path === openNow ? null : candidate.path);
+        if (switched && task) sendTask(candidate.threadId, task);
+      }
+      const openAfter = useApp.getState().project?.path;
+      await focusGroveProject(result.path === openAfter ? null : result.path);
       selectSession(result.threadId);
-      if (task) sendTask(result.threadId, task);
+      if (candidates.length > 1) {
+        showToast(`Started ${candidates.length} worktrees. Compare them, then keep one.`);
+      } else if (result.devUrl) {
+        const linked = result.modules === 'linked' ? ' Dependencies are linked from the parent.' : '';
+        showToast(`Worktree dev server: ${result.devUrl}.${linked}`);
+      }
       return result.threadId;
     }
     const summary = await newThread(options.agentId, { model: options.model, ...(title ? { title } : {}) });
@@ -791,6 +810,73 @@ async function showProject(path: string): Promise<void> {
 
 export function closeLauncher(): void {
   useGrove.setState({ launcherOpen: false });
+}
+
+const WORKTREE_PR_BODY = 'Opened from an Arbora Grove worktree session.';
+
+/** Merges the worktree branch into the parent checkout. */
+export async function mergeWorktree(path: string): Promise<void> {
+  try {
+    const result = await window.arbora.invoke('grove.mergeWorktree', { path });
+    showToast(result.ok ? 'Merged into the parent branch.' : result.output);
+  } catch (error) {
+    showToast(ipcError(error));
+  }
+}
+
+/** Pushes the worktree branch and opens a pull request. */
+export async function pullRequestWorktree(path: string, title: string): Promise<void> {
+  try {
+    const result = await window.arbora.invoke('grove.pullRequestWorktree', {
+      path,
+      title: title.slice(0, 200) || 'Worktree session',
+      body: WORKTREE_PR_BODY,
+    });
+    showToast(result.url ?? result.error ?? 'Could not open a pull request');
+  } catch (error) {
+    showToast(ipcError(error));
+  }
+}
+
+/** Merges this best-of-N worktree and discards the others. */
+export async function keepWorktree(path: string): Promise<void> {
+  try {
+    const result = await window.arbora.invoke('grove.keepWorktree', { path });
+    showToast(result.ok ? 'Kept this worktree and merged it into the parent.' : result.output);
+  } catch (error) {
+    showToast(ipcError(error));
+  }
+}
+
+/** Removes the worktree and returns Grove to its parent project when that worktree was open. */
+export async function discardWorktree(path: string): Promise<void> {
+  try {
+    const result = await window.arbora.invoke('grove.discardWorktree', { path });
+    if (!result.ok) {
+      showToast(result.error ?? 'Could not discard the worktree');
+      return;
+    }
+    if (useApp.getState().project?.path === path && result.parentPath) await focusGroveProject(result.parentPath);
+  } catch (error) {
+    showToast(ipcError(error));
+  }
+}
+
+/** Installs a separate `node_modules` in the worktree and shows the terminal that runs it. */
+export async function installWorktree(path: string): Promise<void> {
+  try {
+    const open = useApp.getState().project?.path;
+    await focusGroveProject(path === open ? null : path);
+    const result = await window.arbora.invoke('grove.installWorktree', { path });
+    if (result.error || !result.terminalId) {
+      showToast(result.error ?? 'Could not install dependencies');
+      return;
+    }
+    selectGroveTerminal(result.terminalId, { focus: true });
+    showToast(result.command ? `Running ${result.command}` : 'Installing dependencies');
+  } catch (error) {
+    showToast(ipcError(error));
+  }
 }
 
 /** The agent list has loaded, so the default agent and its detection are known. */

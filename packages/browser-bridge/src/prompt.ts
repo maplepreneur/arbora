@@ -50,7 +50,7 @@ export interface ComposedPrompt {
 }
 
 const TIER_TEXT: Readonly<Record<SourceTier, string>> = {
-  1: 'tier 1: exact file and line from the framework',
+  1: 'tier 1: exact file and line (framework debug info or data-arbora-src)',
   2: 'tier 2: source file known, line not known',
   3: 'tier 3: no source location from the framework; search the project (candidates below)',
 };

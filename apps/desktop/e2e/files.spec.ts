@@ -306,17 +306,18 @@ test.describe('Stage 7 files and editor', () => {
           page.evaluate((id) => window.arbora.invoke('terminal.lines', { id, count: 20 }), terminal?.id ?? ''),
         )
         .toContainEqual('src/components/Card.tsx:4:3');
-      // Which screen row the output lands on depends on the shell and prompt, so try the first rows
-      // after `clear` at the start of the line until the link opens the file.
-      const screen = page.locator('.xterm-screen').first();
+      // Which screen row the output lands on depends on the shell and prompt. The xterm screen can
+      // be taller than its fitted rows, so walk the top of that terminal in line-sized steps.
+      const screen = page.locator(`[data-terminal-id="${terminal?.id ?? ''}"] .xterm-screen`);
       const box = await screen.boundingBox();
-      const rows = await page.evaluate(() => document.querySelector('.xterm-rows')?.children.length ?? 24);
       if (!box) throw new Error('No terminal screen');
-      const rowHeight = box.height / rows;
-      const x = box.x + 20;
+      // The screen element can be taller than the fitted rows, so walk the top of the pane in
+      // line-sized steps instead of dividing the whole box by the first terminal's row count.
+      const x = box.x + 24;
       let opened = false;
-      for (let row = 0; row < Math.min(rows, 8) && !opened; row++) {
-        const y = box.y + rowHeight * (row + 0.5);
+      for (let row = 0; row < 10 && !opened; row++) {
+        const y = box.y + 8 + row * 18;
+        if (y > box.y + box.height) break;
         await page.mouse.move(x, y);
         await page.mouse.move(x + 2, y);
         await page.mouse.click(x + 2, y);
