@@ -1066,9 +1066,8 @@ export class BrowserService {
     }
   }
 
-  /** Types into the focused field. The text is not sent to the renderer. */
   /** CSS selectors for the login form, read in the isolated world. No field values. */
-  async loginFields(): Promise<{ username: string | null; password: string | null }> {
+  async loginFields(): Promise<{ username: string | null; password: string | null; otp: string | null }> {
     const value: unknown = await this.contents.executeJavaScriptInIsolatedWorld(PROBE_WORLD_ID, [
       {
         code: `(() => {
@@ -1077,43 +1076,44 @@ export class BrowserService {
             if (el.name) return 'input[name="' + CSS.escape(el.name) + '"]';
             return el.type === 'password' ? 'input[type="password"]' : 'input[type="text"], input[type="email"]';
           };
-          const password = document.querySelector('input[type="password"]');
-          if (!password) return { username: null, password: null };
           const inputs = [...document.querySelectorAll('input')];
-          const user = [...inputs.slice(0, inputs.indexOf(password))].reverse().find((input) => input.type !== 'hidden' && input.type !== 'password');
-          return { username: user ? css(user) : null, password: css(password) };
+          const otp = inputs.find((input) => {
+            if (input.type === 'hidden' || input.type === 'password') return false;
+            const blob = (input.name + ' ' + input.id + ' ' + (input.getAttribute('autocomplete') || '')).toLowerCase();
+            return blob.includes('otp') || blob.includes('totp') || blob.includes('one-time-code');
+          });
+          const password = document.querySelector('input[type="password"]');
+          if (!password) return { username: null, password: null, otp: otp ? css(otp) : null };
+          const user = [...inputs.slice(0, inputs.indexOf(password))].reverse().find((input) => input.type !== 'hidden' && input.type !== 'password' && input !== otp);
+          return { username: user ? css(user) : null, password: css(password), otp: otp ? css(otp) : null };
         })()`,
       },
     ]);
-    if (!value || typeof value !== 'object') return { username: null, password: null };
-    const record = value as { username?: unknown; password?: unknown };
+    if (!value || typeof value !== 'object') return { username: null, password: null, otp: null };
+    const record = value as { username?: unknown; password?: unknown; otp?: unknown };
     return {
       username: typeof record.username === 'string' ? record.username : null,
       password: typeof record.password === 'string' ? record.password : null,
+      otp: typeof record.otp === 'string' ? record.otp : null,
     };
   }
 
-  async pressEnter(): Promise<void> {
-    if (!this.debuggerAttached) await this.attachDebugger();
-    if (!this.debuggerAttached) throw new Error('Submitting a login needs the debugger; close DevTools and retry');
-    const base = {
-      key: 'Enter',
-      code: 'Enter',
-      windowsVirtualKeyCode: 13,
-      nativeVirtualKeyCode: 13,
-    };
-    await this.contents.debugger.sendCommand('Input.dispatchKeyEvent', {
-      ...base,
-      type: 'keyDown',
-      text: '\r',
-      unmodifiedText: '\r',
-    });
-    await this.contents.debugger.sendCommand('Input.dispatchKeyEvent', { ...base, type: 'keyUp' });
-    // A hidden tab does not receive synthesized keys. Submit from the page so its listener runs.
-    await this.contents.executeJavaScript(`document.querySelector('input[type="password"]')?.form?.requestSubmit?.()`);
+  async pressEnter(selector = 'input[type="password"]'): Promise<void> {
+    // One submit. A synthesized Enter plus requestSubmit runs the listener twice, and the
+    // second pass sees a one-time-code field the first pass just added, still empty.
+    await this.contents.executeJavaScript(
+      `document.querySelector(${JSON.stringify(selector)})?.form?.requestSubmit?.()`,
+    );
   }
 
+  /** Types into the focused field. The text is not sent to the renderer. */
   async insertText(selector: string, value: string): Promise<void> {
+    // A parked tab's focused field is not the one we just queried. Typing there can land in
+    // the password box. Set the named field directly instead.
+    if (!this.visible) {
+      if ((await this.writeField(selector, value)) !== true) throw new Error('Could not fill the login field');
+      return;
+    }
     if (!this.debuggerAttached) await this.attachDebugger();
     if (!this.debuggerAttached) throw new Error('Filling a login needs the debugger; close DevTools and retry');
     const cdp = this.contents.debugger;
@@ -1131,8 +1131,12 @@ export class BrowserService {
     await cdp.sendCommand('DOM.focus', { backendNodeId });
     if (value) await cdp.sendCommand('Input.insertText', { text: value });
     if ((await this.fieldValue(selector)) === value) return;
-    // Input.insertText does nothing while the view is parked. Set the value in the page instead.
-    const written: unknown = await this.contents.executeJavaScriptInIsolatedWorld(PROBE_WORLD_ID, [
+    if ((await this.writeField(selector, value)) !== true) throw new Error('Could not fill the login field');
+  }
+
+  /** Sets a field in the isolated world. The value never goes to the renderer. */
+  private async writeField(selector: string, value: string): Promise<unknown> {
+    return this.contents.executeJavaScriptInIsolatedWorld(PROBE_WORLD_ID, [
       {
         code: `(() => {
           const el = document.querySelector(${JSON.stringify(selector)});
@@ -1146,7 +1150,6 @@ export class BrowserService {
         })()`,
       },
     ]);
-    if (written !== true) throw new Error('Could not fill the login field');
   }
 
   /** Selected text and visible page text, for a tab the user sent to an agent. Truncate before logging. */

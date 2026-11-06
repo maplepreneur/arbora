@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { loginsForOrigin, opCreateArgs, opCreateTemplate, opRevealArgs, revealedLogin } from './op-command.js';
+import {
+  loginsForOrigin,
+  opCreateArgs,
+  opCreateTemplate,
+  opOtpArgs,
+  opRevealArgs,
+  revealedLogin,
+} from './op-command.js';
 
 const PASSWORD = 's3cret-fixture-value';
 
@@ -23,6 +30,12 @@ describe('op arguments', () => {
     expect(opRevealArgs('item-1').join(' ')).not.toContain(PASSWORD);
     expect(opRevealArgs('item-1')).toContain('item-1');
     expect(() => opRevealArgs('--reveal')).toThrow(/Bad 1Password item id/);
+  });
+
+  it('asks for a one-time code by item id', () => {
+    expect(opOtpArgs('item-1')).toEqual(['item', 'get', 'item-1', '--otp']);
+    expect(opOtpArgs('item-1').join(' ')).not.toContain(PASSWORD);
+    expect(() => opOtpArgs('--otp')).toThrow(/Bad 1Password item id/);
   });
 
   it('reads titles for one origin and the revealed fields', () => {

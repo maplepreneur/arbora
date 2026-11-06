@@ -12,6 +12,7 @@ const LOGIN = join(FIXTURES, 'login');
 const DESIGN = join(FIXTURES, 'design-reference');
 const VITE_REACT = join(FIXTURES, 'vite-react');
 const PASSWORD = 's3cret-fixture-value';
+const OTP = '918273';
 const MOD = process.platform === 'darwin' ? 'meta' : 'control';
 
 function fakeAgentSettings(userData: string): void {
@@ -49,7 +50,9 @@ function livePages(app: ElectronApplication): Promise<number> {
     ({ webContents }) =>
       webContents.getAllWebContents().filter((wc) => {
         const path = wc.session.storagePath ?? '';
-        return (path.includes('arbora-browser-') || path.includes('arbora-web')) && !wc.getURL().startsWith('devtools:');
+        return (
+          (path.includes('arbora-browser-') || path.includes('arbora-web')) && !wc.getURL().startsWith('devtools:')
+        );
       }).length,
   );
 }
@@ -111,7 +114,7 @@ test.describe('Stage 12 tabs and 1Password', () => {
       `#!/usr/bin/env node
 const args = process.argv.slice(2);
 const origin = process.env.OP_FIXTURE_ORIGIN || '';
-if (args.join(' ').includes(${JSON.stringify(PASSWORD)})) {
+if (args.join(' ').includes(${JSON.stringify(PASSWORD)}) || args.join(' ').includes(${JSON.stringify(OTP)})) {
   process.stderr.write('secret leaked to argv\\n');
   process.exit(3);
 }
@@ -121,6 +124,10 @@ if (args[0] === '--version') {
 }
 if (args[1] === 'list') {
   process.stdout.write(JSON.stringify([{ id: 'item1', title: 'Fixture login', urls: [{ href: origin + '/' }] }]));
+  process.exit(0);
+}
+if (args[1] === 'get' && args.includes('--otp')) {
+  process.stdout.write(${JSON.stringify(OTP)} + String.fromCharCode(10));
   process.exit(0);
 }
 if (args[1] === 'get') {
@@ -182,6 +189,7 @@ process.exit(2);
         .toBe('welcome');
       const transcript = await page.getByTestId('transcript').innerText();
       expect(transcript).not.toContain(PASSWORD);
+      expect(transcript).not.toContain(OTP);
       const log = await page.evaluate(async () => {
         const threads = await window.arbora.invoke('agent.listThreads');
         const thread = threads[0];
@@ -190,6 +198,7 @@ process.exit(2);
         return JSON.stringify(entries);
       });
       expect(log).not.toContain(PASSWORD);
+      expect(log).not.toContain(OTP);
     } finally {
       await app?.close();
       await login.close();
@@ -213,6 +222,83 @@ process.exit(2);
       await expect.poll(async () => (await tabs(page)).length).toBe(2);
       expect((await tabs(page)).some((tab) => tab.role === 'app')).toBe(true);
     } finally {
+      await app.close();
+      await design.close();
+    }
+  });
+
+  test('opens a plain link as a shared-partition tab and an OAuth popup as a child window', async () => {
+    test.setTimeout(60_000);
+    const design = await startStaticFixture(DESIGN);
+    const { app, page } = await launch(tempUserData(), [DESIGN]);
+    const windowCount = (): Promise<number> =>
+      app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length);
+    try {
+      await openUrl(page, design.url);
+      const reference = await page.evaluate((url) => window.arbora.invoke('browser.tabs.open', { url }), design.url);
+      await page.evaluate((id) => window.arbora.invoke('browser.tabs.activate', { id }), reference.id);
+      await expect
+        .poll(async () => (await tabs(page)).find((tab) => tab.id === reference.id)?.url)
+        .toContain(design.url);
+
+      // Opening the window inside the evaluate deadlocks Playwright's Electron driver.
+      await app.evaluate(({ webContents }, url) => {
+        const view = webContents
+          .getAllWebContents()
+          .find((wc) => (wc.session.storagePath ?? '').includes('arbora-web') && wc.getURL().startsWith(url));
+        if (!view) throw new Error('No reference tab on the shared partition');
+        setTimeout(() => {
+          void view.executeJavaScript(`window.open(${JSON.stringify(`${url}#linked`)})`);
+        }, 0);
+      }, design.url);
+      await expect
+        .poll(async () => (await tabs(page)).find((tab) => tab.url.includes('#linked'))?.role ?? '', {
+          timeout: 15_000,
+        })
+        .toBe('reference');
+      expect(await windowCount()).toBe(1);
+      const linkedPartition = await app.evaluate(({ webContents }, fragment) => {
+        const view = webContents.getAllWebContents().find((wc) => wc.getURL().includes(fragment));
+        return view?.session.storagePath ?? '';
+      }, '#linked');
+      expect(linkedPartition).toContain('arbora-web');
+
+      await app.evaluate(({ webContents }, url) => {
+        const view = webContents
+          .getAllWebContents()
+          .find(
+            (wc) =>
+              (wc.session.storagePath ?? '').includes('arbora-web') &&
+              wc.getURL().startsWith(url) &&
+              !wc.getURL().includes('#'),
+          );
+        if (!view) throw new Error('The opener tab is gone');
+        setTimeout(() => {
+          void view.executeJavaScript(
+            `window.open(${JSON.stringify(`${url}#oauth`)}, 'oauth', 'popup=yes,width=480,height=640')`,
+          );
+        }, 0);
+      }, design.url);
+      await expect.poll(windowCount, { timeout: 15_000 }).toBe(2);
+      expect((await tabs(page)).some((tab) => tab.url.includes('#oauth'))).toBe(false);
+      const popup = await app.evaluate(({ BrowserWindow }) => {
+        const child = BrowserWindow.getAllWindows().find((win) => win.getParentWindow() !== null);
+        if (!child) return null;
+        return {
+          partition: child.webContents.session.storagePath ?? '',
+          url: child.webContents.getURL(),
+        };
+      });
+      expect(popup?.partition).toContain('arbora-web');
+
+      await page.evaluate((id) => window.arbora.invoke('browser.tabs.close', { id }), reference.id);
+      await expect.poll(windowCount, { timeout: 10_000 }).toBe(1);
+    } finally {
+      await app
+        .evaluate(({ BrowserWindow }) => {
+          for (const win of BrowserWindow.getAllWindows().slice(1)) win.destroy();
+        })
+        .catch(() => undefined);
       await app.close();
       await design.close();
     }
@@ -290,9 +376,9 @@ process.exit(2);
       app = launched.app;
       const { page } = launched;
       await openUrl(page, vite.url);
-      await expect.poll(async () => (await browserState(page))?.title, { timeout: 20_000 }).toBe(
-        'Arbora fixture: Vite + React',
-      );
+      await expect
+        .poll(async () => (await browserState(page))?.title, { timeout: 20_000 })
+        .toBe('Arbora fixture: Vite + React');
       await startAgent(page, 'fake');
       const input = page.getByTestId('composer-input');
       await input.fill(`match design ${design.url}`);

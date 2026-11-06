@@ -241,10 +241,44 @@ export class ArboraToolHost implements BrowserToolHost {
       if (!fields.password) return 'needs_user';
       if (fields.username && revealed.username) await browser.insertText(fields.username, revealed.username);
       await browser.insertText(fields.password, revealed.password);
-      await browser.pressEnter();
+      if (fields.otp && !(await this.fillOtp(provider, item.id, browser, fields.otp))) return 'needs_user';
+      await browser.pressEnter(fields.password);
+      if (!fields.otp) {
+        const otp = await this.waitForOtpField(browser);
+        if (otp && !(await this.fillOtp(provider, item.id, browser, otp))) return 'needs_user';
+        if (otp) await browser.pressEnter(otp);
+      }
       return 'logged_in';
     } catch {
       return 'failed';
+    }
+  }
+
+  /** The code stays inside the provider's secret mask. A missing code is `needs_user`. */
+  private async fillOtp(
+    provider: { otp(id: string): Promise<string> },
+    id: string,
+    browser: BrowserService,
+    selector: string,
+  ): Promise<boolean> {
+    try {
+      const code = (await provider.otp(id)).trim();
+      if (!code) return false;
+      await browser.insertText(selector, code);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** A second factor often appears only after the password form submits. */
+  private async waitForOtpField(browser: BrowserService): Promise<string | null> {
+    const deadline = Date.now() + 1_500;
+    for (;;) {
+      const fields = await browser.loginFields();
+      if (fields.otp) return fields.otp;
+      if (Date.now() >= deadline) return null;
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }
 

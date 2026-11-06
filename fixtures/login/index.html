@@ -16,8 +16,22 @@
         event.preventDefault();
         const user = document.querySelector('input[name="user"]').value;
         const pass = document.querySelector('input[type="password"]').value;
-        document.getElementById('out').textContent =
-          user === 'ada@example.com' && pass === 's3cret-fixture-value' ? 'welcome' : 'denied';
+        const otp = document.querySelector('input[name="otp"]');
+        const out = document.getElementById('out');
+        if (user !== 'ada@example.com' || pass !== 's3cret-fixture-value') {
+          out.textContent = 'denied';
+          return;
+        }
+        if (!otp) {
+          const code = document.createElement('input');
+          code.name = 'otp';
+          code.type = 'text';
+          code.autocomplete = 'one-time-code';
+          document.getElementById('login').appendChild(code);
+          out.textContent = 'need-code';
+          return;
+        }
+        out.textContent = otp.value === '918273' ? 'welcome' : 'denied';
       });
     </script>
   </body>
