@@ -5,7 +5,7 @@ import { ReadBuffer, serializeMessage } from '@modelcontextprotocol/sdk/shared/s
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { GroveSession, GroveStartRequest, GroveToolHost, GroveWaitRequest } from './grove-host.js';
-import type { BrowserToolHost, PageInfo, PermissionRequest, ToolPolicy } from './host.js';
+import type { BrowserToolHost, PageInfo, PermissionRequest, ToolPolicy, TraceStepInput } from './host.js';
 import { BrowserMcpServer, type McpActivity } from './server.js';
 import { runShim } from './shim.js';
 import type { AxNode } from './snapshot.js';
@@ -18,6 +18,7 @@ interface FakeHostState {
   confirms: PermissionRequest[];
   answer: boolean;
   policy: ToolPolicy;
+  traces: TraceStepInput[];
 }
 
 /** A fixture-like page with a counter button, driven by CDP calls the tools make. */
@@ -29,6 +30,7 @@ function fakeHost(): { host: BrowserToolHost; state: FakeHostState; cdp: FakeCdp
     confirms: [],
     answer: true,
     policy: 'ask',
+    traces: [],
   };
   const tree = (): AxNode[] => [
     { nodeId: '1', role: { value: 'RootWebArea' }, name: { value: 'Fixture' }, childIds: ['2', '3'] },
@@ -81,6 +83,9 @@ function fakeHost(): { host: BrowserToolHost; state: FakeHostState; cdp: FakeCdp
     confirm: (request) => {
       state.confirms.push(request);
       return Promise.resolve(state.answer);
+    },
+    recordTrace: (step) => {
+      state.traces.push(step);
     },
   };
   return { host, state, cdp };
@@ -282,7 +287,7 @@ describe('BrowserMcpServer', () => {
   });
 
   it('clicks a ref from the snapshot, and the next snapshot shows the change', async () => {
-    const { client } = await connect();
+    const { client, state } = await connect();
     const before = textOf(await client.callTool({ name: 'browser_snapshot', arguments: {} }));
     expect(before).toContain('- paragraph "Clicked 0 times" [ref=e1]');
     expect(before).toContain('- button "Increment" [ref=e2]');
@@ -293,6 +298,11 @@ describe('BrowserMcpServer', () => {
     const stale = await client.callTool({ name: 'browser_click', arguments: { ref: 'e99' } });
     expect(stale.isError).toBe(true);
     expect(textOf(stale)).toMatch(/Unknown ref e99/);
+    expect(state.traces.map((step) => ({ tool: step.tool, title: step.title, ok: step.ok }))).toEqual([
+      { tool: 'browser_click', title: 'Click e2', ok: true },
+      { tool: 'browser_click', title: 'Click e99', ok: false },
+    ]);
+    expect(state.traces[1]?.error).toMatch(/Unknown ref e99/);
   });
 
   it('returns screenshots as raw base64 image content', async () => {

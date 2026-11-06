@@ -1,3 +1,4 @@
+export * from './action-trace.js';
 export * from './agent.js';
 export * from './attention.js';
 export * from './browser.js';

@@ -982,6 +982,7 @@ User feedback from the first macOS installs, landed as a stack of pull requests 
 5. **Design session history**: list, compare, resend, export as Markdown.
    - Gotcha: Compare reads the before and after screenshots only when they are inside the project. The Markdown export names those paths; it does not embed the image bytes. A session id that is not a UUID is refused, so a crafted id cannot read another file.
 6. **Agent action traces**: record MCP browser actions as a Playwright-like trace (screenshots per step) viewable in the thread.
+   - Gotcha: record the step in the MCP tool wrapper, not from the ACP tool-call title. OpenCode reports these calls as `execute`, and a second card would duplicate the one the agent already sends (Stage 5). The thumbnail is a viewport JPEG taken after the tool returns. Snapshot, console, network and element-source reads are not steps. Saving a thread keeps images on the last four steps only.
 7. **LSP opt-in**: `@codemirror/lsp-client` + `typescript-language-server` spawned per project; hover, go-to-definition, completions.
    - Gotcha: the language server must be the project's TypeScript version; resolve `node_modules/typescript` first.
 8. **Agent-mode on production builds**: heuristics to map minified components via source maps when available (`//# sourceMappingURL`), using CDP `Debugger.getScriptSource`.
@@ -994,7 +995,7 @@ User feedback from the first macOS installs, landed as a stack of pull requests 
 - [x] Worktree sessions
 - [x] Tailwind write-through
 - [x] Design session history
-- [ ] Action traces
+- [x] Action traces
 - [ ] LSP opt-in
 - [ ] Source-map assisted mapping
 - [x] Grove orchestration MCP tools (moved to Stage 10)

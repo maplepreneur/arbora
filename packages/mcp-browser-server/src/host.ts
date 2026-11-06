@@ -92,4 +92,17 @@ export interface BrowserToolHost {
   policy(tool: GuardedTool): ToolPolicy;
   /** Asks the user (a permission card in the agent panel); true when allowed. */
   confirm(request: PermissionRequest): Promise<boolean>;
+  /**
+   * Records one browser action for the thread's trace. Optional: hosts that omit it still run the
+   * tools. A throw here must not fail the tool.
+   */
+  recordTrace?(step: TraceStepInput): void | Promise<void>;
+}
+
+/** What the MCP server knows about one traced browser action, before the app attaches a screenshot. */
+export interface TraceStepInput {
+  readonly tool: string;
+  readonly title: string;
+  readonly ok: boolean;
+  readonly error: string | null;
 }
