@@ -58,6 +58,7 @@ type Session = TextSession | { readonly kind: 'other'; path: string; readonly co
 const sessions = new Map<string, Session>();
 const loading = new Map<string, Promise<Session>>();
 const fontSize = new Compartment();
+const lspSupport = new Compartment();
 let view: EditorView | null = null;
 let viewPath: string | null = null;
 const listeners = new Set<() => void>();
@@ -97,6 +98,7 @@ function extensions(session: TextSession): Extension[] {
     editorTheme,
     editorHighlighting,
     fontSize.of(fontSizeTheme(useApp.getState().settings.editor.fontSize)),
+    lspSupport.of([]),
     session.large ? [] : languageFor(session.path),
     EditorState.readOnly.of(session.large),
     EditorView.updateListener.of((update) => {
@@ -182,6 +184,7 @@ export function attach(parent: HTMLElement, path: string): EditorView | null {
     if (viewPath !== path) view.setState(session.state);
   }
   viewPath = path;
+  notify();
   applyDiagnostics(path);
   applyGitLines(path, gitLines.get(path) ?? []);
   const reveal = takePendingReveal(path);
@@ -356,6 +359,25 @@ async function onDiskChange(change: FileChange): Promise<void> {
   } else {
     setFileStatus(change.path, { diskChanged: true });
   }
+}
+
+/** The file currently mounted in the editor, if any. */
+export function currentEditorPath(): string | null {
+  return viewPath;
+}
+
+export function editorView(): EditorView | null {
+  return view;
+}
+
+/** Swaps the language-server extension on a text session, on screen or not. */
+export function applyLsp(path: string, extension: Extension): void {
+  const session = sessions.get(path);
+  if (session?.kind !== 'text') return;
+  const effects = lspSupport.reconfigure(extension);
+  if (view && viewPath === path) view.dispatch({ effects });
+  else session.state = session.state.update({ effects }).state;
+  notify();
 }
 
 /** Re-renders components that show non-text sessions when one is dropped. */

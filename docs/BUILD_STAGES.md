@@ -984,7 +984,8 @@ User feedback from the first macOS installs, landed as a stack of pull requests 
 6. **Agent action traces**: record MCP browser actions as a Playwright-like trace (screenshots per step) viewable in the thread.
    - Gotcha: record the step in the MCP tool wrapper, not from the ACP tool-call title. OpenCode reports these calls as `execute`, and a second card would duplicate the one the agent already sends (Stage 5). The thumbnail is a viewport JPEG taken after the tool returns. Snapshot, console, network and element-source reads are not steps. Saving a thread keeps images on the last four steps only.
 7. **LSP opt-in**: `@codemirror/lsp-client` + `typescript-language-server` spawned per project; hover, go-to-definition, completions.
-   - Gotcha: the language server must be the project's TypeScript version; resolve `node_modules/typescript` first.
+   - Gotcha: the language server must be the project's TypeScript version; resolve `node_modules/typescript` first. The binary is the project's `typescript-language-server` (`lib/cli.mjs`), spawned with Electron as Node. Main adds the Content-Length framing; the renderer only sends JSON. The renderer must not call `lsp.stop` and then `lsp.start`: the stop can kill the process that `start` just spawned. Turning the setting off stops it. Switching projects lets `lsp.start` replace the process.
+   - Gotcha: CodeMirror requests a hover only when the pointer is within about one character of a glyph. A hover on the empty part of the line does nothing.
 8. **Agent-mode on production builds**: heuristics to map minified components via source maps when available (`//# sourceMappingURL`), using CDP `Debugger.getScriptSource`.
 9. **Grove orchestration**: moved to Stage 10 (`F-GROVE-12`) on 4 Nov 2026. The `grove_*` tools ride on the browser MCP server every session already has.
 
@@ -996,7 +997,7 @@ User feedback from the first macOS installs, landed as a stack of pull requests 
 - [x] Tailwind write-through
 - [x] Design session history
 - [x] Action traces
-- [ ] LSP opt-in
+- [x] LSP opt-in
 - [ ] Source-map assisted mapping
 - [x] Grove orchestration MCP tools (moved to Stage 10)
 

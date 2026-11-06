@@ -21,6 +21,7 @@ export * from './ipc.js';
 export * from './keybinding-cheatsheet.js';
 export * from './keybinding-editor.js';
 export * from './keybindings.js';
+export * from './lsp.js';
 export * from './mcp-servers.js';
 export * from './page-ipc.js';
 export * from './platform.js';

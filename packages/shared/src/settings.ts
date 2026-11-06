@@ -324,6 +324,11 @@ export const editorSettingsSchema = z.object({
   eslintOnSave: z.boolean().default(true),
   /** Run `tsc --noEmit` after saving a TypeScript file. Off by default: slow on large projects. */
   tscOnSave: z.boolean().default(false),
+  /**
+   * Hover, completion and go to definition from the project's `typescript-language-server`.
+   * Off until turned on. The server uses the TypeScript in the project's `node_modules`.
+   */
+  lsp: z.boolean().default(false),
   fontSize: z.number().int().min(8).max(32).default(14),
 });
 export type EditorSettings = z.infer<typeof editorSettingsSchema>;
@@ -337,6 +342,7 @@ export function mergeEditorSettings(
     formatOnSave: patch.formatOnSave ?? current.formatOnSave,
     eslintOnSave: patch.eslintOnSave ?? current.eslintOnSave,
     tscOnSave: patch.tscOnSave ?? current.tscOnSave,
+    lsp: patch.lsp ?? current.lsp,
     fontSize: patch.fontSize ?? current.fontSize,
   };
 }

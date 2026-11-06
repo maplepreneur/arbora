@@ -290,10 +290,22 @@ describe('loadSettings', () => {
     });
   });
 
+  it('keeps a language server opt-in and still defaults the other editor fields', () => {
+    const { settings } = loadSettings({ version: 6, editor: { lsp: true } });
+    expect(settings.editor.lsp).toBe(true);
+    expect(settings.editor.formatOnSave).toBe(true);
+  });
+
   it('defaults editor settings for files written before Stage 7', () => {
     const { settings, warnings } = loadSettings({ version: 3, theme: 'dark' });
     expect(warnings).toEqual([]);
-    expect(settings.editor).toEqual({ formatOnSave: true, eslintOnSave: true, tscOnSave: false, fontSize: 14 });
+    expect(settings.editor).toEqual({
+      formatOnSave: true,
+      eslintOnSave: true,
+      tscOnSave: false,
+      lsp: false,
+      fontSize: 14,
+    });
   });
 
   it('merges editor patches, leaving omitted fields alone', () => {
