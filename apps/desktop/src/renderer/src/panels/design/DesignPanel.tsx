@@ -28,18 +28,21 @@ import {
 import {
   activeOps,
   describeOp,
+  planWriteThrough,
   rgbToHex,
   type AgentModeTarget,
   type AgentModel,
   type DesignCommand,
   type DesignOp,
   type DesignSelection,
+  type StylingApproach,
 } from '@arbora/shared';
 import { isListed, useAgents } from '../../agent-store';
 import { toggleDefaultModel } from '../../agent-defaults';
 import { useAutoVerify, usePickableAgents } from '../../agent-pickers';
 import { Picker } from '../../components/Picker';
-import { discardDesign, resendDesignSession, saveDesignTo } from '../../commands';
+import { applyDesignToSource, discardDesign, saveDesignTo } from '../../commands';
+import { SessionHistory } from './SessionHistory';
 import type { DesignPending } from '../../mode';
 import { dispatchMode, openSettings, setDesignTarget, showToast, useApp } from '../../store';
 
@@ -437,7 +440,12 @@ function StylePanel({ selection, structureWarning }: { selection: DesignSelectio
   const flex = v('display').includes('flex');
   const grid = v('display').includes('grid');
   return (
-    <div data-testid="design-selection" data-selector={selection.selector}>
+    <div
+      data-testid="design-selection"
+      data-selector={selection.selector}
+      data-source={selection.sourceFile ?? ''}
+      data-line={selection.sourceLine ?? ''}
+    >
       {selection.text && (
         <Section title="Content">
           <TextContent value={selection.text} />
@@ -754,27 +762,7 @@ function ChangesPanel({ target, onEdit }: { target: AgentModeTarget | null; onEd
           ))}
         </ol>
       )}
-      {sessions.length > 0 && (
-        <section className="flex flex-col gap-1 px-3 py-3" data-testid="design-sessions">
-          <h3 className="text-[11px] font-semibold tracking-wide text-fg-muted uppercase">Earlier sessions</h3>
-          {sessions.slice(0, 8).map((session) => (
-            <div key={session.id} className="flex items-center gap-2 text-[11px]">
-              <span className="min-w-0 flex-1 truncate text-fg-muted" title={session.url}>
-                {new Date(session.createdAt).toLocaleString()} · {session.opCount} change
-                {session.opCount === 1 ? '' : 's'}
-              </span>
-              <button
-                type="button"
-                data-testid="design-resend"
-                className="shrink-0 text-accent hover:underline"
-                onClick={() => void resendDesignSession(session.id, target)}
-              >
-                Resend
-              </button>
-            </div>
-          ))}
-        </section>
-      )}
+      <SessionHistory sessions={sessions} target={target} />
     </div>
   );
 }
@@ -920,15 +908,51 @@ const CONFIRM_TEXT: Readonly<Record<DesignPending, string>> = {
   grove: 'Send them to an agent, or discard them, before switching project.',
 };
 
+const WRITE_CONFIRM: Readonly<Record<DesignPending, string>> = {
+  idle: 'Apply them to the source, ask an agent, or discard them to put the page back.',
+  agent: 'Apply them to the source, ask an agent, or discard them, before switching to agent mode.',
+  grove: 'Apply them to the source, ask an agent, or discard them, before switching project.',
+};
+
+function useWriteThrough(): boolean {
+  const ops = useApp((s) => s.design.ops);
+  const cursor = useApp((s) => s.design.cursor);
+  const [styling, setStyling] = useState<{ approach: StylingApproach; colors: Map<string, string> } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void window.arbora
+      .invoke('design.styling')
+      .then((result) => {
+        if (!cancelled)
+          setStyling({ approach: result.approach, colors: new Map(result.colors.map((c) => [c.hex, c.name])) });
+      })
+      .catch(() => {
+        if (!cancelled) setStyling(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  if (!styling) return false;
+  return planWriteThrough(activeOps(ops, cursor), styling.approach, styling.colors).ok;
+}
+
 function SendBar({ confirm, target }: { confirm: DesignPending | null; target: DesignTarget | null }) {
   const cursor = useApp((s) => activeOps(s.design.ops, s.design.cursor).length);
   const off = useApp((s) => s.design.cursor - activeOps(s.design.ops, s.design.cursor).length);
+  const canWrite = useWriteThrough();
   const [busy, setBusy] = useState(false);
   const submit = async (): Promise<void> => {
     setBusy(true);
     await saveDesignTo(target?.target ?? null);
     setBusy(false);
   };
+  const apply = async (): Promise<void> => {
+    setBusy(true);
+    await applyDesignToSource();
+    setBusy(false);
+  };
+  const count = `${cursor} change${cursor === 1 ? '' : 's'}`;
   return (
     <footer className="flex flex-col gap-2 border-t border-border bg-bg-subtle px-3 py-2.5" data-testid="design-send">
       {confirm && (
@@ -936,7 +960,7 @@ function SendBar({ confirm, target }: { confirm: DesignPending | null; target: D
           <p className="text-xs font-medium">
             You have {cursor} unsent change{cursor === 1 ? '' : 's'}.
           </p>
-          <p className="text-[11px] text-fg-muted">{CONFIRM_TEXT[confirm]}</p>
+          <p className="text-[11px] text-fg-muted">{(canWrite ? WRITE_CONFIRM : CONFIRM_TEXT)[confirm]}</p>
           <button
             type="button"
             data-testid="design-stay"
@@ -952,20 +976,37 @@ function SendBar({ confirm, target }: { confirm: DesignPending | null; target: D
           <AgentPicker value={target.key} />
           <ModelPicker target={target} />
         </div>
-      ) : (
+      ) : canWrite ? null : (
         <NoAgents />
+      )}
+      {canWrite && (
+        <button
+          type="button"
+          data-testid="design-apply"
+          disabled={cursor === 0 || busy}
+          onClick={() => void apply()}
+          className="flex h-8 items-center justify-center gap-1.5 rounded-md bg-accent px-3 text-xs font-medium text-accent-fg hover:opacity-90 disabled:opacity-40"
+        >
+          Apply {count} to source
+        </button>
       )}
       <button
         type="button"
         data-testid="design-save"
         disabled={cursor === 0 || busy || !target}
         onClick={() => void submit()}
-        className="flex h-8 items-center justify-center gap-1.5 rounded-md bg-accent px-3 text-xs font-medium text-accent-fg hover:opacity-90 disabled:opacity-40"
+        className={
+          canWrite
+            ? 'flex h-8 items-center justify-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium hover:bg-bg disabled:opacity-40'
+            : 'flex h-8 items-center justify-center gap-1.5 rounded-md bg-accent px-3 text-xs font-medium text-accent-fg hover:opacity-90 disabled:opacity-40'
+        }
       >
         <Send size={13} />
         {cursor === 0
           ? 'Make a change to send it'
-          : `Send ${cursor} change${cursor === 1 ? '' : 's'} to ${target?.agentName ?? 'an agent'}`}
+          : canWrite
+            ? 'Ask agent instead'
+            : `Send ${count} to ${target?.agentName ?? 'an agent'}`}
       </button>
       <div className="flex items-center justify-between text-[11px] text-fg-subtle">
         <span>

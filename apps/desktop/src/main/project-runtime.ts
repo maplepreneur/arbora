@@ -213,6 +213,7 @@ export class ProjectRuntime {
         }
       },
       preview: (preview) => this.agents.addBrowserPreview(threadId, preview),
+      trace: (step) => this.agents.addActionTrace(threadId, step),
     });
     return openBrowserTools(toolHost, options.mcpShim, options.appVersion, { grove });
   }

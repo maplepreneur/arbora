@@ -7,9 +7,11 @@ import type {
 import {
   availableCommandSchema,
   contentBlockSchema,
+  pushTraceStep,
   sessionConfigOptionSchema,
   toolCallContentSchema,
   toolCallLocationSchema,
+  type ActionTraceStep,
   type AvailableCommand,
   type ContentBlock,
   type PermissionEvent,
@@ -256,6 +258,39 @@ export class UpdateNormalizer {
   error(message: string): ThreadChange[] {
     this.expectUserEcho = false;
     const event: ThreadEvent = { id: this.options.nextId(), at: this.options.now(), kind: 'error', message };
+    return [this.append(event)];
+  }
+
+  /**
+   * One MCP browser action in the current turn. Steps fold into the turn's `action_trace` (the
+   * event after the latest user message). The next prompt starts a new trace.
+   */
+  actionTrace(step: Omit<ActionTraceStep, 'id' | 'at'>): ThreadChange[] {
+    const next: ActionTraceStep = { id: this.options.nextId(), at: this.options.now(), ...step };
+    let index = -1;
+    for (let i = this.events.length - 1; i >= 0; i--) {
+      const event = this.events[i];
+      if (!event) break;
+      if (event.kind === 'user_message') break;
+      if (event.kind === 'action_trace') {
+        index = i;
+        break;
+      }
+    }
+    if (index >= 0) {
+      const current = this.events[index];
+      if (current?.kind !== 'action_trace') return [];
+      const event: ThreadEvent = { ...current, steps: pushTraceStep(current.steps, next) };
+      this.events[index] = event;
+      this.open = -1;
+      return [{ type: 'replace', index, event }];
+    }
+    const event: ThreadEvent = {
+      id: this.options.nextId(),
+      at: this.options.now(),
+      kind: 'action_trace',
+      steps: [next],
+    };
     return [this.append(event)];
   }
 

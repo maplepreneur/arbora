@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { actionTraceStepSchema, ACTION_TRACE_STEP_LIMIT } from './action-trace.js';
 
 /**
  * Agent panel domain types shared by main and the renderer. The ACP wire types live in
@@ -252,6 +253,15 @@ export const threadEventSchema = z.discriminatedUnion('kind', [
     image: z.object({ data: z.string(), mimeType: z.string(), width: z.number(), height: z.number() }),
     /** The full-size capture under `.arbora/screenshots/`, when saved. */
     path: z.string().nullable(),
+  }),
+  /**
+   * MCP browser actions from the current turn, one viewport thumbnail per step. The agent's own
+   * `tool_call` cards stay the record of each call; this is the sequence, like a Playwright trace.
+   */
+  z.object({
+    ...eventBase,
+    kind: z.literal('action_trace'),
+    steps: z.array(actionTraceStepSchema).max(ACTION_TRACE_STEP_LIMIT),
   }),
 ]);
 export type ThreadEvent = z.infer<typeof threadEventSchema>;

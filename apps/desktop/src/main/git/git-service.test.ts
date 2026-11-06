@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -55,6 +55,36 @@ describe('GitService', () => {
     expect(existsSync(join(directory, 'f.txt'))).toBe(true);
     await git.removeWorktree(directory);
     expect(existsSync(directory)).toBe(false);
+  });
+
+  it('merges a branch and aborts when the merge conflicts', async () => {
+    const { git, root } = fresh();
+    await init(root);
+    writeFileSync(join(root, 'f.txt'), 'base\n');
+    await git.stage(['f.txt']);
+    expect((await git.commit('init', false)).ok).toBe(true);
+    expect((await git.createBranch('feature')).ok).toBe(true);
+    writeFileSync(join(root, 'f.txt'), 'feature\n');
+    await git.stage(['f.txt']);
+    expect((await git.commit('feature', false)).ok).toBe(true);
+    expect((await git.checkout('main')).ok).toBe(true);
+    writeFileSync(join(root, 'f.txt'), 'main\n');
+    await git.stage(['f.txt']);
+    expect((await git.commit('main', false)).ok).toBe(true);
+
+    const conflict = await git.merge('feature');
+    expect(conflict.ok).toBe(false);
+    expect((await git.status()).files.filter((file) => file.conflict)).toEqual([]);
+    expect(readFileSync(join(root, 'f.txt'), 'utf8')).toBe('main\n');
+
+    expect((await git.createBranch('extra')).ok).toBe(true);
+    writeFileSync(join(root, 'g.txt'), 'added\n');
+    await git.stage(['g.txt']);
+    expect((await git.commit('extra', false)).ok).toBe(true);
+    expect((await git.checkout('main')).ok).toBe(true);
+    const merged = await git.merge('extra');
+    expect(merged.ok).toBe(true);
+    expect(readFileSync(join(root, 'g.txt'), 'utf8')).toBe('added\n');
   });
 
   it('untracks a committed .arbora folder and keeps the files', async () => {

@@ -91,6 +91,7 @@ export function GroveLauncher() {
   const [task, setTask] = useState('');
   const [makeDefault, setMakeDefault] = useState(false);
   const [worktree, setWorktree] = useState(false);
+  const [also, setAlso] = useState<readonly string[]>([]);
   const agentList = useRef<HTMLUListElement>(null);
   const modelList = useRef<HTMLUListElement>(null);
   const taskField = useRef<HTMLTextAreaElement>(null);
@@ -127,7 +128,22 @@ export function GroveLauncher() {
     // has to take it after that.
     closeLauncher();
     if (makeDefault && !isProjectDefault) void setProjectDefaultAgent(agentId);
-    void startSession({ agentId, model, task: text, worktree });
+    const extras = worktree
+      ? also
+          .filter((id) => id !== agentId)
+          .slice(0, 3)
+          .map((id) => {
+            const chosen = chosenModels[id];
+            return chosen ? { agentId: id, model: chosen } : { agentId: id };
+          })
+      : [];
+    void startSession({
+      agentId,
+      model,
+      task: text,
+      worktree,
+      ...(extras.length > 0 ? { also: extras } : {}),
+    });
   };
 
   const onListKey = (event: KeyboardEvent<HTMLUListElement>, side: 'agent' | 'model'): void => {
@@ -335,6 +351,31 @@ export function GroveLauncher() {
               />
               New git worktree, named from the task
             </label>
+            {worktree && pickable.length > 1 && (
+              <div className="flex flex-col gap-1 pl-5">
+                <span className="text-[11px] text-fg-subtle">Also run this task with</span>
+                {pickable
+                  .filter((item) => item.agent.id !== entry?.agent.id)
+                  .map((item) => (
+                    <label key={item.agent.id} className="flex items-center gap-1.5 text-[12px] text-fg-muted">
+                      <input
+                        type="checkbox"
+                        data-testid={`launcher-also-${item.agent.id}`}
+                        checked={also.includes(item.agent.id)}
+                        disabled={!also.includes(item.agent.id) && also.length >= 3}
+                        onChange={(event) => {
+                          setAlso((current) => {
+                            if (!event.target.checked) return current.filter((id) => id !== item.agent.id);
+                            if (current.length >= 3) return current;
+                            return [...current, item.agent.id];
+                          });
+                        }}
+                      />
+                      {item.agent.name}
+                    </label>
+                  ))}
+              </div>
+            )}
           </div>
         )}
         <div className="flex shrink-0 items-center gap-2 border-t border-border px-4 py-2.5">

@@ -127,7 +127,10 @@ const design = new DesignOverlay(window, {
   chainFor: async (element) => {
     const ref = refs.assign(element);
     const chain = (await inMainWorld<ComponentEntry[]>(mainWorldCall('forRef', ref, CHAIN_LIMIT))) ?? [];
-    const source = chain[0]?.renderedAt ?? chain[0]?.definedAt ?? null;
+    const host =
+      (await inMainWorld<{ file: string; line: number | null } | null>(mainWorldCall('hostSource', ref))) ?? null;
+    // The host fiber is the tag that was edited. The chain's render site is where the component is used.
+    const source = host?.line ? host : (chain[0]?.renderedAt ?? chain[0]?.definedAt ?? null);
     return { names: chain.map((entry) => entry.name), file: source?.file ?? null, line: source?.line ?? null };
   },
   onState: (state) => send('design.state', state),

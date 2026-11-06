@@ -7,6 +7,7 @@ import { click, elementBox, hover, pressKey, scroll, selectOptions, typeText } f
 import { evaluate, InflightRequests, truncate, waitFor } from './page.js';
 import { RefTable, resolveElement, type ElementTarget } from './refs.js';
 import { formatSnapshot, type AxNode } from './snapshot.js';
+import { actionTraceTitle, isTracedBrowserTool } from './trace.js';
 
 export const DEFAULT_WAIT_MS = 5000;
 const MAX_WAIT_MS = 60_000;
@@ -73,6 +74,17 @@ function text(value: string): CallToolResult {
   return { content: [{ type: 'text', text: value }] };
 }
 
+function clipError(message: string): string {
+  return message.length > 300 ? `${message.slice(0, 299)}…` : message;
+}
+
+function resultError(result: CallToolResult): string {
+  for (const block of result.content) {
+    if (block.type === 'text') return block.text;
+  }
+  return 'The tool failed.';
+}
+
 function checkTarget(value: string | undefined): void {
   if (value !== undefined && value !== '' && value !== 'current') {
     throw new ToolError(`Unknown tab ${value}; Arbora has a single browser tab for now (omit "target").`);
@@ -109,6 +121,20 @@ export function isTrustedOrigin(url: URL, devUrl: string | null): boolean {
 export function registerBrowserTools(server: McpServer, context: ToolContext): void {
   const { host } = context;
 
+  const record = async (name: string, args: object, ok: boolean, error: string | null): Promise<void> => {
+    if (!isTracedBrowserTool(name) || !host.recordTrace) return;
+    try {
+      await host.recordTrace({
+        tool: name,
+        title: actionTraceTitle(name, args as Record<string, unknown>),
+        ok,
+        error: error === null ? null : clipError(error),
+      });
+    } catch {
+      // The trace is a view of the action. A capture failure must not fail the tool.
+    }
+  };
+
   const tool = <Shape extends z.ZodRawShape>(
     name: string,
     description: string,
@@ -123,9 +149,13 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
       (async (args: z.infer<z.ZodObject<Shape>> & { target?: string }) => {
         try {
           checkTarget(args.target);
-          return await run(args);
+          const result = await run(args);
+          const failed = result.isError === true;
+          await record(name, args, !failed, failed ? resultError(result) : null);
+          return result;
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
+          await record(name, args, false, message);
           return { isError: true, content: [{ type: 'text', text: message }] };
         }
       }) as never,

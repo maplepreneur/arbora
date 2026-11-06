@@ -6,11 +6,12 @@ import type { ComponentEntry } from '@arbora/shared';
  * not reference anything outside its own body.
  *
  * React <= 18 dev builds give file:line per fiber (`_debugSource`); React 19 only gives owner
- * stacks (`_debugStack`), whose line numbers refer to transformed code and are dropped. Vue gives
- * `type.__file` without a line. `@arbora/dev-plugin` writes `data-arbora-src="file:line:column"`
- * on host elements; that wins over a framework location that has no line. Components with no
- * source information at all are library internals when the page provides source information
- * elsewhere, and are dropped.
+ * stacks (`_debugStack`). A `.tsx` or `.vue` frame's line is transformed code and is dropped. A
+ * production `.js` bundle keeps its line and column so main can apply the script's source map.
+ * Vue gives `type.__file` without a line. `@arbora/dev-plugin` writes
+ * `data-arbora-src="file:line:column"` on host elements; that wins over a framework location
+ * that has no line. Components with no source information at all are library internals when the
+ * page provides source information elsewhere, and are dropped.
  */
 export function resolveComponents(start: Element, limit: number): ComponentEntry[] {
   interface Source {
@@ -66,22 +67,30 @@ export function resolveComponents(start: Element, limit: number): ComponentEntry
     return { x: left, y: top, width: right - left, height: bottom - top };
   };
 
-  const frames = (stack: unknown): { fn: string; file: string }[] => {
+  const frames = (stack: unknown): { fn: string; file: string; line: number; column: number }[] => {
     if (typeof stack !== 'string') return [];
-    const out: { fn: string; file: string }[] = [];
+    const out: { fn: string; file: string; line: number; column: number }[] = [];
     for (const raw of stack.split('\n')) {
       const line = raw.trim();
       if (!line.startsWith('at ')) continue;
-      const match = /^at (?:(.*?) \()?(.+?):\d+:\d+\)?$/.exec(line);
-      if (match?.[2]) out.push({ fn: match[1] ?? '', file: match[2] });
+      const match = /^at (?:(.*?) \()?(.+?):(\d+):(\d+)\)?$/.exec(line);
+      if (match?.[2] && match[3] && match[4])
+        out.push({ fn: match[1] ?? '', file: match[2], line: Number(match[3]), column: Number(match[4]) });
     }
     return out;
+  };
+  // A `.js` bundle can be mapped. A `.tsx` or `.vue` frame's line is transformed code, so it is dropped.
+  const generatedScript = (file: string): boolean => {
+    const path = file.split(/[?#]/)[0] ?? file;
+    return /^https?:\/\//i.test(file) && /\.(?:mjs|cjs|js)$/.test(path);
   };
   const stackSource = (stack: unknown, preferFn?: string): Source | null => {
     const list = frames(stack).filter((f) => !isLibrary(f.file));
     const named = preferFn ? list.find((f) => f.fn === preferFn || f.fn.endsWith(`.${preferFn}`)) : undefined;
     const frame = named ?? list[0];
-    return frame ? { file: frame.file, line: null, column: null } : null;
+    if (!frame) return null;
+    const generated = generatedScript(frame.file);
+    return { file: frame.file, line: generated ? frame.line : null, column: generated ? frame.column : null };
   };
   const isMinified = (name: string): boolean => /^[A-Za-z_$][\w$]?$/.test(name);
 
@@ -323,4 +332,36 @@ export function resolveComponents(start: Element, limit: number): ComponentEntry
     node = node.parentNode ?? (node as unknown as { host?: Node }).host ?? null;
   }
   return [];
+}
+
+/**
+ * File and line of the DOM node itself, from its host fiber's `_debugSource`. This is the tag a
+ * class edit has to change. The component chain's render site is where the component is used,
+ * which is a different element. Library frames are ignored. Self-contained so it can be injected
+ * into the page.
+ */
+export function resolveHostSource(start: Element): { file: string; line: number | null } | null {
+  const LIBRARY =
+    /node_modules|\/\.vite\/deps\/|next[/_]dist[/_]|react-dom[/_.-]|react-server-dom|\/@vite\/|\/@id\/|^node:|<anonymous>/;
+  interface Fiber {
+    tag: number;
+    return: Fiber | null;
+    stateNode: unknown;
+    _debugSource?: { fileName?: unknown; lineNumber?: unknown } | null;
+  }
+  const fiberOf = (node: Node): Fiber | null => {
+    for (let current: Node | null = node; current;) {
+      const key = Object.keys(current).find(
+        (name) => name.startsWith('__reactFiber$') || name.startsWith('__reactInternalInstance$'),
+      );
+      if (key) return (current as unknown as Record<string, Fiber>)[key] ?? null;
+      current = current.parentNode ?? (current as unknown as { host?: Node }).host ?? null;
+    }
+    return null;
+  };
+  const fiber = fiberOf(start);
+  if (!fiber || fiber.tag !== 5) return null;
+  const src = fiber._debugSource;
+  if (!src || typeof src.fileName !== 'string' || LIBRARY.test(src.fileName)) return null;
+  return { file: src.fileName, line: typeof src.lineNumber === 'number' ? src.lineNumber : null };
 }

@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
 import { FileWarning, ImageIcon } from 'lucide-react';
-import type { FileContent } from '@arbora/shared';
+import { languageIdForPath, type FileContent } from '@arbora/shared';
 import { useFiles, type FileStatus } from '../../files-store';
+import { useApp } from '../../store';
 import { DiffViewer } from './DiffViewer';
+import { lspError, lspReadyPath, subscribeLsp, syncEditorLsp } from './lsp-client';
 import { attach, detach, getSession, keepMine, loadSession, reloadFromDisk, subscribeSessions } from './sessions';
 
 function formatBytes(size: number): string {
@@ -105,9 +107,23 @@ function FileView({ path }: { path: string }) {
   const [, rerender] = useReducer((n: number) => n + 1, 0);
   const [error, setError] = useState<string | null>(null);
   const status = useFiles((s) => s.status[path]);
+  const lsp = useApp((s) => s.settings.editor.lsp);
+  const [lspMessage, setLspMessage] = useState<string | null>(lspError());
+  const [lspReady, setLspReady] = useState(lspReadyPath() === path);
   const session = getSession(path);
 
   useEffect(() => subscribeSessions(rerender), []);
+  useEffect(
+    () =>
+      subscribeLsp(() => {
+        setLspMessage(lspError());
+        setLspReady(lspReadyPath() === path);
+      }),
+    [path],
+  );
+  useEffect(() => {
+    if (session?.kind === 'text' && !session.large) syncEditorLsp(path);
+  }, [path, session, lsp]);
   useEffect(() => {
     if (session) return;
     let active = true;
@@ -133,7 +149,18 @@ function FileView({ path }: { path: string }) {
   return (
     <div className="flex h-full flex-col bg-bg">
       <Banner path={path} status={status} large={session.large} />
-      <div ref={host} className="min-h-0 flex-1" data-testid="editor" data-path={path} />
+      {lsp && languageIdForPath(path) && lspMessage ? (
+        <div className="shrink-0 border-b border-danger/40 px-3 py-1 text-xs text-danger" data-testid="lsp-status">
+          {lspMessage}
+        </div>
+      ) : null}
+      <div
+        ref={host}
+        className="min-h-0 flex-1"
+        data-testid="editor"
+        data-path={path}
+        data-lsp={lspReady ? 'on' : 'off'}
+      />
     </div>
   );
 }

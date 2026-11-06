@@ -35,6 +35,7 @@ import {
   idleThreadState,
   permissionMemoryKey,
   stopReasonSchema,
+  type ActionTraceStep,
   type AcpLogEntry,
   type AgentAvailability,
   type AgentDefinition,
@@ -542,6 +543,12 @@ export class AgentService {
     }
     this.emitChanges(record, record.normalizer.permissionResolved(requestId, { optionId: chosen, auto: false }));
     return options.find((o) => o.optionId === chosen)?.kind ?? null;
+  }
+
+  /** Adds one MCP browser action to the thread's trace for the current turn. */
+  addActionTrace(threadId: string, step: Omit<ActionTraceStep, 'id' | 'at'>): void {
+    const record = this.records.get(threadId);
+    if (record) this.emitChanges(record, record.normalizer.actionTrace(step));
   }
 
   /** Mirrors a browser-tools screenshot into the thread as a thumbnail. */

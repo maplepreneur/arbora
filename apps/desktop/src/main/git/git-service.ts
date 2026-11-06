@@ -263,6 +263,27 @@ export class GitService {
     return this.command(['pull']);
   }
 
+  /**
+   * Merges `branch` into HEAD. A failure runs `merge --abort`, so a conflict does not leave the
+   * parent checkout mid-merge.
+   */
+  merge(branch: string): Promise<GitResult> {
+    return this.enqueue(async (env) => {
+      try {
+        const { stdout, stderr } = await runGit(this.options.root, env, ['merge', '--no-edit', branch]);
+        return { ok: true, output: (stdout || stderr).trim() };
+      } catch (error) {
+        await runGit(this.options.root, env, ['merge', '--abort']).catch(() => undefined);
+        return { ok: false, output: messageOf(error) };
+      }
+    });
+  }
+
+  /** Deletes a local branch. Used when a worktree session is discarded. */
+  deleteBranch(name: string): Promise<GitResult> {
+    return this.command(['branch', '--delete', '--force', name]);
+  }
+
   /** The background sync's pull: fast-forward only, so it never creates a merge. */
   pullFastForward(): Promise<GitResult> {
     return this.command(['pull', '--ff-only']);

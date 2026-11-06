@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from 'vitest';
-import { resolveComponents } from './components.js';
+import { resolveComponents, resolveHostSource } from './components.js';
 
 interface FakeFiber {
   tag: number;
@@ -70,6 +70,14 @@ describe('resolveComponents (React <= 18)', () => {
     document.body.append(appRoot.el);
     return el.el;
   }
+
+  it('reports the host element source, not the component call site', () => {
+    const button = react18();
+    expect(resolveHostSource(button)).toEqual({ file: '/p/src/components/Button.tsx', line: 5 });
+    const section = button.parentElement;
+    expect(section?.tagName).toBe('SECTION');
+    if (section) expect(resolveHostSource(section)).toEqual({ file: '/p/src/components/Card.tsx', line: 12 });
+  });
 
   it('walks fibers to the chain with definition and usage sites', () => {
     const chain = resolveComponents(react18(), 12);
@@ -169,6 +177,19 @@ describe('resolveComponents (React 19)', () => {
     expect(chain.map((c) => c.name)).toEqual(['Button', 'Card']);
     expect(chain[0]?.definedAt).toEqual({ file: 'src/components/Button.tsx', line: 8, column: 5 });
     expect(chain[1]?.definedAt).toEqual({ file: 'src/components/Card.tsx', line: 12, column: 3 });
+  });
+
+  it('keeps the line and column of a production bundle so a source map can place it', () => {
+    const button = fiber(0, named('Button'), {
+      _debugStack: stack('    at Button (http://h/assets/index-abc.js:1:80)'),
+    });
+    const el = host('button', button);
+    link(button, el.f);
+    expect(resolveComponents(el.el, 4)[0]?.renderedAt).toEqual({
+      file: 'http://h/assets/index-abc.js',
+      line: 1,
+      column: 80,
+    });
   });
 });
 

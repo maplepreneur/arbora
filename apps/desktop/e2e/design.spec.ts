@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import type { NavigationState } from '@arbora/shared';
@@ -266,6 +266,19 @@ test.describe('Stage 6 design mode', () => {
       await page.keyboard.press('ControlOrMeta+D');
       await page.getByTestId('design-tab-changes').click();
       await expect(page.getByTestId('design-sessions')).toBeVisible();
+      await page.getByTestId('design-compare-session').click();
+      await expect(page.getByTestId('design-history')).toBeVisible();
+      await expect(page.getByTestId('design-history-before').locator('img')).toBeVisible();
+      await expect(page.getByTestId('design-history-after').locator('img')).toBeVisible();
+      await expect(page.getByTestId('design-history-changes')).toContainText('padding-top');
+      const sessionId = await page.getByTestId('design-compare-session').getAttribute('data-session-id');
+      const markdown = await page.evaluate(async (id) => {
+        if (!id) return '';
+        return (await window.arbora.invoke('design.readSession', { id })).markdown;
+      }, sessionId);
+      expect(markdown).toContain('# Design session');
+      expect(markdown).toContain('pt-10');
+      expect(markdown).toContain('## Screenshots');
       await page.getByTestId('design-resend').click();
       // The agent picked earlier is remembered, so the resend starts another Fake agent thread.
       await expect.poll(threadCount, { timeout: 30_000 }).toBe(beforeResend + 1);
@@ -343,6 +356,44 @@ test.describe('Stage 6 design mode', () => {
       await expect(page.getByTestId('mode-banner')).toHaveCount(0);
     } finally {
       await deleteThreads(page).catch(() => undefined);
+      await app.close();
+    }
+  });
+
+  test('applies a tier-1 Tailwind padding change to the source file', async () => {
+    test.setTimeout(120_000);
+    const cardPath = join(project, 'src/components/Card.tsx');
+    const original = readFileSync(cardPath, 'utf8');
+    const { app, page } = await launch(userData(), [project]);
+    try {
+      await openAndWait(page, vite.url);
+      await page.getByTestId('browser-toolbar').click({ position: { x: 2, y: 2 } });
+      await page.keyboard.press('ControlOrMeta+D');
+      await expect.poll(() => inPage<boolean>(app, OVERLAY)).toBe(true);
+      await clickInPage(app, CARD);
+      const selection = page.getByTestId('design-selection');
+      await expect(selection).toBeVisible({ timeout: 20_000 });
+      await expect(selection).toHaveAttribute('data-line', /^[1-9]/, { timeout: 20_000 });
+
+      await page.getByTestId('design-padding-top').fill('40px');
+      await page.getByTestId('design-padding-top').press('Enter');
+      await expect
+        .poll(() => inPage<string>(app, `document.querySelector(${JSON.stringify(CARD)}).style.paddingTop`))
+        .toBe('40px');
+
+      const apply = page.getByTestId('design-apply');
+      await expect(apply).toHaveText('Apply 1 change to source');
+      await expect(page.getByTestId('design-save')).toHaveText('Ask agent instead');
+      await apply.click();
+
+      await expect(page.getByTestId('mode-banner')).toHaveCount(0, { timeout: 20_000 });
+      expect(readFileSync(cardPath, 'utf8')).toContain('pt-10');
+      expect(readFileSync(cardPath, 'utf8')).toContain('p-6');
+      await expect
+        .poll(() => inPage<string>(app, `document.querySelector(${JSON.stringify(CARD)}).style.paddingTop`))
+        .toBe('');
+    } finally {
+      writeFileSync(cardPath, original);
       await app.close();
     }
   });

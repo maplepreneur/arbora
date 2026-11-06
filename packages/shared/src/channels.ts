@@ -22,7 +22,8 @@ import {
   viewportEmulationSchema,
   viewportPresetIdSchema,
 } from './browser.js';
-import { designCommandSchema, designSessionSummarySchema, designStateSchema } from './design.js';
+import { designSessionDetailSchema } from './design-session.js';
+import { designCommandSchema, designSessionSummarySchema, designStateSchema, stylingApproachSchema } from './design.js';
 import { agentModeIncludeSchema, agentModeSelectionSchema, agentModeTargetSchema } from './inspector.js';
 import {
   generatedTextSchema,
@@ -453,8 +454,8 @@ export const channels = {
     }),
   ),
   /**
-   * Starts an agent in a new git worktree of `parentPath`. The worktree is registered as its own
-   * Grove project only after `git worktree add` succeeds. A failure leaves the Grove list unchanged.
+   * Starts one agent per worktree of `parentPath`. Each worktree is registered only after
+   * `git worktree add` succeeds. `also` runs the same task on more agents (best-of-N).
    */
   'grove.createWorktree': defineChannel(
     'grove.createWorktree',
@@ -463,8 +464,63 @@ export const channels = {
       title: z.string().trim().min(1).max(200),
       agentId: z.string(),
       model: z.string().max(300).optional(),
+      /** Other agents that run the same task, each in its own worktree (best-of-N, three at most). */
+      also: z
+        .array(z.object({ agentId: z.string(), model: z.string().max(300).optional() }))
+        .max(3)
+        .optional(),
     }),
-    z.object({ path: z.string().optional(), threadId: z.string().optional(), error: z.string().optional() }),
+    z.object({
+      path: z.string().optional(),
+      threadId: z.string().optional(),
+      error: z.string().optional(),
+      devUrl: z.string().optional(),
+      port: z.number().int().optional(),
+      modules: z.enum(['linked', 'own']).optional(),
+      candidates: z
+        .array(
+          z.object({
+            path: z.string(),
+            threadId: z.string(),
+            agentId: z.string(),
+            branch: z.string(),
+          }),
+        )
+        .optional(),
+    }),
+  ),
+  /** Merges the worktree's branch into the parent checkout. A conflict is aborted. */
+  'grove.mergeWorktree': defineChannel(
+    'grove.mergeWorktree',
+    z.object({ path: z.string() }),
+    z.object({ ok: z.boolean(), output: z.string() }),
+  ),
+  /** Pushes the worktree branch and opens a pull request with `gh`. */
+  'grove.pullRequestWorktree': defineChannel(
+    'grove.pullRequestWorktree',
+    z.object({ path: z.string(), title: z.string().trim().min(1).max(200), body: z.string().max(20000) }),
+    z.object({ url: z.string().optional(), error: z.string().optional() }),
+  ),
+  /** Merges this worktree and removes the other candidates in its best-of-N set. */
+  'grove.keepWorktree': defineChannel(
+    'grove.keepWorktree',
+    z.object({ path: z.string() }),
+    z.object({ ok: z.boolean(), output: z.string(), discarded: z.array(z.string()) }),
+  ),
+  /** Removes the worktree from git and from the Grove list. */
+  'grove.discardWorktree': defineChannel(
+    'grove.discardWorktree',
+    z.object({ path: z.string() }),
+    z.object({ ok: z.boolean(), error: z.string().optional(), parentPath: z.string().optional() }),
+  ),
+  /**
+   * Runs the package manager's install in the worktree. A `node_modules` symlink is removed first
+   * (the link only, not the parent's directory) so the install is a separate copy.
+   */
+  'grove.installWorktree': defineChannel(
+    'grove.installWorktree',
+    z.object({ path: z.string() }),
+    z.object({ terminalId: z.string().optional(), command: z.string().optional(), error: z.string().optional() }),
   ),
   'grove.runCommand': defineChannel(
     'grove.runCommand',
@@ -644,10 +700,49 @@ export const channels = {
     z.object({ id: z.string(), target: agentModeTargetSchema }),
     z.object({ threadId: z.string() }),
   ),
+  /** Tailwind or another styling approach, so the design panel can offer write-through. */
+  'design.styling': defineChannel(
+    'design.styling',
+    none,
+    z.object({
+      approach: stylingApproachSchema,
+      colors: z.array(z.object({ hex: z.string().max(20), name: z.string().max(80) })).max(400),
+    }),
+  ),
+  /** Writes tier-1 Tailwind class edits into source and leaves design mode. No agent prompt. */
+  'design.writeThrough': defineChannel(
+    'design.writeThrough',
+    none,
+    z.object({ files: z.array(z.string().max(2000)).max(20), sessionId: z.string() }),
+  ),
+  /** One saved session: change list, Markdown export, and before/after screenshots. */
+  'design.readSession': defineChannel(
+    'design.readSession',
+    z.object({ id: z.string().max(80) }),
+    designSessionDetailSchema,
+  ),
+  /** Writes the session Markdown to a path the user picks. `path` is null when the dialog is cancelled. */
+  'design.exportSession': defineChannel(
+    'design.exportSession',
+    z.object({ id: z.string().max(80) }),
+    z.object({ path: z.string().nullable() }),
+  ),
 
   /** Children of a project folder, folders first. The watcher covers folders listed here. */
   'files.readDir': defineChannel('files.readDir', filePath, z.array(fileEntrySchema)),
   'files.read': defineChannel('files.read', filePath, fileContentSchema),
+  /** Starts the project's TypeScript language server, or reports why it cannot. */
+  'lsp.start': defineChannel(
+    'lsp.start',
+    none,
+    z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), tsserverPath: z.string() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  ),
+  /** A bare JSON-RPC message for the running language server. */
+  'lsp.send': defineChannel('lsp.send', z.object({ message: z.string().max(8_000_000) }), none),
+  'lsp.stop': defineChannel('lsp.stop', none, none),
   /**
    * Writes `content` (any line ends) with `eol`, after the project's Prettier when `format` is set
    * and enabled in settings. Diagnostics follow through `editor.diagnostics`.
@@ -874,6 +969,10 @@ export const events = {
   ),
   /** A tool could not run (crash, timeout, bad config). Shown once per message. */
   'editor.toolError': defineEvent('editor.toolError', z.object({ source: z.string(), message: z.string() })),
+  /** A JSON-RPC message from the project's language server. */
+  'lsp.message': defineEvent('lsp.message', z.object({ message: z.string().max(8_000_000) })),
+  /** The language server process ended. */
+  'lsp.exited': defineEvent('lsp.exited', z.object({ reason: z.string() })),
 } as const;
 
 export type Channels = typeof channels;

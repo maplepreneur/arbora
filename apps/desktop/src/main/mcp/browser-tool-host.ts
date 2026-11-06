@@ -16,12 +16,15 @@ import {
   type ScreenshotMode,
   type TerminalRunResult,
   type ToolPolicy,
+  type TraceStepInput,
   type ViewportRequest,
 } from '@arbora/mcp-browser-server/host';
 import { resolveInsideRoot } from '@arbora/acp-client';
 import {
+  ACTION_TRACE_IMAGE_LIMIT,
   stripAnsi,
   viewportPreset,
+  type ActionTraceImage,
   type BrowserToolPolicy,
   type ProblemEntry,
   type ProjectSettings,
@@ -42,6 +45,8 @@ const PNG_BYTE_LIMIT = 1_500_000;
 const JPEG_QUALITY = 85;
 /** Long edge of the thumbnail mirrored into the agent panel. */
 export const PREVIEW_EDGE = 360;
+/** Long edge of a trace-step thumbnail. Smaller than the preview so a turn of steps stays in the thread file. */
+const TRACE_EDGE = 240;
 const TERMINAL_OUTPUT_LIMIT = 200_000;
 
 /** How the user answered a permission card; `always`/`never` also change the project setting. */
@@ -64,6 +69,8 @@ export interface ArboraToolHostOptions {
   /** Shows a permission card in the thread; null when the thread or turn went away. */
   readonly askPermission: (request: PermissionRequest) => Promise<PermissionAnswer | null>;
   readonly preview: (preview: BrowserPreview) => void;
+  /** Adds one step to the thread's action trace. */
+  readonly trace?: (step: TraceStepInput & { image: ActionTraceImage | null }) => void;
 }
 
 function isFile(path: string): boolean {
@@ -166,6 +173,28 @@ export class ArboraToolHost implements BrowserToolHost {
     browser.action(direction);
     await loaded;
     return this.page();
+  }
+
+  /**
+   * A viewport thumbnail after a browser tool returns. Failure leaves the step without an image;
+   * the tool result itself is already decided.
+   */
+  async recordTrace(step: TraceStepInput): Promise<void> {
+    this.options.trace?.({ ...step, image: await this.traceImage() });
+  }
+
+  private async traceImage(): Promise<ActionTraceImage | null> {
+    const browser = this.options.browser();
+    if (!browser?.getState().url) return null;
+    try {
+      const shot = await browser.screenshot({ mode: 'viewport' });
+      const full = nativeImage.createFromBuffer(Buffer.from(shot.pngBase64, 'base64'));
+      if (full.isEmpty()) return null;
+      const image = encodeImage(full, TRACE_EDGE, 'always');
+      return image.data.length <= ACTION_TRACE_IMAGE_LIMIT ? image : null;
+    } catch {
+      return null;
+    }
   }
 
   async screenshot(mode: ScreenshotMode, clip: Box | null): Promise<ScreenshotImage> {

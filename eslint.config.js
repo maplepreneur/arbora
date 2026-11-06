@@ -27,6 +27,8 @@ export default defineConfig(
       '**/test-results/**',
       '**/playwright-report/**',
       'fixtures/plain-html/app.js',
+      // Spawned as the project's typescript-language-server in e2e. Not part of the TypeScript project.
+      'apps/desktop/e2e/lsp-fake.mjs',
       // Framework fixtures type-check only against types `next dev` / `nuxt dev` generate.
       'fixtures/next/**',
       'fixtures/nuxt/**',
