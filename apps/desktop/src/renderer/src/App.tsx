@@ -196,6 +196,7 @@ function useMainEvents(): void {
         if (error) showToast(`Agent mode: ${error}`);
         dispatchMode({ type: error ? 'failed' : 'exit' });
       }),
+      arbora.on('agentMode.moved', () => dispatchMode({ type: 'repick' })),
       arbora.on('design.state', (state) => applyDesignState(state)),
       arbora.on('design.navigationBlocked', ({ url }) => {
         showToast(`Save or discard design edits before leaving ${url}`);

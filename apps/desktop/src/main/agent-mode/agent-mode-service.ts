@@ -34,6 +34,8 @@ export interface AgentModeEvents {
   picked(): void;
   selected(selection: AgentModeSelection): void;
   ended(error?: string): void;
+  /** The inspector moved to another tab. The prompt for the previous tab no longer applies. */
+  moved(): void;
 }
 
 export interface AgentModeServiceOptions {
@@ -78,6 +80,8 @@ export class AgentModeService {
   private active = false;
   private seq = 0;
   private selection: StoredSelection | null = null;
+  /** The tab currently showing the inspector. Hidden tabs do not keep it. */
+  private inspecting: BrowserService | null = null;
 
   constructor(private readonly options: AgentModeServiceOptions) {}
 
@@ -85,7 +89,32 @@ export class AgentModeService {
     this.active = active;
     this.seq++;
     this.selection = null;
-    this.options.browser()?.setInspecting(active);
+    this.attach(active);
+  }
+
+  /**
+   * The visible tab changed. Agent mode follows it, including a reference tab, and leaves the
+   * one that was just hidden.
+   */
+  followActiveTab(): void {
+    if (!this.active) return;
+    const next = this.options.browser() ?? null;
+    if (next === this.inspecting) return;
+    this.inspecting?.setInspecting(false);
+    next?.setInspecting(true);
+    this.inspecting = next;
+    this.seq++;
+    this.selection = null;
+    this.options.events.moved();
+  }
+
+  private attach(active: boolean): void {
+    this.inspecting?.setInspecting(false);
+    this.inspecting = null;
+    if (!active) return;
+    const browser = this.options.browser() ?? null;
+    browser?.setInspecting(true);
+    this.inspecting = browser;
   }
 
   cancelledInPage(): void {

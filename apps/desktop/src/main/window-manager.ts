@@ -565,10 +565,16 @@ export class ProjectWindow {
     this.browser = live.tabs.activeService();
   }
 
+  /** Points `browser` at the visible tab and keeps agent mode's inspector on that tab. */
+  private rememberActiveBrowser(): void {
+    this.browser = this.tabs?.activeService() ?? null;
+    this.agentMode?.followActiveTab();
+  }
+
   private tabHooks(): BrowserTabsHooks {
     return {
       state: (state) => {
-        this.browser = this.tabs?.activeService() ?? null;
+        this.rememberActiveBrowser();
         sendEvent(this.contents, 'browser.stateChanged', state);
       },
       problemsAdded: (tabId, entries) => sendEvent(this.contents, 'browser.problemsAdded', { tabId, entries }),
@@ -583,7 +589,7 @@ export class ProjectWindow {
       pageFocused: (focused) => sendEvent(this.contents, 'browser.pageFocused', { focused }),
       focusParked: () => sendEvent(this.contents, 'browser.focusParked', {}),
       tabsChanged: (tabs) => {
-        this.browser = this.tabs?.activeService() ?? null;
+        this.rememberActiveBrowser();
         sendEvent(this.contents, 'browser.tabsChanged', { tabs });
       },
       passwordOffer: (offer) => {
@@ -676,6 +682,7 @@ export class ProjectWindow {
         picked: () => sendEvent(app, 'agentMode.picked', {}),
         selected: (selection) => sendEvent(app, 'agentMode.selected', selection),
         ended: (error) => sendEvent(app, 'agentMode.ended', error === undefined ? {} : { error }),
+        moved: () => sendEvent(app, 'agentMode.moved', {}),
       },
     });
   }

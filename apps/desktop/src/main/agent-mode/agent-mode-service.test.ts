@@ -87,7 +87,12 @@ function setup(options: { image?: boolean } = {}) {
       return Promise.resolve({ stopReason: 'end_turn' });
     }),
   };
-  const events = { picked: vi.fn(), selected: vi.fn<(s: AgentModeSelection) => void>(), ended: vi.fn() };
+  const events = {
+    picked: vi.fn(),
+    selected: vi.fn<(s: AgentModeSelection) => void>(),
+    ended: vi.fn(),
+    moved: vi.fn(),
+  };
   const findCandidates = vi.fn(() =>
     Promise.resolve([{ path: join(root, 'src/x.tsx'), relative: 'src/x.tsx', matched: ['Button'] }]),
   );
@@ -102,6 +107,33 @@ function setup(options: { image?: boolean } = {}) {
 }
 
 describe('AgentModeService', () => {
+  it('follows the active tab, including a reference tab', () => {
+    const first = { setInspecting: vi.fn() };
+    const second = { setInspecting: vi.fn() };
+    let current: { setInspecting: (active: boolean) => void } = first;
+    const events = { picked: vi.fn(), selected: vi.fn(), ended: vi.fn(), moved: vi.fn() };
+    const service = new AgentModeService({
+      projectPath: root,
+      browser: () => current as unknown as BrowserService,
+      agents: () => ({}) as unknown as AgentService,
+      findCandidates: () => Promise.resolve([]),
+      events,
+    });
+    service.followActiveTab();
+    expect(first.setInspecting).not.toHaveBeenCalled();
+    service.setInspecting(true);
+    expect(first.setInspecting).toHaveBeenCalledWith(true);
+    current = second;
+    service.followActiveTab();
+    expect(first.setInspecting).toHaveBeenLastCalledWith(false);
+    expect(second.setInspecting).toHaveBeenCalledWith(true);
+    expect(events.moved).toHaveBeenCalledTimes(1);
+    service.followActiveTab();
+    expect(events.moved).toHaveBeenCalledTimes(1);
+    service.setInspecting(false);
+    expect(second.setInspecting).toHaveBeenLastCalledWith(false);
+  });
+
   it('forwards inspecting to the page and ignores selections while inactive', async () => {
     const { service, browser, events } = setup();
     await service.select(rawSelection());

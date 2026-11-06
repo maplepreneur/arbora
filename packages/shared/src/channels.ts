@@ -1073,6 +1073,7 @@ export const events = {
   'agentMode.selected': defineEvent('agentMode.selected', agentModeSelectionSchema),
   /** Agent mode ended from the page (`Esc` there, a navigation) or the selection could not be resolved. */
   'agentMode.ended': defineEvent('agentMode.ended', z.object({ error: z.string().optional() })),
+  'agentMode.moved': defineEvent('agentMode.moved', z.object({})),
   /** Design mode op list, selection and text-editing flag. */
   'design.state': defineEvent('design.state', designStateSchema),
   /** A navigation was blocked because design edits have not been saved. */

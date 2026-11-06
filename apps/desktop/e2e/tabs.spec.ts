@@ -1086,4 +1086,37 @@ if (args[1] === 'create') {
       rmSync(project, { recursive: true, force: true });
     }
   });
+
+  test('inspects a reference tab and follows the visible tab', async () => {
+    const design = await startStaticFixture(DESIGN);
+    const userData = tempUserData();
+    const { app, page } = await launch(userData, [DESIGN]);
+    const overlayOn = (kind: 'app' | 'reference'): Promise<boolean> =>
+      app.evaluate(({ webContents }, which) => {
+        const target = webContents.getAllWebContents().find((wc) => {
+          const path = wc.session.storagePath ?? '';
+          if (wc.getURL().startsWith('devtools:')) return false;
+          return which === 'app' ? path.includes('arbora-browser-') : path.includes('arbora-web');
+        });
+        if (!target) return false;
+        return target.executeJavaScript('!!document.querySelector("[data-arbora-overlay]")') as Promise<boolean>;
+      }, kind);
+    try {
+      await openUrl(page, design.url);
+      const reference = await page.evaluate((url) => window.arbora.invoke('browser.tabs.open', { url }), design.url);
+      await page.evaluate((id) => window.arbora.invoke('browser.tabs.activate', { id }), reference.id);
+      await focusChrome(page);
+      await page.keyboard.press('ControlOrMeta+K');
+      await expect.poll(() => overlayOn('reference')).toBe(true);
+      expect(await overlayOn('app')).toBe(false);
+      const appTab = (await tabs(page)).find((tab) => tab.role === 'app');
+      if (!appTab) throw new Error('No app tab');
+      await page.evaluate((id) => window.arbora.invoke('browser.tabs.activate', { id }), appTab.id);
+      await expect.poll(() => overlayOn('app')).toBe(true);
+      expect(await overlayOn('reference')).toBe(false);
+    } finally {
+      await app.close();
+      await design.close();
+    }
+  });
 });
