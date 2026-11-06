@@ -62,6 +62,7 @@ describe('browserSkill', () => {
     expect(skill).toContain('browser_snapshot');
     expect(skill).toContain('browser_compare');
     expect(skill).toContain('node-id');
+    expect(skill).toContain('browser_zoom');
     expect(skill).toContain('0.92');
     expect(skill).toContain('5 rounds');
     expect(skill).not.toMatch(/token|bearer/i);

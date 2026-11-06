@@ -905,10 +905,23 @@ export class BrowserService {
     return true;
   }
 
-  private setZoom(zoomFactor: number): void {
-    this.contents.setZoomFactor(zoomFactor);
-    this.update({ zoomFactor });
+  /** Sets the page zoom (1 is 100%) and returns the factor that was applied. */
+  setZoomFactor(zoomFactor: number): number {
+    const next = Math.min(5, Math.max(0.25, zoomFactor));
+    this.contents.setZoomFactor(next);
+    this.update({ zoomFactor: next });
     this.scheduleSave();
+    return next;
+  }
+
+  /** One step of the zoom menu, or back to 100%. */
+  zoomBy(direction: 'in' | 'out' | 'reset'): number {
+    if (direction === 'reset') return this.setZoomFactor(1);
+    return this.setZoomFactor(stepZoom(this.state.zoomFactor, direction === 'in' ? 1 : -1));
+  }
+
+  private setZoom(zoomFactor: number): void {
+    this.setZoomFactor(zoomFactor);
   }
 
   private update(patch: Partial<NavigationState>): void {

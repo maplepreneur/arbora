@@ -196,6 +196,7 @@ test.describe('Stage 5 browser tools (MCP)', () => {
         scroll: /^ok y=\d+/,
         'viewport size': /^ok 500×700/,
         'viewport preset': /^ok Responsive/,
+        zoom: /^ok Zoom is 150%/,
         navigate: /^ok .*sweep=1/,
         back: /^ok Page URL/,
         forward: /^ok .*sweep=1/,

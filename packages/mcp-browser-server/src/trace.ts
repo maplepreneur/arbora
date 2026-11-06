@@ -13,6 +13,7 @@ const TRACED_BROWSER_TOOLS = new Set([
   'browser_wait_for',
   'browser_evaluate',
   'browser_set_viewport',
+  'browser_zoom',
   'browser_screenshot',
   'browser_compare',
   'devserver_restart',
@@ -75,6 +76,12 @@ export function actionTraceTitle(tool: string, args: Record<string, unknown>): s
       const width = typeof args.width === 'number' ? String(args.width) : '?';
       const height = typeof args.height === 'number' ? String(args.height) : '?';
       return `Viewport ${width}×${height}`;
+    }
+    case 'browser_zoom': {
+      if (typeof args.factor === 'number') return `Zoom ${Math.round(args.factor * 100)}%`;
+      if (args.direction === 'in' || args.direction === 'out' || args.direction === 'reset')
+        return `Zoom ${args.direction}`;
+      return 'Zoom';
     }
     case 'browser_screenshot':
       return `Screenshot ${typeof args.mode === 'string' ? args.mode : 'viewport'}`;

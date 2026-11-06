@@ -504,6 +504,23 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
     },
   );
 
+  tool(
+    'browser_zoom',
+    'Zoom this tab, to read a design canvas. Pass factor (1 is 100%, from 0.25 to 5) or direction in, out, or reset. A granted reference tab does not ask.',
+    {
+      factor: z.number().min(0.25).max(5).optional(),
+      direction: z.enum(['in', 'out', 'reset']).optional(),
+    },
+    async ({ factor, direction }) => {
+      if (!host.zoom) throw new ToolError('Zoom is not available.');
+      if (factor === undefined && direction === undefined) throw new ToolError('Pass factor or direction.');
+      return text(
+        await host.zoom({ ...(factor !== undefined ? { factor } : {}), ...(direction ? { direction } : {}) }),
+      );
+    },
+    { readOnlyHint: true },
+  );
+
   // --- Dev server and terminal -----------------------------------------------------------------
 
   tool(

@@ -534,6 +534,15 @@ export class ArboraToolHost implements BrowserToolHost {
     return lines.join('\n');
   }
 
+  zoom(request: { factor?: number | undefined; direction?: 'in' | 'out' | 'reset' | undefined }): Promise<string> {
+    const browser = this.browser();
+    const factor =
+      request.factor !== undefined
+        ? browser.setZoomFactor(request.factor)
+        : browser.zoomBy(request.direction ?? 'reset');
+    return Promise.resolve(`Zoom is ${Math.round(factor * 100)}%.`);
+  }
+
   setViewport(viewport: ViewportRequest): Promise<string> {
     const browser = this.browser();
     if ('preset' in viewport) {

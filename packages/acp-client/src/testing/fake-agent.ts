@@ -176,6 +176,7 @@ async function toolSweep(cx: AgentContext, sessionId: string, state: SessionStat
   await step('scroll', 'browser_scroll', { dy: 300 }, /y=\d+/);
   await step('viewport size', 'browser_set_viewport', { width: 500, height: 700 }, /500×700/);
   await step('viewport preset', 'browser_set_viewport', { preset: 'responsive' }, /Responsive/);
+  await step('zoom', 'browser_zoom', { factor: 1.5 }, /Zoom is 150%/);
   await step('navigate', 'browser_navigate', { url: '/?sweep=1' }, /sweep=1/);
   await step('back', 'browser_back', {}, /Page URL: \S+/);
   await step('forward', 'browser_forward', {}, /sweep=1/);

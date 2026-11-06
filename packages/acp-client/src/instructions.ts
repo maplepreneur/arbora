@@ -116,6 +116,6 @@ ${VERIFY_LOOP.join('\n')}
 
 \`browser_tabs\`: target \`app\` is this project. A reference tab works only after the user sends it; otherwise \`tab not granted\`.
 
-Figma is a canvas, so snapshot shows chrome, not layers. Screenshot the frame. A \`node-id\` in the URL opens it. Dev Mode text is in the page. Set \`app\` to that width with \`browser_set_viewport\`, edit source, wait for reload, then \`browser_compare\` one frame with \`rect\` or a selector (\`side_by_side\`, \`overlay\` or \`diff\`). Fix the highest differences. Stop at ${threshold}, after ${maxRounds} rounds, or when the user stops. Finish with the score, what still differs, and the saved side-by-side. Do not call a design tool's API.
+Figma is a canvas, so snapshot shows chrome, not layers. Screenshot the frame. A \`node-id\` in the URL opens it. Dev Mode text is in the page. \`browser_zoom\` enlarges that canvas. Set \`app\` to that width with \`browser_set_viewport\`, edit source, wait for reload, then \`browser_compare\` one frame with \`rect\` or a selector (\`side_by_side\`, \`overlay\` or \`diff\`). Fix the highest differences. Stop at ${threshold}, after ${maxRounds} rounds, or when the user stops. Finish with the score, what still differs, and the saved side-by-side. Do not call a design tool's API.
 ${grove}`;
 }

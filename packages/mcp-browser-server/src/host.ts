@@ -89,6 +89,11 @@ export interface BrowserToolHost {
   /** Component chain and source files for an element, as text for the agent. */
   elementSource(cdp: Cdp, backendNodeId: number): Promise<string>;
   setViewport(viewport: ViewportRequest): Promise<string>;
+  /** Page zoom for a design canvas. `factor` is 1 at 100%. Returns a short status. */
+  zoom?(request: {
+    readonly factor?: number | undefined;
+    readonly direction?: 'in' | 'out' | 'reset' | undefined;
+  }): Promise<string>;
   devServerStatus(): DevServerInfo;
   devServerLogs(lines: number): string[];
   /** Restarts the dev server, waits for its URL to answer and points the browser at it. */

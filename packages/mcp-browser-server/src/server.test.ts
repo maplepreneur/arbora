@@ -20,6 +20,7 @@ interface FakeHostState {
   answer: boolean;
   policy: ToolPolicy;
   traces: TraceStepInput[];
+  zoom: number;
 }
 
 /** A fixture-like page with a counter button, driven by CDP calls the tools make. */
@@ -32,6 +33,7 @@ function fakeHost(): { host: BrowserToolHost; state: FakeHostState; cdp: FakeCdp
     answer: true,
     policy: 'ask',
     traces: [],
+    zoom: 1,
   };
   const tree = (): AxNode[] => [
     { nodeId: '1', role: { value: 'RootWebArea' }, name: { value: 'Fixture' }, childIds: ['2', '3'] },
@@ -76,6 +78,13 @@ function fakeHost(): { host: BrowserToolHost; state: FakeHostState; cdp: FakeCdp
     navigatedAt: () => 10,
     elementSource: () => Promise.resolve('Button <- Card'),
     setViewport: () => Promise.resolve('ok'),
+    zoom: (request) => {
+      if (request.factor !== undefined) state.zoom = request.factor;
+      else if (request.direction === 'in') state.zoom = 1.1;
+      else if (request.direction === 'out') state.zoom = 0.9;
+      else state.zoom = 1;
+      return Promise.resolve(`Zoom is ${Math.round(state.zoom * 100)}%.`);
+    },
     devServerStatus: () => ({ running: true, command: 'pnpm dev', url: 'http://127.0.0.1:5173/' }),
     devServerLogs: () => ['ready in 100 ms'],
     devServerRestart: () => Promise.resolve({ running: true, command: 'pnpm dev', url: 'http://127.0.0.1:5174/' }),
@@ -243,6 +252,7 @@ describe('reference tab access', () => {
     expect(referenceIntent('browser_snapshot')).toBe('read');
     expect(referenceIntent('browser_hover')).toBe('read');
     expect(referenceIntent('browser_scroll')).toBe('read');
+    expect(referenceIntent('browser_zoom')).toBe('read');
     expect(referenceIntent('browser_type')).toBe('write');
     expect(referenceIntent('browser_navigate')).toBe('write');
     expect(referenceIntent('browser_press_key')).toBe('write');
@@ -294,6 +304,7 @@ describe('BrowserMcpServer', () => {
         'browser_tabs',
         'browser_type',
         'browser_wait_for',
+        'browser_zoom',
         'devserver_logs',
         'devserver_restart',
         'devserver_status',
@@ -399,6 +410,19 @@ describe('BrowserMcpServer', () => {
     expect(textOf(await client.callTool({ name: 'browser_set_viewport', arguments: { preset: 'mobile' } }))).toBe(
       'Tab: figma (reference)\nok',
     );
+  });
+
+  it('zooms a tab without asking', async () => {
+    const { client, state } = await connect();
+    expect(textOf(await client.callTool({ name: 'browser_zoom', arguments: { factor: 1.5 } }))).toContain(
+      'Zoom is 150%',
+    );
+    expect(state.zoom).toBe(1.5);
+    expect(state.confirms).toHaveLength(0);
+    expect(textOf(await client.callTool({ name: 'browser_zoom', arguments: { direction: 'reset' } }))).toContain(
+      'Zoom is 100%',
+    );
+    expect(textOf(await client.callTool({ name: 'browser_zoom', arguments: {} }))).toMatch(/Pass factor or direction/);
   });
 
   it('rejects other tab targets', async () => {
