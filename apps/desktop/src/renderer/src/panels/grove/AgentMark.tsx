@@ -7,6 +7,7 @@ const CLI_AGENT: Readonly<Record<string, string>> = {
   OpenCode: 'opencode',
   Kimi: 'kimi',
   Grok: 'grok',
+  Antigravity: 'antigravity',
   Gemini: 'gemini',
   Amp: 'amp',
   Copilot: 'copilot',

@@ -369,6 +369,8 @@ export const terminalSettingsSchema = z.object({
   /** Shell executable; defaults to `$SHELL` (macOS/Linux) or pwsh/PowerShell/cmd (Windows). */
   shell: z.string().min(1).optional(),
   fontSize: z.number().int().min(8).max(32).default(14),
+  /** The block cursor blinks. On matches the previous hardcoded terminal. */
+  cursorBlink: z.boolean().default(true),
 });
 export type TerminalSettings = z.infer<typeof terminalSettingsSchema>;
 
@@ -384,6 +386,8 @@ export const editorSettingsSchema = z.object({
    * Off until turned on. The server uses the TypeScript in the project's `node_modules`.
    */
   lsp: z.boolean().default(false),
+  /** Soft-wrap long lines. Off keeps the previous sideways scroll. */
+  wordWrap: z.boolean().default(false),
   fontSize: z.number().int().min(8).max(32).default(14),
 });
 export type EditorSettings = z.infer<typeof editorSettingsSchema>;
@@ -398,6 +402,7 @@ export function mergeEditorSettings(
     eslintOnSave: patch.eslintOnSave ?? current.eslintOnSave,
     tscOnSave: patch.tscOnSave ?? current.tscOnSave,
     lsp: patch.lsp ?? current.lsp,
+    wordWrap: patch.wordWrap ?? current.wordWrap,
     fontSize: patch.fontSize ?? current.fontSize,
   };
 }

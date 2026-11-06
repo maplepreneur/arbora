@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { AlertTriangle, Pencil, RotateCcw, Search, X } from 'lucide-react';
 import {
   assignKeybinding,
   bindingFromChord,
   chordFromInput,
+  CommandId,
   conflictsFor,
   DEFAULT_COMMANDS,
   formatChord,
@@ -17,9 +18,10 @@ import {
   type Platform,
 } from '@arbora/shared';
 import { executeCommand } from '../../commands';
+import { useKeybindingTable } from '../../keybindings';
 import { updateSettings } from '../../settings-client';
 import { showToast, useApp } from '../../store';
-import { SettingRow, Toggle } from './controls';
+import { SectionTitle, SettingRow, Toggle } from './controls';
 
 function chordLabel(binding: string | null, platform: Platform): string {
   if (!binding) return '';
@@ -35,10 +37,78 @@ const WHEN_LABEL: Readonly<Record<KeybindingRow['when'], string | null>> = {
   modeActive: 'in a mode',
   design: 'in design mode',
   agentPanel: 'in the chat',
-  grove: 'in Grove',
+  grove: 'in the session list',
   contentPane: 'in the content pane',
   browserPage: 'on the page',
 };
+
+/** Command categories keep their ids. The session-list group is not a separate workspace. */
+function categoryLabel(category: string): string {
+  return category === 'Grove' ? 'Sessions' : category;
+}
+
+interface ChordRow {
+  readonly ids: readonly string[];
+  /** The chords are the two ends of a run (`Ctrl+1`–`Ctrl+9`), not alternatives. */
+  readonly range?: boolean;
+  readonly text: string;
+}
+
+const SESSION_CHORDS: readonly ChordRow[] = [
+  { ids: [CommandId.toggleMaximizeRight], text: 'Maximize the content pane, and back' },
+  { ids: [CommandId.toggleContentPane], text: 'Hide the content pane, and show it again' },
+  { ids: [CommandId.groveNewDefault], text: 'Start the default agent' },
+  { ids: [CommandId.groveNewTerminal], text: 'New terminal in the open project' },
+  { ids: [CommandId.agentNewThread], text: 'New agent with a task' },
+  { ids: [CommandId.groveSelectSession1, CommandId.groveSelectSession9], range: true, text: 'Agent 1 to 9, top down' },
+  { ids: [CommandId.groveFocusAgents], text: 'Focus the agent list' },
+  { ids: [CommandId.grovePreviousSession, CommandId.groveNextSession], text: 'Previous or next agent' },
+  { ids: [CommandId.agentShowAttention], text: 'The agent that needs you' },
+  { ids: [CommandId.groveStopSession], text: 'Stop the selected agent' },
+  { ids: [CommandId.groveArchiveSession], text: 'Archive the selected agent' },
+  { ids: [CommandId.toggleSidebar], text: 'Hide or show the project tree' },
+  { ids: [CommandId.toggleSideColumn], text: 'Hide or show Files, Source Control and Search' },
+  { ids: [CommandId.rightTab1, CommandId.rightTab9], range: true, text: 'Content pane tab 1 to 8, then the last' },
+  {
+    ids: [CommandId.focusPanelLeft, CommandId.focusPanelRight],
+    text: 'Move between the tree, the chat, the content pane and Files',
+  },
+];
+
+function SessionChords() {
+  const table = useKeybindingTable();
+  const platform = useApp((s) => s.info.platform);
+  const label = (id: string): string => {
+    const binding = table.forCommand(id);
+    return binding ? formatChord(binding.chord, platform) : 'unbound';
+  };
+  return (
+    <div className="py-3">
+      <dl className="grid grid-cols-[auto_1fr] items-center gap-x-6 gap-y-1.5 text-sm" data-testid="grove-chords">
+        {SESSION_CHORDS.map((row) => (
+          <Fragment key={row.ids[0]}>
+            <dt className="flex items-center gap-1">
+              {row.ids.map((id, i) => (
+                <Fragment key={id}>
+                  {i > 0 && <span className="text-fg-subtle">{row.range ? '–' : '/'}</span>}
+                  <kbd
+                    className={clsx(
+                      'rounded border border-border bg-bg-muted px-1.5 py-px font-mono text-[11px]',
+                      label(id) === 'unbound' && 'text-fg-subtle',
+                    )}
+                  >
+                    {label(id)}
+                  </kbd>
+                </Fragment>
+              ))}
+            </dt>
+            <dd className="text-fg-muted">{row.text}</dd>
+          </Fragment>
+        ))}
+      </dl>
+    </div>
+  );
+}
 
 interface Pending {
   readonly commandId: string;
@@ -124,7 +194,9 @@ export function KeyboardSection() {
   const shown = rows.filter(
     (row) =>
       q === '' ||
-      `${row.title} ${row.category} ${chordLabel(row.binding, platform)} ${row.commandId}`.toLowerCase().includes(q),
+      `${row.title} ${row.category} ${categoryLabel(row.category)} ${chordLabel(row.binding, platform)} ${row.commandId}`
+        .toLowerCase()
+        .includes(q),
   );
   const categories = [...new Set(shown.map((r) => r.category))];
   const overridden = Object.keys(user).length;
@@ -216,8 +288,10 @@ export function KeyboardSection() {
         </div>
       )}
       {categories.map((category) => (
-        <section key={category} aria-label={category}>
-          <h3 className="mb-1 text-[11px] font-semibold tracking-wide text-fg-subtle uppercase">{category}</h3>
+        <section key={category} aria-label={categoryLabel(category)}>
+          <h3 className="mb-1 text-[11px] font-semibold tracking-wide text-fg-subtle uppercase">
+            {categoryLabel(category)}
+          </h3>
           <ul className="rounded-lg border border-border">
             {shown
               .filter((row) => row.category === category)
@@ -302,6 +376,9 @@ export function KeyboardSection() {
           </ul>
         </section>
       ))}
+      <SectionTitle>Session shortcuts</SectionTitle>
+      <p className="text-xs text-fg-muted">The same chords are in the list above, where you can change them.</p>
+      <SessionChords />
       <SettingRow
         title="Send Ctrl chords to the focused terminal"
         detail="While a terminal has focus, plain Ctrl+<key> chords (Ctrl+K, Ctrl+D, Ctrl+1) go to the shell."

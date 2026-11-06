@@ -9,6 +9,7 @@ Arbora talks to coding agents over the [Agent Client Protocol](https://agentclie
 | Kimi Code | `kimi acp` | the Kimi Code CLI | run `kimi`, then `/login` |
 | Grok Build | `grok agent stdio` | `npx @xai-official/grok` or the Grok CLI | `grok login`, or set `XAI_API_KEY` |
 | OpenCode | `opencode acp` (v2+) | [opencode.ai](https://opencode.ai) | `opencode auth login` |
+| Antigravity | `agy acp` | the Antigravity CLI | run `agy` once, or `agy acp --login`. A `GEMINI_API_KEY` also works |
 
 ## API keys and other environment
 
@@ -16,7 +17,7 @@ An agent that reads a key from the environment can get it from your login shell 
 
 ## Adapter versions
 
-Claude Code and Codex run through npm adapters that Arbora pins to a tested version, because agent CLIs change weekly. The gear on the row shows the pinned package. **Update to latest** runs the newest adapter instead; **Back to the pinned version** undoes it. Kimi Code, Grok Build and OpenCode run the CLI you installed, so update those with their own updater.
+Claude Code and Codex run through npm adapters that Arbora pins to a tested version, because agent CLIs change weekly. The gear on the row shows the pinned package. **Update to latest** runs the newest adapter instead; **Back to the pinned version** undoes it. Kimi Code, Grok Build, OpenCode and Antigravity run the CLI you installed, so update those with their own updater.
 
 ## Custom agents
 

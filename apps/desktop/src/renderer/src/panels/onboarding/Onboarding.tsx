@@ -52,7 +52,7 @@ const STEP_LABELS: Readonly<Record<Step, string>> = {
   dev: 'Dev server',
   agents: 'Agents',
   tasks: 'Task defaults',
-  grove: 'Grove',
+  grove: 'Sessions',
   keys: 'Shortcuts',
   alerts: 'Alerts',
   passwords: 'Passwords',
@@ -91,7 +91,7 @@ function WelcomeStep() {
     {
       icon: Bot,
       title: 'Any ACP agent',
-      text: 'Claude Code, Codex, Kimi Code, Grok Build, OpenCode or your own, in groups.',
+      text: 'Claude Code, Codex, Kimi Code, Grok Build, OpenCode, Antigravity or your own, in groups.',
     },
   ];
   return (
@@ -372,15 +372,16 @@ function GroveStep({ pressed }: { pressed: ReadonlySet<string> }) {
   const project = useApp((s) => s.project);
   const pickable = usePickableAgents();
   const defaultAgent = useDefaultAgentId();
-  if (!project) return <StepShell title="Grove" lead="Open a project first; Grove lists the agents working in it." />;
+  if (!project)
+    return <StepShell title="Sessions" lead="Open a project first. Its agents are listed in the sidebar." />;
   const startOnOpen = project.settings.startDefaultOnOpen !== false;
   return (
     <StepShell
-      title="Run several agents in Grove"
-      lead="Grove swaps the page for every agent in this project: who is working, who needs you, and one transcript at a time. Agents keep running when you switch back to the page."
+      title="Run several agents"
+      lead="This window lists every agent in the project: who is working, who needs you, and one transcript at a time. They keep running while you look at the page or the editor."
     >
       <div className="flex flex-col gap-2">
-        <span className="text-xs text-fg-muted">The agent Grove starts for this project</span>
+        <span className="text-xs text-fg-muted">The agent this project starts</span>
         {pickable.length === 0 ? (
           <p className="rounded-lg border border-border bg-bg px-3 py-2 text-xs text-fg-subtle">
             Connect an agent in the Agents step first, then pick it here.
@@ -568,7 +569,7 @@ function FinishStep() {
 
 /**
  * First-run setup (F-ONBOARD-01): project, dev command, agents with a connection test, task
- * defaults, Grove's default agent and workspace chord, the mode chords (each with a "press it now"
+ * defaults, this project's default agent and the content-pane chord, the mode chords (each with a "press it now"
  * check), notifications and sounds, then a guided `Mod+K`.
  */
 export default function Onboarding() {

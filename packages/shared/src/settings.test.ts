@@ -320,7 +320,22 @@ describe('loadSettings', () => {
       eslintOnSave: true,
       tscOnSave: false,
       lsp: false,
+      wordWrap: false,
       fontSize: 14,
+    });
+    expect(settings.terminal.cursorBlink).toBe(true);
+  });
+
+  it('patches word wrap and cursor blink without resetting the other fields', () => {
+    const { settings } = loadSettings({ version: 6, editor: { lsp: true }, terminal: { shell: '/bin/zsh' } });
+    expect(settings.editor.wordWrap).toBe(false);
+    expect(settings.terminal.cursorBlink).toBe(true);
+    const patched = applySettingsPatch(settings, { editor: { wordWrap: true }, terminal: { cursorBlink: false } });
+    expect(patched.editor).toMatchObject({ lsp: true, wordWrap: true, formatOnSave: true });
+    expect(patched.terminal).toMatchObject({ shell: '/bin/zsh', cursorBlink: false, fontSize: 14 });
+    expect(appSettingsPatchSchema.parse({ editor: { wordWrap: true }, terminal: { cursorBlink: false } })).toEqual({
+      editor: { wordWrap: true },
+      terminal: { cursorBlink: false },
     });
   });
 

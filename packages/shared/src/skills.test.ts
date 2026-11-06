@@ -45,6 +45,10 @@ describe('skillTargetPaths', () => {
     expect(skillTargetPaths('agents', { home, env: {} }).skills).toBe('/home/me/.agents/skills');
     expect(skillTargetPaths('opencode', { home, env: {} }).skills).toBe('/home/me/.config/opencode/skills');
     expect(skillTargetPaths('grok', { home, env: {} }).root).toBe('/home/me/.grok');
+    expect(skillTargetPaths('antigravity', { home, env: {} })).toEqual({
+      root: '/home/me/.gemini/antigravity-cli',
+      skills: '/home/me/.gemini/config/skills',
+    });
   });
 
   it('honours the agents’ home overrides', () => {

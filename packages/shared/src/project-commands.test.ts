@@ -99,5 +99,7 @@ describe('project commands', () => {
     expect(terminalAgentName('/usr/bin/claude --resume')).toBe('Claude Code');
     expect(terminalAgentName('node /opt/claude-code-acp')).toBeNull();
     expect(terminalAgentName('opencode acp')).toBe('OpenCode');
+    expect(terminalAgentName('agy acp')).toBe('Antigravity');
+    expect(terminalAgentName('/usr/bin/antigravity')).toBe('Antigravity');
   });
 });

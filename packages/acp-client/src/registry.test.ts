@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { adapterPackage, AgentRegistry, BUILT_IN_AGENTS, withAdapterVersion } from './registry.js';
 
 describe('BUILT_IN_AGENTS', () => {
-  it('defines the five built-in agents with the verified launch commands', () => {
+  it('defines the built-in agents with the verified launch commands', () => {
     const byId = Object.fromEntries(BUILT_IN_AGENTS.map((a) => [a.id, a]));
-    expect(Object.keys(byId).sort()).toEqual(['claude-code', 'codex', 'grok', 'kimi', 'opencode']);
+    expect(Object.keys(byId).sort()).toEqual(['antigravity', 'claude-code', 'codex', 'grok', 'kimi', 'opencode']);
     expect(byId['claude-code']).toMatchObject({
       command: 'npx',
       args: ['-y', '@zed-industries/claude-code-acp@0.16.2'],
@@ -13,6 +13,7 @@ describe('BUILT_IN_AGENTS', () => {
     expect(byId['kimi']).toMatchObject({ command: 'kimi', args: ['acp'] });
     expect(byId['grok']).toMatchObject({ command: 'grok', args: ['agent', 'stdio'] });
     expect(byId['opencode']).toMatchObject({ command: 'opencode', args: ['acp'] });
+    expect(byId['antigravity']).toMatchObject({ command: 'agy', args: ['acp'] });
     for (const agent of BUILT_IN_AGENTS) {
       expect(agent.builtIn).toBe(true);
       expect(agent.installHint).toBeTruthy();
@@ -25,8 +26,8 @@ describe('AgentRegistry', () => {
   it('lists built-ins followed by custom agents', () => {
     const registry = new AgentRegistry(() => [{ id: 'mine', name: 'Mine', command: 'mine', args: ['acp'], env: {} }]);
     const ids = registry.list().map((a) => a.id);
-    expect(ids.slice(0, 5)).toEqual(BUILT_IN_AGENTS.map((a) => a.id));
-    expect(ids[5]).toBe('mine');
+    expect(ids.slice(0, BUILT_IN_AGENTS.length)).toEqual(BUILT_IN_AGENTS.map((a) => a.id));
+    expect(ids[BUILT_IN_AGENTS.length]).toBe('mine');
     expect(registry.get('mine')).toMatchObject({ builtIn: false, command: 'mine' });
   });
 
@@ -60,6 +61,7 @@ describe('AgentRegistry', () => {
       { id: 'kimi', available: true, resolvedCommand: '/home/me/.kimi-code/bin/kimi' },
       { id: 'grok', available: false },
       { id: 'opencode', available: false },
+      { id: 'antigravity', available: false },
     ]);
   });
 

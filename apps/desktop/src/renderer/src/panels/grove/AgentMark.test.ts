@@ -8,7 +8,7 @@ import { AgentMark, agentMonogram } from './AgentMark';
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 /** Ids from `BUILT_IN_AGENTS` in packages/acp-client/src/registry.ts. */
-const BUILT_IN_AGENT_IDS = ['claude-code', 'codex', 'kimi', 'grok', 'opencode'] as const;
+const BUILT_IN_AGENT_IDS = ['claude-code', 'codex', 'kimi', 'grok', 'opencode', 'antigravity'] as const;
 
 function mount(name: string, agentId?: string): HTMLElement {
   const host = document.createElement('div');

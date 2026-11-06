@@ -79,19 +79,19 @@ export interface InitialState {
 }
 
 export type SettingsSection =
-  | 'agents'
-  | 'grove'
   | 'general'
   | 'appearance'
-  | 'notifications'
+  | 'agents'
   | 'editor'
+  | 'terminal'
   | 'git'
-  | 'skills'
-  | 'mcp'
   | 'browser'
   | 'extensions'
   | 'passwords'
   | 'project'
+  | 'skills'
+  | 'mcp'
+  | 'notifications'
   | 'keyboard'
   | 'updates';
 
@@ -109,7 +109,7 @@ export function closeOverlay(overlay?: Overlay): void {
  * Shows Settings on `section`. Unlike `Mod+,`, this never closes it: buttons that say "settings"
  * must not hide the page when it is already open beside them.
  */
-export function openSettings(section: SettingsSection = 'agents'): void {
+export function openSettings(section: SettingsSection = 'general'): void {
   useApp.setState({ settingsOpen: true, settingsSection: section, paletteOpen: false, overlay: null });
 }
 
@@ -172,7 +172,7 @@ export const useApp = create<AppState>()(() => ({
   paletteOpen: false,
   overlay: null,
   settingsOpen: false,
-  settingsSection: 'agents',
+  settingsSection: 'general',
   checkingAgents: [],
   recordingShortcut: false,
   terminalFocused: false,

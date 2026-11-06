@@ -1,6 +1,6 @@
 # arbora
 
-Arbora is a cross-platform desktop app (Linux, macOS, Windows) for building web apps by pointing at the running app instead of editing code. An embedded browser shows your dev server; a side panel hosts any ACP-compatible coding agent (Claude Code, Codex, Kimi Code, Grok Build, OpenCode, or your own). Press `Mod+K` to point at a component and describe a change, or `Mod+D` to edit the page visually and hand the agent the diff. A second workspace, Grove, is specified in the plan (Stage 10) for managing several ACP agents at once. It is not built yet.
+Arbora is a cross-platform desktop app (Linux, macOS, Windows) for building web apps by pointing at the running app instead of editing code. An embedded browser shows your dev server; a side panel hosts any ACP-compatible coding agent (Claude Code, Codex, Kimi Code, Grok Build, OpenCode, Antigravity, or your own). Press `Mod+K` to point at a component and describe a change, or `Mod+D` to edit the page visually and hand the agent the diff. A second workspace, Grove, is specified in the plan (Stage 10) for managing several ACP agents at once. It is not built yet.
 
 ## Install
 
@@ -156,6 +156,6 @@ Repository layout: `apps/desktop` (electron-vite app: `src/main`, `src/preload`,
 - [docs/PLAN.md](docs/PLAN.md): product summary, stack decision, architecture, full feature specification, ADRs.
 - [docs/BUILD_STAGES.md](docs/BUILD_STAGES.md): stage-by-stage build instructions, gotchas, acceptance criteria and progress tracking.
 - [docs/FAQ.md](docs/FAQ.md): why Ctrl instead of Super, macOS PATH, Windows SmartScreen, Hyprland and Wayland flags, the Linux sandbox.
-- [docs/AGENT_SETUP.md](docs/AGENT_SETUP.md): installing and signing in to Claude Code, Codex, Kimi Code, Grok Build, OpenCode and custom agents.
+- [docs/AGENT_SETUP.md](docs/AGENT_SETUP.md): installing and signing in to Claude Code, Codex, Kimi Code, Grok Build, OpenCode, Antigravity and custom agents.
 - [docs/MONETIZATION.md](docs/MONETIZATION.md): accounts, Arbora Pro pricing ($5/month, $50/year), and which features are Free or Pro in each stage.
 - [docs/RELEASING.md](docs/RELEASING.md): tagging a release, signing secrets, and the performance budget. Downloads are GitHub Releases; the website links to that page.
