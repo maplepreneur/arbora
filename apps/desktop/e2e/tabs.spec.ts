@@ -90,6 +90,9 @@ test.describe('Stage 12 tabs and 1Password', () => {
       await expect(card).toContainText('MB');
       await expect(card).toContainText('CPU');
       await expect(card).not.toContainText('Not loaded');
+      const appTab = page.locator('[data-testid="browser-tab"][data-tab-role="app"]');
+      await expect(appTab.getByTestId('browser-tab-role')).toHaveAttribute('data-role', 'app');
+      await expect(appTab.getByTestId('browser-tab-title')).toContainText('design reference');
     } finally {
       await app.close();
       await design.close();
@@ -107,6 +110,9 @@ test.describe('Stage 12 tabs and 1Password', () => {
 
       await page.getByTestId('browser-tab-new').click();
       await expect(page.getByTestId('browser-tab')).toHaveCount(2);
+      const reference = page.locator('[data-testid="browser-tab"][data-tab-role="reference"]');
+      await expect(reference.getByTestId('browser-tab-role')).toHaveAttribute('data-role', 'reference');
+      await expect(reference.getByTestId('browser-tab-title')).toHaveText('New tab');
       const opened = (await tabs(page)).find((tab) => tab.role === 'reference');
       if (!opened) throw new Error('No reference tab');
 

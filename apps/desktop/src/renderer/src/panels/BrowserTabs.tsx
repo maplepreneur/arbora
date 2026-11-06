@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { Plus, Send, X } from 'lucide-react';
+import { AppWindow, Globe, LoaderCircle, Plus, Send, X } from 'lucide-react';
 import clsx from 'clsx';
 import { CommandId, type BrowserTabSnapshot, type ContextMenuItem } from '@arbora/shared';
 import { executeCommand, registerSendTabOpener, sendActiveTab } from '../commands';
 import { useApp } from '../store';
 
 /**
- * The tab strip above the URL bar. Below 400px the titles collapse to icons. The app tab has no
- * close button.
+ * The tab strip above the URL bar. Each tab shows its page title and a role icon. Below 400px the
+ * titles collapse and the role icon stays. The app tab has no close button.
  */
 export function BrowserTabStrip() {
   const tabs = useApp((s) => s.browserTabs);
@@ -161,10 +161,20 @@ function TabButton({
       ) : (
         <span className="h-3.5 w-3.5 shrink-0 rounded-sm bg-bg-muted" />
       )}
-      <span className="min-w-0 flex-1 truncate @max-[400px]:hidden">
-        {tab.role === 'app' ? 'App' : tab.title || 'New tab'}
-        {tab.loading ? '…' : ''}
+      <span data-testid="browser-tab-role" data-role={tab.role} className="shrink-0 text-fg-subtle">
+        <RoleIcon role={tab.role} />
       </span>
+      <span className="min-w-0 flex-1 truncate @max-[400px]:hidden" data-testid="browser-tab-title">
+        {tab.title || (tab.role === 'app' ? 'App' : 'New tab')}
+      </span>
+      {tab.loading && (
+        <LoaderCircle
+          size={11}
+          className="shrink-0 animate-spin"
+          aria-label="Loading"
+          data-testid="browser-tab-loading"
+        />
+      )}
       {tab.role !== 'app' && (
         <button
           type="button"
@@ -191,6 +201,19 @@ function TabButton({
       )}
     </div>
   );
+}
+
+function RoleIcon({ role }: { role: BrowserTabSnapshot['role'] }) {
+  switch (role) {
+    case 'app':
+      return <AppWindow size={11} aria-label="App tab" />;
+    case 'reference':
+      return <Globe size={11} aria-label="Reference tab" />;
+    default: {
+      const unreachable: never = role;
+      return unreachable;
+    }
+  }
 }
 
 async function showTabMenu(tab: BrowserTabSnapshot): Promise<void> {
