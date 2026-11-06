@@ -8,7 +8,7 @@ The companion document [BUILD_STAGES.md](./BUILD_STAGES.md) breaks the build int
 
 Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents must update this section and that table at the end of every piece of work.
 
-**Now (6 Nov 2026):** Stage 11 Tailwind write-through is in progress. A design-mode style change on a tier-1 element in a Tailwind project is written into that element's `class` or `className`. Ask agent instead is the previous send path. 753 unit tests passed. e2e was 53 passed and 1 skipped (the budget spec). Not `arch-ok`.
+**Now (6 Nov 2026):** Stage 11 Tailwind write-through is in progress ([PR #83](https://github.com/maplepreneur/arbora/pull/83)). A design-mode style change on a tier-1 element in a Tailwind project is written into that element's `class` or `className`. Ask agent instead is the previous send path. 753 unit tests passed. e2e was 53 passed and 1 skipped (the budget spec). Not `arch-ok`.
 
 **Next:** the rest of Stage 11: the dev plugin, worktree sessions (port, merge or pull request, best-of-N), design session history, MCP action traces, LSP opt-in, and source-map mapping for production builds. Stage 10 still needs `arch-ok` on Omarchy/Hyprland. Do not mark Stage 11 `Done`.
 
