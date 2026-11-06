@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -36,6 +36,7 @@ import { BrowserSessions } from './browser/browser-sessions.js';
 import type { BrowserService } from './browser/browser-service.js';
 import { registerPageIpc } from './browser/page-ipc.js';
 import { runOp } from './passwords/one-password.js';
+import { findSetupScript, setupCommandText, setupTerminalLaunch } from './passwords/setup-launch.js';
 import { devPluginStatus, findDevPluginRoot, installDevPlugin } from './dev-plugin/install.js';
 import { defineHandler, sendEvent } from './ipc.js';
 import { LspSession } from './lsp/lsp-session.js';
@@ -1162,6 +1163,25 @@ function main(): void {
       } catch {
         return { installed: false, version: null, mode };
       }
+    });
+    defineHandler('passwords.runSetup', isTrusted, async () => {
+      await shellEnvironment.ready;
+      const script = findSetupScript(
+        [process.cwd(), app.getAppPath(), dirname(fileURLToPath(import.meta.url))],
+        platform,
+      );
+      const command = setupCommandText(platform, script);
+      const env = shellEnvironment.env();
+      const launch = script
+        ? setupTerminalLaunch(platform, script, (name) => findExecutable(name, env, platform))
+        : null;
+      if (!launch || process.env['ARBORA_E2E'] === '1') return { started: false, command };
+      try {
+        spawn(launch.command, [...launch.args], { detached: true, stdio: 'ignore' }).unref();
+      } catch {
+        return { started: false, command };
+      }
+      return { started: true, command };
     });
     defineHandler('agent.renameThread', isTrusted, ({ threadId, title }, event) => {
       requireAgents(event.sender).renameThread(threadId, title);

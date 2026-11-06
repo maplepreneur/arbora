@@ -760,4 +760,16 @@ if (args[1] === 'create') {
       await login.close();
     }
   });
+
+  test('offers 1Password setup from Settings without opening a terminal', async () => {
+    const { app, page } = await launch(tempUserData(), [DESIGN]);
+    try {
+      await page.keyboard.press('ControlOrMeta+Comma');
+      await page.getByTestId('settings-nav-passwords').click();
+      await page.getByTestId('passwords-setup').click();
+      await expect(page.getByTestId('passwords-setup-result')).toContainText('setup-1password.sh');
+    } finally {
+      await app.close();
+    }
+  });
 });

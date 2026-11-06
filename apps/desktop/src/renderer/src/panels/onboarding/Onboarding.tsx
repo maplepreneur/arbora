@@ -30,7 +30,7 @@ import { playSound } from '../../sounds';
 import { closeOverlay, openSettings, useApp } from '../../store';
 import { useTerminals } from '../../terminal-store';
 import { TaskDefaults } from '../settings/TaskAgentPicker';
-import { PasswordCheck } from '../settings/PasswordsSection';
+import { PasswordCheck, SetupButton } from '../settings/PasswordsSection';
 
 const STEPS = [
   'welcome',
@@ -536,8 +536,10 @@ function PasswordsStep() {
         Use 1Password
       </label>
       <PasswordCheck />
+      <SetupButton />
       <p className="text-xs text-fg-subtle">
-        Installing 1Password stays in a terminal: pnpm setup:1password. On Linux that asks before it uses sudo.
+        Run setup opens the script in a terminal. On Linux it asks before it uses sudo. The app does not install
+        packages itself.
       </p>
     </StepShell>
   );

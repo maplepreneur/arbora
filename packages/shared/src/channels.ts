@@ -424,6 +424,11 @@ export const channels = {
       mode: z.enum(['cli', 'extension']),
     }),
   ),
+  'passwords.runSetup': defineChannel(
+    'passwords.runSetup',
+    none,
+    z.object({ started: z.boolean(), command: z.string() }),
+  ),
   'browser.suggestUrl': defineChannel(
     'browser.suggestUrl',
     z.object({ url: z.string() }),
