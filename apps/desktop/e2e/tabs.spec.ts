@@ -443,6 +443,47 @@ if (args[1] === 'create') {
     }
   });
 
+  test('sends a mailto link to the operating system instead of opening a tab', async () => {
+    const design = await startStaticFixture(DESIGN);
+    const { app, page } = await launch(tempUserData(), [DESIGN]);
+    const windowCount = (): Promise<number> =>
+      app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length);
+    try {
+      await openUrl(page, design.url);
+      const before = (await tabs(page)).length;
+      await app.evaluate(({ webContents }, url) => {
+        const view = webContents
+          .getAllWebContents()
+          .find((wc) => (wc.session.storagePath ?? '').includes('arbora-browser-') && wc.getURL().startsWith(url));
+        if (!view) throw new Error('No app page');
+        setTimeout(() => {
+          void view.executeJavaScript(`location.href = 'mailto:person@example.com'`);
+        }, 0);
+      }, design.url);
+      await expect
+        .poll(() => app.evaluate(() => (global as { arboraExternalOpen?: string }).arboraExternalOpen ?? ''))
+        .toBe('mailto:person@example.com');
+      await app.evaluate(({ webContents }, url) => {
+        const view = webContents
+          .getAllWebContents()
+          .find((wc) => (wc.session.storagePath ?? '').includes('arbora-browser-') && wc.getURL().startsWith(url));
+        if (!view) throw new Error('No app page');
+        setTimeout(() => {
+          void view.executeJavaScript(`window.open('mailto:other@example.com')`);
+        }, 0);
+      }, design.url);
+      await expect
+        .poll(() => app.evaluate(() => (global as { arboraExternalOpen?: string }).arboraExternalOpen ?? ''))
+        .toBe('mailto:other@example.com');
+      expect((await tabs(page)).length).toBe(before);
+      expect(await windowCount()).toBe(1);
+      expect((await tabs(page)).some((tab) => tab.url.startsWith('mailto:'))).toBe(false);
+    } finally {
+      await app.close();
+      await design.close();
+    }
+  });
+
   test('opens a plain link as a shared-partition tab and an OAuth popup as a child window', async () => {
     test.setTimeout(60_000);
     const design = await startStaticFixture(DESIGN);

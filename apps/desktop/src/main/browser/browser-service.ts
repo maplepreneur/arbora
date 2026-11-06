@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -15,6 +16,7 @@ import {
 import { formatSnapshot, type AxNode } from '@arbora/mcp-browser-server/snapshot';
 import {
   normalizeUrl,
+  windowOpenExternalUrl,
   RingBuffer,
   stepZoom,
   type BrowserAction,
@@ -96,7 +98,9 @@ export interface BrowserServiceEvents {
 }
 
 export interface WindowOpenDecision {
-  readonly action: 'deny' | 'allow';
+  readonly action: 'deny' | 'allow' | 'external';
+  /** Set when `action` is `external`. The operating system opens this URL. */
+  readonly url?: string;
   readonly overrideBrowserWindowOptions?: BrowserWindowConstructorOptions;
 }
 
@@ -744,16 +748,51 @@ export class BrowserService {
     if (pendingSave) this.saveNow();
   }
 
+  /** Hands a non-page URL to the operating system. The log names the scheme, not the address. */
+  private openWithOperatingSystem(url: string): void {
+    if (process.env['ARBORA_E2E'] === '1') {
+      (global as { arboraExternalOpen?: string }).arboraExternalOpen = url;
+      return;
+    }
+    let protocol = 'link';
+    try {
+      protocol = new URL(url).protocol;
+    } catch {
+      protocol = 'link';
+    }
+    // After the navigation handler returns. shell.openExternal on Linux can stall the
+    // main process while it waits on a handler, so Linux uses a detached xdg-open.
+    setImmediate(() => {
+      if (process.platform === 'linux') {
+        const child = spawn('xdg-open', [url], { detached: true, stdio: 'ignore' });
+        child.unref();
+        child.on('error', (error) => {
+          console.warn(`[browser] could not open ${protocol} link: ${error.message}`);
+        });
+        return;
+      }
+      void shell.openExternal(url).catch((error: unknown) => {
+        console.warn(`[browser] could not open ${protocol} link: ${(error as Error).message}`);
+      });
+    });
+  }
+
   private wireContents(): void {
     const contents = this.contents;
     const refresh = (): void => this.update({});
 
     contents.setWindowOpenHandler(({ url, disposition, features }) => {
       const decision = this.options.onWindowOpen?.({ url, disposition, features });
+      if (decision?.action === 'external') {
+        this.openWithOperatingSystem(decision.url ?? url);
+        return { action: 'deny' };
+      }
       if (!decision) {
+        const external = windowOpenExternalUrl(url);
         const normalized = normalizeUrl(url);
-        if (normalized && new URL(normalized).origin === safeOrigin(this.state.url)) this.navigate(normalized);
-        else if (/^https?:/.test(url)) void shell.openExternal(url);
+        if (external) this.openWithOperatingSystem(external);
+        else if (normalized && new URL(normalized).origin === safeOrigin(this.state.url)) this.navigate(normalized);
+        else if (/^https?:/.test(url)) this.openWithOperatingSystem(url);
         return { action: 'deny' };
       }
       if (decision.action === 'allow') {
@@ -771,6 +810,12 @@ export class BrowserService {
       this.options.onChildWindow?.(child);
     });
     contents.on('will-navigate', (event, url) => {
+      const external = windowOpenExternalUrl(url);
+      if (external) {
+        event.preventDefault();
+        this.openWithOperatingSystem(external);
+        return;
+      }
       if (!/^https?:/.test(url)) {
         event.preventDefault();
         return;

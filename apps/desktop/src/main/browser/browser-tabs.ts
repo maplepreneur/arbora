@@ -21,6 +21,7 @@ import {
   restoreBrowserTabSet,
   setBrowserTabRole,
   setTabSession,
+  windowOpenExternalUrl,
   windowOpenNeedsOpener,
   type BrowserTabRecord,
   type BrowserTabSet,
@@ -466,6 +467,8 @@ export class BrowserTabs {
     details: { url: string; disposition: string; features: string },
   ): WindowOpenDecision | null {
     const opener = this.slots.get(openerId)?.service;
+    const external = windowOpenExternalUrl(details.url);
+    if (external) return { action: 'external', url: external };
     if (!this.options.openLinksInTabs()) return null;
     if (!/^https?:/.test(details.url)) {
       return { action: 'deny' };

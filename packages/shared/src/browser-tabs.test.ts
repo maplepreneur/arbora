@@ -14,6 +14,7 @@ import {
   resolveBrowserTarget,
   restoreBrowserTabSet,
   setBrowserTabRole,
+  windowOpenExternalUrl,
   windowOpenNeedsOpener,
 } from './browser-tabs.js';
 
@@ -171,5 +172,10 @@ describe('browser tabs', () => {
     expect(windowOpenNeedsOpener({ disposition: 'foreground-tab', features: 'popup=yes' })).toBe(true);
     expect(windowOpenNeedsOpener({ disposition: 'foreground-tab', features: '' })).toBe(false);
     expect(windowOpenNeedsOpener({ disposition: 'background-tab', features: 'noopener' })).toBe(false);
+    expect(windowOpenExternalUrl('mailto:person@example.com')).toBe('mailto:person@example.com');
+    expect(windowOpenExternalUrl('tel:+15551212')).toBe('tel:+15551212');
+    expect(windowOpenExternalUrl('https://example.com')).toBeNull();
+    expect(windowOpenExternalUrl('javascript:alert(1)')).toBeNull();
+    expect(windowOpenExternalUrl('not a url')).toBeNull();
   });
 });

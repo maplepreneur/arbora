@@ -461,6 +461,34 @@ export function resolveBrowserTarget(
  * OAuth and other popups need `window.opener`. A plain http(s) link does not, so it becomes a tab.
  * `new-window` and `other` are treated as popups, as are feature strings that set a size.
  */
+const PAGE_SCHEMES = new Set([
+  'http:',
+  'https:',
+  'javascript:',
+  'data:',
+  'blob:',
+  'file:',
+  'about:',
+  'chrome:',
+  'chrome-untrusted:',
+  'devtools:',
+  'chrome-extension:',
+]);
+
+/**
+ * A `window.open` target the operating system should handle. http(s) stays in Arbora.
+ * Page and browser schemes stay denied.
+ */
+export function windowOpenExternalUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (PAGE_SCHEMES.has(parsed.protocol)) return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+
 export function windowOpenNeedsOpener(details: { disposition: string; features: string }): boolean {
   if (details.disposition === 'new-window' || details.disposition === 'other') return true;
   return /(?:^|,)\s*(width|height|popup)\s*=/i.test(details.features);
