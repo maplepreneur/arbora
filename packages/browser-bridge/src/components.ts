@@ -6,7 +6,9 @@ import type { ComponentEntry } from '@arbora/shared';
  * not reference anything outside its own body.
  *
  * React <= 18 dev builds give file:line per fiber (`_debugSource`); React 19 only gives owner
- * stacks (`_debugStack`), whose line numbers refer to transformed code and are dropped. Vue gives
+ * stacks (`_debugStack`). A `.tsx` or `.vue` frame's line is transformed code and is dropped. A
+ * production `.js` bundle keeps its line and column so main can apply the script's source map.
+ * Vue gives
  * `type.__file` without a line. Components with no source information at all are library
  * internals when the page provides source information elsewhere, and are dropped.
  */
@@ -64,22 +66,30 @@ export function resolveComponents(start: Element, limit: number): ComponentEntry
     return { x: left, y: top, width: right - left, height: bottom - top };
   };
 
-  const frames = (stack: unknown): { fn: string; file: string }[] => {
+  const frames = (stack: unknown): { fn: string; file: string; line: number; column: number }[] => {
     if (typeof stack !== 'string') return [];
-    const out: { fn: string; file: string }[] = [];
+    const out: { fn: string; file: string; line: number; column: number }[] = [];
     for (const raw of stack.split('\n')) {
       const line = raw.trim();
       if (!line.startsWith('at ')) continue;
-      const match = /^at (?:(.*?) \()?(.+?):\d+:\d+\)?$/.exec(line);
-      if (match?.[2]) out.push({ fn: match[1] ?? '', file: match[2] });
+      const match = /^at (?:(.*?) \()?(.+?):(\d+):(\d+)\)?$/.exec(line);
+      if (match?.[2] && match[3] && match[4])
+        out.push({ fn: match[1] ?? '', file: match[2], line: Number(match[3]), column: Number(match[4]) });
     }
     return out;
+  };
+  // A `.js` bundle can be mapped. A `.tsx` or `.vue` frame's line is transformed code, so it is dropped.
+  const generatedScript = (file: string): boolean => {
+    const path = file.split(/[?#]/)[0] ?? file;
+    return /^https?:\/\//i.test(file) && /\.(?:mjs|cjs|js)$/.test(path);
   };
   const stackSource = (stack: unknown, preferFn?: string): Source | null => {
     const list = frames(stack).filter((f) => !isLibrary(f.file));
     const named = preferFn ? list.find((f) => f.fn === preferFn || f.fn.endsWith(`.${preferFn}`)) : undefined;
     const frame = named ?? list[0];
-    return frame ? { file: frame.file, line: null, column: null } : null;
+    if (!frame) return null;
+    const generated = generatedScript(frame.file);
+    return { file: frame.file, line: generated ? frame.line : null, column: generated ? frame.column : null };
   };
   const isMinified = (name: string): boolean => /^[A-Za-z_$][\w$]?$/.test(name);
 

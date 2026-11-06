@@ -132,6 +132,27 @@ describe('AgentModeService', () => {
     expect(selection?.screenshot.dataUrl).toBe('data:image/png;base64,iVBOR');
   });
 
+  it('maps a production bundle onto the project file named by its source map', async () => {
+    const { service, browser, events } = setup();
+    writeFileSync(join(root, 'src/App.tsx'), 'export function App() {}\n');
+    const mapGeneratedPosition = vi.fn(() =>
+      Promise.resolve({ file: 'http://127.0.0.1:4173/src/App.tsx', line: 1, column: 1 }),
+    );
+    Object.assign(browser, { mapGeneratedPosition });
+    const raw = rawSelection();
+    const button = raw.components[0];
+    if (!button) throw new Error('missing component');
+    button.definedAt = null;
+    button.renderedAt = { file: 'http://127.0.0.1:4173/assets/app.js', line: 1, column: 1 };
+    service.setInspecting(true);
+    await service.select(raw);
+    expect(mapGeneratedPosition).toHaveBeenCalledWith('http://127.0.0.1:4173/assets/app.js', 1, 1);
+    expect(events.selected.mock.calls[0]?.[0].components[0]?.renderedIn).toMatchObject({
+      relative: 'src/App.tsx',
+      line: 1,
+    });
+  });
+
   it('drops a selection that resolves after the mode was left', async () => {
     const { service, browser, events } = setup();
     service.setInspecting(true);

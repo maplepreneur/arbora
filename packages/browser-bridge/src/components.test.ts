@@ -151,6 +151,19 @@ describe('resolveComponents (React 19)', () => {
     expect(chain[0]?.renderedAt?.file).toBe('http://h/src/Counter.tsx?t=1');
     expect(chain[1]?.renderedAt?.file).toBe('about://React/Server/file:///p/app/page.tsx?3');
   });
+
+  it('keeps the line and column of a production bundle so a source map can place it', () => {
+    const button = fiber(0, named('Button'), {
+      _debugStack: stack('    at Button (http://h/assets/index-abc.js:1:80)'),
+    });
+    const el = host('button', button);
+    link(button, el.f);
+    expect(resolveComponents(el.el, 4)[0]?.renderedAt).toEqual({
+      file: 'http://h/assets/index-abc.js',
+      line: 1,
+      column: 80,
+    });
+  });
 });
 
 describe('resolveComponents (Vue)', () => {
