@@ -87,12 +87,18 @@ export function actionTraceTitle(tool: string, args: Record<string, unknown>): s
   }
 }
 
-/** Title for a compare result, including the score. Null when the text is not a compare payload. */
-export function compareScoreTitle(resultText: string): string | null {
+function compareModeLabel(mode: string | undefined): string {
+  if (mode === 'overlay') return 'overlay';
+  if (mode === 'diff') return 'diff';
+  return 'side by side';
+}
+
+/** Title for a compare result, including the score and how the two shots were drawn. */
+export function compareScoreTitle(resultText: string, mode?: string): string | null {
   try {
     const parsed = JSON.parse(resultText) as { score?: unknown };
     if (typeof parsed.score !== 'number' || !Number.isFinite(parsed.score)) return null;
-    return `Matching design · ${parsed.score.toFixed(2)}`;
+    return `Matching design · ${parsed.score.toFixed(2)} · ${compareModeLabel(mode)}`;
   } catch {
     return null;
   }

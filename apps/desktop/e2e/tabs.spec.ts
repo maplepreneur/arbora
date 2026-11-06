@@ -672,6 +672,8 @@ if (args[1] === 'create') {
       const history = await page.getByTestId('matching-design-scores').innerText();
       expect(history.split('Matching design').length - 1).toBeGreaterThanOrEqual(2);
       await expect(page.getByTestId('matching-design-file')).toContainText('.arbora/screenshots/');
+      await expect(page.getByTestId('matching-design-round')).toHaveText('Round 2');
+      await expect(page.getByTestId('matching-design-shot')).toBeVisible();
       const saved = readdirSync(join(VITE_REACT, '.arbora', 'screenshots'), { recursive: true }).map(String);
       expect(saved.some((name) => name.endsWith('round-1.png'))).toBe(true);
       expect(saved.some((name) => name.endsWith('round-2.png'))).toBe(true);

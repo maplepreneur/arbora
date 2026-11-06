@@ -24,14 +24,16 @@ import {
   TriangleAlert,
   type LucideIcon,
 } from 'lucide-react';
-import type {
-  ContentBlock,
-  PermissionEvent,
-  PlanEntry,
-  ThreadEvent,
-  ToolCallEvent,
-  ToolCallStatus,
-  ToolKind,
+import {
+  matchingDesignView,
+  type ActionTraceStep,
+  type ContentBlock,
+  type PermissionEvent,
+  type PlanEntry,
+  type ThreadEvent,
+  type ToolCallEvent,
+  type ToolCallStatus,
+  type ToolKind,
 } from '@arbora/shared';
 import { openDiffTab, openFileAtLocation } from '../../commands';
 import { Markdown } from './Markdown';
@@ -370,6 +372,49 @@ function PlanCard({ entries }: { entries: readonly PlanEntry[] }) {
   );
 }
 
+function MatchingDesign({ steps, onStop }: { steps: readonly ActionTraceStep[]; onStop?: () => void }) {
+  const view = matchingDesignView(steps);
+  if (!view) return null;
+  return (
+    <div className="mb-1 flex flex-col gap-0.5" data-testid="matching-design">
+      <div className="flex items-center gap-1.5">
+        <span className="font-medium text-fg">Matching design</span>
+        <span className="shrink-0 tabular-nums text-fg" data-testid="matching-design-round">
+          Round {view.round}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-fg-muted" data-testid="matching-design-scores">
+          {view.scores}
+        </span>
+        {onStop && (
+          <button
+            type="button"
+            data-testid="matching-design-stop"
+            onClick={onStop}
+            className="rounded border border-border px-1.5 py-0.5 text-fg-muted hover:bg-bg-muted hover:text-fg"
+          >
+            Stop
+          </button>
+        )}
+      </div>
+      {view.path && (
+        <span className="truncate text-fg-subtle" data-testid="matching-design-file">
+          {view.path}
+        </span>
+      )}
+      {view.image && (
+        <img
+          src={`data:${view.image.mimeType};base64,${view.image.data}`}
+          alt={`Round ${String(view.round)} side by side`}
+          width={view.image.width}
+          height={view.image.height}
+          className="mt-1 h-auto max-h-48 max-w-full rounded border border-border"
+          data-testid="matching-design-shot"
+        />
+      )}
+    </div>
+  );
+}
+
 function ActionTraceCard({
   event,
   onStop,
@@ -387,34 +432,7 @@ function ActionTraceCard({
           Trace · {event.steps.length} {event.steps.length === 1 ? 'step' : 'steps'}
         </span>
       </header>
-      {event.steps.some((step) => step.tool === 'browser_compare') && (
-        <div className="mb-1 flex flex-col gap-0.5" data-testid="matching-design">
-          <div className="flex items-center gap-1.5">
-            <span className="font-medium text-fg">Matching design</span>
-            <span className="min-w-0 flex-1 truncate text-fg-muted" data-testid="matching-design-scores">
-              {event.steps
-                .filter((step) => step.tool === 'browser_compare')
-                .map((step) => step.title)
-                .join(' → ')}
-            </span>
-            {onStop && (
-              <button
-                type="button"
-                data-testid="matching-design-stop"
-                onClick={onStop}
-                className="rounded border border-border px-1.5 py-0.5 text-fg-muted hover:bg-bg-muted hover:text-fg"
-              >
-                Stop
-              </button>
-            )}
-          </div>
-          {event.steps.filter((step) => step.tool === 'browser_compare' && step.path).at(-1)?.path && (
-            <span className="truncate text-fg-subtle" data-testid="matching-design-file">
-              {event.steps.filter((step) => step.tool === 'browser_compare' && step.path).at(-1)?.path}
-            </span>
-          )}
-        </div>
-      )}
+      <MatchingDesign steps={event.steps} {...(onStop ? { onStop } : {})} />
       <ol className="flex flex-col gap-0.5">
         {event.steps.map((step, index) => {
           const current = step.id === selected?.id;

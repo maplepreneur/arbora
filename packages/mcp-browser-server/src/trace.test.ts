@@ -14,7 +14,8 @@ describe('action traces', () => {
     expect(actionTraceTitle('browser_set_viewport', { width: 500, height: 700 })).toBe('Viewport 500×700');
     expect(actionTraceTitle('browser_screenshot', {})).toBe('Screenshot viewport');
     expect(actionTraceTitle('browser_compare', {})).toBe('Compare tabs');
-    expect(compareScoreTitle(JSON.stringify({ score: 0.84 }))).toBe('Matching design · 0.84');
+    expect(compareScoreTitle(JSON.stringify({ score: 0.84 }))).toBe('Matching design · 0.84 · side by side');
+    expect(compareScoreTitle(JSON.stringify({ score: 0.5 }), 'diff')).toBe('Matching design · 0.50 · diff');
     expect(compareScoreTitle('not json')).toBeNull();
     expect(compareSavedPath(JSON.stringify({ saved: '.arbora/screenshots/thread/round-1.png' }))).toBe(
       '.arbora/screenshots/thread/round-1.png',

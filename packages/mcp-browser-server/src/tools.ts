@@ -177,7 +177,11 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
           const result = await run(args);
           const failed = result.isError === true;
           const resultText = result.content.find((item) => item.type === 'text')?.text ?? '';
-          const score = name === 'browser_compare' && !failed ? compareScoreTitle(resultText) : null;
+          const compareMode =
+            name === 'browser_compare' && typeof (args as { mode?: unknown }).mode === 'string'
+              ? (args as { mode: string }).mode
+              : undefined;
+          const score = name === 'browser_compare' && !failed ? compareScoreTitle(resultText, compareMode) : null;
           const image = result.content.find((item) => item.type === 'image');
           const extra =
             name === 'browser_compare' && !failed
