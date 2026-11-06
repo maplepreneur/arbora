@@ -43,7 +43,12 @@ import { keepRunningAfterLastWindow } from './grove-processes.js';
 import { buildMacMenu } from './menu.js';
 import { readProjectCommands, readProjectFramework } from './project-runtime.js';
 import { writeSkillFile } from './mcp/skill-file.js';
-import { ensureArboraGitignore, ensureProjectSettingsFile, updateProjectSettingsFile } from './project-settings.js';
+import {
+  ensureArboraGitignore,
+  ensureProjectSettingsFile,
+  readProjectSettings,
+  updateProjectSettingsFile,
+} from './project-settings.js';
 import { SettingsStore } from './settings-store.js';
 import { importableMcpServers } from './skills/mcp-import.js';
 import { SkillLibrary } from './skills/skill-library.js';
@@ -1055,11 +1060,17 @@ function main(): void {
       const agents = projectWindow.agents;
       if (!tabs || !path || !agents) throw new Error('Open a project first');
       const resolved = await tabs.resolve(tabId);
-      const shot = await resolved.service.screenshot({ mode: fullPage ? 'fullPage' : 'viewport' });
+      const viewport = await resolved.service.screenshot({ mode: 'viewport' });
+      const full = fullPage ? await resolved.service.screenshot({ mode: 'fullPage' }) : null;
       const summary = await resolved.service.pageSummary().catch(() => ({ selection: '', text: '' }));
+      const accessibility = await resolved.service.accessibilitySummary().catch(() => '');
       const thread = agents.createThread(agentId, { title: text.slice(0, 80) });
       manager.grants.grant(path, thread.id, resolved.id);
       const state = resolved.service.getState();
+      const app = tabs.snapshots().find((entry) => entry.role === 'app');
+      const match = readProjectSettings(path).settings.designMatch;
+      const threshold = match?.threshold ?? 0.92;
+      const maxRounds = match?.maxRounds ?? 5;
       const excerpt = summary.text.replace(/\s+/g, ' ').trim().slice(0, 4000);
       const selection = summary.selection.replace(/\s+/g, ' ').trim().slice(0, 2000);
       const body = [
@@ -1068,18 +1079,22 @@ function main(): void {
         `Tab ${resolved.id} (${resolved.role}) is granted to this thread.`,
         `Title: ${state.title || '(untitled)'}`,
         `URL: ${state.url || '(none)'}`,
+        `App tab: ${app?.id ?? 'app'}`,
         'Use browser tools with this tab id as target. The project page is target "app".',
-        'Compare the design with the app using browser_compare. Repeat until the score stops moving, or list the differences that remain.',
+        `Compare the design with the app using browser_compare. Stop at ${threshold}, after ${maxRounds} rounds, or list the differences that remain.`,
         'Figma is a canvas: browser_snapshot shows the Figma chrome, not the layers. Screenshot the frame. A node-id in the URL selects one frame.',
+        full ? 'A full-page screenshot follows the viewport.' : '',
         selection ? `Selected text: ${selection}` : '',
         excerpt ? `Visible text: ${excerpt}` : '',
+        accessibility ? `Accessibility:\n${accessibility}` : '',
       ]
         .filter((line) => line !== '')
         .join('\n');
       void agents
         .prompt(thread.id, [
           { type: 'text', text: body },
-          { type: 'image', data: shot.pngBase64, mimeType: 'image/png' },
+          { type: 'image', data: viewport.pngBase64, mimeType: 'image/png' },
+          ...(full ? [{ type: 'image' as const, data: full.pngBase64, mimeType: 'image/png' as const }] : []),
         ])
         .catch((error: unknown) => console.warn(`[tabs] send failed: ${(error as Error).message}`));
       sendEvent(projectWindow.contents, 'agent.grantsChanged', {

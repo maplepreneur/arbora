@@ -452,6 +452,8 @@ if (args[1] === 'create') {
         reference.id,
       );
       await page.locator(`[data-testid="grove-row"][data-thread-id="${sent.threadId}"]`).click();
+      await expect(page.getByTestId('user-message').last()).toContainText('App tab');
+      await expect(page.getByTestId('user-message').last()).toContainText('Stop at 0.92');
       await expect(page.getByTestId('agent-message').last()).toContainText('Grant check: allowed', { timeout: 30_000 });
       await expect(page.getByTestId('tab-grants')).toBeVisible();
       await page.getByTestId('tab-grants').locator('button').click();
@@ -460,6 +462,32 @@ if (args[1] === 'create') {
       await input.fill(`tab grant ${reference.id}`);
       await input.press('Enter');
       await expect(page.getByTestId('agent-message').last()).toContainText('tab not granted', { timeout: 20_000 });
+    } finally {
+      await app.close();
+      await design.close();
+    }
+  });
+
+  test('send tab can include a full-page screenshot and names the app tab', async () => {
+    const design = await startStaticFixture(DESIGN);
+    const userData = tempUserData();
+    fakeAgentSettings(userData);
+    const settingsPath = join(userData, 'settings.json');
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as { agents: { defaultAgent?: string } };
+    settings.agents.defaultAgent = 'fake';
+    writeFileSync(settingsPath, JSON.stringify(settings));
+    const { app, page } = await launch(userData, [DESIGN]);
+    try {
+      await openUrl(page, design.url);
+      await page.getByTestId('browser-tab-send').click();
+      await page.getByTestId('browser-send-full-page').check();
+      await page.getByTestId('browser-send-confirm').click();
+      const row = page.locator('[data-testid="grove-row"]').filter({ hasText: 'Implement this design' }).last();
+      await row.click({ timeout: 20_000 });
+      const message = page.getByTestId('user-message').last();
+      await expect(message).toContainText('App tab', { timeout: 20_000 });
+      await expect(message).toContainText('full-page screenshot');
+      await expect(message).toContainText('Stop at 0.92');
     } finally {
       await app.close();
       await design.close();

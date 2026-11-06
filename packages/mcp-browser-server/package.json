@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./host": "./src/host-entry.ts"
+    "./host": "./src/host-entry.ts",
+    "./snapshot": "./src/snapshot.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",

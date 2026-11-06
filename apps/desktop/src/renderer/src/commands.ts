@@ -771,23 +771,44 @@ async function cycleBrowserTab(direction: 1 | -1): Promise<void> {
   if (next) await window.arbora.invoke('browser.tabs.activate', { id: next.id });
 }
 
-async function sendActiveTab(): Promise<void> {
+let openSendTab: (() => void) | null = null;
+
+/** The tab strip registers this so Send tab to agent can offer the full-page toggle. */
+export function registerSendTabOpener(opener: () => void): () => void {
+  openSendTab = opener;
+  return () => {
+    if (openSendTab === opener) openSendTab = null;
+  };
+}
+
+function requestSendTab(): void {
+  if (openSendTab) openSendTab();
+  else void sendActiveTab(false);
+}
+
+let sendInFlight = false;
+
+export async function sendActiveTab(fullPage = false): Promise<void> {
+  if (sendInFlight) return;
   const agentId = defaultAgentId();
   if (!agentId) {
     showToast('Choose an agent first');
     return;
   }
+  sendInFlight = true;
   const active = useApp.getState().browserTabs.find((tab) => tab.active);
   try {
     const { threadId } = await window.arbora.invoke('browser.tabs.send', {
       ...(active ? { tabId: active.id } : {}),
       text: 'Implement this design',
-      fullPage: false,
+      fullPage,
       agentId,
     });
     await openThread(threadId);
   } catch (error) {
     showToast((error as Error).message);
+  } finally {
+    sendInFlight = false;
   }
 }
 
@@ -1315,7 +1336,7 @@ async function runCommand(id: CommandId): Promise<void> {
       await cycleBrowserTab(-1);
       return;
     case CommandId.browserSendTab:
-      await sendActiveTab();
+      requestSendTab();
       return;
     case CommandId.browserFillPassword:
       await fillFromPasswordManager();

@@ -1,8 +1,8 @@
-import { useRef, useState } from 'react';
-import { Plus, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Plus, Send, X } from 'lucide-react';
 import clsx from 'clsx';
 import { CommandId, type BrowserTabSnapshot, type ContextMenuItem } from '@arbora/shared';
-import { executeCommand } from '../commands';
+import { executeCommand, registerSendTabOpener, sendActiveTab } from '../commands';
 import { useApp } from '../store';
 
 /**
@@ -12,35 +12,84 @@ import { useApp } from '../store';
 export function BrowserTabStrip() {
   const tabs = useApp((s) => s.browserTabs);
   const [dragged, setDragged] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [fullPage, setFullPage] = useState(false);
+  useEffect(() => registerSendTabOpener(() => setSending(true)), []);
   if (tabs.length === 0) return null;
   return (
-    <div
-      className="@container flex h-8 shrink-0 items-end gap-0.5 overflow-x-auto border-b border-border bg-bg-subtle px-1"
-      data-testid="browser-tabs"
-    >
-      {tabs.map((tab, index) => (
-        <TabButton
-          key={tab.id}
-          tab={tab}
-          index={index}
-          dragged={dragged === tab.id}
-          onDragStart={() => setDragged(tab.id)}
-          onDrop={() => {
-            if (!dragged || dragged === tab.id) return;
-            void window.arbora.invoke('browser.tabs.move', { id: dragged, index }).then(() => setDragged(null));
-          }}
-        />
-      ))}
-      <button
-        type="button"
-        aria-label="New tab"
-        data-testid="browser-tab-new"
-        title="New tab"
-        onClick={() => executeCommand(CommandId.browserNewTab)}
-        className="mb-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded text-fg-subtle hover:bg-bg-muted hover:text-fg"
+    <div className="relative shrink-0">
+      <div
+        className="@container flex h-8 shrink-0 items-end gap-0.5 overflow-x-auto border-b border-border bg-bg-subtle px-1"
+        data-testid="browser-tabs"
       >
-        <Plus size={13} />
-      </button>
+        {tabs.map((tab, index) => (
+          <TabButton
+            key={tab.id}
+            tab={tab}
+            index={index}
+            dragged={dragged === tab.id}
+            onDragStart={() => setDragged(tab.id)}
+            onDrop={() => {
+              if (!dragged || dragged === tab.id) return;
+              void window.arbora.invoke('browser.tabs.move', { id: dragged, index }).then(() => setDragged(null));
+            }}
+          />
+        ))}
+        <button
+          type="button"
+          aria-label="New tab"
+          data-testid="browser-tab-new"
+          title="New tab"
+          onClick={() => executeCommand(CommandId.browserNewTab)}
+          className="mb-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded text-fg-subtle hover:bg-bg-muted hover:text-fg"
+        >
+          <Plus size={13} />
+        </button>
+        <button
+          type="button"
+          aria-label="Send tab to agent"
+          data-testid="browser-tab-send"
+          title="Send tab to agent"
+          onClick={() => setSending(true)}
+          className="mb-0.5 flex h-6 shrink-0 items-center gap-1 rounded px-1.5 text-[11px] text-fg-subtle hover:bg-bg-muted hover:text-fg"
+        >
+          <Send size={12} />
+          Send
+        </button>
+      </div>
+      {sending && (
+        <form
+          data-testid="browser-send-tab"
+          className="absolute right-1 top-full z-30 mt-1 w-64 rounded border border-border bg-bg-elevated p-2 text-xs shadow-lg"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setSending(false);
+            void sendActiveTab(fullPage);
+          }}
+        >
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              data-testid="browser-send-full-page"
+              checked={fullPage}
+              onChange={(event) => setFullPage(event.target.checked)}
+            />
+            Include a full-page screenshot
+          </label>
+          <div className="mt-2 flex justify-end gap-1">
+            <button type="button" className="rounded px-2 py-1 hover:bg-bg-muted" onClick={() => setSending(false)}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              data-testid="browser-send-confirm"
+              className="rounded bg-accent px-2 py-1 text-accent-fg"
+            >
+              Send
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

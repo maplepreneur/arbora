@@ -12,6 +12,7 @@ import {
   type Session,
   type WebContents,
 } from 'electron';
+import { formatSnapshot, type AxNode } from '@arbora/mcp-browser-server/snapshot';
 import {
   normalizeUrl,
   RingBuffer,
@@ -1193,6 +1194,19 @@ export class BrowserService {
       selection: typeof record.selection === 'string' ? record.selection : '',
       text: typeof record.text === 'string' ? record.text : '',
     };
+  }
+
+  /** A short accessibility tree for a sent tab. Empty when the debugger is busy. Capped at 4 KB. */
+  async accessibilitySummary(): Promise<string> {
+    try {
+      if (!this.debuggerAttached) await this.attachDebugger();
+      if (!this.debuggerAttached || this.contents.isDestroyed()) return '';
+      const tree = (await this.contents.debugger.sendCommand('Accessibility.getFullAXTree')) as { nodes?: AxNode[] };
+      const text = formatSnapshot(tree.nodes ?? [], { maxNodes: 120, maxDepth: 6, maxText: 80 }).text;
+      return text.length > 4000 ? `${text.slice(0, 3999)}…` : text;
+    } catch {
+      return '';
+    }
   }
 
   /**
