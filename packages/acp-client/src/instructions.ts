@@ -89,27 +89,29 @@ ${VERIFY_LOOP.join('\n')}
 
 ## Tools
 
-- Look: \`browser_snapshot\` (accessibility tree with \`ref=eN\` ids, cheapest), \`browser_screenshot\`
-  (\`mode\`: viewport, full or element with a \`ref\`), \`browser_get_url\`.
-- Debug: \`browser_console_logs\` (current page by default; \`level: "error"\`),
-  \`browser_network_errors\`, \`browser_get_element_source\` (component chain and source files for a
-  \`ref\`), \`devserver_status\`, \`devserver_logs\`.
-- Act: \`browser_click\`, \`browser_hover\`, \`browser_type\` (\`submit: true\` presses Enter),
-  \`browser_press_key\`, \`browser_scroll\`, \`browser_select_option\`, \`browser_wait_for\`
-  (\`selector\`, \`text\`, \`textGone\`, \`networkIdle\`).
-- Navigate: \`browser_navigate\` (paths like \`/about\` resolve against the dev server),
-  \`browser_reload\`, \`browser_back\`, \`browser_forward\`, \`browser_set_viewport\` (mobile, tablet,
-  laptop, desktop or a size).
-- Run: \`devserver_restart\`, \`terminal_run\` (short commands with captured output).
+- Look: \`browser_snapshot\` (\`ref=eN\`, cheapest), \`browser_screenshot\` (viewport, full, element),
+  \`browser_get_url\`.
+- Debug: \`browser_console_logs\`, \`browser_network_errors\`, \`browser_get_element_source\`,
+  \`devserver_status\`, \`devserver_logs\`.
+- Act: \`browser_click\`, \`browser_hover\`, \`browser_type\` (\`submit: true\`), \`browser_press_key\`,
+  \`browser_scroll\`, \`browser_select_option\`, \`browser_wait_for\` (\`selector\`, \`text\`,
+  \`textGone\`, \`networkIdle\`).
+- Move: \`browser_navigate\` (\`/about\` uses the dev server), \`browser_reload\`, \`browser_back\`,
+  \`browser_forward\`, \`browser_set_viewport\`. Run: \`devserver_restart\`, \`terminal_run\`.
 
 ## Rules
 
-- Refs come from the latest snapshot. After a click, navigation or reload, take a new snapshot
-  before using refs again.
-- Hot reload is asynchronous: wait for \`networkIdle\` before judging a change.
-- Leaving the dev server's origin, \`browser_evaluate\` and \`terminal_run\` ask the user first. If
-  they decline, do not retry; explain what you needed instead.
-- Prefer editing source over \`browser_evaluate\`; changes made in the page are lost on reload.
-- \`browser_tabs\` lists tabs. Target \`app\` is the project; a sent tab is granted, others say \`tab not granted\`. \`browser_compare\` scores two tabs; stop near 0.92 or after 5 rounds. Figma is a canvas: screenshot the frame. \`browser_login\` signs in; the password never appears in the result.
+- Refs come from the latest snapshot. After a click, navigation or reload, snapshot again.
+- Wait for \`networkIdle\` before judging a hot reload.
+- Leaving the dev origin, \`browser_evaluate\` and \`terminal_run\` ask first. If declined, stop and
+  say what you needed.
+- Edit source; page-only changes vanish on reload.
+- \`browser_login\` signs in. The password never appears in the result.
+
+## Matching a design
+
+\`browser_tabs\`: target \`app\` is this project. A reference tab works only after the user sends it; otherwise \`tab not granted\`.
+
+Figma is a canvas, so snapshot shows chrome, not layers. Screenshot the frame. A \`node-id\` in the URL opens it. Dev Mode text is in the page. Set \`app\` to that width with \`browser_set_viewport\`, edit source, wait for reload, then \`browser_compare\` (\`side_by_side\`, \`overlay\` or \`diff\`). Fix the highest differences. Stop at 0.92, after 5 rounds, or when the user stops. Finish with the score, what still differs, and the saved side-by-side. Do not call a design tool's API.
 ${grove}`;
 }

@@ -83,6 +83,34 @@ export function PasswordsSection() {
       >
         <PasswordCheck />
       </SettingRow>
+      {passwords.alwaysAllow.length > 0 && (
+        <SettingRow
+          title="Agent sign-in without asking"
+          detail="Sites you allowed with Always. Remove one to ask again."
+        >
+          <ul className="flex max-w-72 flex-col gap-1">
+            {passwords.alwaysAllow.map((origin) => (
+              <li key={origin} className="flex items-center gap-2 text-xs">
+                <span className="min-w-0 flex-1 truncate" data-testid="passwords-allow-origin">
+                  {origin}
+                </span>
+                <button
+                  type="button"
+                  data-testid="passwords-allow-remove"
+                  onClick={() =>
+                    void updateSettings({
+                      passwords: { alwaysAllow: passwords.alwaysAllow.filter((item) => item !== origin) },
+                    })
+                  }
+                  className="shrink-0 text-fg-muted hover:text-fg"
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        </SettingRow>
+      )}
       <SettingRow title="Agent logins" detail="Ask shows a permission card before the agent signs in. Never refuses.">
         <Segmented
           label="Agent logins"

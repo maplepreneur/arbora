@@ -195,6 +195,13 @@ export class ProjectRuntime {
       ...(host.grants ? { grants: host.grants } : {}),
       passwords: () => settings.get().passwords,
       passwordProvider: this.passwords,
+      allowLoginOrigin: (origin) => {
+        settings.update((current) => {
+          const list = current.passwords.alwaysAllow;
+          if (!origin || list.includes(origin) || list.length >= 100) return current;
+          return { ...current, passwords: { ...current.passwords, alwaysAllow: [...list, origin] } };
+        });
+      },
       secrets: this.secrets,
       devServer: () => this.devServer,
       terminals: () => this.terminals,
@@ -218,7 +225,7 @@ export class ProjectRuntime {
           title: request.title,
           detail: request.detail,
           toolKind: request.tool === 'navigate' ? 'fetch' : 'execute',
-          persistent: request.tool !== 'navigate',
+          persistent: request.persistent ?? request.tool !== 'navigate',
         });
         switch (kind) {
           case 'allow_once':

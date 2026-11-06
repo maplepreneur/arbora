@@ -60,6 +60,9 @@ describe('browserSkill', () => {
     expect(skill.split(/\s+/).filter(Boolean).length).toBeLessThan(400);
     expect(skill).toContain('http://localhost:5173/');
     expect(skill).toContain('browser_snapshot');
+    expect(skill).toContain('browser_compare');
+    expect(skill).toContain('node-id');
+    expect(skill).toContain('0.92');
     expect(skill).not.toMatch(/token|bearer/i);
     expect(skill).not.toContain('grove_');
   });

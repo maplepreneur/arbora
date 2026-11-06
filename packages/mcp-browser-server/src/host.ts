@@ -58,6 +58,8 @@ export interface PermissionRequest {
   readonly tool: GuardedTool;
   readonly title: string;
   readonly detail: string;
+  /** When set, the card can offer Always. Login uses this so one site can be remembered. */
+  readonly persistent?: boolean;
 }
 
 /**

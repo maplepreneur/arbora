@@ -191,7 +191,7 @@ process.exit(2);
 
       await input.fill('vault login');
       await input.press('Enter');
-      await page.getByTestId('permission-allow_once').click({ timeout: 20_000 });
+      await page.getByTestId('permission-allow_always').click({ timeout: 20_000 });
       await expect(page.getByTestId('agent-message').last()).toContainText('logged_in', { timeout: 20_000 });
       await expect
         .poll(
@@ -216,6 +216,19 @@ process.exit(2);
       });
       expect(log).not.toContain(PASSWORD);
       expect(log).not.toContain(OTP);
+      const origin = new URL(login.url).origin;
+      await page.keyboard.press('ControlOrMeta+Comma');
+      await page.getByTestId('settings-nav-passwords').click();
+      await expect(page.getByTestId('passwords-allow-origin')).toContainText(origin);
+      await page.getByTestId('passwords-allow-remove').click();
+      await expect
+        .poll(() => {
+          const saved = JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')) as {
+            passwords: { alwaysAllow: string[] };
+          };
+          return saved.passwords.alwaysAllow;
+        })
+        .toEqual([]);
     } finally {
       await app?.close();
       await login.close();

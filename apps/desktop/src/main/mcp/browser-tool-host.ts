@@ -85,6 +85,8 @@ export interface ArboraToolHostOptions {
   readonly grants?: TabGrantStore;
   readonly passwords?: () => PasswordsSettings;
   readonly passwordProvider?: OnePasswordProvider;
+  /** Remembers one origin after the user chooses Always on an agent login. */
+  readonly allowLoginOrigin?: (origin: string) => void;
   readonly secrets?: SecretMask;
 }
 
@@ -232,7 +234,9 @@ export class ArboraToolHost implements BrowserToolHost {
         tool: 'navigate',
         title: 'Sign in with 1Password',
         detail: `The agent wants to sign in at ${pageOrigin} using: ${items.map((item) => item.title).join(', ')}`,
+        persistent: true,
       });
+      if (answer === 'always') this.options.allowLoginOrigin?.(pageOrigin);
       if (answer !== 'once' && answer !== 'always') return 'failed';
     }
     const item = items[0];
