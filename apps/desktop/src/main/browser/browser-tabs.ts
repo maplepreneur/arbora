@@ -52,6 +52,7 @@ export interface BrowserTabsHooks {
   focusParked(): void;
   tabsChanged(tabs: BrowserTabSnapshot[]): void;
   passwordOffer(offer: { origin: string; usernameField: string | null; passwordField: string; tabId: string }): void;
+  passwordFillRequested(tabId: string): void;
 }
 
 export interface BrowserTabsOptions {
@@ -87,6 +88,8 @@ export class BrowserTabs {
   private set: BrowserTabSet;
   private readonly slots = new Map<string, Slot>();
   private disposed = false;
+  /** The key on a focused login field, copied onto each live page. */
+  private passwordFill = false;
 
   constructor(private readonly options: BrowserTabsOptions) {
     this.hostWindow = options.window;
@@ -106,6 +109,11 @@ export class BrowserTabs {
     await this.materialize(activeTab(this.set), true);
     this.layout();
     this.publish();
+  }
+
+  setPasswordFill(enabled: boolean): void {
+    this.passwordFill = enabled;
+    for (const slot of this.slots.values()) slot.service?.setPasswordFill(enabled);
   }
 
   activeService(): BrowserService | null {
@@ -416,6 +424,7 @@ export class BrowserTabs {
       onWindowOpen: (details) => this.onWindowOpen(record.id, details),
       onChildWindow: (child) => this.slots.get(record.id)?.popups.push(child),
     });
+    service.setPasswordFill(this.passwordFill);
     slot = { service, history, partition, popups: slot?.popups ?? [] };
     this.slots.set(record.id, slot);
     this.set = patchBrowserTab(this.set, record.id, { discarded: false });
@@ -524,6 +533,9 @@ export class BrowserTabs {
       },
       passwordOffer: (offer) => {
         this.hooks.passwordOffer({ ...offer, tabId: id });
+      },
+      passwordFillRequested: () => {
+        this.hooks.passwordFillRequested(id);
       },
     };
   }

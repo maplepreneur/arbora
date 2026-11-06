@@ -30,8 +30,20 @@ import { playSound } from '../../sounds';
 import { closeOverlay, openSettings, useApp } from '../../store';
 import { useTerminals } from '../../terminal-store';
 import { TaskDefaults } from '../settings/TaskAgentPicker';
+import { PasswordCheck } from '../settings/PasswordsSection';
 
-const STEPS = ['welcome', 'project', 'dev', 'agents', 'tasks', 'grove', 'keys', 'alerts', 'finish'] as const;
+const STEPS = [
+  'welcome',
+  'project',
+  'dev',
+  'agents',
+  'tasks',
+  'grove',
+  'keys',
+  'alerts',
+  'passwords',
+  'finish',
+] as const;
 type Step = (typeof STEPS)[number];
 
 const STEP_LABELS: Readonly<Record<Step, string>> = {
@@ -43,6 +55,7 @@ const STEP_LABELS: Readonly<Record<Step, string>> = {
   grove: 'Grove',
   keys: 'Shortcuts',
   alerts: 'Alerts',
+  passwords: 'Passwords',
   finish: 'Try it',
 };
 
@@ -504,6 +517,32 @@ function AlertsStep() {
   );
 }
 
+function PasswordsStep() {
+  const on = useApp((s) => s.settings.passwords.provider === '1password');
+  return (
+    <StepShell
+      title="Sign in with 1Password"
+      lead="Use it for the app and for tools such as Figma. Arbora never stores the password. The check only looks for the op command."
+    >
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          data-testid="onboarding-passwords"
+          checked={on}
+          onChange={(event) =>
+            void updateSettings({ passwords: { provider: event.target.checked ? '1password' : 'none' } })
+          }
+        />
+        Use 1Password
+      </label>
+      <PasswordCheck />
+      <p className="text-xs text-fg-subtle">
+        Installing 1Password stays in a terminal: pnpm setup:1password. On Linux that asks before it uses sudo.
+      </p>
+    </StepShell>
+  );
+}
+
 function FinishStep() {
   const agentLabel = useChordLabel(CommandId.agentMode);
   const hasPage = useApp((s) => Boolean(s.browser?.url && /^https?:/.test(s.browser.url)));
@@ -605,6 +644,7 @@ export default function Onboarding() {
         {step === 'grove' && <GroveStep pressed={pressed} />}
         {step === 'keys' && <KeysStep pressed={pressed} />}
         {step === 'alerts' && <AlertsStep />}
+        {step === 'passwords' && <PasswordsStep />}
         {step === 'finish' && <FinishStep />}
       </div>
       <footer className="flex items-center gap-2 border-t border-border px-5 py-3">

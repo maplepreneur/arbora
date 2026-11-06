@@ -792,7 +792,7 @@ async function sendActiveTab(): Promise<void> {
 }
 
 /** Lists 1Password titles for this origin and fills the chosen login. The password stays in main. */
-async function fillFromPasswordManager(): Promise<void> {
+export async function fillFromPasswordManager(tabId?: string): Promise<void> {
   const url = useApp.getState().browser?.url ?? '';
   let origin: string;
   try {
@@ -811,7 +811,7 @@ async function fillFromPasswordManager(): Promise<void> {
       items: items.map((item) => ({ id: item.id, label: item.title })),
     });
     if (!id) return;
-    const active = useApp.getState().browserTabs.find((tab) => tab.active);
+    const active = tabId ? { id: tabId } : useApp.getState().browserTabs.find((tab) => tab.active);
     const result = await window.arbora.invoke('passwords.fill', active ? { id, tabId: active.id } : { id });
     showToast(result.ok ? 'Filled from 1Password' : 'Could not find a password field');
   } catch (error) {

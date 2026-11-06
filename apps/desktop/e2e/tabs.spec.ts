@@ -542,4 +542,36 @@ if (args[1] === 'create') {
       await design.close();
     }
   });
+
+  test('shows a 1Password key on a focused login field and hides it again', async () => {
+    const login = await startStaticFixture(LOGIN);
+    const userData = tempUserData();
+    writeFileSync(join(userData, 'settings.json'), JSON.stringify({ version: 7, passwords: { provider: 'none' } }));
+    const { app, page } = await launch(userData, [LOGIN]);
+    const inLogin = (source: string): Promise<boolean> =>
+      app.evaluate(({ webContents }, code) => {
+        const target = webContents.getAllWebContents().find((wc) => {
+          const path = wc.session.storagePath ?? '';
+          return path.includes('arbora-browser-') && !wc.getURL().startsWith('devtools:');
+        });
+        if (!target) throw new Error('No app page');
+        return target.executeJavaScript(code);
+      }, source);
+    try {
+      await openUrl(page, login.url);
+      await inLogin(`document.querySelector('input[name="user"]').focus()`);
+      expect(await inLogin(`Boolean(document.querySelector('[data-testid="password-field-key"]'))`)).toBe(false);
+      await page.evaluate(() => window.arbora.invoke('settings.update', { passwords: { provider: '1password' } }));
+      await expect
+        .poll(() => inLogin(`Boolean(document.querySelector('[data-testid="password-field-key"]'))`))
+        .toBe(true);
+      await inLogin(`document.querySelector('input[name="user"]').blur()`);
+      await expect
+        .poll(() => inLogin(`Boolean(document.querySelector('[data-testid="password-field-key"]'))`))
+        .toBe(false);
+    } finally {
+      await app.close();
+      await login.close();
+    }
+  });
 });

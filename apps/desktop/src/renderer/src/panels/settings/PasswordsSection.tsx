@@ -1,7 +1,45 @@
+import { useState } from 'react';
 import { resolvedPasswordMode } from '@arbora/shared';
 import { updateSettings } from '../../settings-client';
 import { useApp } from '../../store';
 import { Segmented, SettingRow, Toggle } from './controls';
+
+/** Asks main whether `op` is on PATH. It does not install anything. */
+export function PasswordCheck() {
+  const [status, setStatus] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        data-testid="passwords-check"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          void window.arbora
+            .invoke('passwords.check')
+            .then((result) => {
+              setStatus(
+                result.installed && result.version
+                  ? `op ${result.version} · ${result.mode}`
+                  : 'op is not installed. Run pnpm setup:1password in a terminal.',
+              );
+            })
+            .catch((error: unknown) => setStatus((error as Error).message))
+            .finally(() => setBusy(false));
+        }}
+        className="rounded border border-border px-2 py-1 text-xs text-fg hover:border-accent disabled:opacity-50"
+      >
+        Check
+      </button>
+      {status && (
+        <span className="max-w-64 text-xs text-fg-muted" data-testid="passwords-check-result">
+          {status}
+        </span>
+      )}
+    </div>
+  );
+}
 
 /** 1Password is the only password provider. Arbora stores no passwords of its own. */
 export function PasswordsSection() {
@@ -38,6 +76,12 @@ export function PasswordsSection() {
           ]}
           onChange={(next) => void updateSettings({ passwords: { mode: next } })}
         />
+      </SettingRow>
+      <SettingRow
+        title="1Password command"
+        detail="Check looks for op and does not install anything. pnpm setup:1password runs in a terminal, and on Linux it asks before it uses sudo."
+      >
+        <PasswordCheck />
       </SettingRow>
       <SettingRow title="Agent logins" detail="Ask shows a permission card before the agent signs in. Never refuses.">
         <Segmented

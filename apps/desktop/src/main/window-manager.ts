@@ -526,6 +526,14 @@ export class ProjectWindow {
     }
     this.browser = tabs.activeService();
     tabs.setBounds(this.scaledBrowserRect(), this.browserBounds.emulation);
+    this.applyPasswordFill();
+  }
+
+  /** The key on a login field follows whether 1Password is the provider. */
+  applyPasswordFill(): void {
+    const enabled = this.options.settings.get().passwords.provider === '1password';
+    this.tabs?.setPasswordFill(enabled);
+    for (const parked of this.parkedBrowsers.values()) parked.tabs.setPasswordFill(enabled);
   }
 
   /** Hide the current page and remember it under the project it belongs to. */
@@ -581,6 +589,10 @@ export class ProjectWindow {
       passwordOffer: (offer) => {
         if (this.options.settings.get().passwords.provider !== '1password') return;
         sendEvent(this.contents, 'passwords.offerSave', offer);
+      },
+      passwordFillRequested: (tabId) => {
+        if (this.options.settings.get().passwords.provider !== '1password') return;
+        sendEvent(this.contents, 'passwords.fillRequested', { tabId });
       },
     };
   }
@@ -1186,6 +1198,7 @@ export class WindowManager {
     for (const w of this.windows) {
       w.applyZoom();
       w.applyGitSync();
+      w.applyPasswordFill();
     }
   }
 

@@ -195,3 +195,121 @@ document.addEventListener(
   },
   true,
 );
+
+// A key on a focused login field. It is only shown when 1Password is the provider. The click asks
+// main to list titles; the password is typed from main and never enters this script.
+let passwordFillEnabled = false;
+let passwordKey: HTMLButtonElement | null = null;
+let passwordKeyField: HTMLInputElement | null = null;
+
+function isLoginField(target: EventTarget | null): target is HTMLInputElement {
+  if (!(target instanceof HTMLInputElement) || target.disabled || target.readOnly) return false;
+  if (target.type === 'hidden' || target.type === 'checkbox' || target.type === 'radio') return false;
+  if (target.type === 'password' || target.type === 'email') return true;
+  const hint = `${target.name} ${target.id} ${target.getAttribute('autocomplete') ?? ''}`.toLowerCase();
+  if (/(user|email|login)/.test(hint)) return true;
+  return (
+    (target.type === 'text' || target.type === '') && Boolean(target.form?.querySelector('input[type="password"]'))
+  );
+}
+
+function hidePasswordKey(): void {
+  passwordKey?.remove();
+  passwordKey = null;
+  passwordKeyField = null;
+}
+
+function placePasswordKey(field: HTMLInputElement): void {
+  const rect = field.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) {
+    hidePasswordKey();
+    return;
+  }
+  if (!passwordKey) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.testid = 'password-field-key';
+    button.setAttribute('aria-label', 'Fill from 1Password');
+    button.append(passwordKeyIcon());
+    button.addEventListener('mousedown', (event) => event.preventDefault());
+    button.addEventListener('click', () => send('passwords.fillRequested', {}));
+    Object.assign(button.style, {
+      position: 'fixed',
+      zIndex: '2147483646',
+      width: '22px',
+      height: '22px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '0',
+      border: '1px solid #c5c9c6',
+      borderRadius: '4px',
+      background: '#fff',
+      color: '#1f6b4a',
+      cursor: 'pointer',
+    });
+    passwordKey = button;
+    document.documentElement.append(button);
+  }
+  passwordKey.style.top = `${Math.max(4, rect.top + rect.height / 2 - 11)}px`;
+  passwordKey.style.left = `${Math.max(4, rect.right - 26)}px`;
+  passwordKeyField = field;
+}
+
+function passwordKeyIcon(): SVGSVGElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', '14');
+  svg.setAttribute('height', '14');
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', 'currentColor');
+  path.setAttribute('stroke-width', '2');
+  path.setAttribute('stroke-linecap', 'round');
+  path.setAttribute('stroke-linejoin', 'round');
+  path.setAttribute(
+    'd',
+    'M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z',
+  );
+  const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  dot.setAttribute('cx', '16.5');
+  dot.setAttribute('cy', '7.5');
+  dot.setAttribute('r', '.5');
+  dot.setAttribute('fill', 'currentColor');
+  svg.append(path, dot);
+  return svg;
+}
+
+function showPasswordKey(field: HTMLInputElement): void {
+  if (!passwordFillEnabled) return;
+  placePasswordKey(field);
+}
+
+on('passwords.setEnabled', ({ enabled }) => {
+  passwordFillEnabled = enabled;
+  if (!enabled) hidePasswordKey();
+  else if (isLoginField(document.activeElement)) showPasswordKey(document.activeElement);
+});
+
+document.addEventListener(
+  'focusin',
+  (event) => {
+    if (passwordFillEnabled && isLoginField(event.target)) showPasswordKey(event.target);
+  },
+  true,
+);
+document.addEventListener(
+  'focusout',
+  (event) => {
+    if (event.relatedTarget === passwordKey) return;
+    hidePasswordKey();
+  },
+  true,
+);
+document.addEventListener(
+  'scroll',
+  () => {
+    if (passwordKeyField) placePasswordKey(passwordKeyField);
+  },
+  true,
+);

@@ -33,6 +33,7 @@ import { applyLibrary } from './projects-store';
 import { applyUpdateState } from './update-store';
 import {
   executeCommand,
+  fillFromPasswordManager,
   navigateBrowser,
   openGroveWebsite,
   reclaimFocusFromParkedPage,
@@ -114,6 +115,9 @@ function useMainEvents(): void {
       arbora.on('command.invoke', ({ commandId, fromPage }) => executeCommand(commandId, { fromPage })),
       arbora.on('browser.stateChanged', (browser) => useApp.setState({ browser })),
       arbora.on('browser.tabsChanged', ({ tabs }) => syncAppProblems(tabs)),
+      arbora.on('passwords.fillRequested', ({ tabId }) => {
+        void fillFromPasswordManager(tabId);
+      }),
       arbora.on('passwords.offerSave', ({ origin, usernameField, passwordField, tabId }) => {
         let host: string;
         try {

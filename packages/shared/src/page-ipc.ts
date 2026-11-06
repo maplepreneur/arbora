@@ -38,6 +38,8 @@ export const pageMessages = {
     usernameField: z.string().max(200).nullable(),
     passwordField: z.string().max(200),
   }),
+  /** The user clicked the key on a focused login field. No field values. */
+  'passwords.fillRequested': z.object({}),
 } as const;
 
 export type PageMessageName = keyof typeof pageMessages;
@@ -59,6 +61,8 @@ export const pageEvents = {
   'design.stop': z.object({ revert: z.boolean() }),
   'design.setOverlay': z.object({ visible: z.boolean(), nonce: z.string() }),
   'design.command': designCommandSchema,
+  /** Whether the key on a focused login field should be shown. */
+  'passwords.setEnabled': z.object({ enabled: z.boolean() }),
 } as const;
 
 export type PageEventName = keyof typeof pageEvents;

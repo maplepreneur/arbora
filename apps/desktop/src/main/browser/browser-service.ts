@@ -90,6 +90,8 @@ export interface BrowserServiceEvents {
   focusParked(): void;
   /** A submitted login form. Field names only; the values stay in the page until main reads them. */
   passwordOffer?(offer: { origin: string; usernameField: string | null; passwordField: string }): void;
+  /** The user clicked the key on a focused login field. */
+  passwordFillRequested?(): void;
 }
 
 export interface WindowOpenDecision {
@@ -156,6 +158,8 @@ export class BrowserService {
   private readonly overlayAcks = new Map<string, () => void>();
   private inspecting = false;
   private designing = false;
+  /** The key on a focused login field. Main turns it on when 1Password is the provider. */
+  private passwordFill = false;
   /** Block document navigations while design edits are unsaved. */
   private designGuard = false;
   private designDraft: { ops: DesignOp[]; cursor: number } = { ops: [], cursor: 0 };
@@ -591,6 +595,17 @@ export class BrowserService {
     this.designGuard = active;
   }
 
+  /** Shows or hides the key on a focused login field. A send before the page is ready makes that page the first window. */
+  setPasswordFill(enabled: boolean): void {
+    this.passwordFill = enabled;
+    if (this.state.pageReady) this.sendPasswordFill();
+  }
+
+  private sendPasswordFill(): void {
+    if (this.contents.isDestroyed()) return;
+    this.contents.send(pageIpcName('passwords.setEnabled'), { enabled: this.passwordFill });
+  }
+
   sendDesignCommand(command: DesignCommand): void {
     this.sendDesign('design.command', command);
   }
@@ -657,6 +672,7 @@ export class BrowserService {
         this.update({ pageReady: true });
         if (this.designing) this.sendDesign('design.start', this.designDraft);
         else if (this.inspecting) this.contents.send(pageIpcName('inspector.start'), {});
+        this.sendPasswordFill();
         break;
       case 'pong':
         this.pings.get(message.payload.nonce)?.();
@@ -682,6 +698,9 @@ export class BrowserService {
         break;
       case 'passwords.offerSave':
         this.events.passwordOffer?.(message.payload);
+        break;
+      case 'passwords.fillRequested':
+        this.events.passwordFillRequested?.();
         break;
       default: {
         const unreachable: never = message;

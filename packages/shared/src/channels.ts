@@ -976,6 +976,8 @@ export const events = {
     'agent.grantsChanged',
     z.object({ threadId: z.string(), tabIds: z.array(z.string()) }),
   ),
+  /** The user clicked the key on a focused login field. The renderer lists titles and fills in main. */
+  'passwords.fillRequested': defineEvent('passwords.fillRequested', z.object({ tabId: z.string() })),
   'passwords.offerSave': defineEvent(
     'passwords.offerSave',
     z.object({

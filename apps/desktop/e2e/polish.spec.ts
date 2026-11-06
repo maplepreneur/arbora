@@ -88,6 +88,10 @@ test.describe('Stage 9 onboarding', () => {
       await page.getByTestId('onboarding-next').click();
       await page.getByTestId('onboarding-sounds').click();
       await page.getByTestId('onboarding-next').click();
+      await expect(page.getByTestId('onboarding-step-passwords')).toBeVisible();
+      await page.getByTestId('passwords-check').click();
+      await expect(page.getByTestId('passwords-check-result')).toBeVisible();
+      await page.getByTestId('onboarding-next').click();
       await page.getByTestId('onboarding-finish').click();
       await expect(page.getByTestId('onboarding')).toHaveCount(0);
       // Finishing tries agent mode right away.
