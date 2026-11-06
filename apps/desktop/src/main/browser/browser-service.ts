@@ -1291,32 +1291,39 @@ export class BrowserService {
   }
 
   private async captureFullPage(request: ScreenshotRequest): Promise<ScreenshotResult> {
-    if (!this.debuggerAttached) await this.attachDebugger();
-    if (!this.debuggerAttached) throw new Error('Full-page screenshots need the debugger; close DevTools and retry');
-    const dbg = this.contents.debugger;
-    const layout = (await dbg.sendCommand('Page.getLayoutMetrics')) as {
-      cssContentSize: { width: number; height: number };
-    };
-    const { innerWidth, devicePixelRatio } = await this.metrics();
-    const width = Math.ceil(Math.max(layout.cssContentSize.width, innerWidth));
-    const height = Math.ceil(Math.min(layout.cssContentSize.height, MAX_CAPTURE_HEIGHT / devicePixelRatio));
-    const shot = (await dbg.sendCommand('Page.captureScreenshot', {
-      format: 'png',
-      captureBeyondViewport: true,
-      clip: { x: 0, y: 0, width, height, scale: 1 },
-    })) as { data: string };
-    const pixels = toPixels(nativeImage.createFromBuffer(Buffer.from(shot.data, 'base64')));
-    const dpr = pixels.width / width;
-    if (request.highlight) {
-      drawOutline(
-        pixels.bitmap,
-        pixels.width,
-        pixels.height,
-        scaleRect(request.highlight, dpr),
-        HIGHLIGHT_THICKNESS_CSS * dpr,
-      );
-    }
-    return encode(pixels, dpr);
+    // A parked view never paints, and CDP `Page.captureScreenshot` then hangs. Show it behind the
+    // visible tab first, the same way a viewport shot does, and give up if the capture still stalls.
+    return this.withPaintedView(async () => {
+      if (!this.debuggerAttached) await this.attachDebugger();
+      if (!this.debuggerAttached) throw new Error('Full-page screenshots need the debugger; close DevTools and retry');
+      const dbg = this.contents.debugger;
+      const layout = (await dbg.sendCommand('Page.getLayoutMetrics')) as {
+        cssContentSize: { width: number; height: number };
+      };
+      const { innerWidth, devicePixelRatio } = await this.metrics();
+      const width = Math.ceil(Math.max(layout.cssContentSize.width, innerWidth));
+      const height = Math.ceil(Math.min(layout.cssContentSize.height, MAX_CAPTURE_HEIGHT / devicePixelRatio));
+      const shot = (await Promise.race([
+        dbg.sendCommand('Page.captureScreenshot', {
+          format: 'png',
+          captureBeyondViewport: true,
+          clip: { x: 0, y: 0, width, height, scale: 1 },
+        }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Screenshot timed out')), 8_000)),
+      ])) as { data: string };
+      const pixels = toPixels(nativeImage.createFromBuffer(Buffer.from(shot.data, 'base64')));
+      const dpr = pixels.width / width;
+      if (request.highlight) {
+        drawOutline(
+          pixels.bitmap,
+          pixels.width,
+          pixels.height,
+          scaleRect(request.highlight, dpr),
+          HIGHLIGHT_THICKNESS_CSS * dpr,
+        );
+      }
+      return encode(pixels, dpr);
+    });
   }
 }
 

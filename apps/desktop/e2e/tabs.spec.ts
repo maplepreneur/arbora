@@ -546,6 +546,7 @@ if (args[1] === 'create') {
         .toBe('done');
       const text = await reported.last().innerText();
       expect(text, text).toContain('Inspect: fill #1f6b4a, padding 24px');
+      expect(text, text).toContain('Full page ok');
       const scores = /Frame scores: ([0-9.]+) chrome ([0-9.]+) frame ([0-9.]+) overlay ([0-9.]+) diff ([0-9.]+)/.exec(
         text,
       );

@@ -387,6 +387,11 @@ async function matchFigma(cx: AgentContext, sessionId: string, state: SessionSta
     await say(cx, sessionId, `Compare failed: ${shot.text.slice(0, 400)}`, state);
     return;
   }
+  const full = await callBrowserTool(cx, sessionId, state, 'browser_screenshot', { target: id, mode: 'full' });
+  if (full.isError || full.images < 1) {
+    await say(cx, sessionId, `Compare failed: ${full.text.slice(0, 400)}`, state);
+    return;
+  }
   const before = await compareScore(cx, sessionId, state, { left: 'app', right: id, mode: 'side_by_side' });
   if (!before) return;
   const wrote = await writeMatchedApp(cx, sessionId, state);
@@ -418,7 +423,7 @@ async function matchFigma(cx: AgentContext, sessionId: string, state: SessionSta
   await say(
     cx,
     sessionId,
-    `Inspect: fill #1f6b4a, padding 24px. Frame scores: ${before} chrome ${chrome} frame ${framed} overlay ${overlay} diff ${diff}`,
+    `Inspect: fill #1f6b4a, padding 24px. Full page ok. Frame scores: ${before} chrome ${chrome} frame ${framed} overlay ${overlay} diff ${diff}`,
     state,
   );
 }
