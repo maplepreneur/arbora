@@ -369,6 +369,11 @@ export const channels = {
     none,
   ),
   'browser.tabs.discard': defineChannel('browser.tabs.discard', z.object({ id: z.string() }), none),
+  'browser.tabs.stats': defineChannel(
+    'browser.tabs.stats',
+    z.object({ id: z.string() }),
+    z.object({ live: z.boolean(), memoryKb: z.number(), cpuPercent: z.number() }),
+  ),
   'browser.tabs.reopen': defineChannel('browser.tabs.reopen', none, z.object({ id: z.string().nullable() })),
   'browser.tabs.closeOthers': defineChannel('browser.tabs.closeOthers', z.object({ id: z.string() }), none),
   'browser.tabs.pin': defineChannel('browser.tabs.pin', z.object({ id: z.string(), pinned: z.boolean() }), none),

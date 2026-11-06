@@ -69,6 +69,7 @@ export const CommandId = {
   browserClearProblems: 'arbora.browser.clearProblems',
   browserNewTab: 'arbora.browser.newTab',
   browserCloseTab: 'arbora.browser.closeTab',
+  browserDiscardTab: 'arbora.browser.discardTab',
   browserReopenTab: 'arbora.browser.reopenTab',
   browserNextTab: 'arbora.browser.nextTab',
   browserPreviousTab: 'arbora.browser.previousTab',
@@ -301,6 +302,11 @@ export const DEFAULT_COMMANDS: readonly CommandDescriptor[] = [
     keybinding: 'mod+t',
     intercept: true,
     when: 'contentPane',
+  },
+  {
+    id: CommandId.browserDiscardTab,
+    title: 'Discard Browser Tab',
+    category: 'Browser',
   },
   {
     id: CommandId.browserCloseTab,

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import { type BrowserWindow, type Session, type WebContents } from 'electron';
+import { app, type BrowserWindow, type Session, type WebContents } from 'electron';
 import {
   activateBrowserTab,
   activeTab,
@@ -258,6 +258,25 @@ export class BrowserTabs {
   pin(id: string, pinned: boolean): void {
     this.set = pinBrowserTab(this.set, id, pinned);
     this.publish();
+  }
+
+  /** Resident memory and CPU for the tab's renderer process. A discarded tab is not live. */
+  stats(id: string): { live: boolean; memoryKb: number; cpuPercent: number } {
+    const contents = this.slots.get(id)?.service?.contents;
+    if (!contents || contents.isDestroyed()) return { live: false, memoryKb: 0, cpuPercent: 0 };
+    try {
+      const pid = contents.getOSProcessId();
+      const metric = app.getAppMetrics().find((entry) => entry.pid === pid);
+      if (!metric) return { live: false, memoryKb: 0, cpuPercent: 0 };
+      const cpu = metric.cpu.percentCPUUsage;
+      return {
+        live: true,
+        memoryKb: metric.memory.workingSetSize,
+        cpuPercent: Number.isFinite(cpu) ? cpu : 0,
+      };
+    } catch {
+      return { live: false, memoryKb: 0, cpuPercent: 0 };
+    }
   }
 
   discard(id: string): void {
@@ -550,4 +569,3 @@ export class BrowserTabs {
     });
   }
 }
-

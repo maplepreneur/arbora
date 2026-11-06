@@ -79,6 +79,23 @@ async function openUrl(page: Page, url: string): Promise<void> {
 }
 
 test.describe('Stage 12 tabs and 1Password', () => {
+  test('shows memory and CPU on a tab hover', async () => {
+    const design = await startStaticFixture(DESIGN);
+    const { app, page } = await launch(tempUserData(), [DESIGN]);
+    try {
+      await openUrl(page, design.url);
+      await page.locator('[data-testid="browser-tab"][data-tab-role="app"]').hover();
+      const card = page.getByTestId('browser-tab-stats');
+      await expect(card).toBeVisible();
+      await expect(card).toContainText('MB');
+      await expect(card).toContainText('CPU');
+      await expect(card).not.toContainText('Not loaded');
+    } finally {
+      await app.close();
+      await design.close();
+    }
+  });
+
   test('keeps the app tab and reopens a closed reference tab', async () => {
     const { app, page } = await launch(tempUserData(), [DESIGN]);
     try {

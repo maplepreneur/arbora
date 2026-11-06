@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import clsx from 'clsx';
 import { CommandId, type BrowserTabSnapshot, type ContextMenuItem } from '@arbora/shared';
@@ -58,6 +58,8 @@ function TabButton({
   onDragStart: () => void;
   onDrop: () => void;
 }) {
+  const hovering = useRef(false);
+  const [stats, setStats] = useState<{ top: number; left: number; text: string } | null>(null);
   return (
     <div
       role="tab"
@@ -75,6 +77,25 @@ function TabButton({
       onContextMenu={(event) => {
         event.preventDefault();
         void showTabMenu(tab);
+      }}
+      onMouseEnter={(event) => {
+        hovering.current = true;
+        const rect = event.currentTarget.getBoundingClientRect();
+        void window.arbora.invoke('browser.tabs.stats', { id: tab.id }).then((result) => {
+          if (!hovering.current) return;
+          const memory = result.memoryKb / 1024;
+          const size = memory >= 10 ? `${Math.round(memory)} MB` : `${memory.toFixed(1)} MB`;
+          const cpu = `${Math.round(result.cpuPercent)}%`;
+          setStats({
+            top: rect.bottom + 4,
+            left: rect.left,
+            text: result.live ? `${size} · ${cpu} CPU` : 'Not loaded',
+          });
+        });
+      }}
+      onMouseLeave={() => {
+        hovering.current = false;
+        setStats(null);
       }}
       onDragStart={onDragStart}
       onDragOver={(event) => event.preventDefault()}
@@ -110,6 +131,15 @@ function TabButton({
         </button>
       )}
       <span className="sr-only">{index}</span>
+      {stats && (
+        <div
+          data-testid="browser-tab-stats"
+          className="fixed z-50 rounded border border-border bg-bg-elevated px-2 py-1 text-[11px] text-fg shadow-lg"
+          style={{ top: stats.top, left: stats.left }}
+        >
+          {stats.text}
+        </div>
+      )}
     </div>
   );
 }

@@ -1294,6 +1294,12 @@ async function runCommand(id: CommandId): Promise<void> {
     case CommandId.browserNewTab:
       if (hasProject()) await arbora.invoke('browser.tabs.open', {});
       return;
+    case CommandId.browserDiscardTab: {
+      const active = useApp.getState().browserTabs.find((tab) => tab.active && tab.role !== 'app');
+      if (!active) showToast('The app tab stays loaded');
+      else await arbora.invoke('browser.tabs.discard', { id: active.id });
+      return;
+    }
     case CommandId.browserCloseTab: {
       const active = useApp.getState().browserTabs.find((tab) => tab.active);
       if (active && active.role !== 'app') await arbora.invoke('browser.tabs.close', { id: active.id });
