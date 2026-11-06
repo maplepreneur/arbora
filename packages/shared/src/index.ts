@@ -4,6 +4,7 @@ export * from './browser.js';
 export * from './channels.js';
 export * from './commands.js';
 export * from './design.js';
+export * from './dev-plugin.js';
 export * from './files.js';
 export * from './problems.js';
 export * from './project-commands.js';

@@ -102,8 +102,13 @@ export default defineConfig(
       'fixtures/plain-html/*.config.js',
       'apps/desktop/scripts/**',
       'scripts/*.mjs',
+      'packages/dev-plugin/**/*.mjs',
     ],
     ...tseslint.configs.disableTypeChecked,
+  },
+  {
+    files: ['packages/dev-plugin/**/*.mjs'],
+    languageOptions: { globals: globals.node },
   },
   {
     files: ['apps/desktop/scripts/**', 'scripts/*.mjs'],

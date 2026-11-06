@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, basename } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, clipboard, crashReporter, dialog, Menu, shell, type WebContents } from 'electron';
 import { AgentRegistry } from '@arbora/acp-client';
 import {
@@ -36,6 +37,7 @@ import { describeAttachment, pastedImagePath, pickPastedImageType } from './agen
 import { BrowserSessions } from './browser/browser-sessions.js';
 import type { BrowserService } from './browser/browser-service.js';
 import { registerPageIpc } from './browser/page-ipc.js';
+import { devPluginStatus, findDevPluginRoot, installDevPlugin } from './dev-plugin/install.js';
 import { defineHandler, sendEvent } from './ipc.js';
 import { keepRunningAfterLastWindow } from './grove-processes.js';
 import { buildMacMenu } from './menu.js';
@@ -1009,6 +1011,21 @@ function main(): void {
         },
       }));
       return undefined;
+    });
+
+    defineHandler('devPlugin.status', isTrusted, (_req, event) => {
+      const project = windowFor(event.sender).project?.path;
+      if (!project) return { bundler: null, installed: false };
+      return devPluginStatus(project);
+    });
+    defineHandler('devPlugin.install', isTrusted, (_req, event) => {
+      const project = windowFor(event.sender).project?.path;
+      if (!project) return { ok: false, bundler: null, message: 'Open a project first' };
+      const pluginRoot = findDevPluginRoot([app.getAppPath(), process.cwd(), dirname(fileURLToPath(import.meta.url))]);
+      if (!pluginRoot) {
+        return { ok: false, bundler: null, message: 'This build does not include the dev plugin' };
+      }
+      return installDevPlugin({ projectPath: project, pluginRoot, platform: process.platform });
     });
 
     defineHandler('agentMode.setInspecting', isTrusted, ({ active }, event) => {

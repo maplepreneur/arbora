@@ -586,6 +586,26 @@ export const channels = {
     none,
   ),
 
+  /** Whether the open project can take `@arbora/dev-plugin`, and whether it is already wired. */
+  'devPlugin.status': defineChannel(
+    'devPlugin.status',
+    none,
+    z.object({
+      bundler: z.enum(['vite', 'next', 'nuxt']).nullable(),
+      installed: z.boolean(),
+    }),
+  ),
+  /** Copies the dev plugin into the project and registers it with Vite, Next or Nuxt. */
+  'devPlugin.install': defineChannel(
+    'devPlugin.install',
+    none,
+    z.object({
+      ok: z.boolean(),
+      bundler: z.enum(['vite', 'next', 'nuxt']).nullable(),
+      message: z.string().max(2000),
+    }),
+  ),
+
   /**
    * Agent mode (`Mod+K`): `true` (re)starts the page inspector's hover highlight, `false` removes
    * it and drops any pending selection.

@@ -9,6 +9,7 @@ import {
   placePopover,
   sourceTier,
   targetComponent,
+  type SourceTier,
   type AgentModeInclude,
   type AgentModeSelection,
   type AgentModeTarget,
@@ -134,6 +135,62 @@ function Toggle({
   );
 }
 
+/** Offered when the click has no file and line and the project is Vite, Next or Nuxt. */
+function DevPluginOffer({ tier }: { tier: SourceTier }) {
+  const [phase, setPhase] = useState<'loading' | 'offer' | 'busy' | 'done' | 'hidden'>('loading');
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (tier !== 3) return;
+    let cancelled = false;
+    void window.arbora
+      .invoke('devPlugin.status')
+      .then((status) => {
+        if (!cancelled) setPhase(status.bundler && !status.installed ? 'offer' : 'hidden');
+      })
+      .catch(() => {
+        if (!cancelled) setPhase('hidden');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tier]);
+
+  if (tier !== 3 || phase === 'loading' || phase === 'hidden') return null;
+
+  const install = (): void => {
+    setPhase('busy');
+    setMessage(null);
+    void window.arbora
+      .invoke('devPlugin.install')
+      .then((result) => {
+        setMessage(result.message);
+        setPhase(result.ok ? 'done' : 'offer');
+      })
+      .catch((caught: unknown) => {
+        setMessage(caught instanceof Error ? caught.message : 'Could not install the dev plugin');
+        setPhase('offer');
+      });
+  };
+
+  return (
+    <div className="flex flex-col gap-1" data-testid="dev-plugin-offer">
+      {phase !== 'done' && (
+        <button
+          type="button"
+          data-testid="dev-plugin-install"
+          disabled={phase === 'busy'}
+          onClick={install}
+          className="self-start rounded border border-border px-1.5 py-0.5 text-[11px] text-fg-muted hover:bg-bg-muted disabled:opacity-60"
+        >
+          {phase === 'busy' ? 'Installing dev plugin…' : 'Install dev plugin'}
+        </button>
+      )}
+      {message && <p className="text-[11px] text-fg-muted">{message}</p>}
+    </div>
+  );
+}
+
 interface PopoverProps {
   readonly selection: AgentModeSelection;
   readonly targetIndex: number;
@@ -234,7 +291,7 @@ function AgentModePopover({ selection, targetIndex, onTargetIndex }: PopoverProp
               ? 'Exact file and line from the framework'
               : tier === 2
                 ? 'File known, line not known'
-                : 'No source location; the agent gets search candidates'
+                : 'No source location; the agent gets search candidates. Install the dev plugin for an exact file and line.'
           }
           className="rounded bg-bg-muted px-1 font-medium"
         >
@@ -244,6 +301,7 @@ function AgentModePopover({ selection, targetIndex, onTargetIndex }: PopoverProp
           {source ? formatSource(source) : `${selection.framework.id} · ${selection.element.tag}`}
         </span>
       </div>
+      <DevPluginOffer tier={tier} />
       <textarea
         ref={inputRef}
         data-testid="agent-mode-input"

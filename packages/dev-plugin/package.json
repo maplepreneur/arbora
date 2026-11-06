@@ -1,0 +1,13 @@
+{
+  "name": "@arbora/dev-plugin",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Adds data-arbora-src to host elements in development so Arbora can map a click to a file and line.",
+  "exports": {
+    ".": "./src/core.mjs",
+    "./next": "./src/core.mjs",
+    "./nuxt": "./src/nuxt.mjs",
+    "./webpack": "./src/webpack.mjs"
+  }
+}
