@@ -61,6 +61,18 @@ export interface BrowserPreview {
 export interface ArboraToolHostOptions {
   readonly projectPath: string;
   readonly browser: () => BrowserService | null;
+  /** Resolves `target` for this thread. Absent in tests that still have one page. */
+  readonly resolveTab?: (target: string | undefined) => Promise<BrowserService>;
+  readonly listTabs?: () => {
+    id: string;
+    role: 'app' | 'reference';
+    url: string;
+    title: string;
+    active: boolean;
+    granted: boolean;
+  }[];
+  readonly openTab?: (url: string) => Promise<{ id: string }>;
+  readonly closeTab?: (id: string) => Promise<void>;
   readonly devServer: () => DevServer | null;
   readonly terminals: () => TerminalService | null;
   readonly projectSettings: () => ProjectSettings;
@@ -106,6 +118,20 @@ function encodeImage(image: NativeImage, maxEdge: number, jpeg: 'auto' | 'always
   return { data: data.toString('base64'), mimeType, width: fitted.width, height: fitted.height };
 }
 
+function pngToRgba(pngBase64: string): { width: number; height: number; rgba: Uint8Array } {
+  const image = nativeImage.createFromBuffer(Buffer.from(pngBase64, 'base64'));
+  const { width, height } = image.getSize();
+  const bgra = image.toBitmap();
+  const rgba = new Uint8Array(width * height * 4);
+  for (let i = 0; i < width * height; i += 1) {
+    rgba[i * 4] = bgra[i * 4 + 2] ?? 0;
+    rgba[i * 4 + 1] = bgra[i * 4 + 1] ?? 0;
+    rgba[i * 4 + 2] = bgra[i * 4] ?? 0;
+    rgba[i * 4 + 3] = bgra[i * 4 + 3] ?? 255;
+  }
+  return { width, height, rgba };
+}
+
 function sourceLine(source: { relative: string; line: number | null } | null): string {
   if (!source) return 'unknown';
   return source.line !== null ? `${source.relative}:${source.line}` : source.relative;
@@ -117,9 +143,55 @@ function sourceLine(source: { relative: string; line: number | null } | null): s
  * permission cards, and screenshot thumbnails mirrored into the transcript.
  */
 export class ArboraToolHost implements BrowserToolHost {
+  /** Pages chosen by in-flight tool calls, innermost last. */
+  private readonly targeted: BrowserService[] = [];
+
   constructor(private readonly options: ArboraToolHostOptions) {}
 
+  async prepareTarget(target: string | undefined): Promise<void> {
+    if (!this.options.resolveTab) {
+      if (target !== undefined && target !== '' && target !== 'current') {
+        throw new ToolError(`Unknown tab ${target}; Arbora has a single browser tab for now (omit "target").`);
+      }
+      return;
+    }
+    this.targeted.push(await this.options.resolveTab(target));
+  }
+
+  releaseTarget(): void {
+    this.targeted.pop();
+  }
+
+  listTabs(): ReturnType<NonNullable<ArboraToolHostOptions['listTabs']>> {
+    return this.options.listTabs?.() ?? [];
+  }
+
+  openTab(url: string): Promise<{ id: string }> {
+    if (!this.options.openTab) throw new ToolError('Opening a tab is not available.');
+    return this.options.openTab(url);
+  }
+
+  closeTab(id: string): Promise<void> {
+    if (!this.options.closeTab) throw new ToolError('Closing a tab is not available.');
+    return this.options.closeTab(id);
+  }
+
+  async capture(
+    target: string | undefined,
+    clip: { x: number; y: number; width: number; height: number } | null,
+  ): Promise<{ width: number; height: number; rgba: Uint8Array }> {
+    await this.prepareTarget(target);
+    try {
+      const shot = await this.browser().screenshot(clip ? { mode: 'element', rect: clip } : { mode: 'viewport' });
+      return pngToRgba(shot.pngBase64);
+    } finally {
+      this.releaseTarget();
+    }
+  }
+
   private browser(): BrowserService {
+    const targeted = this.targeted.at(-1);
+    if (targeted) return targeted;
     const browser = this.options.browser();
     if (!browser) throw new ToolError('The browser panel is not open.');
     return browser;
@@ -130,8 +202,13 @@ export class ArboraToolHost implements BrowserToolHost {
   }
 
   page(): PageInfo {
-    const browser = this.options.browser();
-    if (!browser) return { url: '', title: '', loading: false, error: 'The browser panel is not open' };
+    let browser: BrowserService;
+    try {
+      browser = this.browser();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'The browser panel is not open';
+      return { url: '', title: '', loading: false, error: message };
+    }
     const state = browser.getState();
     return {
       url: state.url,
@@ -184,7 +261,7 @@ export class ArboraToolHost implements BrowserToolHost {
   }
 
   private async traceImage(): Promise<ActionTraceImage | null> {
-    const browser = this.options.browser();
+    const browser = this.targeted.at(-1) ?? this.options.browser();
     if (!browser?.getState().url) return null;
     try {
       const shot = await browser.screenshot({ mode: 'viewport' });
@@ -299,7 +376,7 @@ export class ArboraToolHost implements BrowserToolHost {
         `The dev server restarted but printed no URL within ${DEV_URL_TIMEOUT_MS / 1000} s; check devserver_logs.`,
       );
     }
-    const browser = this.options.browser();
+    const browser = this.targeted.at(-1) ?? this.options.browser();
     if (browser) {
       let target = url;
       try {

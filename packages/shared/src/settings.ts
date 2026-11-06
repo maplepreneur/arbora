@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { customAgentSchema, rememberedPermissionsSchema } from './agent.js';
 import { viewportPresetIdSchema } from './browser.js';
+import { browserTabRecordSchema } from './browser-tabs.js';
 import type { WorkspaceKind } from './keybindings.js';
 import { mcpServerConfigSchema } from './mcp-servers.js';
 
@@ -70,6 +71,9 @@ export const projectBrowserStateSchema = z.object({
   lastUrl: z.string().optional(),
   preset: viewportPresetIdSchema.default('responsive'),
   zoomFactor: z.number().min(0.25).max(5).default(1),
+  /** Absent on files written before tabs. An empty array is a deliberate empty browser. */
+  tabs: z.array(browserTabRecordSchema).optional(),
+  activeTabId: z.string().nullable().optional(),
 });
 export type ProjectBrowserState = z.infer<typeof projectBrowserStateSchema>;
 

@@ -24,6 +24,7 @@
  * - "list mcp servers": every server `session/new` passed, with its tool count or "not connected"
  * - "grove delegate": `grove_list_agents`, `grove_start_agent` with "say hello from the helper",
  *   `grove_wait` and `grove_read`, then quotes the helper's last message (the Stage 10 e2e)
+ * - "tab grant <id>": lists tabs, reads the app page and that tab, screenshots the app page, then compares the two
  */
 import { Readable, Writable } from 'node:stream';
 import { basename, isAbsolute, join } from 'node:path';
@@ -471,6 +472,35 @@ async function handlePrompt(cx: AgentContext, params: PromptRequest): Promise<Pr
   }
   if (/browser check/i.test(text)) await browserCheck(cx, sessionId, state);
   if (/tool sweep/i.test(text)) await toolSweep(cx, sessionId, state);
+  const tabGrant = /tab grant\s+(\S+)/i.exec(text);
+  if (tabGrant?.[1]) {
+    const id = tabGrant[1];
+    const listed = await callBrowserTool(cx, sessionId, state, 'browser_tabs', {});
+    const appPage = await callBrowserTool(cx, sessionId, state, 'browser_get_url', {});
+    const reference = await callBrowserTool(cx, sessionId, state, 'browser_get_url', { target: id });
+    const appShot = await callBrowserTool(cx, sessionId, state, 'browser_screenshot', {});
+    const referenceShot = await callBrowserTool(cx, sessionId, state, 'browser_screenshot', { target: id });
+    const compared = await callBrowserTool(cx, sessionId, state, 'browser_compare', {
+      a: { target: id },
+      b: { target: 'app' },
+      mode: 'side_by_side',
+    });
+    const score = /"score":\s*([0-9.]+)/.exec(compared.text)?.[1];
+    await say(
+      cx,
+      sessionId,
+      [
+        `Tabs: ${listed.text.replaceAll('\n', ' | ')}`,
+        `Default: ${appPage.isError ? `ERROR ${appPage.text}` : appPage.text}`,
+        `Reference: ${reference.isError ? `ERROR ${reference.text}` : reference.text}`,
+        `App shot: ${appShot.isError ? `ERROR ${appShot.text}` : `${appShot.images} image`}`,
+        `Reference shot: ${referenceShot.isError ? `ERROR ${referenceShot.text}` : `${referenceShot.images} image`}`,
+        `Compare: ${compared.isError ? `ERROR ${compared.text}` : `score ${score ?? compared.text}`}`,
+      ].join('\n'),
+      state,
+    );
+    return { stopReason: 'end_turn' };
+  }
   const restart = /restart dev/i.test(text);
   if (restart) {
     const result = await callBrowserTool(cx, sessionId, state, 'devserver_restart', {});

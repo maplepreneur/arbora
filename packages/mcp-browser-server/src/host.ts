@@ -65,6 +65,27 @@ export interface PermissionRequest {
  * `DevServer` and `TerminalService`; tests implement it with fakes.
  */
 export interface BrowserToolHost {
+  /**
+   * Selects the page for the tool call that is about to run. `target` is a tab id, `app`, or `active`.
+   * Hosts that omit it still have one page, and an explicit tab id is rejected.
+   */
+  prepareTarget?(target: string | undefined): void | Promise<void>;
+  releaseTarget?(): void;
+  listTabs?(): {
+    id: string;
+    role: 'app' | 'reference';
+    url: string;
+    title: string;
+    active: boolean;
+    granted: boolean;
+  }[];
+  openTab?(url: string): Promise<{ id: string }>;
+  closeTab?(id: string): Promise<void>;
+  /** Viewport pixels for `target`, or the rectangle when `clip` is set. */
+  capture?(
+    target: string | undefined,
+    clip: Box | null,
+  ): Promise<{ width: number; height: number; rgba: Uint8Array }>;
   /** The page's CDP connection; throws (with a message for the agent) when it is unavailable. */
   cdp(): Promise<Cdp>;
   page(): PageInfo;

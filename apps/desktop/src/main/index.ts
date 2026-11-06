@@ -581,6 +581,36 @@ function main(): void {
     defineHandler('browser.suggestUrl', isTrusted, ({ url }, event) => ({
       navigated: windowFor(event.sender).browser?.suggestUrl(url) ?? false,
     }));
+    defineHandler('browser.tabs.list', isTrusted, (_req, event) => windowFor(event.sender).browserTabSnapshot());
+    defineHandler('browser.tabs.open', isTrusted, (request, event) => windowFor(event.sender).openBrowserTab(request));
+    defineHandler('browser.tabs.close', isTrusted, ({ id }, event) => windowFor(event.sender).closeBrowserTab(id));
+    defineHandler('browser.tabs.activate', isTrusted, ({ id }, event) =>
+      windowFor(event.sender).activateBrowserTab(id),
+    );
+    defineHandler('browser.tabs.move', isTrusted, ({ id, toIndex }, event) =>
+      windowFor(event.sender).moveBrowserTab(id, toIndex),
+    );
+    defineHandler('browser.tabs.setRole', isTrusted, ({ id, role }, event) =>
+      windowFor(event.sender).setBrowserTabRole(id, role),
+    );
+    defineHandler('browser.tabs.setProjectSession', isTrusted, ({ id, projectSession }, event) =>
+      windowFor(event.sender).setBrowserTabProjectSession(id, projectSession),
+    );
+    defineHandler('browser.tabs.duplicate', isTrusted, ({ id }, event) =>
+      windowFor(event.sender).duplicateBrowserTab(id),
+    );
+    defineHandler('browser.tabs.closeOthers', isTrusted, ({ id }, event) =>
+      windowFor(event.sender).closeOtherBrowserTabs(id),
+    );
+    defineHandler('browser.tabs.reopen', isTrusted, (_req, event) => windowFor(event.sender).reopenBrowserTab());
+    defineHandler('browser.tabs.cycle', isTrusted, ({ direction }, event) =>
+      windowFor(event.sender).cycleBrowserTab(direction),
+    );
+    defineHandler('browser.tabs.grant', isTrusted, ({ id, threadId }, event) => {
+      const projectWindow = windowFor(event.sender);
+      projectWindow.grantBrowserTab(threadId, id);
+      return projectWindow.browserTabSnapshot();
+    });
 
     defineHandler(
       'contextMenu.show',

@@ -4,6 +4,7 @@ import {
   layoutForAppLaunch,
   layoutStateSchema,
   type AppInfo,
+  type BrowserTabsSnapshot,
   type AppSettings,
   type DesignSelection,
   type DesignSessionSummary,
@@ -57,6 +58,8 @@ export interface AppState {
   toasts: Toast[];
   /** Browser panel state from main; null until the project's browser view exists. */
   browser: NavigationState | null;
+  /** Open browser tabs for this project. Null until main reports them. An empty list is no page. */
+  browserTabs: BrowserTabsSnapshot | null;
   /** Console, exception and network entries for the Problems tab, oldest first. */
   problems: ProblemEntry[];
   /** Dev-server URL offered by `browser.suggestUrl` while another page is open. */
@@ -171,6 +174,7 @@ export const useApp = create<AppState>()(() => ({
   terminalFocused: false,
   toasts: [],
   browser: null,
+  browserTabs: null,
   problems: [],
   suggestedUrl: null,
   urlFocusRequest: 0,
@@ -201,6 +205,7 @@ export function setProject(project: ProjectInfo | null): void {
           design: EMPTY_DESIGN,
           paletteOpen: false,
           browser: null,
+          browserTabs: null,
           problems: [],
           suggestedUrl: null,
         }

@@ -14,6 +14,7 @@ const TRACED_BROWSER_TOOLS = new Set([
   'browser_evaluate',
   'browser_set_viewport',
   'browser_screenshot',
+  'browser_compare',
   'devserver_restart',
 ]);
 
@@ -77,6 +78,8 @@ export function actionTraceTitle(tool: string, args: Record<string, unknown>): s
     }
     case 'browser_screenshot':
       return `Screenshot ${typeof args.mode === 'string' ? args.mode : 'viewport'}`;
+    case 'browser_compare':
+      return `Compare ${typeof args.mode === 'string' ? args.mode : 'side_by_side'}`;
     case 'devserver_restart':
       return 'Restart dev server';
     default:

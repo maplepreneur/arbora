@@ -174,6 +174,9 @@ describe('KeybindingTable', () => {
     expect(table.match(parseChord('ctrl+tab', 'linux'), grove)?.commandId).toBe(CommandId.groveSwitchProject);
     expect(table.match(parseChord('ctrl+shift+tab', 'linux'), grove)?.commandId).toBe(CommandId.groveSwitchProjectBack);
     expect(table.match(parseChord('ctrl+tab', 'linux'), idle)).toBeUndefined();
+    expect(table.match(parseChord('ctrl+tab', 'linux'), { ...idle, contentFocused: true })?.commandId).toBe(
+      CommandId.browserNextTab,
+    );
     expect(table.match(parseChord('ctrl+k', 'linux'), grove)?.commandId).toBe(CommandId.agentMode);
     expect(table.match(parseChord('ctrl+k', 'linux'), grove)?.commandId).not.toBe(CommandId.groveSearch);
     expect(table.match(parseChord('ctrl+alt+m', 'linux'), grove)?.commandId).toBe(CommandId.toggleMaximizeRight);

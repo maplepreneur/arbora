@@ -151,6 +151,8 @@ export function chordFromInput(input: KeyInput): Chord {
     else if (input.code === 'ArrowRight') key = 'arrowright';
     else if (input.code === 'ArrowUp') key = 'arrowup';
     else if (input.code === 'ArrowDown') key = 'arrowdown';
+    else if (input.code === 'PageDown') key = 'pagedown';
+    else if (input.code === 'PageUp') key = 'pageup';
   }
   key ??= normaliseKeyName(input.key);
   return { key, ctrl: input.ctrl, meta: input.meta, alt: input.alt, shift: input.shift };
@@ -183,6 +185,8 @@ const DISPLAY_KEYS: Readonly<Record<string, string>> = {
   backspace: 'Backspace',
   delete: 'Delete',
   tab: 'Tab',
+  pagedown: 'Page Down',
+  pageup: 'Page Up',
 };
 
 function displayKey(key: string): string {

@@ -1,5 +1,5 @@
 import { readlinkSync, realpathSync, statSync, unlinkSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename } from 'node:path';
 import {
   app,
   BrowserWindow,
@@ -15,14 +15,18 @@ import {
 import {
   addRecentProject,
   CommandId,
+  emptyNavigation,
   layoutForAppLaunch,
   DEFAULT_COMMANDS,
   KeybindingTable,
+  resolveAgentTab,
   resolveKeybindingSpecs,
   type Events,
   type KeybindingContext,
   type LayoutState,
   type BrowserHistoryEntry,
+  type BrowserTabRole,
+  type BrowserTabsSnapshot,
   type ProjectBrowserState,
   type Rect,
   type ViewportEmulation,
@@ -42,9 +46,10 @@ import { DesignModeService } from './design/design-mode-service.js';
 import { findCandidates } from './agent-mode/source-search.js';
 import { ProjectRuntime } from './project-runtime.js';
 import { RuntimeTable } from './runtime-table.js';
-import { BrowserHistory } from './browser/browser-history.js';
-import { BrowserService, type BrowserServiceEvents } from './browser/browser-service.js';
-import { browserPartition, type BrowserSessions } from './browser/browser-sessions.js';
+import type { BrowserHistory } from './browser/browser-history.js';
+import { BrowserTabs } from './browser/browser-tabs.js';
+import type { BrowserService, BrowserServiceEvents } from './browser/browser-service.js';
+import { browserPartition, seedReferencePartition, type BrowserSessions } from './browser/browser-sessions.js';
 import { sendEvent } from './ipc.js';
 import { attachKeybindingInterceptor, type InterceptorSource } from './keybinding-interceptor.js';
 import type { ShimCommand } from './mcp/browser-tools.js';
@@ -121,10 +126,9 @@ const FOCUS_APP_COMMANDS: ReadonlySet<string> = new Set([
 ]);
 const BOUNDS_SAVE_DELAY_MS = 500;
 
-/** A project's page, kept alive so switching back does not load it again. */
+/** A project's pages, kept alive so switching back does not load them again. */
 interface LiveBrowser {
-  readonly browser: BrowserService;
-  readonly history: BrowserHistory;
+  readonly tabs: BrowserTabs;
 }
 
 export class ProjectWindowError extends Error {}
@@ -153,6 +157,7 @@ export class ProjectWindow {
   private readonly disposers: (() => void)[] = [];
   browser: BrowserService | null = null;
   private browserHistory: BrowserHistory | null = null;
+  private tabs: BrowserTabs | null = null;
   /** Pages for projects this window has shown, hidden while another project is current. */
   private readonly parkedBrowsers = new Map<string, LiveBrowser>();
   /** Bumped whenever the browser is (re)started or stopped, to drop stale async starts. */
@@ -283,12 +288,151 @@ export class ProjectWindow {
     return this.browserHistory?.list() ?? [];
   }
 
+  browserTabSnapshot(): BrowserTabsSnapshot {
+    return this.tabs?.snapshot() ?? { tabs: [], activeTabId: null, closedCount: 0 };
+  }
+
+  private requireTabs(): BrowserTabs {
+    if (!this.tabs) throw new Error('Open a project first');
+    return this.tabs;
+  }
+
+  openBrowserTab(
+    input: {
+      url?: string | undefined;
+      role?: BrowserTabRole | undefined;
+    } = {},
+  ): Promise<BrowserTabsSnapshot> {
+    return this.requireTabs().openTab(input);
+  }
+
+  closeBrowserTab(id?: string): Promise<BrowserTabsSnapshot> {
+    return this.requireTabs().closeTab(id);
+  }
+
+  activateBrowserTab(id: string): Promise<BrowserTabsSnapshot> {
+    return this.requireTabs().activate(id);
+  }
+
+  moveBrowserTab(id: string, toIndex: number): BrowserTabsSnapshot {
+    return this.requireTabs().move(id, toIndex);
+  }
+
+  setBrowserTabRole(id: string, role: BrowserTabRole): Promise<BrowserTabsSnapshot> {
+    return this.requireTabs().setRole(id, role);
+  }
+
+  setBrowserTabProjectSession(id: string, projectSession: boolean): Promise<BrowserTabsSnapshot> {
+    return this.requireTabs().setProjectSession(id, projectSession);
+  }
+
+  duplicateBrowserTab(id: string): Promise<BrowserTabsSnapshot> {
+    return this.requireTabs().duplicate(id);
+  }
+
+  closeOtherBrowserTabs(id: string): Promise<BrowserTabsSnapshot> {
+    return this.requireTabs().closeOthers(id);
+  }
+
+  reopenBrowserTab(): Promise<BrowserTabsSnapshot> {
+    return this.requireTabs().reopen();
+  }
+
+  cycleBrowserTab(direction: 1 | -1): Promise<BrowserTabsSnapshot> {
+    return this.requireTabs().cycle(direction);
+  }
+
+  /** Reference tabs an agent may read. The app tab is always allowed and is not stored here. */
+  private readonly tabGrants = new Map<string, Set<string>>();
+  /** Tabs a thread opened, which are the only ones it may close. */
+  private readonly agentOpenedTabs = new Map<string, Set<string>>();
+
+  grantBrowserTab(threadId: string, tabId: string): void {
+    const tabs = this.tabs;
+    if (!tabs || !tabs.snapshot().tabs.some((tab) => tab.id === tabId)) throw new Error('Unknown tab');
+    const granted = this.tabGrants.get(threadId) ?? new Set<string>();
+    granted.add(tabId);
+    this.tabGrants.set(threadId, granted);
+    tabs.protect(tabId);
+  }
+
+  agentTabList(threadId: string): {
+    id: string;
+    role: BrowserTabRole;
+    url: string;
+    title: string;
+    active: boolean;
+    granted: boolean;
+  }[] {
+    const granted = this.tabGrants.get(threadId);
+    return (this.tabs?.snapshot().tabs ?? []).map((tab) => ({
+      id: tab.id,
+      role: tab.role,
+      url: tab.url,
+      title: tab.title,
+      active: tab.active,
+      granted: tab.role === 'app' || granted?.has(tab.id) === true,
+    }));
+  }
+
+  async browserForAgent(threadId: string, target: string | undefined): Promise<BrowserService> {
+    const tabs = this.tabs;
+    if (!tabs) throw new Error('The browser panel is not open.');
+    const snapshot = tabs.snapshot();
+    const resolved = resolveAgentTab(
+      snapshot.tabs,
+      snapshot.activeTabId,
+      this.tabGrants.get(threadId) ?? new Set(),
+      target,
+    );
+    if (!resolved.ok) throw new Error(resolved.error);
+    const page = (await tabs.retain(resolved.id)) ?? tabs.page(resolved.id);
+    if (!page) throw new Error(`Tab ${resolved.id} is not loaded.`);
+    return page;
+  }
+
+  async openAgentBrowserTab(threadId: string, url: string): Promise<{ id: string }> {
+    const tabs = this.requireTabs();
+    const before = new Set(tabs.snapshot().tabs.map((tab) => tab.id));
+    await tabs.openTab({ url, role: 'reference', background: true });
+    const created = tabs.snapshot().tabs.find((tab) => !before.has(tab.id));
+    if (!created) throw new Error('Could not open a tab');
+    this.grantBrowserTab(threadId, created.id);
+    const opened = this.agentOpenedTabs.get(threadId) ?? new Set<string>();
+    opened.add(created.id);
+    this.agentOpenedTabs.set(threadId, opened);
+    return { id: created.id };
+  }
+
+  async closeAgentBrowserTab(threadId: string, id: string): Promise<void> {
+    const opened = this.agentOpenedTabs.get(threadId);
+    if (!opened?.has(id)) throw new Error('The agent can only close tabs it opened.');
+    await this.closeBrowserTab(id);
+    opened.delete(id);
+  }
+
+  private pruneGrants(snapshot: BrowserTabsSnapshot): void {
+    const live = new Set(snapshot.tabs.map((tab) => tab.id));
+    for (const [threadId, granted] of this.tabGrants) {
+      for (const id of granted) {
+        if (!live.has(id)) {
+          granted.delete(id);
+          this.tabs?.unprotect(id);
+        }
+      }
+      if (granted.size === 0) this.tabGrants.delete(threadId);
+    }
+    for (const opened of this.agentOpenedTabs.values()) {
+      for (const id of opened) if (!live.has(id)) opened.delete(id);
+    }
+  }
+
   applyZoom(): void {
     const zoom = this.options.settings.get().appearance.uiScale / 100;
     this.window.webContents.setZoomFactor(zoom);
     if (zoom === this.zoom) return;
     this.zoom = zoom;
-    this.browser?.setBounds(this.scaledBrowserRect(), this.browserBounds.emulation);
+    this.tabs?.setBounds(this.scaledBrowserRect(), this.browserBounds.emulation);
   }
 
   /** Restarts the background sync timer when its settings changed. */
@@ -315,7 +459,7 @@ export class ProjectWindow {
 
   setBrowserBounds(rect: Rect | null, emulation: ViewportEmulation | null): void {
     this.browserBounds = { rect, emulation };
-    this.browser?.setBounds(this.scaledBrowserRect(), emulation);
+    this.tabs?.setBounds(this.scaledBrowserRect(), emulation);
   }
 
   rebuildKeybindings(): void {
@@ -375,7 +519,6 @@ export class ProjectWindow {
     });
     if (launch) this.context = { ...this.context, workspace: launch };
     this.emitProject();
-    if (live) sendEvent(this.contents, 'browser.stateChanged', live.browser.getState());
     this.manager.projectsChanged();
   }
 
@@ -390,12 +533,14 @@ export class ProjectWindow {
     this.agentMode?.setInspecting(false);
     const parked = this.unpark(path);
     if (parked) return parked;
-    if (!this.browser || !this.browserHistory) return null;
-    const live = { browser: this.browser, history: this.browserHistory };
+    if (!this.tabs) return null;
+    const tabs = this.tabs;
+    this.tabs = null;
     this.browser = null;
     this.browserHistory = null;
-    live.browser.setBounds(null, null);
-    return live;
+    tabs.unbind();
+    tabs.park();
+    return { tabs };
   }
 
   /** Clears cookies, storage and cache of the project partition, then reloads the page. */
@@ -405,7 +550,8 @@ export class ProjectWindow {
     await partition.clearStorageData();
     await partition.clearCache();
     await partition.clearAuthCache();
-    this.browser?.action('reload');
+    const app = this.tabs?.snapshot().tabs.find((tab) => tab.role === 'app');
+    (app ? this.tabs?.page(app.id) : this.browser)?.action('reload');
   }
 
   closeProject(): void {
@@ -467,38 +613,50 @@ export class ProjectWindow {
   private async startBrowser(projectPath: string): Promise<void> {
     const generation = ++this.browserGeneration;
     const partition = browserPartition(projectPath);
-    const session = await this.options.browserSessions.prepare(partition);
-    if (generation !== this.browserGeneration || this.window.isDestroyed()) return;
-
-    const history = new BrowserHistory(
-      join(this.options.userDataPath, 'browser', partition.replace(/^persist:/, ''), 'history.json'),
+    const tabs = await BrowserTabs.open(
+      {
+        window: this.window,
+        projectPath,
+        projectPartition: partition,
+        preloadPath: this.options.browserPreloadPath,
+        userDataPath: this.options.userDataPath,
+        saved: this.options.settings.get().projects[projectPath]?.browser,
+        prepareSession: (name) => this.options.browserSessions.prepare(name),
+        attachInterceptor: (page) => this.pageInterceptor(page),
+        eventsFor: (owner) => this.browserEvents(owner),
+        beforeDevTools: (browserSession) => this.options.browserSessions.ensureExtensions(browserSession),
+        seedReferencePartition: () => seedReferencePartition(this.options.userDataPath),
+      },
+      (state) => this.saveBrowserState(projectPath, state),
     );
-    const holder: { current: BrowserService | null } = { current: null };
-    const browser = new BrowserService({
-      window: this.window,
-      session,
-      preloadPath: this.options.browserPreloadPath,
-      projectPath,
-      history,
-      initial: this.options.settings.get().projects[projectPath]?.browser,
-      events: this.browserEvents(() => holder.current),
-      attachInterceptor: (page) => this.pageInterceptor(page),
-      saveState: (state) => this.saveBrowserState(projectPath, state),
-      beforeDevTools: () => this.options.browserSessions.ensureExtensions(session),
-    });
-    holder.current = browser;
     if (generation !== this.browserGeneration || this.window.isDestroyed()) {
-      browser.dispose();
-      history.dispose();
+      tabs.dispose();
       return;
     }
-    this.browserHistory = history;
-    this.browser = browser;
-    browser.setBounds(this.scaledBrowserRect(), this.browserBounds.emulation);
-    sendEvent(this.contents, 'browser.stateChanged', browser.getState());
+    this.attachTabs(tabs);
   }
 
-  /** Hide the current page and remember it under the project it belongs to. */
+  private attachTabs(tabs: BrowserTabs): void {
+    this.tabs = tabs;
+    tabs.setBounds(this.scaledBrowserRect(), this.browserBounds.emulation);
+    tabs.bind({
+      active: (page, history) => {
+        this.browser = page;
+        this.browserHistory = history;
+        sendEvent(this.contents, 'browser.stateChanged', page ? page.getState() : emptyNavigation());
+        sendEvent(this.contents, 'browser.problemsCleared', {});
+        if (!page) return;
+        const entries = [...page.getConsole(), ...page.getNetworkErrors()].sort((a, b) => a.id - b.id);
+        if (entries.length > 0) sendEvent(this.contents, 'browser.problemsAdded', { entries });
+      },
+      tabs: (snapshot) => {
+        this.pruneGrants(snapshot);
+        sendEvent(this.contents, 'browser.tabsChanged', snapshot);
+      },
+    });
+  }
+
+  /** Hide the current pages and remember them under the project they belong to. */
   private parkActiveBrowser(): void {
     this.designMode?.setActive(false);
     this.designMode = null;
@@ -506,13 +664,14 @@ export class ProjectWindow {
     this.agentMode = null;
     this.browserGeneration++;
     const path = this.project?.path;
-    const browser = this.browser;
-    const history = this.browserHistory;
+    const tabs = this.tabs;
+    this.tabs = null;
     this.browser = null;
     this.browserHistory = null;
-    if (!path || !browser || !history) return;
-    browser.setBounds(null, null);
-    this.parkedBrowsers.set(path, { browser, history });
+    if (!path || !tabs) return;
+    tabs.unbind();
+    tabs.park();
+    this.parkedBrowsers.set(path, { tabs });
   }
 
   private unpark(path: string): LiveBrowser | null {
@@ -522,14 +681,12 @@ export class ProjectWindow {
   }
 
   private installLive(live: LiveBrowser): void {
-    this.browser = live.browser;
-    this.browserHistory = live.history;
-    live.browser.rebind(
+    live.tabs.rebind(
       this.window,
-      this.browserEvents(() => live.browser),
+      (owner) => this.browserEvents(owner),
       (page) => this.pageInterceptor(page),
     );
-    live.browser.setBounds(this.scaledBrowserRect(), this.browserBounds.emulation);
+    this.attachTabs(live.tabs);
   }
 
   /** Events from a parked page are ignored. `owner` is that page, compared with the one on screen. */
@@ -594,17 +751,14 @@ export class ProjectWindow {
 
   private stopBrowser(): void {
     this.browserGeneration++;
-    this.browser?.dispose();
+    this.tabs?.dispose();
+    this.tabs = null;
     this.browser = null;
-    this.browserHistory?.dispose();
     this.browserHistory = null;
   }
 
   private disposeParked(): void {
-    for (const live of this.parkedBrowsers.values()) {
-      live.browser.dispose();
-      live.history.dispose();
-    }
+    for (const live of this.parkedBrowsers.values()) live.tabs.dispose();
     this.parkedBrowsers.clear();
   }
 
@@ -623,7 +777,7 @@ export class ProjectWindow {
     const project = this.project;
     if (!project) return false;
     const autoOpen = project.settings.autoOpenDevUrl !== false;
-    return autoOpen ? (this.browser?.suggestUrl(url) ?? false) : false;
+    return autoOpen ? (this.tabs?.suggestDevUrl(url) ?? false) : false;
   }
 
   private attachRuntime(projectPath: string): void {
@@ -965,6 +1119,22 @@ export class WindowManager {
       appVersion: options.appVersion,
       host: {
         browser: () => this.findByProject(path)?.browser ?? null,
+        browserForAgent: (threadId, target) => {
+          const projectWindow = this.findByProject(path);
+          if (!projectWindow) return Promise.reject(new Error('The browser panel is not open.'));
+          return projectWindow.browserForAgent(threadId, target);
+        },
+        listBrowserTabs: (threadId) => this.findByProject(path)?.agentTabList(threadId) ?? [],
+        openAgentBrowserTab: (threadId, url) => {
+          const projectWindow = this.findByProject(path);
+          if (!projectWindow) return Promise.reject(new Error('The browser panel is not open.'));
+          return projectWindow.openAgentBrowserTab(threadId, url);
+        },
+        closeAgentBrowserTab: (threadId, id) => {
+          const projectWindow = this.findByProject(path);
+          if (!projectWindow) return Promise.reject(new Error('The browser panel is not open.'));
+          return projectWindow.closeAgentBrowserTab(threadId, id);
+        },
         suggestUrl: (url) => this.findByProject(path)?.offerTerminalUrl(url) ?? false,
         reloadProjectSettings: () => this.findByProject(path)?.reloadProjectSettings(),
         send: (name, payload) => this.sendRuntimeEvent(path, name, payload),

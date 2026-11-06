@@ -28,6 +28,18 @@ import { TerminalService } from './terminal/terminal-service.js';
 
 export interface ProjectRuntimeHost {
   browser(): BrowserService | null;
+  /** The page an agent thread may use. `target` is a tab id, `app`, or `active`. */
+  browserForAgent(threadId: string, target: string | undefined): Promise<BrowserService>;
+  listBrowserTabs(threadId: string): {
+    id: string;
+    role: 'app' | 'reference';
+    url: string;
+    title: string;
+    active: boolean;
+    granted: boolean;
+  }[];
+  openAgentBrowserTab(threadId: string, url: string): Promise<{ id: string }>;
+  closeAgentBrowserTab(threadId: string, id: string): Promise<void>;
   /** A window showing this project loaded the URL in its browser. */
   suggestUrl(url: string): boolean;
   reloadProjectSettings(): void;
@@ -171,6 +183,10 @@ export class ProjectRuntime {
     const toolHost = new ArboraToolHost({
       projectPath,
       browser: () => host.browser(),
+      resolveTab: (target) => host.browserForAgent(threadId, target),
+      listTabs: () => host.listBrowserTabs(threadId),
+      openTab: (url) => host.openAgentBrowserTab(threadId, url),
+      closeTab: (id) => host.closeAgentBrowserTab(threadId, id),
       devServer: () => this.devServer,
       terminals: () => this.terminals,
       projectSettings: () => this.projectSettings(),

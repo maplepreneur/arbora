@@ -998,12 +998,34 @@ async function runCommand(id: CommandId): Promise<void> {
         showBrowserTab();
       }
       return;
+    case CommandId.browserNewTab:
+      if (hasProject()) {
+        showBrowserTab();
+        await arbora.invoke('browser.tabs.open', {});
+      }
+      return;
+    case CommandId.browserReopenTab:
+      if (hasProject()) {
+        showBrowserTab();
+        await arbora.invoke('browser.tabs.reopen');
+      }
+      return;
+    case CommandId.browserNextTab:
+      if (hasProject()) await arbora.invoke('browser.tabs.cycle', { direction: 1 });
+      return;
+    case CommandId.browserPreviousTab:
+      if (hasProject()) await arbora.invoke('browser.tabs.cycle', { direction: -1 });
+      return;
     case CommandId.editorSave: {
       const tab = activeTab();
       if (tab?.kind === 'file') await editorController()?.save(tab.path);
       return;
     }
     case CommandId.editorCloseTab: {
+      if (useApp.getState().layout.rightView === 'browser') {
+        if (hasProject()) await arbora.invoke('browser.tabs.close', {});
+        return;
+      }
       const active = useFiles.getState().active;
       if (active) closeTab(active);
       // macOS convention: Cmd+W with nothing left to close closes the window.

@@ -1,11 +1,57 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { app, session, type Certificate, type Event, type Session, type WebContents } from 'electron';
-import { isLocalHostname, type BrowserSettings } from '@arbora/shared';
+import {
+  cookiesForReferencePartition,
+  referenceCookieWrite,
+  isLocalHostname,
+  REFERENCE_PARTITION,
+  type BrowserSettings,
+} from '@arbora/shared';
 
 /** Permissions the user's page may get without asking; everything else is denied. */
 const ALLOWED_PERMISSIONS = new Set(['clipboard-sanitized-write', 'fullscreen', 'pointerLock']);
+
+export { REFERENCE_PARTITION };
+
+const REFERENCE_SEED_MARKER = 'reference-partition-seeded';
+
+/**
+ * Copies non-local cookies from existing project partitions into the shared reference partition,
+ * once. A Figma login made before tabs existed lives on the project partition; localhost stays there.
+ */
+export async function seedReferencePartition(userDataPath: string): Promise<void> {
+  const marker = join(userDataPath, 'browser', REFERENCE_SEED_MARKER);
+  if (existsSync(marker)) return;
+  const root = join(userDataPath, 'Partitions');
+  const names = existsSync(root) ? readdirSync(root).filter((name) => name.startsWith('arbora-browser-')) : [];
+  const target = session.fromPartition(REFERENCE_PARTITION);
+  for (const name of names) {
+    const cookies = await session.fromPartition(`persist:${name}`).cookies.get({});
+    for (const cookie of cookiesForReferencePartition(cookies)) {
+      const write = referenceCookieWrite(cookie);
+      if (!write) continue;
+      try {
+        await target.cookies.set({
+          url: write.url,
+          name: cookie.name,
+          value: cookie.value,
+          path: write.path,
+          ...(write.domain ? { domain: write.domain } : {}),
+          ...(cookie.secure !== undefined ? { secure: cookie.secure } : {}),
+          ...(cookie.httpOnly !== undefined ? { httpOnly: cookie.httpOnly } : {}),
+          ...(cookie.expirationDate ? { expirationDate: cookie.expirationDate } : {}),
+          ...(cookie.sameSite !== 'unspecified' ? { sameSite: cookie.sameSite } : {}),
+        });
+      } catch (error) {
+        console.warn(`[browser] could not copy cookie ${cookie.name}: ${(error as Error).message}`);
+      }
+    }
+  }
+  mkdirSync(join(userDataPath, 'browser'), { recursive: true });
+  writeFileSync(marker, '');
+}
 
 export function browserPartition(projectPath: string): string {
   return `persist:arbora-browser-${createHash('sha256').update(projectPath).digest('hex').slice(0, 16)}`;

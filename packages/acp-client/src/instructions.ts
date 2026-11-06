@@ -68,11 +68,9 @@ export function firstPromptPreface(context: PrefaceContext): string {
 const GROVE_SKILL = `
 ## Grove helpers
 
-Sessions the user starts also have \`grove_*\` tools on this server: \`grove_list_agents\` (agents and
-sessions), \`grove_start_agent\` (a helper with a task that stands on its own; the first call asks the
-user), \`grove_wait\` (until your helpers are done or need the user; call it again after a timeout),
-\`grove_read\` (a helper's transcript), \`grove_send\` and \`grove_stop\`. Helpers do not get these
-tools. When a helper needs the user, tell the user; you cannot answer for it.
+A lead also has \`grove_list_agents\`, \`grove_start_agent\` (a helper with a task that stands alone;
+the first call asks the user), \`grove_wait\`, \`grove_read\`, \`grove_send\` and \`grove_stop\`.
+Helpers do not get these tools. When a helper needs the user, tell the user.
 `;
 
 /** `.arbora/SKILL.md`: how an agent uses Arbora's browser tools (kept under 400 words). */
@@ -104,6 +102,7 @@ ${VERIFY_LOOP.join('\n')}
   \`browser_reload\`, \`browser_back\`, \`browser_forward\`, \`browser_set_viewport\` (mobile, tablet,
   laptop, desktop or a size).
 - Run: \`devserver_restart\`, \`terminal_run\` (short commands with captured output).
+- Tabs: omit \`target\` for the app tab. A reference tab needs a grant, or the tool says "tab not granted". \`browser_compare\` scores tabs \`a\` and \`b\` and returns one image.
 
 ## Rules
 
