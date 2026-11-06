@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Arbora fixture: figma canvas</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #111;
+        color: #f4f4f4;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+      }
+      #chrome h1,
+      #inspect h2 {
+        margin: 0 0 12px;
+        font-size: 14px;
+        line-height: 1.2;
+      }
+      #inspect {
+        margin: 16px;
+        max-width: 280px;
+      }
+      #inspect p,
+      #frame-list {
+        margin: 8px 0;
+        font-size: 14px;
+        line-height: 1.4;
+      }
+      #frame-list {
+        padding: 24px;
+      }
+      #frame {
+        display: inline-block;
+        margin: 16px;
+      }
+      #design-card {
+        width: 360px;
+        background: #fff;
+        color: #1c1915;
+        border-radius: 16px;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+      #design-card h2 {
+        margin: 0;
+        font-size: 20px;
+        line-height: 1.2;
+        font-weight: 700;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+      }
+      #design-card p {
+        margin: 12px 0 0;
+        font-size: 16px;
+        line-height: 1.2;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+      }
+      #design-card button {
+        margin-top: 20px;
+        background: #1f6b4a;
+        color: #fff;
+        border: 0;
+        border-radius: 8px;
+        padding: 10px 16px;
+        font:
+          700 16px/1.2 ui-sans-serif,
+          system-ui,
+          sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <aside id="chrome">
+      <h1>Figma</h1>
+      <p><a href="?node-id=counter">Open the Counter frame</a></p>
+      <section id="inspect" hidden>
+        <h2>Inspect</h2>
+        <p>fill #1f6b4a</p>
+        <p>padding 24px</p>
+        <p>radius 16px</p>
+        <p>font 20px</p>
+      </section>
+    </aside>
+    <div id="frame-list">Open the Counter frame</div>
+    <div id="frame" hidden>
+      <section id="design-card">
+        <h2>Counter</h2>
+        <p>Clicked 0 times</p>
+        <button type="button">Increment</button>
+      </section>
+    </div>
+    <script>
+      const open = new URLSearchParams(location.search).get('node-id') === 'counter';
+      document.getElementById('frame-list').hidden = open;
+      document.getElementById('frame').hidden = !open;
+      document.getElementById('inspect').hidden = !open;
+    </script>
+  </body>
+</html>

@@ -73,7 +73,12 @@ export class ToolContext {
 }
 
 /** Every tool takes `target` so multi-tab (Stage 12) can be added without changing signatures. */
-const target = z.string().optional().describe('Browser tab to act on. Only the current tab exists for now; omit it.');
+const target = z
+  .string()
+  .optional()
+  .describe(
+    'Browser tab: a tab id from browser_tabs, "app" (the project, the default), or "active". A reference tab (Figma, docs) works only after the user sends it or this thread opens it.',
+  );
 
 const elementTarget = {
   ref: z.string().optional().describe('Element ref from the latest browser_snapshot, e.g. "e12"'),

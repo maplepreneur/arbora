@@ -1056,45 +1056,19 @@ export class BrowserService {
   }
 
   /**
-   * Viewport PNG plus the page's CSS size. A parked tab is captured with CDP, because
-   * `capturePage()` on a hidden view is empty.
+   * Viewport PNG plus the page's CSS size. A parked tab is shown behind the visible one for one
+   * frame: `capturePage()` on a hidden view is empty, and CDP `Page.captureScreenshot` hangs.
    */
   async captureQuiet(): Promise<{ png: Buffer; cssWidth: number; cssHeight: number }> {
-    const hidden = !this.visible;
-    const rect = this.viewRect;
-    // A hidden view does not paint, so `capturePage()` is empty and CDP waits forever. Put it
-    // behind the visible tab, at the same size, just long enough to paint a frame.
-    if (hidden) {
-      const width = Math.max(1, Math.round(rect?.width ?? 800));
-      const height = Math.max(1, Math.round(rect?.height ?? 600));
-      this.setPageThrottled(false);
-      this.view.setBounds({ x: Math.round(rect?.x ?? 0), y: Math.round(rect?.y ?? 0), width, height });
-      this.hostWindow.contentView.addChildView(this.view, 0);
-      this.view.setVisible(true);
-      await new Promise((resolve) => setTimeout(resolve, 200));
-    }
-    try {
-      const image = await Promise.race([
-        this.contents.capturePage(),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Screenshot timed out')), 8_000)),
-      ]);
-      const size = image.getSize();
-      if (size.width === 0 || size.height === 0) throw new Error('The tab screenshot was empty');
-      const { innerWidth } = await this.metrics();
-      const dpr = innerWidth > 0 ? size.width / innerWidth : 1;
-      return {
-        png: image.toPNG(),
-        cssWidth: dpr > 0 ? size.width / dpr : size.width,
-        cssHeight: dpr > 0 ? size.height / dpr : size.height,
-      };
-    } finally {
-      if (hidden) {
-        this.view.setVisible(false);
-        this.setPageThrottled(true);
-        const ui = this.hostWindow.webContents;
-        if (!ui.isDestroyed()) ui.focus();
-      }
-    }
+    const image = await this.captureSurface();
+    const size = image.getSize();
+    const { innerWidth } = await this.metrics();
+    const dpr = innerWidth > 0 ? size.width / innerWidth : 1;
+    return {
+      png: image.toPNG(),
+      cssWidth: dpr > 0 ? size.width / dpr : size.width,
+      cssHeight: dpr > 0 ? size.height / dpr : size.height,
+    };
   }
 
   /** CSS selectors for the login form, read in the isolated world. No field values. */
@@ -1261,21 +1235,44 @@ export class BrowserService {
     return typeof value === 'string' ? value : '';
   }
 
-  private async captureSurface(): Promise<NativeImage> {
-    if (this.visible) return this.contents.capturePage();
-    this.contents.setBackgroundThrottling(false);
-    try {
-      if (!this.debuggerAttached) await this.attachDebugger();
-      if (!this.debuggerAttached)
-        throw new Error('A background tab needs the debugger to capture; close DevTools and retry');
-      const shot = (await this.contents.debugger.sendCommand('Page.captureScreenshot', {
-        format: 'png',
-        fromSurface: true,
-      })) as { data: string };
-      return nativeImage.createFromBuffer(Buffer.from(shot.data, 'base64'));
-    } finally {
-      this.contents.setBackgroundThrottling(true);
+  /**
+   * Shows a parked tab behind the visible one, long enough to paint, then hides it again.
+   * CDP `Page.captureScreenshot` on a view that was never shown hangs.
+   */
+  private async withPaintedView<T>(run: () => Promise<T>): Promise<T> {
+    const hidden = !this.visible;
+    if (hidden) {
+      const rect = this.viewRect;
+      const width = Math.max(1, Math.round(rect?.width ?? 800));
+      const height = Math.max(1, Math.round(rect?.height ?? 600));
+      this.setPageThrottled(false);
+      this.view.setBounds({ x: Math.round(rect?.x ?? 0), y: Math.round(rect?.y ?? 0), width, height });
+      this.hostWindow.contentView.addChildView(this.view, 0);
+      this.view.setVisible(true);
+      await new Promise((resolve) => setTimeout(resolve, 200));
     }
+    try {
+      return await run();
+    } finally {
+      if (hidden) {
+        this.view.setVisible(false);
+        this.setPageThrottled(true);
+        const ui = this.hostWindow.webContents;
+        if (!ui.isDestroyed()) ui.focus();
+      }
+    }
+  }
+
+  private async captureSurface(): Promise<NativeImage> {
+    return this.withPaintedView(async () => {
+      const image = await Promise.race([
+        this.contents.capturePage(),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Screenshot timed out')), 8_000)),
+      ]);
+      const size = image.getSize();
+      if (size.width === 0 || size.height === 0) throw new Error('The tab screenshot was empty');
+      return image;
+    });
   }
 
   private async captureViewport(request: ScreenshotRequest): Promise<ScreenshotResult> {

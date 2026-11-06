@@ -479,17 +479,87 @@ if (args[1] === 'create') {
     const { app, page } = await launch(userData, [DESIGN]);
     try {
       await openUrl(page, design.url);
+      const existing = new Set(
+        await page
+          .locator('[data-testid="grove-row"]')
+          .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-thread-id'))),
+      );
       await page.getByTestId('browser-tab-send').click();
       await page.getByTestId('browser-send-full-page').check();
       await page.getByTestId('browser-send-confirm').click();
-      const row = page.locator('[data-testid="grove-row"]').filter({ hasText: 'Implement this design' }).last();
-      await row.click({ timeout: 20_000 });
+      const row = page.locator('[data-testid="grove-row"]').filter({ hasText: 'Implement this design' });
+      await expect
+        .poll(
+          async () =>
+            (await row.evaluateAll((rows) => rows.map((item) => item.getAttribute('data-thread-id')))).find(
+              (id) => id && !existing.has(id),
+            ) ?? '',
+          { timeout: 20_000 },
+        )
+        .not.toBe('');
+      const created = (await row.evaluateAll((rows) => rows.map((item) => item.getAttribute('data-thread-id')))).find(
+        (id) => id && !existing.has(id),
+      );
+      await page.locator(`[data-testid="grove-row"][data-thread-id="${created}"]`).click();
       const message = page.getByTestId('user-message').last();
       await expect(message).toContainText('App tab', { timeout: 20_000 });
       await expect(message).toContainText('full-page screenshot');
       await expect(message).toContainText('Stop at 0.92');
     } finally {
       await app.close();
+      await design.close();
+    }
+  });
+
+  test('reads a canvas frame, ignores its chrome, and matches the card', async () => {
+    test.setTimeout(120_000);
+    const appFile = join(VITE_REACT, 'src/App.tsx');
+    const original = readFileSync(appFile, 'utf8');
+    const vite = await startViteFixture();
+    const design = await startStaticFixture(DESIGN);
+    const userData = tempUserData();
+    fakeAgentSettings(userData);
+    let app: ElectronApplication | undefined;
+    try {
+      const launched = await launch(userData, [VITE_REACT]);
+      app = launched.app;
+      const { page } = launched;
+      await openUrl(page, vite.url);
+      await expect
+        .poll(async () => (await browserState(page))?.title, { timeout: 20_000 })
+        .toBe('Arbora fixture: Vite + React');
+      await startAgent(page, 'fake');
+      const input = page.getByTestId('composer-input');
+      await input.fill(`match figma ${new URL('figma.html', design.url).href}`);
+      await input.press('Enter');
+      const allow = page.getByTestId('permission-allow_once');
+      const reported = page.getByTestId('agent-message').filter({ hasText: /Frame scores:|Compare failed:/ });
+      await expect
+        .poll(
+          async () => {
+            if ((await reported.count()) > 0) return 'done';
+            if ((await allow.count()) > 0) await allow.first().click();
+            return 'wait';
+          },
+          { timeout: 90_000 },
+        )
+        .toBe('done');
+      const text = await reported.last().innerText();
+      expect(text, text).toContain('Inspect: fill #1f6b4a, padding 24px');
+      const scores = /Frame scores: ([0-9.]+) chrome ([0-9.]+) frame ([0-9.]+) overlay ([0-9.]+) diff ([0-9.]+)/.exec(
+        text,
+      );
+      expect(scores, text).not.toBeNull();
+      expect(Number(scores?.[1])).toBeLessThan(0.92);
+      expect(Number(scores?.[2])).toBeLessThan(0.92);
+      expect(Number(scores?.[3])).toBeGreaterThanOrEqual(0.92);
+      expect(Number(scores?.[4])).toBeGreaterThanOrEqual(0.92);
+      expect(Number(scores?.[5])).toBeGreaterThanOrEqual(0.92);
+      await expect(page.getByTestId('matching-design')).toBeVisible();
+    } finally {
+      writeFileSync(appFile, original);
+      await app?.close();
+      await vite.close();
       await design.close();
     }
   });

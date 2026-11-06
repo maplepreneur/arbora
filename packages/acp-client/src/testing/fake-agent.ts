@@ -27,6 +27,8 @@
  * - "vault login": `browser_login`
  * - "tab grant <id>": `browser_snapshot` of that tab
  * - "match design <url>": open that design, compare, rewrite `src/App.tsx`, compare again
+ * - "match figma <url>": open a canvas page, follow its node-id, read the inspect text,
+ *   screenshot the frame, and compare that frame (not the chrome) in every compare mode
  * - a prompt that says a tab "is granted to this thread" snapshots that tab
  */
 import { Readable, Writable } from 'node:stream';
@@ -313,7 +315,7 @@ const MATCHED_APP = `export function App() {
         <h1 style={{ margin: 0, fontSize: 32, lineHeight: 1.2, fontWeight: 700, fontFamily: font }}>Design reference</h1>
       </header>
       <main style={{ padding: 40 }}>
-        <section style={{ width: 360, background: '#fff', borderRadius: 16, padding: 24, boxSizing: 'border-box' }}>
+        <section id="design-card" style={{ width: 360, background: '#fff', borderRadius: 16, padding: 24, boxSizing: 'border-box' }}>
           <h2 style={{ margin: 0, fontSize: 20, lineHeight: 1.2, fontWeight: 700, fontFamily: font }}>Counter</h2>
           <p style={{ margin: '12px 0 0', fontSize: 16, lineHeight: 1.2, fontFamily: font }}>Clicked 0 times</p>
           <button type="button" style={{ marginTop: 20, background: '#1f6b4a', color: '#fff', border: 0, borderRadius: 8, padding: '10px 16px', font: '700 16px/1.2 ui-sans-serif, system-ui, sans-serif' }}>Increment</button>
@@ -327,6 +329,98 @@ const MATCHED_APP = `export function App() {
 function scoreOf(text: string): string | null {
   const match = /"score"\s*:\s*([0-9]+(?:\.[0-9]+)?)/.exec(text);
   return match?.[1] ?? null;
+}
+
+async function compareScore(
+  cx: AgentContext,
+  sessionId: string,
+  state: SessionState,
+  args: Record<string, unknown>,
+): Promise<string | null> {
+  const result = await callBrowserTool(cx, sessionId, state, 'browser_compare', args);
+  if (result.isError) {
+    await say(cx, sessionId, `Compare failed: ${result.text.slice(0, 400)}`, state);
+    return null;
+  }
+  const score = scoreOf(result.text);
+  if (!score) await say(cx, sessionId, `Compare failed: ${result.text.slice(0, 400)}`, state);
+  return score;
+}
+
+/**
+ * A canvas page (Figma stand-in): follow `node-id`, read the inspect panel from the page, screenshot
+ * the frame, then score that frame instead of the chrome around it.
+ */
+async function matchFigma(cx: AgentContext, sessionId: string, state: SessionState, url: string): Promise<void> {
+  const opened = await callBrowserTool(cx, sessionId, state, 'browser_tab_open', { url });
+  const id = /Opened tab (\S+)\./.exec(opened.text)?.[1];
+  if (opened.isError || !id) {
+    await say(cx, sessionId, `Compare failed: ${opened.text}`, state);
+    return;
+  }
+  const listed = await callBrowserTool(cx, sessionId, state, 'browser_wait_for', {
+    target: id,
+    text: 'Open the Counter frame',
+    timeoutMs: 20_000,
+  });
+  if (listed.isError) {
+    await say(cx, sessionId, `Compare failed: ${listed.text}`, state);
+    return;
+  }
+  const frameUrl = `${url}${url.includes('?') ? '&' : '?'}node-id=counter`;
+  const navigated = await callBrowserTool(cx, sessionId, state, 'browser_navigate', { url: frameUrl, target: id });
+  if (navigated.isError) {
+    await say(cx, sessionId, `Compare failed: ${navigated.text}`, state);
+    return;
+  }
+  const inspect = await callBrowserTool(cx, sessionId, state, 'browser_snapshot', { target: id });
+  if (inspect.isError || !inspect.text.includes('fill #1f6b4a') || !inspect.text.includes('padding 24px')) {
+    await say(cx, sessionId, `Compare failed: inspect panel missing values. ${inspect.text.slice(0, 400)}`, state);
+    return;
+  }
+  const shot = await callBrowserTool(cx, sessionId, state, 'browser_screenshot', {
+    target: id,
+    mode: 'element',
+    selector: '#design-card',
+  });
+  if (shot.isError || shot.images < 1) {
+    await say(cx, sessionId, `Compare failed: ${shot.text.slice(0, 400)}`, state);
+    return;
+  }
+  const before = await compareScore(cx, sessionId, state, { left: 'app', right: id, mode: 'side_by_side' });
+  if (!before) return;
+  const wrote = await writeMatchedApp(cx, sessionId, state);
+  if (!wrote) return;
+  await sleep(500);
+  const reloaded = await callBrowserTool(cx, sessionId, state, 'browser_reload', {});
+  if (reloaded.isError) {
+    await say(cx, sessionId, `Compare failed: ${reloaded.text}`, state);
+    return;
+  }
+  const settled = await callBrowserTool(cx, sessionId, state, 'browser_wait_for', {
+    text: 'Design reference',
+    timeoutMs: 20_000,
+  });
+  if (settled.isError) {
+    await say(cx, sessionId, `Compare failed: ${settled.text}`, state);
+    return;
+  }
+  const chrome = await compareScore(cx, sessionId, state, { left: 'app', right: id, mode: 'side_by_side' });
+  if (!chrome) return;
+  const frame = { target: id, selector: '#design-card' };
+  const appCard = { target: 'app', selector: '#design-card' };
+  const framed = await compareScore(cx, sessionId, state, { left: appCard, right: frame, mode: 'side_by_side' });
+  if (!framed) return;
+  const overlay = await compareScore(cx, sessionId, state, { left: appCard, right: frame, mode: 'overlay' });
+  if (!overlay) return;
+  const diff = await compareScore(cx, sessionId, state, { left: appCard, right: frame, mode: 'diff' });
+  if (!diff) return;
+  await say(
+    cx,
+    sessionId,
+    `Inspect: fill #1f6b4a, padding 24px. Frame scores: ${before} chrome ${chrome} frame ${framed} overlay ${overlay} diff ${diff}`,
+    state,
+  );
 }
 
 async function matchDesign(cx: AgentContext, sessionId: string, state: SessionState, url: string): Promise<void> {
@@ -624,6 +718,11 @@ async function handlePrompt(cx: AgentContext, params: PromptRequest): Promise<Pr
   if (sent?.[1] && /is granted to this thread/.test(text)) {
     const result = await callBrowserTool(cx, sessionId, state, 'browser_snapshot', { target: sent[1] });
     await say(cx, sessionId, result.isError ? `Grant check: ${result.text}` : 'Grant check: allowed', state);
+    return { stopReason: 'end_turn' };
+  }
+  const figma = /match figma (https?:\/\/\S+)/i.exec(text);
+  if (figma?.[1]) {
+    await matchFigma(cx, sessionId, state, figma[1]);
     return { stopReason: 'end_turn' };
   }
   const design = /match design (https?:\/\/\S+)/i.exec(text);
