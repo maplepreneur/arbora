@@ -1,6 +1,6 @@
-import { chmodSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import type { WebContentsView } from 'electron';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import type { BrowserTabSnapshot, NavigationState } from '@arbora/shared';
@@ -641,6 +641,74 @@ if (args[1] === 'create') {
     } finally {
       await app.close();
       await design.close();
+    }
+  });
+
+  test('a reference-tab login is shared with another project', async () => {
+    const design = await startStaticFixture(DESIGN);
+    const other = realpathSync(mkdtempSync(join(tmpdir(), 'arbora-other-web-')));
+    const userData = tempUserData();
+    const { app, page } = await launch(userData, [DESIGN]);
+    const cookiesOn = (): Promise<string[]> =>
+      app.evaluate(
+        async ({ webContents }, url) => {
+          const pages = webContents.getAllWebContents().filter((wc) => {
+            const path = wc.session.storagePath ?? '';
+            return path.includes('arbora-web') && wc.getURL().startsWith(url);
+          });
+          const values: string[] = [];
+          for (const wc of pages) values.push(String(await wc.executeJavaScript('document.cookie')));
+          return values;
+        },
+        design.url,
+      );
+    try {
+      await openUrl(page, design.url);
+      await page.evaluate((url) => window.arbora.invoke('browser.tabs.open', { url }), design.url);
+      await expect.poll(async () => (await cookiesOn()).length).toBe(1);
+      await app.evaluate(({ webContents }, url) => {
+        const view = webContents
+          .getAllWebContents()
+          .find((wc) => (wc.session.storagePath ?? '').includes('arbora-web') && wc.getURL().startsWith(url));
+        if (!view) throw new Error('No reference tab');
+        return view.executeJavaScript('document.cookie = "arbora_shared=yes; path=/"; document.cookie');
+      }, design.url);
+      await expect.poll(async () => (await cookiesOn())[0] ?? '').toContain('arbora_shared=yes');
+
+      const name = basename(other);
+      await page.evaluate((path) => {
+        setTimeout(() => {
+          void window.arbora.invoke('project.openInWindow', { path });
+        }, 0);
+      }, other);
+      await expect
+        .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), { timeout: 15_000 })
+        .toBeGreaterThan(1);
+      await app.evaluate(
+        async ({ BrowserWindow }, input) => {
+          const win = BrowserWindow.getAllWindows().find((item) => item.getTitle().startsWith(input.name));
+          if (!win) throw new Error('The other project window is not open');
+          await win.webContents.executeJavaScript(
+            `window.arbora.invoke('browser.tabs.open', { url: ${JSON.stringify(input.url)} })`,
+          );
+        },
+        { name, url: design.url },
+      );
+      await expect
+        .poll(async () => {
+          const values = await cookiesOn();
+          return values.length === 2 && values.every((value) => value.includes('arbora_shared=yes'));
+        })
+        .toBe(true);
+    } finally {
+      await app
+        .evaluate(({ BrowserWindow }) => {
+          for (const win of BrowserWindow.getAllWindows().slice(1)) win.destroy();
+        })
+        .catch(() => undefined);
+      await app.close();
+      await design.close();
+      rmSync(other, { recursive: true, force: true });
     }
   });
 
