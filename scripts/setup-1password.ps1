@@ -58,6 +58,19 @@ if ($Uninstall) {
   exit 0
 }
 
+$root = Split-Path -Parent $PSScriptRoot
+$fetch = Join-Path $root 'apps\desktop\scripts\fetch-devtools-extensions.mjs'
+if (-not (Get-Command node -ErrorAction SilentlyContinue) -or -not (Test-Path $fetch)) {
+  Write-Output 'extension: skipped (node or the fetch script is not available)'
+} else {
+  try {
+    & node $fetch --only 1password
+    if ($LASTEXITCODE -ne 0) { Write-Output 'extension: fetch failed' }
+  } catch {
+    Write-Output 'extension: fetch failed'
+  }
+}
+
 Write-Output 'Install: winget install AgileBits.1Password AgileBits.1Password.CLI'
 if ($Yes -and (Get-Command winget -ErrorAction SilentlyContinue)) {
   winget install AgileBits.1Password AgileBits.1Password.CLI

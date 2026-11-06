@@ -431,10 +431,13 @@ function GrantChips({ threadId }: { threadId: string }) {
             key={id}
             type="button"
             title="Stop the agent using this tab"
-            className="max-w-24 truncate rounded bg-accent-soft px-1 text-[10px] text-accent"
+            className="flex max-w-28 items-center gap-1 truncate rounded bg-accent-soft px-1 text-[10px] text-accent"
             onClick={() => void window.arbora.invoke('agent.revokeGrant', { threadId, tabId: id })}
           >
-            {tab?.title || 'Tab'}
+            {tab?.favicon ? (
+              <img src={tab.favicon} alt="" data-testid="grant-chip-favicon" className="h-3 w-3 shrink-0" />
+            ) : null}
+            <span className="min-w-0 truncate">{tab?.title || 'Tab'}</span>
           </button>
         );
       })}

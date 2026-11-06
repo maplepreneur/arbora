@@ -568,6 +568,7 @@ if (args[1] === 'create') {
       await expect(page.getByTestId('user-message').last()).toContainText('Stop at 0.92');
       await expect(page.getByTestId('agent-message').last()).toContainText('Grant check: allowed', { timeout: 30_000 });
       await expect(page.getByTestId('tab-grants')).toBeVisible();
+      await expect(page.getByTestId('grant-chip-favicon')).toHaveAttribute('src', /^data:image\/png/);
       await page.getByTestId('tab-grants').locator('button').click();
       await expect(page.getByTestId('tab-grants')).toHaveCount(0);
       const input = page.getByTestId('composer-input');
