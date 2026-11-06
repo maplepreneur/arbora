@@ -563,8 +563,8 @@ export class ProjectWindow {
         this.browser = this.tabs?.activeService() ?? null;
         sendEvent(this.contents, 'browser.stateChanged', state);
       },
-      problemsAdded: (entries) => sendEvent(this.contents, 'browser.problemsAdded', { entries }),
-      problemsCleared: () => sendEvent(this.contents, 'browser.problemsCleared', {}),
+      problemsAdded: (tabId, entries) => sendEvent(this.contents, 'browser.problemsAdded', { tabId, entries }),
+      problemsCleared: (tabId) => sendEvent(this.contents, 'browser.problemsCleared', { tabId }),
       urlSuggested: (url) => sendEvent(this.contents, 'browser.urlSuggested', { url }),
       inspectorSelected: (selection) => void this.agentMode?.select(selection),
       inspectorCancelled: () => this.agentMode?.cancelledInPage(),

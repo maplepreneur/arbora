@@ -1,11 +1,10 @@
 import { useMemo, useState } from 'react';
 import { CircleX, Info, Trash2, TriangleAlert, Wrench, type LucideIcon } from 'lucide-react';
 import clsx from 'clsx';
-import { CommandId, type Diagnostic, type ProblemEntry, type ProblemLevel } from '@arbora/shared';
-import { executeCommand } from '../commands';
+import { type Diagnostic, type ProblemEntry, type ProblemLevel } from '@arbora/shared';
 import { allDiagnostics, openFile, useFiles } from '../files-store';
 import { fixDiagnostics, fixPageProblems } from '../fix-problems';
-import { useApp } from '../store';
+import { setTabProblems, useApp } from '../store';
 
 type Scope = 'page' | 'code';
 
@@ -149,8 +148,13 @@ function DiagnosticRow({ diagnostic }: { diagnostic: Diagnostic }) {
 }
 
 export default function ProblemsPanel() {
-  const problems = useApp((s) => s.problems);
-  const pageUrl = useApp((s) => s.browser?.url ?? '');
+  const tabs = useApp((s) => s.browserTabs);
+  const problemsByTab = useApp((s) => s.problemsByTab);
+  const appTabId = tabs.find((tab) => tab.role === 'app')?.id ?? '';
+  const [chosenTab, setChosenTab] = useState<string | null>(null);
+  const selectedTab = chosenTab && tabs.some((tab) => tab.id === chosenTab) ? chosenTab : appTabId;
+  const problems = useMemo(() => problemsByTab[selectedTab] ?? [], [problemsByTab, selectedTab]);
+  const pageUrl = tabs.find((tab) => tab.id === selectedTab)?.url ?? '';
   const diagnosticsByPath = useFiles((s) => s.diagnostics);
   const diagnostics = useMemo(() => allDiagnostics({ diagnostics: diagnosticsByPath }), [diagnosticsByPath]);
   const [scope, setScope] = useState<Scope>('page');
@@ -185,6 +189,25 @@ export default function ProblemsPanel() {
             {id === 'code' && codeErrors > 0 && <span className="ml-1 text-danger tabular-nums">{codeErrors}</span>}
           </button>
         ))}
+        {scope === 'page' && tabs.length > 1 && (
+          <select
+            data-testid="problems-tab"
+            aria-label="Browser tab"
+            value={selectedTab}
+            onChange={(event) => {
+              const id = event.target.value;
+              setChosenTab(id);
+              void window.arbora.invoke('browser.tabs.problems', { id }).then((entries) => setTabProblems(id, entries));
+            }}
+            className="h-6 max-w-40 shrink-0 truncate rounded border border-border bg-bg px-1 text-fg"
+          >
+            {tabs.map((tab) => (
+              <option key={tab.id} value={tab.id}>
+                {tab.role === 'app' ? 'App' : tab.title || 'Reference'}
+              </option>
+            ))}
+          </select>
+        )}
         <span className="mx-1 h-4 w-px bg-border" />
         {FILTERS.map(({ id, label }) => (
           <button
@@ -221,7 +244,9 @@ export default function ProblemsPanel() {
             title="Clear"
             aria-label="Clear problems"
             data-testid="problems-clear"
-            onClick={() => executeCommand(CommandId.browserClearProblems)}
+            onClick={() => {
+              if (selectedTab) void window.arbora.invoke('browser.tabs.clearProblems', { id: selectedTab });
+            }}
             className="flex h-6 w-6 items-center justify-center rounded text-fg-subtle hover:bg-bg-muted hover:text-fg"
           >
             <Trash2 size={13} />

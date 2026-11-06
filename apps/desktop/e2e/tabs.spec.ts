@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { WebContentsView } from 'electron';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import type { BrowserTabSnapshot, NavigationState } from '@arbora/shared';
-import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, startAgent, tempUserData } from './app';
+import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, showRight, startAgent, tempUserData } from './app';
 import { startStaticFixture, startViteFixture } from './servers';
 
 const FAKE_AGENT = join(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
@@ -495,6 +495,50 @@ if (args[1] === 'create') {
       writeFileSync(appFile, original);
       await app?.close();
       await vite.close();
+      await design.close();
+    }
+  });
+
+  test('shows the app tab in Problems while a reference tab has its own errors', async () => {
+    const design = await startStaticFixture(DESIGN);
+    const { app, page } = await launch(tempUserData(), [DESIGN]);
+    const logOn = (partition: 'arbora-browser-' | 'arbora-web', message: string): Promise<void> =>
+      app.evaluate(
+        ({ webContents }, input) => {
+          const target = webContents.getAllWebContents().find((wc) => {
+            const path = wc.session.storagePath ?? '';
+            return path.includes(input.partition) && !wc.getURL().startsWith('devtools:');
+          });
+          if (!target) throw new Error(`No page for ${input.partition}`);
+          return target.executeJavaScript(`console.error(${JSON.stringify(input.message)})`);
+        },
+        { partition, message },
+      );
+    try {
+      await openUrl(page, design.url);
+      await logOn('arbora-browser-', 'app-tab-problem');
+      await page.evaluate((url) => window.arbora.invoke('browser.tabs.open', { url }), design.url);
+      await expect
+        .poll(async () =>
+          (await tabs(page)).some((tab) => tab.role === 'reference' && tab.url.startsWith(design.url) && !tab.loading),
+        )
+        .toBe(true);
+      await logOn('arbora-web', 'reference-tab-problem');
+      await showRight(page, 'problems');
+      const rows = page.getByTestId('problem-row');
+      await expect(rows.filter({ hasText: 'app-tab-problem' })).toBeVisible();
+      await expect(rows.filter({ hasText: 'reference-tab-problem' })).toHaveCount(0);
+      const reference = (await tabs(page)).find((tab) => tab.role === 'reference');
+      if (!reference) throw new Error('No reference tab');
+      await page.getByTestId('problems-tab').selectOption(reference.id);
+      await expect(rows.filter({ hasText: 'reference-tab-problem' })).toBeVisible();
+      await expect(rows.filter({ hasText: 'app-tab-problem' })).toHaveCount(0);
+      const appTab = (await tabs(page)).find((tab) => tab.role === 'app');
+      if (!appTab) throw new Error('No app tab');
+      await page.getByTestId('problems-tab').selectOption(appTab.id);
+      await expect(rows.filter({ hasText: 'app-tab-problem' })).toBeVisible();
+    } finally {
+      await app.close();
       await design.close();
     }
   });

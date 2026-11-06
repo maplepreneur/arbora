@@ -54,11 +54,13 @@ import {
 import { useKeybindingContextSync, useKeybindingDispatch } from './keybindings';
 import {
   addProblems,
+  clearTabProblems,
   applyDesignState,
   dispatchMode,
   closeOverlay,
   openOverlay,
   setProblems,
+  syncAppProblems,
   SHELL_GROUP,
   setProject,
   showToast,
@@ -111,7 +113,7 @@ function useMainEvents(): void {
       }),
       arbora.on('command.invoke', ({ commandId, fromPage }) => executeCommand(commandId, { fromPage })),
       arbora.on('browser.stateChanged', (browser) => useApp.setState({ browser })),
-      arbora.on('browser.tabsChanged', ({ tabs }) => useApp.setState({ browserTabs: tabs })),
+      arbora.on('browser.tabsChanged', ({ tabs }) => syncAppProblems(tabs)),
       arbora.on('passwords.offerSave', ({ origin, usernameField, passwordField, tabId }) => {
         let host: string;
         try {
@@ -131,8 +133,8 @@ function useMainEvents(): void {
       }),
       arbora.on('browser.pageFocused', ({ focused }) => setBrowserPageFocused(focused)),
       arbora.on('browser.focusParked', () => reclaimFocusFromParkedPage()),
-      arbora.on('browser.problemsAdded', ({ entries }) => addProblems(entries)),
-      arbora.on('browser.problemsCleared', () => useApp.setState({ problems: [] })),
+      arbora.on('browser.problemsAdded', ({ tabId, entries }) => addProblems(tabId, entries)),
+      arbora.on('browser.problemsCleared', ({ tabId }) => clearTabProblems(tabId)),
       arbora.on('browser.urlSuggested', ({ url }) => useApp.setState({ suggestedUrl: url })),
       arbora.on('terminal.changed', ({ projectPath, terminals }) => {
         noteProjectTerminals(projectPath, terminals);
@@ -240,8 +242,11 @@ function useBrowserSnapshot(): void {
       if (!active) return;
       // Events may have arrived first; never replace a live state with an older null.
       if (browser) useApp.setState({ browser });
-      useApp.setState((current) => ({ browserTabs: tabs.length > 0 ? tabs : current.browserTabs }));
-      setProblems(consoleEntries, network);
+      if (tabs.length > 0) {
+        syncAppProblems(tabs);
+        const active = tabs.find((tab) => tab.active);
+        if (active) setProblems(active.id, consoleEntries, network);
+      }
     });
     return () => {
       active = false;

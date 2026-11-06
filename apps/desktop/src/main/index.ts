@@ -644,6 +644,11 @@ function main(): void {
       requireTabs(event.sender).discard(id);
       return undefined;
     });
+    defineHandler('browser.tabs.problems', isTrusted, ({ id }, event) => requireTabs(event.sender).tabProblems(id));
+    defineHandler('browser.tabs.clearProblems', isTrusted, ({ id }, event) => {
+      requireTabs(event.sender).clearTabProblems(id);
+      return undefined;
+    });
     defineHandler('browser.tabs.stats', isTrusted, ({ id }, event) => requireTabs(event.sender).stats(id));
     defineHandler('browser.tabs.reopen', isTrusted, async (_req, event) => ({
       id: await requireTabs(event.sender).reopen(),

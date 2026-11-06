@@ -60,7 +60,9 @@ export interface AppState {
   browser: NavigationState | null;
   /** Open browser tabs for the project this window is showing. */
   browserTabs: BrowserTabSnapshot[];
-  /** Console, exception and network entries for the Problems tab, oldest first. */
+  /** Console, exception and network entries per browser tab. */
+  problemsByTab: Record<string, ProblemEntry[]>;
+  /** The app tab's problems. The Problems badge and the default Problems view read this. */
   problems: ProblemEntry[];
   /** Dev-server URL offered by `browser.suggestUrl` while another page is open. */
   suggestedUrl: string | null;
@@ -177,6 +179,7 @@ export const useApp = create<AppState>()(() => ({
   toasts: [],
   browser: null,
   browserTabs: [],
+  problemsByTab: {},
   problems: [],
   suggestedUrl: null,
   urlFocusRequest: 0,
@@ -208,6 +211,7 @@ export function setProject(project: ProjectInfo | null): void {
           paletteOpen: false,
           browser: null,
           browserTabs: [],
+          problemsByTab: {},
           problems: [],
           suggestedUrl: null,
         }
@@ -315,11 +319,52 @@ export function showToast(message: string, action?: ToastAction): void {
   setTimeout(() => dismissToast(toast.id), action ? 10_000 : 3500);
 }
 
-export function addProblems(entries: readonly ProblemEntry[]): void {
-  useApp.setState((s) => ({ problems: [...s.problems, ...entries].slice(-MAX_PROBLEMS) }));
+function appTabId(tabs: readonly BrowserTabSnapshot[]): string | undefined {
+  return tabs.find((tab) => tab.role === 'app')?.id;
 }
 
-/** Replaces the Problems list with main's buffers (console and network merged in arrival order). */
-export function setProblems(consoleEntries: readonly ProblemEntry[], network: readonly ProblemEntry[]): void {
-  useApp.setState({ problems: [...consoleEntries, ...network].sort((a, b) => a.id - b.id).slice(-MAX_PROBLEMS) });
+/** Keeps `problems` pointed at the app tab, which is what the badge and the default view show. */
+function rememberTabProblems(
+  state: { browserTabs: readonly BrowserTabSnapshot[]; problemsByTab: Record<string, ProblemEntry[]> },
+  tabId: string,
+  entries: readonly ProblemEntry[],
+): { problemsByTab: Record<string, ProblemEntry[]>; problems: ProblemEntry[] } {
+  const problemsByTab = { ...state.problemsByTab, [tabId]: entries.slice(-MAX_PROBLEMS) };
+  const appId = appTabId(state.browserTabs);
+  return { problemsByTab, problems: appId ? (problemsByTab[appId] ?? []) : [] };
+}
+
+export function addProblems(tabId: string, entries: readonly ProblemEntry[]): void {
+  useApp.setState((s) => rememberTabProblems(s, tabId, [...(s.problemsByTab[tabId] ?? []), ...entries]));
+}
+
+export function clearTabProblems(tabId: string): void {
+  useApp.setState((s) => rememberTabProblems(s, tabId, []));
+}
+
+export function setTabProblems(tabId: string, entries: readonly ProblemEntry[]): void {
+  useApp.setState((s) =>
+    rememberTabProblems(
+      s,
+      tabId,
+      [...entries].sort((a, b) => a.id - b.id),
+    ),
+  );
+}
+
+/** Replaces one tab's Problems list from main's buffers (console and network merged in arrival order). */
+export function setProblems(
+  tabId: string,
+  consoleEntries: readonly ProblemEntry[],
+  network: readonly ProblemEntry[],
+): void {
+  setTabProblems(tabId, [...consoleEntries, ...network]);
+}
+
+/** Points the badge at the app tab after the tab list arrives. */
+export function syncAppProblems(tabs: readonly BrowserTabSnapshot[]): void {
+  useApp.setState((s) => {
+    const appId = appTabId(tabs);
+    return { browserTabs: [...tabs], problems: appId ? (s.problemsByTab[appId] ?? []) : [] };
+  });
 }

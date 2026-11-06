@@ -39,8 +39,8 @@ export const WEB_PARTITION = 'persist:arbora-web';
 
 export interface BrowserTabsHooks {
   state(state: NavigationState): void;
-  problemsAdded(entries: ProblemEntry[]): void;
-  problemsCleared(): void;
+  problemsAdded(tabId: string, entries: ProblemEntry[]): void;
+  problemsCleared(tabId: string): void;
   urlSuggested(url: string): void;
   inspectorSelected: BrowserServiceEvents['inspectorSelected'];
   inspectorCancelled(): void;
@@ -261,6 +261,17 @@ export class BrowserTabs {
   }
 
   /** Resident memory and CPU for the tab's renderer process. A discarded tab is not live. */
+  /** Console and network entries for one live tab, oldest first. */
+  tabProblems(id: string): ProblemEntry[] {
+    const service = this.slots.get(id)?.service;
+    if (!service) return [];
+    return [...service.getConsole(), ...service.getNetworkErrors()].sort((a, b) => a.id - b.id);
+  }
+
+  clearTabProblems(id: string): void {
+    this.slots.get(id)?.service?.clearProblems();
+  }
+
   stats(id: string): { live: boolean; memoryKb: number; cpuPercent: number } {
     const contents = this.slots.get(id)?.service?.contents;
     if (!contents || contents.isDestroyed()) return { live: false, memoryKb: 0, cpuPercent: 0 };
@@ -479,10 +490,10 @@ export class BrowserTabs {
         this.hooks.tabsChanged(this.snapshots());
       },
       problemsAdded: (entries) => {
-        if (current()) this.hooks.problemsAdded(entries);
+        this.hooks.problemsAdded(id, entries);
       },
       problemsCleared: () => {
-        if (current()) this.hooks.problemsCleared();
+        this.hooks.problemsCleared(id);
       },
       urlSuggested: (url) => {
         if (current()) this.hooks.urlSuggested(url);
@@ -549,9 +560,9 @@ export class BrowserTabs {
     this.persist();
     const service = this.activeService();
     if (service) {
-      this.hooks.problemsCleared();
+      this.hooks.problemsCleared(this.set.activeId);
       const entries = [...service.getConsole(), ...service.getNetworkErrors()];
-      if (entries.length > 0) this.hooks.problemsAdded(entries);
+      if (entries.length > 0) this.hooks.problemsAdded(this.set.activeId, entries);
       this.hooks.state(service.getState());
     }
     this.hooks.tabsChanged(this.snapshots());

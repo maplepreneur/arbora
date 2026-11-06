@@ -369,6 +369,13 @@ export const channels = {
     none,
   ),
   'browser.tabs.discard': defineChannel('browser.tabs.discard', z.object({ id: z.string() }), none),
+  /** Console and network entries for one tab. An unloaded tab returns an empty list. */
+  'browser.tabs.problems': defineChannel(
+    'browser.tabs.problems',
+    z.object({ id: z.string() }),
+    z.array(problemEntrySchema),
+  ),
+  'browser.tabs.clearProblems': defineChannel('browser.tabs.clearProblems', z.object({ id: z.string() }), none),
   'browser.tabs.stats': defineChannel(
     'browser.tabs.stats',
     z.object({ id: z.string() }),
@@ -957,9 +964,12 @@ export const events = {
    * when that tab is an error or empty state, so pane chords are not swallowed.
    */
   'browser.focusParked': defineEvent('browser.focusParked', z.object({})),
-  /** New console/exception/network entries since the last event, batched. */
-  'browser.problemsAdded': defineEvent('browser.problemsAdded', z.object({ entries: z.array(problemEntrySchema) })),
-  'browser.problemsCleared': defineEvent('browser.problemsCleared', z.object({})),
+  /** New console/exception/network entries since the last event, batched. `tabId` is the tab they belong to. */
+  'browser.problemsAdded': defineEvent(
+    'browser.problemsAdded',
+    z.object({ tabId: z.string(), entries: z.array(problemEntrySchema) }),
+  ),
+  'browser.problemsCleared': defineEvent('browser.problemsCleared', z.object({ tabId: z.string() })),
   'browser.urlSuggested': defineEvent('browser.urlSuggested', z.object({ url: z.string() })),
   'browser.tabsChanged': defineEvent('browser.tabsChanged', z.object({ tabs: z.array(browserTabSnapshotSchema) })),
   'agent.grantsChanged': defineEvent(
