@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -382,6 +383,7 @@ test.describe('Stage 10 Grove', () => {
           projects: [{ path: project, collapsed: false }],
           trustedCommands: [],
           launch: 'browser',
+          bestOf: [],
         });
       await page.getByTestId('setting-grove-orchestration').click();
       await expect.poll(() => savedSettings(userData).grove.orchestration).toBe(false);
@@ -483,6 +485,65 @@ test.describe('Stage 10 Grove', () => {
     } finally {
       await app.close();
       rmSync(project, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    }
+  });
+
+  test('points a worktree session at its own port', async () => {
+    const project = tempProject({ devCommand: 'pnpm dev', devUrl: 'http://127.0.0.1:5173/' });
+    writeFileSync(
+      join(project, 'package.json'),
+      JSON.stringify({ name: 'grove-fixture', private: true, packageManager: 'pnpm@10.0.0', scripts: { dev: 'vite' } }),
+    );
+    mkdirSync(join(project, 'node_modules'));
+    writeFileSync(join(project, 'node_modules', 'marker.txt'), 'shared\n');
+    const gitEnv = {
+      ...process.env,
+      GIT_AUTHOR_NAME: 't',
+      GIT_AUTHOR_EMAIL: 't@t',
+      GIT_COMMITTER_NAME: 't',
+      GIT_COMMITTER_EMAIL: 't@t',
+    };
+    const run = (args: string[]): void => {
+      execFileSync('git', args, { cwd: project, env: gitEnv });
+    };
+    run(['init', '-b', 'main']);
+    run(['config', 'user.email', 't@t']);
+    run(['config', 'user.name', 't']);
+    run(['add', 'package.json', 'App.tsx']);
+    run(['commit', '-m', 'init']);
+    const { app, page } = await launch(userDataWithFakeAgent(), [project]);
+    let worktree: string | undefined;
+    try {
+      await expect(page.getByTestId('grove')).toBeVisible();
+      const created = await page.evaluate(
+        async ({ parent, agentId }) =>
+          window.arbora.invoke('grove.createWorktree', { parentPath: parent, title: 'Fix the nav', agentId }),
+        { parent: project, agentId: FAKE_ID },
+      );
+      expect(created.error).toBeUndefined();
+      worktree = created.path;
+      expect(created.devUrl).toBe('http://127.0.0.1:5174/');
+      expect(created.modules).toBe('linked');
+      if (!worktree) throw new Error('no worktree');
+      await page.evaluate((path) => window.arbora.invoke('project.open', { path, onThisWindow: true }), worktree);
+      await expect
+        .poll(async () => (await browserState(page))?.url, { timeout: 20_000 })
+        .toBe('http://127.0.0.1:5174/');
+      const discarded = await page.evaluate(
+        (path) => window.arbora.invoke('grove.discardWorktree', { path }),
+        worktree,
+      );
+      expect(discarded.ok).toBe(true);
+      worktree = undefined;
+    } finally {
+      if (worktree) {
+        await page
+          .evaluate((path) => window.arbora.invoke('grove.discardWorktree', { path }), worktree)
+          .catch(() => undefined);
+      }
+      await app.close();
+      rmSync(project, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+      if (worktree) rmSync(worktree, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     }
   });
 });
