@@ -140,7 +140,9 @@ test.describe('Stage 5 browser tools (MCP)', () => {
       await expect(card).toContainText('Run JavaScript in the page', { timeout: 20_000 });
       await expect(card.getByTestId('permission-allow_always')).toBeVisible();
       await card.getByTestId('permission-allow_once').click();
-      await expect(page.getByTestId('agent-message').last()).toContainText('Page title: "', { timeout: 20_000 });
+      await expect(page.getByTestId('agent-message').last()).toContainText(/Page title:[\s\S]*Tab: \S+ \(app\)/, {
+        timeout: 20_000,
+      });
       await deleteThreads(page);
     } finally {
       await app.close();
@@ -176,7 +178,7 @@ test.describe('Stage 5 browser tools (MCP)', () => {
           .map((m) => [m[1] ?? '', m[2] ?? '']),
       );
       const expected: Record<string, RegExp> = {
-        url: /^ok Page URL: http:\/\/127\.0\.0\.1/,
+        url: /^ok Tab: \S+ \(app\)/,
         snapshot: /^ok button "Log error"/,
         'click log error': /^ok/,
         console: /^ok fixture: intentional error/,

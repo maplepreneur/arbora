@@ -19,6 +19,9 @@ export interface PageInfo {
   readonly title: string;
   readonly loading: boolean;
   readonly error: string | null;
+  /** Set once a tab was resolved, so a result can name where it came from. */
+  readonly tabId?: string;
+  readonly role?: 'app' | 'reference';
 }
 
 export type LogLevel = 'error' | 'warning' | 'info' | 'debug';
@@ -136,6 +139,8 @@ export interface TabCapture {
   readonly cssHeight: number;
   readonly title: string;
   readonly url: string;
+  readonly id: string;
+  readonly role: 'app' | 'reference';
 }
 
 /** What the MCP server knows about one traced browser action, before the app attaches a screenshot. */

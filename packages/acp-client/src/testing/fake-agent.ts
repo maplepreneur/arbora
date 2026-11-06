@@ -158,7 +158,7 @@ async function toolSweep(cx: AgentContext, sessionId: string, state: SessionStat
   const refOf = (snapshot: string, role: string, name: string): string =>
     new RegExp(`${role} "${name}"[^\\n]*\\[ref=(e\\d+)\\]`).exec(snapshot)?.[1] ?? 'missing';
 
-  await step('url', 'browser_get_url', {}, /Page URL: \S+/);
+  await step('url', 'browser_get_url', {}, /Tab: \S+ \(app\)/);
   const snapshot = await step('snapshot', 'browser_snapshot', {}, /button "Log error"/);
   await step('click log error', 'browser_click', { ref: refOf(snapshot, 'button', 'Log error') });
   await step('console', 'browser_console_logs', { level: 'error' }, /fixture: intentional error/);

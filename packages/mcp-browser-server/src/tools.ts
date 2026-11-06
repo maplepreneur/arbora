@@ -106,10 +106,34 @@ function checkTarget(value: string | undefined): void {
   }
 }
 
+function tabHeader(page: PageInfo): string | null {
+  if (!page.tabId) return null;
+  return `Tab: ${page.tabId}${page.role ? ` (${page.role})` : ''}`;
+}
+
 function pageLine(page: PageInfo): string {
-  const lines = [`Page URL: ${page.url || '(none)'}`, `Page title: ${page.title || '(none)'}`];
+  const header = tabHeader(page);
+  const lines = [
+    ...(header ? [header] : []),
+    `Page URL: ${page.url || '(none)'}`,
+    `Page title: ${page.title || '(none)'}`,
+  ];
   if (page.error) lines.push(`Load error: ${page.error}`);
   return lines.join('\n');
+}
+
+/** Names the tab on a text result. JSON stays parseable, and a header already present is not repeated. */
+function nameTabResult(page: PageInfo, result: CallToolResult): CallToolResult {
+  const header = tabHeader(page);
+  if (!header) return result;
+  let named = false;
+  const content = result.content.map((item) => {
+    if (named || item.type !== 'text' || item.text.includes(header) || item.text.trimStart().startsWith('{'))
+      return item;
+    named = true;
+    return { ...item, text: `${header}\n${item.text}` };
+  });
+  return content === result.content ? result : { ...result, content };
 }
 
 const LEVEL_RANK: Readonly<Record<LogLevel, number>> = { debug: 0, info: 1, warning: 2, error: 3 };
@@ -174,7 +198,7 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
         try {
           if (host.resolveTarget) await host.resolveTarget(args.target, WRITE_TOOLS.has(name) ? 'write' : 'read');
           else checkTarget(args.target);
-          const result = await run(args);
+          const result = nameTabResult(host.page(), await run(args));
           const failed = result.isError === true;
           const resultText = result.content.find((item) => item.type === 'text')?.text ?? '';
           const compareMode =
@@ -599,8 +623,8 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
         ...output.json,
         ...(saved ? { saved } : {}),
         stop,
-        left: { title: a.title, url: a.url },
-        right: { title: b.title, url: b.url },
+        left: { id: a.id, role: a.role, title: a.title, url: a.url },
+        right: { id: b.id, role: b.role, title: b.title, url: b.url },
       });
       return {
         content: [
@@ -635,7 +659,15 @@ type CompareSide = string | { target: string; selector?: string | undefined; rec
 async function framedCapture(
   host: BrowserToolHost,
   side: CompareSide,
-): Promise<{ png: Buffer; cssWidth: number; cssHeight: number; title: string; url: string }> {
+): Promise<{
+  png: Buffer;
+  cssWidth: number;
+  cssHeight: number;
+  title: string;
+  url: string;
+  id: string;
+  role: 'app' | 'reference';
+}> {
   const spec = typeof side === 'string' ? { target: side } : side;
   if (!host.captureTab) throw new ToolError('Comparing tabs is not available.');
   const shot = await host.captureTab(spec.target);
@@ -653,6 +685,8 @@ async function framedCapture(
       cssHeight: shot.cssHeight,
       title: shot.title,
       url: shot.url,
+      id: shot.id,
+      role: shot.role,
     };
   }
   const cropped = cropBitmap(decodePng(Buffer.from(shot.png)), shot.cssWidth, shot.cssHeight, rect);
@@ -662,6 +696,8 @@ async function framedCapture(
     cssHeight: cropped.cssHeight,
     title: shot.title,
     url: shot.url,
+    id: shot.id,
+    role: shot.role,
   };
 }
 

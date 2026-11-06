@@ -136,6 +136,8 @@ function sourceLine(source: { relative: string; line: number | null } | null): s
 export class ArboraToolHost implements BrowserToolHost {
   /** Set by resolveTarget so a hidden tab is used without showing it. */
   private selected: BrowserService | null = null;
+  /** The tab `selected` belongs to, so tool results can name it. */
+  private selectedTab: { id: string; role: 'app' | 'reference' } | null = null;
   /** Compare images saved for this thread, so each round has its own file. */
   private compareRounds = 0;
 
@@ -154,12 +156,14 @@ export class ArboraToolHost implements BrowserToolHost {
         throw new ToolError(`Unknown tab ${target}; Arbora has a single browser tab for now (omit "target").`);
       }
       this.selected = null;
+      this.selectedTab = null;
       return;
     }
     const resolved = await tabs.resolve(target);
     this.assertGranted(tabs, resolved.id, resolved.role);
     if (intent === 'write' && resolved.role === 'reference') await this.permitWrite(tabs, resolved.id);
     this.selected = resolved.service;
+    this.selectedTab = { id: resolved.id, role: resolved.role };
   }
 
   designMatch(): { threshold: number; maxRounds: number } {
@@ -300,7 +304,15 @@ export class ArboraToolHost implements BrowserToolHost {
     this.assertGranted(tabs, resolved.id, resolved.role);
     const shot = await resolved.service.captureQuiet();
     const state = resolved.service.getState();
-    return { png: shot.png, cssWidth: shot.cssWidth, cssHeight: shot.cssHeight, title: state.title, url: state.url };
+    return {
+      png: shot.png,
+      cssWidth: shot.cssWidth,
+      cssHeight: shot.cssHeight,
+      title: state.title,
+      url: state.url,
+      id: resolved.id,
+      role: resolved.role,
+    };
   }
 
   async elementRect(
@@ -354,6 +366,7 @@ export class ArboraToolHost implements BrowserToolHost {
       title: state.title,
       loading: state.loading,
       error: state.error ? `${state.error.description} (${state.error.code})` : null,
+      ...(this.selectedTab ? { tabId: this.selectedTab.id, role: this.selectedTab.role } : {}),
     };
   }
 

@@ -364,6 +364,17 @@ describe('BrowserMcpServer', () => {
     expect(errors).not.toContain('hello');
   });
 
+  it('names the tab a result came from', async () => {
+    const { client, state } = await connect();
+    state.page = { ...state.page, tabId: 'figma', role: 'reference' };
+    const url = textOf(await client.callTool({ name: 'browser_get_url', arguments: {} }));
+    expect(url).toContain('Tab: figma (reference)');
+    expect(url).toContain('Page URL: http://127.0.0.1:5173/');
+    expect(textOf(await client.callTool({ name: 'browser_set_viewport', arguments: { preset: 'mobile' } }))).toBe(
+      'Tab: figma (reference)\nok',
+    );
+  });
+
   it('rejects other tab targets', async () => {
     const { client } = await connect();
     const result = await client.callTool({ name: 'browser_get_url', arguments: { target: 'tab-2' } });
