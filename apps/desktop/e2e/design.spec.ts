@@ -106,14 +106,16 @@ function cleanArtefacts(project: string): void {
 }
 
 /**
- * Mod+, opens Settings over the browser pane. Checks both fake agents, makes "smart" the default
- * model, and closes it again.
+ * Mod+, opens Settings on General, over the browser pane. Opens Agents, checks both fake agents,
+ * makes "smart" the default model, and closes it again.
  */
 async function checkAgentsInSettings(page: Page): Promise<void> {
   await page.getByTestId('browser-toolbar').click({ position: { x: 2, y: 2 } });
   await page.keyboard.press('ControlOrMeta+Comma');
   await expect(page.getByTestId('settings-page')).toBeVisible();
   await expect(page.getByTestId('browser-panel')).toHaveCount(0);
+  // Settings opens on General. Agent checks live on Agents.
+  await page.getByTestId('settings-nav-agents').click();
   await page.getByTestId('settings-verify-fake').click();
   await page.getByTestId('settings-verify-fake-locked').click();
   await expect(page.getByTestId('settings-agent-fake')).toHaveAttribute('data-status', 'ready', { timeout: 30_000 });
