@@ -454,8 +454,14 @@ export class ArboraToolHost implements BrowserToolHost {
   }
 
   private async traceImage(): Promise<ActionTraceImage | null> {
-    const browser = this.options.browser();
-    if (!browser?.getState().url) return null;
+    // The tool already resolved its tab. The visible tab can be a different one.
+    let browser: BrowserService;
+    try {
+      browser = this.browser();
+    } catch {
+      return null;
+    }
+    if (!browser.getState().url) return null;
     try {
       const shot = await browser.screenshot({ mode: 'viewport' });
       const full = nativeImage.createFromBuffer(Buffer.from(shot.pngBase64, 'base64'));

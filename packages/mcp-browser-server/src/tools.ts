@@ -215,13 +215,17 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
               : undefined;
           const score = name === 'browser_compare' && !failed ? compareScoreTitle(resultText, compareMode) : null;
           const image = result.content.find((item) => item.type === 'image');
+          const imagePng =
+            image?.type === 'image' ? Uint8Array.from(Buffer.from(image.data, 'base64')) : undefined;
           const extra =
             name === 'browser_compare' && !failed
               ? {
                   path: compareSavedPath(resultText),
-                  ...(image?.type === 'image' ? { imagePng: Uint8Array.from(Buffer.from(image.data, 'base64')) } : {}),
+                  ...(imagePng ? { imagePng } : {}),
                 }
-              : undefined;
+              : name === 'browser_screenshot' && !failed && imagePng
+                ? { imagePng }
+                : undefined;
           await record(name, args, !failed, failed ? resultError(result) : null, score ?? undefined, extra);
           return result;
         } catch (error) {

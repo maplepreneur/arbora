@@ -337,11 +337,12 @@ describe('BrowserMcpServer', () => {
   });
 
   it('returns screenshots as raw base64 image content', async () => {
-    const { client } = await connect();
+    const { client, state } = await connect();
     const result = (await client.callTool({ name: 'browser_screenshot', arguments: {} })) as {
       content: { type: string; data?: string; mimeType?: string }[];
     };
     expect(result.content[0]).toEqual({ type: 'image', data: 'iVBORw0KGgo=', mimeType: 'image/png' });
+    expect(state.traces.at(-1)?.imagePng).toEqual(Uint8Array.from(Buffer.from('iVBORw0KGgo=', 'base64')));
   });
 
   it('asks once per origin before leaving the dev server, and not for loopback URLs', async () => {
