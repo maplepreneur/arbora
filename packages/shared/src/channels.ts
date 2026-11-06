@@ -532,6 +532,8 @@ export const channels = {
         z.object({
           path: z.string(),
           threads: z.array(threadSummarySchema),
+          /** The project's `defaultAgent`, or null when it uses the app-wide default. */
+          defaultAgent: z.string().nullable(),
           waiting: z.array(
             z.object({
               threadId: z.string(),

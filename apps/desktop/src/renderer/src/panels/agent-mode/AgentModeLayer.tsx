@@ -10,17 +10,26 @@ import {
   sourceTier,
   targetComponent,
   type SourceTier,
+  resolveDefaultAgent,
   type AgentModeInclude,
   type AgentModeSelection,
   type AgentModeTarget,
   type Rect,
   type ResolvedComponent,
+  type ThreadSummary,
   type ViewportPresetId,
 } from '@arbora/shared';
-import { defaultAgentModeTarget, isListed, useAgents } from '../../agent-store';
+import {
+  agentModeProjectOrder,
+  agentModeTargetForProject,
+  defaultAgentModeTarget,
+  isListed,
+  useAgents,
+} from '../../agent-store';
 import { taskModelFor, useDefaultAgentId, useTaskAgentId } from '../../agent-defaults';
 import { Picker } from '../../components/Picker';
 import { showAgentThread } from '../../commands';
+import { noteProjectThreads } from '../../grove-store';
 import { useProjects } from '../../projects-store';
 import { dispatchMode, useApp } from '../../store';
 
@@ -68,9 +77,16 @@ function useDefaultTarget(): string | null {
   return useAgents((s) => defaultAgentModeTarget(s, chatThread, taskAgentId ?? defaultAgent));
 }
 
-function TargetPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function TargetPicker({
+  value,
+  onChange,
+  threads,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  threads: readonly ThreadSummary[];
+}) {
   const agents = useAgents((s) => s.agents);
-  const threads = useAgents((s) => s.threads);
   const availability = useAgents((s) => s.availability);
   const options = useMemo(() => {
     const agentName = (id: string): string => agents.find((a) => a.id === id)?.name ?? id;
@@ -203,17 +219,54 @@ function AgentModePopover({ selection, targetIndex, onTargetIndex }: PopoverProp
   const [include, setInclude] = useState<AgentModeInclude>({ screenshot: true, sources: true, context: true });
   const defaultTarget = useDefaultTarget();
   const [chosenTarget, setChosenTarget] = useState<string | null>(null);
-  const target = chosenTarget ?? defaultTarget;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingOpen, setPendingOpen] = useState<string | null>(null);
   const currentPath = useApp((s) => s.project?.path ?? '');
+  const appDefault = useApp((s) => s.settings.agents.defaultAgent);
   const library = useProjects((s) => s.library);
-  const openProjects = library.entries.filter(
-    (entry) => entry.path !== currentPath && (entry.open || entry.recent),
+  const otherProjects = agentModeProjectOrder(
+    library.entries.filter((entry) => entry.path !== currentPath && (entry.open || entry.recent)),
   );
   const [projectPath, setProjectPath] = useState('');
+  const [foreign, setForeign] = useState<Record<string, { threads: ThreadSummary[]; defaultAgent: string | null }>>({});
+  const localThreads = useAgents((s) => s.threads);
+  const agents = useAgents((s) => s.agents);
+  const availability = useAgents((s) => s.availability);
+  const foreignInfo = projectPath ? foreign[projectPath] : undefined;
+  const threads = projectPath ? (foreignInfo?.threads ?? []) : localThreads;
+  const foreignDefault = projectPath
+    ? agentModeTargetForProject(
+        threads,
+        agents,
+        availability,
+        resolveDefaultAgent(
+          agents.map((agent) => agent.id),
+          foreignInfo?.defaultAgent ?? undefined,
+          appDefault,
+        ),
+      )
+    : null;
+  const target = chosenTarget ?? (projectPath ? foreignDefault : defaultTarget);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!projectPath) return;
+    let cancelled = false;
+    void window.arbora.invoke('grove.agents').then((result) => {
+      if (cancelled) return;
+      const next: Record<string, { threads: ThreadSummary[]; defaultAgent: string | null }> = {};
+      for (const project of result.projects) {
+        noteProjectThreads(project.path, project.threads);
+        next[project.path] = { threads: project.threads, defaultAgent: project.defaultAgent };
+      }
+      if (!next[projectPath]) next[projectPath] = { threads: [], defaultAgent: null };
+      setForeign(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectPath]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -362,19 +415,22 @@ function AgentModePopover({ selection, targetIndex, onTargetIndex }: PopoverProp
       )}
       <div className="flex items-center gap-1.5">
         <span className="shrink-0 text-[11px] text-fg-subtle">Send to</span>
-        <TargetPicker value={target ?? ''} onChange={setChosenTarget} />
+        <TargetPicker value={target ?? ''} threads={threads} onChange={setChosenTarget} />
       </div>
-      {openProjects.length > 0 && (
+      {otherProjects.length > 0 && (
         <label className="flex items-center gap-1.5 text-[11px] text-fg-subtle">
           Project
           <select
             data-testid="agent-mode-project"
             value={projectPath}
-            onChange={(event) => setProjectPath(event.target.value)}
+            onChange={(event) => {
+              setProjectPath(event.target.value);
+              setChosenTarget(null);
+            }}
             className="min-w-0 flex-1 rounded border border-border bg-bg px-1 py-0.5 text-fg"
           >
             <option value="">This project</option>
-            {openProjects.map((entry) => (
+            {otherProjects.map((entry) => (
               <option key={entry.path} value={entry.path}>
                 {entry.name}
               </option>

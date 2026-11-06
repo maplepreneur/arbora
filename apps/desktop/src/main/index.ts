@@ -915,7 +915,7 @@ function main(): void {
             },
           ];
         });
-        return { path, threads, waiting };
+        return { path, threads, waiting, defaultAgent: readProjectSettings(path).settings.defaultAgent ?? null };
       }),
     }));
     const loginEnv = async (): Promise<NodeJS.ProcessEnv> => {

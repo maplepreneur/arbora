@@ -403,7 +403,9 @@ test.describe('Stage 4 agent mode on Vite + React 18', () => {
         .poll(
           () =>
             app.evaluate(async ({ BrowserWindow }, projectPath) => {
-              const win = BrowserWindow.getAllWindows().find((item) => item.getTitle().startsWith(projectPath.split(/[/\\]/).pop() ?? projectPath));
+              const win = BrowserWindow.getAllWindows().find((item) =>
+                item.getTitle().startsWith(projectPath.split(/[/\\]/).pop() ?? projectPath),
+              );
               if (!win) return [];
               return win.webContents.executeJavaScript(
                 `(async () => (await window.arbora.invoke('agent.listThreads')).map((thread) => thread.title))()`,
@@ -412,6 +414,56 @@ test.describe('Stage 4 agent mode on Vite + React 18', () => {
           { timeout: 20_000 },
         )
         .toContain('cross project hello');
+    } finally {
+      await app
+        .evaluate(({ BrowserWindow }) => {
+          for (const win of BrowserWindow.getAllWindows().slice(1)) win.destroy();
+        })
+        .catch(() => undefined);
+      await deleteThreads(page).catch(() => undefined);
+      await app.close();
+      rmSync(other, { recursive: true, force: true });
+    }
+  });
+
+  test('offers the other project’s threads, not this window’s', async () => {
+    test.setTimeout(90_000);
+    const other = realpathSync(mkdtempSync(join(tmpdir(), 'arbora-other-')));
+    const { app, page } = await launch(userDataWithFakeAgents(), [VITE_REACT]);
+    try {
+      await openAndWait(page, vite.url);
+      await waitForHydration(app, BUTTON);
+      await page.evaluate(() => window.arbora.invoke('agent.createThread', { agentId: 'fake', title: 'Local only' }));
+      await enterAgentMode(app, page);
+      await clickInPage(app, BUTTON);
+      await expect(page.getByTestId('agent-mode-popover')).toBeVisible({ timeout: 20_000 });
+      const name = basename(other);
+      await page.evaluate((path) => {
+        setTimeout(() => {
+          void window.arbora.invoke('project.openInWindow', { path });
+        }, 0);
+      }, other);
+      await expect
+        .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), { timeout: 15_000 })
+        .toBeGreaterThan(1);
+      await app.evaluate(
+        async ({ BrowserWindow }, input) => {
+          const win = BrowserWindow.getAllWindows().find((item) => item.getTitle().startsWith(input.name));
+          if (!win) throw new Error('The other project window is not open');
+          await win.webContents.executeJavaScript(
+            `window.arbora.invoke('agent.createThread', { agentId: 'fake', title: ${JSON.stringify(input.title)} })`,
+          );
+        },
+        { name, title: 'Foreign design' },
+      );
+      const project = page.getByTestId('agent-mode-project');
+      await expect(project.locator('option', { hasText: name })).toHaveCount(1, { timeout: 10_000 });
+      await project.selectOption(other);
+      await expect(page.getByTestId('agent-mode-target')).toContainText('Foreign design', { timeout: 10_000 });
+      await page.getByTestId('agent-mode-target').click();
+      const options = page.getByTestId('agent-mode-target-option');
+      await expect(options.filter({ hasText: 'Foreign design' })).toHaveCount(1);
+      await expect(options.filter({ hasText: 'Local only' })).toHaveCount(0);
     } finally {
       await app
         .evaluate(({ BrowserWindow }) => {

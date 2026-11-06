@@ -328,7 +328,11 @@ export async function archiveThread(threadId: string, archived: boolean): Promis
  * with the default agent (or the first detected agent, or the first listed one).
  */
 export function defaultAgentModeTarget(
-  state: Pick<AgentPanelState, 'threads' | 'agents' | 'availability'>,
+  state: {
+    threads: readonly ThreadSummary[];
+    agents: readonly AgentDefinition[];
+    availability: readonly AgentAvailability[];
+  },
   openThreadId: string | null,
   defaultAgentId: string | undefined,
 ): string | null {
@@ -340,6 +344,31 @@ export function defaultAgentModeTarget(
     state.agents.find((a) => detected.has(a.id)) ??
     state.agents[0];
   return agent ? `new:${agent.id}` : null;
+}
+
+/**
+ * Where agent mode sends when the prompt is for another project: that project's last-used thread,
+ * or a new thread with its default agent.
+ */
+export function agentModeTargetForProject(
+  threads: readonly ThreadSummary[],
+  agents: readonly AgentDefinition[],
+  availability: readonly AgentAvailability[],
+  defaultAgentId: string | undefined,
+): string | null {
+  const last = threads
+    .filter(isListed)
+    .reduce<ThreadSummary | null>(
+      (best, thread) => (best === null || thread.updatedAt > best.updatedAt ? thread : best),
+      null,
+    );
+  if (last) return `thread:${last.id}`;
+  return defaultAgentModeTarget({ threads: [], agents, availability }, null, defaultAgentId);
+}
+
+/** Open windows first, then recent projects, each group by name. */
+export function agentModeProjectOrder<T extends { open: boolean; name: string }>(entries: readonly T[]): T[] {
+  return [...entries].sort((a, b) => Number(b.open) - Number(a.open) || a.name.localeCompare(b.name));
 }
 
 export async function deleteThread(threadId: string): Promise<void> {

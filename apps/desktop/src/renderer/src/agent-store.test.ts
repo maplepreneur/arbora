@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { idleThreadState, type AgentDefinition, type ThreadEvent, type ThreadSummary } from '@arbora/shared';
-import { applyChanges, defaultAgentModeTarget, isStoppable } from './agent-store';
+import {
+  agentModeProjectOrder,
+  agentModeTargetForProject,
+  applyChanges,
+  defaultAgentModeTarget,
+  isStoppable,
+} from './agent-store';
 
 const message = (id: string, text: string): ThreadEvent => ({
   id,
@@ -72,6 +78,27 @@ describe('defaultAgentModeTarget', () => {
   it('starts a new thread with the default agent when no thread is open', () => {
     expect(defaultAgentModeTarget(base, null, 'opencode')).toBe('new:opencode');
     expect(defaultAgentModeTarget(base, 'gone', 'opencode')).toBe('new:opencode');
+  });
+
+  it('uses another project’s last thread, then a new thread with its default agent', () => {
+    const older = { ...thread('old'), updatedAt: 1, title: 'old' };
+    const newer = { ...thread('new'), updatedAt: 5, title: 'new', archivedAt: null };
+    const archived = { ...thread('gone'), updatedAt: 9, archivedAt: 9 };
+    expect(agentModeTargetForProject([older, newer, archived], base.agents, base.availability, 'opencode')).toBe(
+      'thread:new',
+    );
+    expect(agentModeTargetForProject([archived], base.agents, base.availability, 'opencode')).toBe('new:opencode');
+  });
+
+  it('lists open projects before recent ones', () => {
+    expect(
+      agentModeProjectOrder([
+        { name: 'zeta', open: false },
+        { name: 'beta', open: true },
+        { name: 'alpha', open: true },
+        { name: 'recent', open: false },
+      ]).map((entry) => entry.name),
+    ).toEqual(['alpha', 'beta', 'recent', 'zeta']);
   });
 
   it('falls back to the first detected agent, then the first listed', () => {
