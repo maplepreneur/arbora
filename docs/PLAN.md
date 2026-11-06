@@ -8,7 +8,7 @@ The companion document [BUILD_STAGES.md](./BUILD_STAGES.md) breaks the build int
 
 Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents must update this section and that table at the end of every piece of work.
 
-**Now (6 Nov 2026):** Stage 11 (Stretch) is in progress. The dev plugin is the first piece: `@arbora/dev-plugin` adds `data-arbora-src="path:line:column"` on host elements for Vite, Next (webpack) and Nuxt in development, the inspector treats that as a tier 1 location even on React 19, and agent mode offers **Install dev plugin** when a selection is still tier 3. Install copies the package into `.arbora/dev-plugin` and depends on it with `file:.arbora/dev-plugin` (it is not on npm). Not `arch-ok`.
+**Now (6 Nov 2026):** Stage 11 (Stretch) is in progress ([PR #81](https://github.com/maplepreneur/arbora/pull/81)). The dev plugin is the first piece: `@arbora/dev-plugin` adds `data-arbora-src="path:line:column"` on host elements for Vite, Next (webpack) and Nuxt in development, the inspector treats that as a tier 1 location even on React 19, and agent mode offers **Install dev plugin** when a selection is still tier 3. Install copies the package into `.arbora/dev-plugin` and depends on it with `file:.arbora/dev-plugin` (it is not on npm). Not `arch-ok`.
 
 **Next:** the rest of Stage 11, in checklist order: point the browser at a worktree's own port, merge or open a pull request from that session, and best-of-N (one task, several agents, keep one); then Tailwind write-through, design session history, MCP action traces, LSP opt-in, and source-map mapping for production builds. Stage 10 and Stage 9 still need `arch-ok` on Omarchy/Hyprland. Do not mark Stage 11 `Done` from CI.
 
