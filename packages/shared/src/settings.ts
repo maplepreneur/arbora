@@ -176,13 +176,37 @@ export const onboardingSettingsSchema = z.object({
 });
 export type OnboardingSettings = z.infer<typeof onboardingSettingsSchema>;
 
+export const worktreeModulesSchema = z.enum(['linked', 'own']);
+export type WorktreeModules = z.infer<typeof worktreeModulesSchema>;
+
 export const groveProjectSchema = z.object({
   path: z.string().min(1),
   collapsed: z.boolean().default(false),
   /** Set when this folder is a git worktree of another Grove project. */
   parentPath: z.string().min(1).optional(),
+  /** `linked` shares the parent's `node_modules`. `own` has a separate install, or none yet. */
+  modules: worktreeModulesSchema.optional(),
+  /** The dev-server port written into this worktree's `.arbora/project.json`. */
+  port: z.number().int().min(1).max(65535).optional(),
 });
 export type GroveProject = z.infer<typeof groveProjectSchema>;
+
+export const bestOfCandidateSchema = z.object({
+  path: z.string().min(1),
+  threadId: z.string().min(1),
+  agentId: z.string().min(1),
+  branch: z.string().min(1),
+});
+export type BestOfCandidate = z.infer<typeof bestOfCandidateSchema>;
+
+/** One task started on several agents, each in its own worktree, so the user can keep one. */
+export const bestOfSetSchema = z.object({
+  id: z.string().min(1),
+  parentPath: z.string().min(1),
+  task: z.string().max(4000),
+  candidates: z.array(bestOfCandidateSchema).min(2).max(4),
+});
+export type BestOfSet = z.infer<typeof bestOfSetSchema>;
 
 export const groveTrustedCommandSchema = z.object({
   path: z.string().min(1),
@@ -208,6 +232,8 @@ export const groveSettingsSchema = z.object({
    * were saved before this field existed. Quitting does not change the Grove project list.
    */
   launch: groveLaunchSchema.default('browser'),
+  /** Best-of-N runs: the same task in several worktrees. Dropped when fewer than two remain. */
+  bestOf: z.array(bestOfSetSchema).max(10).default([]),
 });
 export type GroveSettings = z.infer<typeof groveSettingsSchema>;
 

@@ -453,8 +453,8 @@ export const channels = {
     }),
   ),
   /**
-   * Starts an agent in a new git worktree of `parentPath`. The worktree is registered as its own
-   * Grove project only after `git worktree add` succeeds. A failure leaves the Grove list unchanged.
+   * Starts one agent per worktree of `parentPath`. Each worktree is registered only after
+   * `git worktree add` succeeds. `also` runs the same task on more agents (best-of-N).
    */
   'grove.createWorktree': defineChannel(
     'grove.createWorktree',
@@ -463,8 +463,63 @@ export const channels = {
       title: z.string().trim().min(1).max(200),
       agentId: z.string(),
       model: z.string().max(300).optional(),
+      /** Other agents that run the same task, each in its own worktree (best-of-N, three at most). */
+      also: z
+        .array(z.object({ agentId: z.string(), model: z.string().max(300).optional() }))
+        .max(3)
+        .optional(),
     }),
-    z.object({ path: z.string().optional(), threadId: z.string().optional(), error: z.string().optional() }),
+    z.object({
+      path: z.string().optional(),
+      threadId: z.string().optional(),
+      error: z.string().optional(),
+      devUrl: z.string().optional(),
+      port: z.number().int().optional(),
+      modules: z.enum(['linked', 'own']).optional(),
+      candidates: z
+        .array(
+          z.object({
+            path: z.string(),
+            threadId: z.string(),
+            agentId: z.string(),
+            branch: z.string(),
+          }),
+        )
+        .optional(),
+    }),
+  ),
+  /** Merges the worktree's branch into the parent checkout. A conflict is aborted. */
+  'grove.mergeWorktree': defineChannel(
+    'grove.mergeWorktree',
+    z.object({ path: z.string() }),
+    z.object({ ok: z.boolean(), output: z.string() }),
+  ),
+  /** Pushes the worktree branch and opens a pull request with `gh`. */
+  'grove.pullRequestWorktree': defineChannel(
+    'grove.pullRequestWorktree',
+    z.object({ path: z.string(), title: z.string().trim().min(1).max(200), body: z.string().max(20000) }),
+    z.object({ url: z.string().optional(), error: z.string().optional() }),
+  ),
+  /** Merges this worktree and removes the other candidates in its best-of-N set. */
+  'grove.keepWorktree': defineChannel(
+    'grove.keepWorktree',
+    z.object({ path: z.string() }),
+    z.object({ ok: z.boolean(), output: z.string(), discarded: z.array(z.string()) }),
+  ),
+  /** Removes the worktree from git and from the Grove list. */
+  'grove.discardWorktree': defineChannel(
+    'grove.discardWorktree',
+    z.object({ path: z.string() }),
+    z.object({ ok: z.boolean(), error: z.string().optional(), parentPath: z.string().optional() }),
+  ),
+  /**
+   * Runs the package manager's install in the worktree. A `node_modules` symlink is removed first
+   * (the link only, not the parent's directory) so the install is a separate copy.
+   */
+  'grove.installWorktree': defineChannel(
+    'grove.installWorktree',
+    z.object({ path: z.string() }),
+    z.object({ terminalId: z.string().optional(), command: z.string().optional(), error: z.string().optional() }),
   ),
   'grove.runCommand': defineChannel(
     'grove.runCommand',

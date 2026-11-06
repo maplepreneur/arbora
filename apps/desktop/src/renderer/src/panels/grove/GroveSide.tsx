@@ -58,6 +58,7 @@ import {
   type SideSectionName,
 } from './sidebar-nav';
 import { StatusDot } from './StatusDot';
+import { WorktreeBar } from './WorktreeBar';
 import type { GroveModel } from '../../grove-model';
 
 interface ListedCommand {
@@ -642,6 +643,7 @@ function ProjectBody({
   const kbd = (id: string): boolean => navFocus === id;
   return (
     <div className="pb-0.5">
+      <WorktreeBar path={path} />
       <Section
         label="Agents"
         count={agentRows.length + agentTerminals.length}

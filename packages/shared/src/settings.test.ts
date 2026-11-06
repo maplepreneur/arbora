@@ -419,6 +419,7 @@ describe('Stage 10 settings (Grove)', () => {
       projects: [],
       trustedCommands: [],
       launch: 'browser',
+      bestOf: [],
     });
     expect(settings.projects['/p']?.layout).toMatchObject({ workspace: 'browser', groveThreadId: null });
     expect(migrateSettings({ version: 4, grove: { maxChildren: 2 } })).toEqual({
@@ -442,6 +443,7 @@ describe('Stage 10 settings (Grove)', () => {
       projects: [],
       trustedCommands: [],
       launch: 'browser',
+      bestOf: [],
     });
     expect(applySettingsPatch(defaultSettings(), { grove: { launch: 'grove' } }).grove.launch).toBe('grove');
     expect(loadSettings({ version: 6, grove: { maxChildren: 3 } }).settings.grove.launch).toBe('browser');
