@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { actionTraceTitle, compareScoreTitle, isTracedBrowserTool } from './trace.js';
+import { actionTraceTitle, compareSavedPath, compareScoreTitle, isTracedBrowserTool } from './trace.js';
 
 describe('action traces', () => {
   it('names the action from the arguments', () => {
@@ -16,6 +16,10 @@ describe('action traces', () => {
     expect(actionTraceTitle('browser_compare', {})).toBe('Compare tabs');
     expect(compareScoreTitle(JSON.stringify({ score: 0.84 }))).toBe('Matching design · 0.84');
     expect(compareScoreTitle('not json')).toBeNull();
+    expect(compareSavedPath(JSON.stringify({ saved: '.arbora/screenshots/thread/round-1.png' }))).toBe(
+      '.arbora/screenshots/thread/round-1.png',
+    );
+    expect(compareSavedPath(JSON.stringify({ saved: '/tmp/secret.png' }))).toBeNull();
   });
 
   it('traces page actions and skips reads', () => {

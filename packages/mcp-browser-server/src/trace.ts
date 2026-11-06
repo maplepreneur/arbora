@@ -97,3 +97,14 @@ export function compareScoreTitle(resultText: string): string | null {
     return null;
   }
 }
+
+/** Project-relative path of a saved compare image. Null when the result did not save one. */
+export function compareSavedPath(resultText: string): string | null {
+  try {
+    const parsed = JSON.parse(resultText) as { saved?: unknown };
+    if (typeof parsed.saved !== 'string' || !parsed.saved.startsWith('.arbora/screenshots/')) return null;
+    return parsed.saved;
+  } catch {
+    return null;
+  }
+}

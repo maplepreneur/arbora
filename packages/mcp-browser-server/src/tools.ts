@@ -8,7 +8,7 @@ import { evaluate, InflightRequests, truncate, waitFor } from './page.js';
 import { RefTable, resolveElement, type ElementTarget } from './refs.js';
 import { formatSnapshot, maskSecretNodes, type AxNode } from './snapshot.js';
 import { comparePngs } from './compare.js';
-import { actionTraceTitle, compareScoreTitle, isTracedBrowserTool } from './trace.js';
+import { actionTraceTitle, compareSavedPath, compareScoreTitle, isTracedBrowserTool } from './trace.js';
 
 export const DEFAULT_WAIT_MS = 5000;
 const MAX_WAIT_MS = 60_000;
@@ -136,6 +136,7 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
     ok: boolean,
     error: string | null,
     title?: string,
+    extra?: { path?: string | null; imagePng?: Uint8Array },
   ): Promise<void> => {
     if (!isTracedBrowserTool(name) || !host.recordTrace) return;
     try {
@@ -144,6 +145,8 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
         title: title ?? actionTraceTitle(name, args as Record<string, unknown>),
         ok,
         error: error === null ? null : clipError(error),
+        ...(extra?.path !== undefined ? { path: extra.path } : {}),
+        ...(extra?.imagePng ? { imagePng: extra.imagePng } : {}),
       });
     } catch {
       // The trace is a view of the action. A capture failure must not fail the tool.
@@ -167,11 +170,17 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
           else checkTarget(args.target);
           const result = await run(args);
           const failed = result.isError === true;
-          const score =
+          const resultText = result.content.find((item) => item.type === 'text')?.text ?? '';
+          const score = name === 'browser_compare' && !failed ? compareScoreTitle(resultText) : null;
+          const image = result.content.find((item) => item.type === 'image');
+          const extra =
             name === 'browser_compare' && !failed
-              ? compareScoreTitle(result.content.find((item) => item.type === 'text')?.text ?? '')
-              : null;
-          await record(name, args, !failed, failed ? resultError(result) : null, score ?? undefined);
+              ? {
+                  path: compareSavedPath(resultText),
+                  ...(image?.type === 'image' ? { imagePng: Uint8Array.from(Buffer.from(image.data, 'base64')) } : {}),
+                }
+              : undefined;
+          await record(name, args, !failed, failed ? resultError(result) : null, score ?? undefined, extra);
           return result;
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -574,8 +583,10 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
         bWidth: b.cssWidth,
         bHeight: b.cssHeight,
       });
+      const saved = host.saveCompare?.(output.png) ?? null;
       const json = JSON.stringify({
         ...output.json,
+        ...(saved ? { saved } : {}),
         left: { title: a.title, url: a.url },
         right: { title: b.title, url: b.url },
       });

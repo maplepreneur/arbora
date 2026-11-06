@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { WebContentsView } from 'electron';
@@ -485,6 +485,12 @@ if (args[1] === 'create') {
       expect(Number(scores?.[1])).toBeLessThan(0.92);
       expect(Number(scores?.[2])).toBeGreaterThanOrEqual(0.92);
       await expect(page.getByTestId('matching-design')).toBeVisible();
+      const history = await page.getByTestId('matching-design-scores').innerText();
+      expect(history.split('Matching design').length - 1).toBeGreaterThanOrEqual(2);
+      await expect(page.getByTestId('matching-design-file')).toContainText('.arbora/screenshots/');
+      const saved = readdirSync(join(VITE_REACT, '.arbora', 'screenshots'), { recursive: true }).map(String);
+      expect(saved.some((name) => name.endsWith('round-1.png'))).toBe(true);
+      expect(saved.some((name) => name.endsWith('round-2.png'))).toBe(true);
     } finally {
       writeFileSync(appFile, original);
       await app?.close();

@@ -106,6 +106,8 @@ export interface BrowserToolHost {
   openTab?(url: string | undefined): Promise<string>;
   closeTab?(id: string): Promise<void>;
   captureTab?(tabId: string): Promise<TabCapture>;
+  /** Writes one compare image under `.arbora/screenshots/<thread>/`. Returns a project-relative path. */
+  saveCompare?(png: Uint8Array): string | null;
   /** Replaces secrets filled this session. */
   redactSecrets?(text: string): string;
   /** Fills a granted tab from 1Password. The result is a status, never a secret. */
@@ -135,4 +137,8 @@ export interface TraceStepInput {
   readonly title: string;
   readonly ok: boolean;
   readonly error: string | null;
+  /** Project-relative path of a compare image saved for this step. */
+  readonly path?: string | null;
+  /** When set, this PNG is the step image instead of a fresh viewport capture. */
+  readonly imagePng?: Uint8Array;
 }

@@ -1,4 +1,5 @@
-import { statSync } from 'node:fs';
+import { mkdirSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { nativeImage, type NativeImage } from 'electron';
 import { elementSourceFunction, type ElementSourceFacts } from '@arbora/browser-bridge';
 import {
@@ -133,6 +134,8 @@ function sourceLine(source: { relative: string; line: number | null } | null): s
 export class ArboraToolHost implements BrowserToolHost {
   /** Set by resolveTarget so a hidden tab is used without showing it. */
   private selected: BrowserService | null = null;
+  /** Compare images saved for this thread, so each round has its own file. */
+  private compareRounds = 0;
 
   constructor(private readonly options: ArboraToolHostOptions) {}
 
@@ -373,8 +376,44 @@ export class ArboraToolHost implements BrowserToolHost {
    * A viewport thumbnail after a browser tool returns. Failure leaves the step without an image;
    * the tool result itself is already decided.
    */
+  /** One compare round, under `.arbora/screenshots/<thread>/`. The path is project-relative. */
+  saveCompare(png: Uint8Array): string | null {
+    const threadId = this.options.threadId?.replace(/[^A-Za-z0-9_-]/g, '') ?? '';
+    if (!threadId) return null;
+    try {
+      this.compareRounds += 1;
+      const relative = `.arbora/screenshots/${threadId}/round-${this.compareRounds}.png`;
+      const file = join(this.options.projectPath, relative);
+      mkdirSync(dirname(file), { recursive: true });
+      const ignore = join(this.options.projectPath, '.arbora', 'screenshots', '.gitignore');
+      try {
+        statSync(ignore);
+      } catch {
+        mkdirSync(dirname(ignore), { recursive: true });
+        writeFileSync(ignore, '# Arbora screenshots are local artefacts\n*\n');
+      }
+      writeFileSync(file, Buffer.from(png));
+      return relative;
+    } catch {
+      return null;
+    }
+  }
+
   async recordTrace(step: TraceStepInput): Promise<void> {
-    this.options.trace?.({ ...step, image: await this.traceImage() });
+    const { imagePng, ...rest } = step;
+    const image = imagePng ? this.imageFromPng(imagePng) : await this.traceImage();
+    this.options.trace?.({ ...rest, image });
+  }
+
+  private imageFromPng(png: Uint8Array): ActionTraceImage | null {
+    try {
+      const full = nativeImage.createFromBuffer(Buffer.from(png));
+      if (full.isEmpty()) return null;
+      const image = encodeImage(full, TRACE_EDGE, 'always');
+      return image.data.length <= ACTION_TRACE_IMAGE_LIMIT ? image : null;
+    } catch {
+      return null;
+    }
   }
 
   private async traceImage(): Promise<ActionTraceImage | null> {

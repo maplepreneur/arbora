@@ -23,6 +23,8 @@ export const actionTraceStepSchema = z.object({
   error: z.string().max(300).nullable(),
   /** Viewport thumbnail taken after the tool returned. Null when the page could not be captured. */
   image: actionTraceImageSchema.nullable(),
+  /** Project-relative path of a saved compare image, when this step is a compare. */
+  path: z.string().max(400).nullable().optional(),
 });
 export type ActionTraceStep = z.infer<typeof actionTraceStepSchema>;
 

@@ -388,20 +388,30 @@ function ActionTraceCard({
         </span>
       </header>
       {event.steps.some((step) => step.tool === 'browser_compare') && (
-        <div className="mb-1 flex items-center gap-1.5" data-testid="matching-design">
-          <span className="font-medium text-fg">Matching design</span>
-          <span className="min-w-0 flex-1 truncate text-fg-muted">
-            {event.steps.filter((step) => step.tool === 'browser_compare').at(-1)?.title}
-          </span>
-          {onStop && (
-            <button
-              type="button"
-              data-testid="matching-design-stop"
-              onClick={onStop}
-              className="rounded border border-border px-1.5 py-0.5 text-fg-muted hover:bg-bg-muted hover:text-fg"
-            >
-              Stop
-            </button>
+        <div className="mb-1 flex flex-col gap-0.5" data-testid="matching-design">
+          <div className="flex items-center gap-1.5">
+            <span className="font-medium text-fg">Matching design</span>
+            <span className="min-w-0 flex-1 truncate text-fg-muted" data-testid="matching-design-scores">
+              {event.steps
+                .filter((step) => step.tool === 'browser_compare')
+                .map((step) => step.title)
+                .join(' → ')}
+            </span>
+            {onStop && (
+              <button
+                type="button"
+                data-testid="matching-design-stop"
+                onClick={onStop}
+                className="rounded border border-border px-1.5 py-0.5 text-fg-muted hover:bg-bg-muted hover:text-fg"
+              >
+                Stop
+              </button>
+            )}
+          </div>
+          {event.steps.filter((step) => step.tool === 'browser_compare' && step.path).at(-1)?.path && (
+            <span className="truncate text-fg-subtle" data-testid="matching-design-file">
+              {event.steps.filter((step) => step.tool === 'browser_compare' && step.path).at(-1)?.path}
+            </span>
           )}
         </div>
       )}
