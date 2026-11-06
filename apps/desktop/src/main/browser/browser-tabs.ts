@@ -208,12 +208,17 @@ export class BrowserTabs {
     this.publish();
   }
 
-  closeOpenedBy(threadId: string): void {
+  /** Closes unpinned tabs this thread opened. A pinned tab and the app tab stay. */
+  closeOpenedBy(threadId: string): string[] {
     const before = new Set(this.set.tabs.map((entry) => entry.id));
     this.set = closeAgentTabs(this.set, threadId, Date.now());
-    for (const id of before) if (!this.set.tabs.some((entry) => entry.id === id)) this.dropSlot(id);
-    this.layout();
-    this.publish();
+    const closed = [...before].filter((id) => !this.set.tabs.some((entry) => entry.id === id));
+    for (const id of closed) this.dropSlot(id);
+    if (closed.length > 0) {
+      this.layout();
+      this.publish();
+    }
+    return closed;
   }
 
   async activate(id: string): Promise<void> {

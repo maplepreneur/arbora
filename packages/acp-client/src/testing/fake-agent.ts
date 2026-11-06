@@ -27,6 +27,7 @@
  * - "vault login": `browser_login`
  * - "tab grant <id>": `browser_snapshot` of that tab
  * - "match design <url>": open that design, compare, rewrite `src/App.tsx`, compare again
+ * - "hold tab <url>": open that reference tab and leave it open for this session.
  * - "match figma <url>": open a canvas page, follow its node-id, read the inspect text,
  *   screenshot the frame, and compare that frame (not the chrome) in every compare mode
  * - a prompt that says a tab "is granted to this thread" snapshots that tab
@@ -723,6 +724,13 @@ async function handlePrompt(cx: AgentContext, params: PromptRequest): Promise<Pr
   if (sent?.[1] && /is granted to this thread/.test(text)) {
     const result = await callBrowserTool(cx, sessionId, state, 'browser_snapshot', { target: sent[1] });
     await say(cx, sessionId, result.isError ? `Grant check: ${result.text}` : 'Grant check: allowed', state);
+    return { stopReason: 'end_turn' };
+  }
+  const hold = /hold tab (https?:\/\/\S+)/i.exec(text);
+  if (hold?.[1]) {
+    const opened = await callBrowserTool(cx, sessionId, state, 'browser_tab_open', { url: hold[1] });
+    const id = /Opened tab (\S+)\./.exec(opened.text)?.[1];
+    await say(cx, sessionId, opened.isError || !id ? `Open failed: ${opened.text}` : `Holding tab ${id}.`, state);
     return { stopReason: 'end_turn' };
   }
   const figma = /match figma (https?:\/\/\S+)/i.exec(text);

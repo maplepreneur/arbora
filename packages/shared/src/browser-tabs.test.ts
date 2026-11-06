@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   LIVE_TAB_CAP,
   activateBrowserTab,
+  closeAgentTabs,
   closeBrowserTab,
   closeOtherBrowserTabs,
   createBrowserTabSet,
@@ -46,6 +47,27 @@ describe('browser tabs', () => {
     const reopened = reopenClosedTab(closed.set, 'again', 5);
     expect(reopened?.tabs.map((tab) => tab.url)).toContain('https://www.figma.com/file/abc');
     expect(reopened?.activeId).toBe('again');
+  });
+
+  it('closes tabs an agent opened when its session ends, and keeps a pinned one', () => {
+    let set = createBrowserTabSet({ id: 'app', now: 1 });
+    set = openReferenceTab(set, { id: 'mine', url: 'https://docs.example', now: 2 });
+    set = openReferenceTab(set, {
+      id: 'agent',
+      url: 'https://www.figma.com/file/abc',
+      now: 3,
+      openedByThreadId: 'thread',
+    });
+    set = openReferenceTab(set, {
+      id: 'kept',
+      url: 'https://www.figma.com/file/def',
+      now: 4,
+      openedByThreadId: 'thread',
+      pinned: true,
+    });
+    set = closeAgentTabs(set, 'thread', 5);
+    expect(set.tabs.map((tab) => tab.id)).toEqual(['app', 'mine', 'kept']);
+    expect(closeAgentTabs(set, 'other', 6).tabs.map((tab) => tab.id)).toEqual(['app', 'mine', 'kept']);
   });
 
   it('keeps exactly one app tab and pins it first', () => {

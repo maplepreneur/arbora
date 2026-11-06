@@ -65,6 +65,7 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
       defaultModel?: string;
       mcp?: (threadId: string) => Promise<McpAttachment>;
       userMcpServers?: (agentId: string, http: boolean) => McpServer[];
+      onSessionEnded?: (threadId: string) => void;
     } = {},
   ): Harness {
     const h: Harness = {
@@ -113,6 +114,7 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
         log: (_threadId, entry) => h.logs.push(entry),
         fileChanged: (_threadId, path) => h.fileChanges.push(path),
       },
+      ...(options.onSessionEnded ? { onSessionEnded: options.onSessionEnded } : {}),
     });
     harnesses.push(h);
     return h;
@@ -598,6 +600,17 @@ describe('AgentService with the fake agent', { timeout: 30_000 }, () => {
     expect(h.service.createThread(FAKE, { parentThreadId: 'gone' }).parentThreadId).toBeNull();
     await h.service.prompt(lead.id, [{ type: 'text', text: 'hello' }]);
     expect(summaryOf(h, lead.id)?.title).toBe('fix the nav');
+  });
+
+  it('reports the session ending when the process stops', async () => {
+    root = makeRoot();
+    const ended: string[] = [];
+    const h = setup({ onSessionEnded: (threadId) => ended.push(threadId) });
+    const thread = h.service.createThread(FAKE);
+    await expect.poll(() => latestState(h, thread.id)?.status, { timeout: 15_000 }).toBe('ready');
+    expect(ended).toEqual([]);
+    await h.service.stopProcess(thread.id);
+    expect(ended).toEqual([thread.id]);
   });
 
   it('stops the process and starts it again on the next prompt', async () => {

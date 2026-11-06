@@ -147,6 +147,12 @@ export class ProjectRuntime {
         log: (threadId, entry) => host.send('agent.log', { projectPath: path, threadId, entry }),
         fileChanged: (threadId, file) => host.send('agent.fileChanged', { projectPath: path, threadId, path: file }),
       },
+      onSessionEnded: (threadId) => {
+        const closed = host.tabs?.()?.closeOpenedBy(threadId) ?? [];
+        if (!host.grants || closed.length === 0) return;
+        for (const id of closed) host.grants.dropTab(path, id);
+        host.send('agent.grantsChanged', { threadId, tabIds: host.grants.list(path, threadId) });
+      },
     });
   }
 

@@ -93,6 +93,11 @@ export interface AgentServiceOptions {
   readonly userMcpServers?: (agentId: string, http: boolean) => McpServer[];
   /** Secrets typed into the page this session. Masked in the ACP log. */
   readonly secrets?: () => readonly string[];
+  /**
+   * The ACP session is gone (Stop, archive, restart, or the process exited) and a new one has not
+   * replaced it yet. App quit does not call this.
+   */
+  readonly onSessionEnded?: (threadId: string) => void;
 }
 
 /** MCP servers Arbora runs for one agent session; closed when the agent process stops. */
@@ -1158,6 +1163,7 @@ export class AgentService {
       if (record.runtime !== runtime) return;
       record.runtime = null;
       this.cancelPendingPermissions(record);
+      this.endSession(record);
       void runtime.terminals.dispose();
       void runtime.mcp?.close().catch(() => undefined);
       const wasPrompting = record.thread.state.status === 'prompting';
@@ -1172,11 +1178,18 @@ export class AgentService {
     });
   }
 
+  /** Drops what belonged to this ACP session. A replacement start calls this before the next one. */
+  private endSession(record: ThreadRecord): void {
+    if (this.disposed) return;
+    this.options.onSessionEnded?.(record.thread.id);
+  }
+
   private async stopRuntime(record: ThreadRecord): Promise<void> {
     const runtime = record.runtime;
     record.runtime = null;
     this.cancelPendingPermissions(record);
     if (!runtime) return;
+    this.endSession(record);
     await runtime.terminals.dispose();
     await runtime.session.close();
     await runtime.mcp?.close().catch(() => undefined);

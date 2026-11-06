@@ -364,6 +364,45 @@ if (args[1] === 'create') {
     }
   });
 
+  test('closes an agent tab when the session ends and keeps a pinned one', async () => {
+    const design = await startStaticFixture(DESIGN);
+    const userData = tempUserData();
+    fakeAgentSettings(userData);
+    const { app, page } = await launch(userData, [DESIGN]);
+    try {
+      await openUrl(page, design.url);
+      await startAgent(page, 'fake');
+      const threads = await page.evaluate(() => window.arbora.invoke('agent.listThreads'));
+      const threadId = threads[0]?.id;
+      if (!threadId) throw new Error('No thread');
+      const input = page.getByTestId('composer-input');
+      await input.fill(`hold tab ${design.url}`);
+      await input.press('Enter');
+      await expect(page.getByTestId('agent-message').last()).toContainText('Holding tab', { timeout: 20_000 });
+      const opened = (await tabs(page)).find((tab) => tab.openedByAgent);
+      if (!opened) throw new Error('No agent tab');
+      await page.evaluate((id) => window.arbora.invoke('agent.stopProcess', { threadId: id }), threadId);
+      await expect.poll(async () => (await tabs(page)).some((tab) => tab.id === opened.id)).toBe(false);
+
+      const before = await page.getByTestId('agent-message').count();
+      await input.click();
+      await input.fill(`hold tab ${design.url}#kept`);
+      await input.press('Enter');
+      await expect
+        .poll(async () => page.getByTestId('agent-message').count(), { timeout: 20_000 })
+        .toBeGreaterThan(before);
+      await expect(page.getByTestId('agent-message').last()).toContainText('Holding tab');
+      const kept = (await tabs(page)).find((tab) => tab.openedByAgent);
+      if (!kept) throw new Error('No agent tab to pin');
+      await page.evaluate((id) => window.arbora.invoke('browser.tabs.pin', { id, pinned: true }), kept.id);
+      await page.evaluate((id) => window.arbora.invoke('agent.stopProcess', { threadId: id }), threadId);
+      await expect.poll(async () => (await tabs(page)).find((tab) => tab.id === kept.id)?.pinned).toBe(true);
+    } finally {
+      await app.close();
+      await design.close();
+    }
+  });
+
   test('opens a plain link as a shared-partition tab and an OAuth popup as a child window', async () => {
     test.setTimeout(60_000);
     const design = await startStaticFixture(DESIGN);
