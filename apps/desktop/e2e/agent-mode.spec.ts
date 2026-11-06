@@ -475,6 +475,76 @@ test.describe('Stage 4 agent mode on Vite + React 18', () => {
       rmSync(other, { recursive: true, force: true });
     }
   });
+
+  test('brings the other window forward only when Open thread is clicked', async () => {
+    test.setTimeout(90_000);
+    const other = realpathSync(mkdtempSync(join(tmpdir(), 'arbora-other-')));
+    const { app, page } = await launch(userDataWithFakeAgents(), [VITE_REACT]);
+    const prompt = 'bring the design window forward';
+    try {
+      await openAndWait(page, vite.url);
+      await waitForHydration(app, BUTTON);
+      await enterAgentMode(app, page);
+      await clickInPage(app, BUTTON);
+      await expect(page.getByTestId('agent-mode-popover')).toBeVisible({ timeout: 20_000 });
+      const name = basename(other);
+      await page.evaluate((path) => {
+        setTimeout(() => {
+          void window.arbora.invoke('project.openInWindow', { path });
+        }, 0);
+      }, other);
+      await expect
+        .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), { timeout: 15_000 })
+        .toBeGreaterThan(1);
+      const project = page.getByTestId('agent-mode-project');
+      await expect(project.locator('option', { hasText: name })).toHaveCount(1, { timeout: 10_000 });
+      await project.selectOption(other);
+      await choose(page, 'agent-mode-target', `new:${FAKE_ID}`);
+      await app.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()
+          .find((win) => win.getTitle().includes('vite-react'))
+          ?.focus();
+      });
+      await page.getByTestId('agent-mode-input').fill(prompt);
+      await page.getByTestId('agent-mode-input').press('Enter');
+      await expect(page.getByTestId('agent-mode-open-thread')).toBeVisible({ timeout: 20_000 });
+      const focusedTitle = (): Promise<string> =>
+        app.evaluate(({ BrowserWindow }) => BrowserWindow.getFocusedWindow()?.getTitle() ?? '');
+      expect(await focusedTitle()).toContain('vite-react');
+      await page.getByTestId('agent-mode-open-thread').click();
+      await expect.poll(focusedTitle, { timeout: 10_000 }).toContain(name);
+      await expect
+        .poll(
+          () =>
+            app.evaluate(
+              async ({ BrowserWindow }, input) => {
+                const win = BrowserWindow.getAllWindows().find((item) => item.getTitle().startsWith(input.name));
+                if (!win) return '';
+                return win.webContents.executeJavaScript(
+                  `document.querySelector('[data-testid="transcript"]')?.textContent ?? ''`,
+                ) as Promise<string>;
+              },
+              { name },
+            ),
+          { timeout: 20_000 },
+        )
+        .toContain(prompt);
+      const titles = await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().map((win) => win.getTitle()),
+      );
+      expect(titles.some((title) => title.includes('vite-react'))).toBe(true);
+      expect(titles.some((title) => title.startsWith(name))).toBe(true);
+    } finally {
+      await app
+        .evaluate(({ BrowserWindow }) => {
+          for (const win of BrowserWindow.getAllWindows().slice(1)) win.destroy();
+        })
+        .catch(() => undefined);
+      await deleteThreads(page).catch(() => undefined);
+      await app.close();
+      rmSync(other, { recursive: true, force: true });
+    }
+  });
 });
 
 test.describe('Stage 4 agent mode on Nuxt', () => {

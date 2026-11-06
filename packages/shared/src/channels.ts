@@ -280,6 +280,12 @@ export const channels = {
     z.object({ path: z.string().min(1) }),
     z.object({ opened: z.boolean() }),
   ),
+  /** Focus the window that already has `path` and show `threadId` there. It does not move the project. */
+  'project.showThread': defineChannel(
+    'project.showThread',
+    z.object({ path: z.string().min(1), threadId: z.string().min(1) }),
+    z.object({ focused: z.boolean() }),
+  ),
   'project.close': defineChannel('project.close', none, none),
   'project.recents': defineChannel('project.recents', none, z.array(recentProjectSchema)),
   'project.removeRecent': defineChannel(
@@ -979,6 +985,8 @@ export const events = {
   'browser.problemsCleared': defineEvent('browser.problemsCleared', z.object({ tabId: z.string() })),
   'browser.urlSuggested': defineEvent('browser.urlSuggested', z.object({ url: z.string() })),
   'browser.tabsChanged': defineEvent('browser.tabsChanged', z.object({ tabs: z.array(browserTabSnapshotSchema) })),
+  /** Ask one window to show a thread it already owns. Sent only when the user opens that thread. */
+  'agent.showThread': defineEvent('agent.showThread', z.object({ threadId: z.string() })),
   'agent.grantsChanged': defineEvent(
     'agent.grantsChanged',
     z.object({ threadId: z.string(), tabIds: z.array(z.string()) }),

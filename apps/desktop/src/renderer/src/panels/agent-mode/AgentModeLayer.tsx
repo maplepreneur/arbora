@@ -222,6 +222,7 @@ function AgentModePopover({ selection, targetIndex, onTargetIndex }: PopoverProp
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingOpen, setPendingOpen] = useState<string | null>(null);
+  const [sent, setSent] = useState<{ threadId: string; path: string } | null>(null);
   const currentPath = useApp((s) => s.project?.path ?? '');
   const appDefault = useApp((s) => s.settings.agents.defaultAgent);
   const library = useProjects((s) => s.library);
@@ -299,10 +300,16 @@ function AgentModePopover({ selection, targetIndex, onTargetIndex }: PopoverProp
         target: parsed,
         ...(chosen ? { projectPath: chosen } : {}),
       });
-      dispatchMode({ type: 'submitted' });
       // A cross-project send already has a window. Showing the thread here would open that
       // project on this window and tear down the runtime the prompt was just handed to.
-      if (!chosen) await showAgentThread(threadId);
+      // Focus moves only when the user clicks Open thread.
+      if (chosen) {
+        setSent({ threadId, path: chosen });
+        setBusy(false);
+        return;
+      }
+      dispatchMode({ type: 'submitted' });
+      await showAgentThread(threadId);
     } catch (caught) {
       const message = (caught as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
       setError(message);
@@ -374,7 +381,7 @@ function AgentModePopover({ selection, targetIndex, onTargetIndex }: PopoverProp
         data-testid="agent-mode-input"
         rows={3}
         value={text}
-        disabled={busy}
+        disabled={busy || sent !== null}
         placeholder="What should the agent change? (Enter to send, Shift+Enter for a new line)"
         onChange={(event) => setText(event.target.value)}
         onKeyDown={onKeyDown}
@@ -426,6 +433,7 @@ function AgentModePopover({ selection, targetIndex, onTargetIndex }: PopoverProp
             onChange={(event) => {
               setProjectPath(event.target.value);
               setChosenTarget(null);
+              setSent(null);
             }}
             className="min-w-0 flex-1 rounded border border-border bg-bg px-1 py-0.5 text-fg"
           >
@@ -450,28 +458,54 @@ function AgentModePopover({ selection, targetIndex, onTargetIndex }: PopoverProp
           Open project and send
         </button>
       )}
-      <div className="flex items-center justify-end gap-1.5">
-        <button
-          type="button"
-          data-testid="agent-mode-repick"
-          title="Pick another element"
-          onClick={() => dispatchMode({ type: 'repick' })}
-          className="flex h-7 items-center gap-1 rounded border border-border px-2 text-[11px] text-fg-muted hover:bg-bg-muted"
-        >
-          <Crosshair size={12} />
-          Pick again
-        </button>
-        <button
-          type="button"
-          data-testid="agent-mode-send"
-          disabled={busy || !text.trim()}
-          onClick={() => void submit()}
-          className="flex h-7 items-center gap-1 rounded bg-accent px-2.5 text-[11px] font-medium text-accent-fg disabled:opacity-40"
-        >
-          {busy ? <LoaderCircle size={12} className="animate-spin" /> : <Send size={12} />}
-          Send
-        </button>
-      </div>
+      {sent ? (
+        <div className="flex items-center justify-end gap-1.5" data-testid="agent-mode-sent">
+          <span className="mr-auto text-[11px] text-fg-muted">Sent. This window stays put.</span>
+          <button
+            type="button"
+            data-testid="agent-mode-stay"
+            onClick={() => dispatchMode({ type: 'submitted' })}
+            className="flex h-7 items-center rounded border border-border px-2 text-[11px] text-fg-muted hover:bg-bg-muted"
+          >
+            Stay here
+          </button>
+          <button
+            type="button"
+            data-testid="agent-mode-open-thread"
+            onClick={() => {
+              void window.arbora
+                .invoke('project.showThread', { path: sent.path, threadId: sent.threadId })
+                .finally(() => dispatchMode({ type: 'submitted' }));
+            }}
+            className="flex h-7 items-center rounded bg-accent px-2.5 text-[11px] font-medium text-accent-fg"
+          >
+            Open thread
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center justify-end gap-1.5">
+          <button
+            type="button"
+            data-testid="agent-mode-repick"
+            title="Pick another element"
+            onClick={() => dispatchMode({ type: 'repick' })}
+            className="flex h-7 items-center gap-1 rounded border border-border px-2 text-[11px] text-fg-muted hover:bg-bg-muted"
+          >
+            <Crosshair size={12} />
+            Pick again
+          </button>
+          <button
+            type="button"
+            data-testid="agent-mode-send"
+            disabled={busy || !text.trim()}
+            onClick={() => void submit()}
+            className="flex h-7 items-center gap-1 rounded bg-accent px-2.5 text-[11px] font-medium text-accent-fg disabled:opacity-40"
+          >
+            {busy ? <LoaderCircle size={12} className="animate-spin" /> : <Send size={12} />}
+            Send
+          </button>
+        </div>
+      )}
     </div>
   );
 }

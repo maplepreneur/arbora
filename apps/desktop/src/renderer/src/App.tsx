@@ -39,6 +39,7 @@ import {
   reclaimFocusFromParkedPage,
   registerBuiltinCommands,
   revealThread,
+  showAgentThread,
 } from './commands';
 import { setBrowserPageFocused } from './shell-focus';
 import { onFilesChanged, resetFiles, setDiagnostics } from './files-store';
@@ -176,6 +177,9 @@ function useMainEvents(): void {
       }),
       arbora.on('notification.clicked', ({ threadId }) => {
         if (threadId && useApp.getState().project) revealThread(threadId);
+      }),
+      arbora.on('agent.showThread', ({ threadId }) => {
+        void showAgentThread(threadId);
       }),
       arbora.on('updates.state', (state) => applyUpdateState(state)),
       arbora.on('projects.changed', (library) => applyLibrary(library)),

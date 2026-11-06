@@ -514,6 +514,21 @@ function main(): void {
       manager.create(resolved);
       return { opened: true };
     });
+    defineHandler('project.showThread', isTrusted, ({ path, threadId }) => {
+      let resolved: string;
+      try {
+        resolved = resolveProjectPath(path);
+      } catch (error) {
+        if (error instanceof ProjectWindowError) return { focused: false };
+        throw error;
+      }
+      const owner = manager.findByProject(resolved);
+      if (!owner || owner.window.isDestroyed()) return { focused: false };
+      if (owner.window.isMinimized()) owner.window.restore();
+      owner.window.focus();
+      sendEvent(owner.contents, 'agent.showThread', { threadId });
+      return { focused: true };
+    });
     defineHandler('project.close', isTrusted, (_req, event) => {
       windowFor(event.sender).closeProject();
       return undefined;
