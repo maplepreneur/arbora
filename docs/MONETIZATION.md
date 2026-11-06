@@ -22,6 +22,7 @@ Arbora does not resell models. Agents bring their own login, models and billing 
 | Solo front-end developers and indie hackers | Point-and-prompt, design tweaks without a design tool round trip | Pro monthly, then yearly |
 | Agencies and freelancers | Many projects, many agents, the design-match loop from Figma | Pro yearly; Team later |
 | Students and open-source maintainers | Learning, side projects | Free, or Pro at no cost through an application (later) |
+| Small business owners | Change the text and pictures on a site they already have, then publish | Free for one linked site; Pro when several host projects are linked |
 | Companies | Seats, invoices, SSO | Team plan (later, not Stage 15) |
 
 ### Price points and what they cost to collect
@@ -66,13 +67,17 @@ A merchant of record (Paddle, or Lemon Squeezy) handles VAT and sales tax worldw
 | 12c Passwords | `browser_login`: agents log in through 1Password | — | ✓ | Automation, not safety |
 | 13 Themes | `theme.json` colour packs | ✓ import | ✓ | Cosmetic; community themes help adoption |
 | 14 Extensions | Approved catalog (Svelte DevTools, Bitwarden, Robocop) | ✓ | ✓ | Small, and helps adoption |
+| 16 Usage | Token counts, list-price cost and working time, on the machine, per session, per pull request and over time; JSON and CSV export | ✓ | ✓ | The user's own record of their agents. Never gated, and never used as a gate counter |
+| 16 Usage | **Save usage to my account**: the same rows copied into the account database, and the website page that reads them | ✓ | ✓ | Saving the record off the machine. The local files stay either way |
+| 17 Publish | One linked Vercel or Cloudflare Pages site, preview and publish, including the site-owner window | ✓ | ✓ | The first website has to work without a membership pitch |
+| 17 Publish | Further linked host projects | — | ✓ | Several production sites is the leverage |
 
 ### Rules for gating (keep to these when new features land)
 
 1. **Never gate safety, privacy or the user's data.** Permission cards, redaction, sandboxing, password filling for the user, diagnostics export, uninstall, exporting threads and design sessions: always on. A lapsed membership must never hide or delete the user's threads, groups or settings; Pro-only items become read-only.
 2. **Never gate the first success.** Open a project, start the dev server, connect an agent, `Mod+K` a component and see the change: all Free.
-3. **Gate leverage, not friction.** Parallel agents, Grove, design mode at volume, the design-match loop, worktrees, write-through, agent logins, groups.
-4. **Limits count things the app already knows locally** (running agents, design saves this month, reference tabs). Arbora does not send usage to the server; the month counter lives in local settings. A determined user can reset it. That is acceptable at $5; do not build tracking to stop it.
+3. **Gate leverage, not friction.** Parallel agents, Grove, design mode at volume, the design-match loop, worktrees, write-through, agent logins, groups, further linked host projects.
+4. **Limits count things the app already knows locally** (running agents, design saves this month, reference tabs). Those counters stay in local settings and are not uploaded. A determined user can reset one. That is acceptable at $5; do not build tracking to stop it. Stage 16's token ledger is a different record: it is stored in the project, and it is copied to the account database only when the user turns on **Save usage to my account**. Do not use that ledger to enforce a gate.
 5. **Show the gate where the user meets it**, with what Pro unlocks and the price ("Run another agent with Pro, $50/year"). One click opens checkout. No nagging elsewhere: no banners, no countdowns outside the trial's last 3 days.
 6. **Agents keep working when a membership lapses mid-session.** Limits apply to the next start, not to a turn in flight.
 
@@ -94,7 +99,7 @@ Later, not in Stage 15: a Team plan (seats, one invoice, an admin page; around $
 - **The desktop app signs in through the system browser**, never a password field inside Arbora: OAuth 2.0 authorization code with PKCE, as RFC 8252 describes for native apps. Arbora opens `https://<site>/app/sign-in?...` in the default browser; after sign-in the site redirects to `arbora://auth/callback?code=...` (a registered protocol handler) or, where the protocol cannot be registered (the tarball, some Linux desktops), to a loopback `http://127.0.0.1:<port>/callback`. A device-code fallback ("enter this code on arbora.dev/activate") covers machines without a browser.
 - **Tokens:** a short-lived access token and a refresh token, kept in the OS keychain through Electron `safeStorage` (Keychain, DPAPI, libsecret). Where `safeStorage` is unavailable (Linux without a keyring), ask before storing it encrypted with a machine key, and say so (Stage 9 gotcha).
 - **Entitlements, not raw subscription data, go to the app:** `GET /v1/entitlements` returns a signed JWT (Ed25519) with `{ sub, email, plan: "free" | "pro", trialEndsAt, periodEndsAt, limits, exp }`. The app verifies it with a public key compiled into the build. It refreshes on startup, focus and every 6 hours, and works **offline for 14 days** on the last valid token. After that it asks to go online; it never locks a project the user is in the middle of.
-- **What the server learns:** the account email, the plan, the app version and OS at refresh time, and when the app last refreshed. No project names, paths, prompts, agent names or usage. Update the "no telemetry" principle to say exactly that, and publish it in the privacy policy.
+- **What the server learns:** the account email, the plan, the app version and OS at refresh time, and when the app last refreshed. No project paths, prompts or source. Stage 16 adds a separate table, empty until the user saves usage to the account: turn id, agent id, model id, token counts, list-price cost, working time, pull request number and URL, a project label and a project uuid. Publish that in the privacy policy beside the entitlement sentence.
 - **Enforcement is in the main process,** with the renderer showing the result. Unsigned builds can be patched; accept it. The server-signed entitlement keeps honest users honest; do not add obfuscation or an online check on every action.
 
 ## What to set up outside the code
