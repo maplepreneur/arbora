@@ -788,10 +788,16 @@ function requestSendTab(): void {
 
 let sendInFlight = false;
 
-export async function sendActiveTab(fullPage = false, tabId?: string): Promise<void> {
+export async function sendActiveTab(
+  fullPage = false,
+  tabId?: string,
+  text = 'Implement this design',
+  target?: AgentModeTarget,
+): Promise<void> {
   if (sendInFlight) return;
   const agentId = defaultAgentId();
-  if (!agentId) {
+  const resolved = target ?? (agentId ? { type: 'new' as const, agentId } : null);
+  if (!resolved) {
     showToast('Choose an agent first');
     return;
   }
@@ -802,13 +808,18 @@ export async function sendActiveTab(fullPage = false, tabId?: string): Promise<v
     showToast('That tab is closed');
     return;
   }
+  const prompt = text.trim();
+  if (!prompt) {
+    showToast('Write what the agent should do');
+    return;
+  }
   sendInFlight = true;
   try {
     const { threadId } = await window.arbora.invoke('browser.tabs.send', {
       ...(tab ? { tabId: tab.id } : {}),
-      text: 'Implement this design',
+      text: prompt,
       fullPage,
-      agentId,
+      target: resolved,
     });
     await openThread(threadId);
   } catch (error) {

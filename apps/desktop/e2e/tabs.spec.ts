@@ -792,7 +792,7 @@ if (args[1] === 'create') {
           window.arbora.invoke('browser.tabs.send', {
             tabId,
             text: 'Implement this design',
-            agentId: 'fake',
+            target: { type: 'new', agentId: 'fake' },
           }),
         reference.id,
       );
@@ -823,7 +823,7 @@ if (args[1] === 'create') {
           window.arbora.invoke('browser.tabs.send', {
             tabId,
             text: 'Implement this design',
-            agentId: 'fake',
+            target: { type: 'new', agentId: 'fake' },
           }),
         reference.id,
       );
@@ -862,9 +862,11 @@ if (args[1] === 'create') {
           .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-thread-id'))),
       );
       await page.getByTestId('browser-tab-send').click();
+      await page.getByTestId('browser-send-text').fill('Match this frame');
+      await page.getByTestId('browser-send-target').selectOption('new:fake');
       await page.getByTestId('browser-send-full-page').check();
       await page.getByTestId('browser-send-confirm').click();
-      const row = page.locator('[data-testid="grove-row"]').filter({ hasText: 'Implement this design' });
+      const row = page.locator('[data-testid="grove-row"]').filter({ hasText: 'Match this frame' });
       await expect
         .poll(
           async () =>
@@ -879,9 +881,37 @@ if (args[1] === 'create') {
       );
       await page.locator(`[data-testid="grove-row"][data-thread-id="${created}"]`).click();
       const message = page.getByTestId('user-message').last();
-      await expect(message).toContainText('App tab', { timeout: 20_000 });
+      await expect(message).toContainText('Match this frame', { timeout: 20_000 });
+      await expect(message).toContainText('App tab');
       await expect(message).toContainText('full-page screenshot');
       await expect(message).toContainText('Stop at 0.92');
+    } finally {
+      await app.close();
+      await design.close();
+    }
+  });
+
+  test('sends a tab into a thread that is already open', async () => {
+    const design = await startStaticFixture(DESIGN);
+    const userData = tempUserData();
+    fakeAgentSettings(userData);
+    const { app, page } = await launch(userData, [DESIGN]);
+    try {
+      await openUrl(page, design.url);
+      await startAgent(page, 'fake');
+      const threadId = await page
+        .locator('[data-testid="grove-row"][aria-current="true"]')
+        .getAttribute('data-thread-id');
+      if (!threadId) throw new Error('No open thread');
+      const before = await page.locator('[data-testid="grove-row"]').count();
+      await page.getByTestId('browser-tab-send').click();
+      await page.getByTestId('browser-send-text').fill('Look at this tab');
+      await page.getByTestId('browser-send-target').selectOption(`thread:${threadId}`);
+      await page.getByTestId('browser-send-confirm').click();
+      await page.locator(`[data-testid="grove-row"][data-thread-id="${threadId}"]`).click();
+      await expect(page.getByTestId('user-message').last()).toContainText('Look at this tab', { timeout: 20_000 });
+      await expect(page.getByTestId('user-message').last()).toContainText('is granted to this thread');
+      await expect(page.locator('[data-testid="grove-row"]')).toHaveCount(before);
     } finally {
       await app.close();
       await design.close();

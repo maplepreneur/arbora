@@ -396,7 +396,8 @@ export const channels = {
       tabId: z.string().optional(),
       text: z.string().trim().min(1).max(8000),
       fullPage: z.boolean().default(false),
-      agentId: z.string().min(1),
+      /** An existing thread, or a new one with `agentId`. */
+      target: agentModeTargetSchema,
     }),
     z.object({ threadId: z.string() }),
   ),

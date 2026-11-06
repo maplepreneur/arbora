@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppWindow, Globe, LoaderCircle, Plus, Send, X } from 'lucide-react';
 import clsx from 'clsx';
-import { CommandId, type BrowserTabSnapshot, type ContextMenuItem } from '@arbora/shared';
+import { CommandId, type AgentModeTarget, type BrowserTabSnapshot, type ContextMenuItem } from '@arbora/shared';
+import { defaultAgentModeTarget, isListed, useAgents } from '../agent-store';
+import { useDefaultAgentId } from '../agent-defaults';
 import { executeCommand, registerSendTabOpener, sendActiveTab } from '../commands';
 import { useApp } from '../store';
 
@@ -71,41 +73,114 @@ export function BrowserTabStrip() {
         </button>
       </div>
       {sendingId && (
-        <form
-          data-testid="browser-send-tab"
-          data-tab-id={sendingId}
-          className="absolute right-1 top-full z-30 mt-1 w-64 rounded border border-border bg-bg-elevated p-2 text-xs shadow-lg"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const tabId = sendingId;
-            setSendingId(null);
-            void sendActiveTab(fullPage, tabId);
-          }}
-        >
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              data-testid="browser-send-full-page"
-              checked={fullPage}
-              onChange={(event) => setFullPage(event.target.checked)}
-            />
-            Include a full-page screenshot
-          </label>
-          <div className="mt-2 flex justify-end gap-1">
-            <button type="button" className="rounded px-2 py-1 hover:bg-bg-muted" onClick={() => setSendingId(null)}>
-              Cancel
-            </button>
-            <button
-              type="submit"
-              data-testid="browser-send-confirm"
-              className="rounded bg-accent px-2 py-1 text-accent-fg"
-            >
-              Send
-            </button>
-          </div>
-        </form>
+        <SendTabForm
+          tabId={sendingId}
+          fullPage={fullPage}
+          onFullPage={setFullPage}
+          onClose={() => setSendingId(null)}
+        />
       )}
     </div>
+  );
+}
+
+function parseSendTarget(key: string): AgentModeTarget | null {
+  const split = key.indexOf(':');
+  if (split <= 0) return null;
+  const type = key.slice(0, split);
+  const id = key.slice(split + 1);
+  if (!id) return null;
+  if (type === 'thread') return { type: 'thread', threadId: id };
+  if (type === 'new') return { type: 'new', agentId: id };
+  return null;
+}
+
+/** Prompt and thread for one tab. The text defaults to the design-match ask. */
+function SendTabForm({
+  tabId,
+  fullPage,
+  onFullPage,
+  onClose,
+}: {
+  tabId: string;
+  fullPage: boolean;
+  onFullPage: (fullPage: boolean) => void;
+  onClose: () => void;
+}) {
+  const [text, setText] = useState('Implement this design');
+  const [chosen, setChosen] = useState<string | null>(null);
+  const threads = useAgents((s) => s.threads);
+  const agents = useAgents((s) => s.agents);
+  const availability = useAgents((s) => s.availability);
+  const defaultAgent = useDefaultAgentId();
+  const chatThread = useApp((s) => s.layout.groveThreadId);
+  const fallback = useMemo(
+    () => defaultAgentModeTarget({ threads, agents, availability }, chatThread, defaultAgent),
+    [threads, agents, availability, chatThread, defaultAgent],
+  );
+  const target = chosen ?? fallback ?? '';
+  const options = [
+    ...threads.filter(isListed).map((thread) => ({ value: `thread:${thread.id}`, label: thread.title })),
+    ...agents.map((agent) => ({ value: `new:${agent.id}`, label: `New ${agent.name} thread` })),
+  ];
+  const selected = options.some((option) => option.value === target) ? target : (options[0]?.value ?? '');
+  return (
+    <form
+      data-testid="browser-send-tab"
+      data-tab-id={tabId}
+      className="absolute right-1 top-full z-30 mt-1 flex w-72 flex-col gap-2 rounded border border-border bg-bg-elevated p-2 text-xs shadow-lg"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const parsed = parseSendTarget(selected);
+        onClose();
+        void sendActiveTab(fullPage, tabId, text, parsed ?? undefined);
+      }}
+    >
+      <label className="flex flex-col gap-1">
+        <span className="text-fg-subtle">Ask</span>
+        <textarea
+          data-testid="browser-send-text"
+          rows={2}
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          className="w-full resize-none rounded border border-border bg-bg px-1.5 py-1 text-fg outline-none focus:border-accent"
+        />
+      </label>
+      {options.length > 0 && (
+        <label className="flex items-center gap-1.5 text-fg-subtle">
+          Thread
+          <select
+            data-testid="browser-send-target"
+            value={selected}
+            onChange={(event) => setChosen(event.target.value)}
+            className="min-w-0 flex-1 rounded border border-border bg-bg px-1 py-0.5 text-fg"
+          >
+            {options.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          data-testid="browser-send-full-page"
+          checked={fullPage}
+          onChange={(event) => onFullPage(event.target.checked)}
+        />
+        Include a full-page screenshot
+      </label>
+      <div className="flex justify-end gap-1">
+        <button type="button" className="rounded px-2 py-1 hover:bg-bg-muted" onClick={onClose}>
+          Cancel
+        </button>
+        <button type="submit" data-testid="browser-send-confirm" className="rounded bg-accent px-2 py-1 text-accent-fg">
+          Send
+        </button>
+      </div>
+    </form>
   );
 }
 

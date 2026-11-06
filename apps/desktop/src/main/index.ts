@@ -1093,7 +1093,29 @@ function main(): void {
       });
       return undefined;
     });
-    defineHandler('browser.tabs.send', isTrusted, async ({ tabId, text, fullPage, agentId }, event) => {
+    const threadForSentTab = (
+      agents: NonNullable<ReturnType<typeof windowFor>['agents']>,
+      target: { type: 'thread'; threadId: string } | { type: 'new'; agentId: string; model?: string | undefined },
+      title: string,
+    ): string => {
+      switch (target.type) {
+        case 'thread': {
+          const existing = agents.getThread(target.threadId);
+          if (!existing) throw new Error('That thread is gone');
+          return existing.id;
+        }
+        case 'new':
+          return agents.createThread(target.agentId, {
+            title: title.slice(0, 80),
+            ...(target.model ? { model: target.model } : {}),
+          }).id;
+        default: {
+          const unreachable: never = target;
+          return unreachable;
+        }
+      }
+    };
+    defineHandler('browser.tabs.send', isTrusted, async ({ tabId, text, fullPage, target }, event) => {
       const projectWindow = windowFor(event.sender);
       const tabs = projectWindow.browserTabs();
       const path = projectWindow.project?.path;
@@ -1104,8 +1126,8 @@ function main(): void {
       const full = fullPage ? await resolved.service.screenshot({ mode: 'fullPage' }) : null;
       const summary = await resolved.service.pageSummary().catch(() => ({ selection: '', text: '' }));
       const accessibility = await resolved.service.accessibilitySummary().catch(() => '');
-      const thread = agents.createThread(agentId, { title: text.slice(0, 80) });
-      manager.grants.grant(path, thread.id, resolved.id);
+      const threadId = threadForSentTab(agents, target, text);
+      manager.grants.grant(path, threadId, resolved.id);
       const state = resolved.service.getState();
       const app = tabs.snapshots().find((entry) => entry.role === 'app');
       const match = readProjectSettings(path).settings.designMatch;
@@ -1131,17 +1153,17 @@ function main(): void {
         .filter((line) => line !== '')
         .join('\n');
       void agents
-        .prompt(thread.id, [
+        .prompt(threadId, [
           { type: 'text', text: body },
           { type: 'image', data: viewport.pngBase64, mimeType: 'image/png' },
           ...(full ? [{ type: 'image' as const, data: full.pngBase64, mimeType: 'image/png' as const }] : []),
         ])
         .catch((error: unknown) => console.warn(`[tabs] send failed: ${(error as Error).message}`));
       sendEvent(projectWindow.contents, 'agent.grantsChanged', {
-        threadId: thread.id,
-        tabIds: manager.grants.list(path, thread.id),
+        threadId,
+        tabIds: manager.grants.list(path, threadId),
       });
-      return { threadId: thread.id };
+      return { threadId };
     });
     defineHandler('passwords.list', isTrusted, async ({ origin }, event) => {
       const path = windowFor(event.sender).project?.path;
