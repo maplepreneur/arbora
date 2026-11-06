@@ -240,10 +240,11 @@ export class BrowserTabs {
 
   async setRole(id: string, role: TabRole): Promise<void> {
     if (role === 'reference') return;
-    const before = this.partitionFor(this.set.tabs.find((entry) => entry.id === id) ?? appTab(this.set));
+    const before = new Map(this.set.tabs.map((entry) => [entry.id, this.partitionFor(entry)]));
     this.set = setBrowserTabRole(this.set, id);
-    const after = this.set.tabs.find((entry) => entry.id === id);
-    if (after && this.partitionFor(after) !== before) await this.recreate(after);
+    for (const entry of this.set.tabs) {
+      if (before.get(entry.id) !== this.partitionFor(entry)) await this.recreate(entry);
+    }
     this.layout();
     this.publish();
   }

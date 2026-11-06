@@ -585,6 +585,65 @@ if (args[1] === 'create') {
     }
   });
 
+  test('making a tab the app tab swaps the project and shared sessions', async () => {
+    const design = await startStaticFixture(DESIGN);
+    const userData = tempUserData();
+    const { app, page } = await launch(userData, [DESIGN]);
+    const cookiesOn = (partition: string): Promise<string[]> =>
+      app.evaluate(
+        async ({ webContents }, input) => {
+          const pages = webContents.getAllWebContents().filter((wc) => {
+            const path = wc.session.storagePath ?? '';
+            return path.includes(input.partition) && wc.getURL().startsWith(input.url);
+          });
+          const values: string[] = [];
+          for (const wc of pages) values.push(String(await wc.executeJavaScript('document.cookie')));
+          return values;
+        },
+        { partition, url: design.url },
+      );
+    try {
+      await openUrl(page, design.url);
+      await app.evaluate(({ webContents }, url) => {
+        const view = webContents
+          .getAllWebContents()
+          .find((wc) => (wc.session.storagePath ?? '').includes('arbora-browser-') && wc.getURL().startsWith(url));
+        if (!view) throw new Error('No app tab');
+        return view.executeJavaScript('document.cookie = "arbora_project=yes; path=/"; document.cookie');
+      }, design.url);
+      const reference = await page.evaluate((url) => window.arbora.invoke('browser.tabs.open', { url }), design.url);
+      const appId = (await tabs(page)).find((tab) => tab.role === 'app')?.id;
+      if (!appId) throw new Error('No app tab');
+      await expect
+        .poll(async () => {
+          const project = await cookiesOn('arbora-browser-');
+          const shared = await cookiesOn('arbora-web');
+          return project.length === 1 && project[0]?.includes('arbora_project=yes') && shared.length === 1;
+        })
+        .toBe(true);
+
+      await page.evaluate((id) => window.arbora.invoke('browser.tabs.setRole', { id, role: 'app' }), reference.id);
+      await expect
+        .poll(async () => {
+          const project = await cookiesOn('arbora-browser-');
+          const shared = await cookiesOn('arbora-web');
+          return (
+            project.length === 1 &&
+            project[0]?.includes('arbora_project=yes') &&
+            shared.length === 1 &&
+            shared[0] === ''
+          );
+        })
+        .toBe(true);
+      const after = await tabs(page);
+      expect(after.find((tab) => tab.id === reference.id)).toMatchObject({ role: 'app', useProjectSession: true });
+      expect(after.find((tab) => tab.id === appId)).toMatchObject({ role: 'reference', useProjectSession: false });
+    } finally {
+      await app.close();
+      await design.close();
+    }
+  });
+
   test('restores three tabs and loads only the active one', async () => {
     const design = await startStaticFixture(DESIGN);
     const userData = tempUserData();

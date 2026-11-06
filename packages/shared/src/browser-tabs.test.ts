@@ -82,6 +82,7 @@ describe('browser tabs', () => {
       ['app', 'reference'],
     ]);
     expect(set.tabs[0]).toMatchObject({ useProjectSession: true, pinned: true });
+    expect(set.tabs[1]).toMatchObject({ role: 'reference', useProjectSession: false, pinned: false });
     const closed = closeBrowserTab(set, 'ref', 3);
     expect(closed.ok).toBe(false);
   });
