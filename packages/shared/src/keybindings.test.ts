@@ -173,6 +173,12 @@ describe('KeybindingTable', () => {
     expect(table.match(parseChord('ctrl+alt+]', 'linux'), grove)?.commandId).toBe(CommandId.grovePreviousProject);
     expect(table.match(parseChord('ctrl+tab', 'linux'), grove)?.commandId).toBe(CommandId.groveSwitchProject);
     expect(table.match(parseChord('ctrl+shift+tab', 'linux'), grove)?.commandId).toBe(CommandId.groveSwitchProjectBack);
+    expect(
+      table.match(parseChord('ctrl+tab', 'linux'), { ...grove, terminalFocused: true, terminalPassthrough: true }),
+    ).toBeUndefined();
+    expect(table.match(parseChord('ctrl+tab', 'linux'), { ...grove, browserPage: true })?.commandId).toBe(
+      CommandId.browserNextTab,
+    );
     expect(table.match(parseChord('ctrl+tab', 'linux'), idle)).toBeUndefined();
     expect(table.match(parseChord('ctrl+k', 'linux'), grove)?.commandId).toBe(CommandId.agentMode);
     expect(table.match(parseChord('ctrl+k', 'linux'), grove)?.commandId).not.toBe(CommandId.groveSearch);
@@ -270,7 +276,7 @@ describe('KeybindingTable', () => {
 describe('isTerminalPassthroughChord', () => {
   it('is true only for plain Ctrl chords', () => {
     expect(isTerminalPassthroughChord(parseChord('ctrl+k', 'linux'))).toBe(true);
-    expect(isTerminalPassthroughChord(parseChord('ctrl+tab', 'linux'))).toBe(false);
+    expect(isTerminalPassthroughChord(parseChord('ctrl+tab', 'linux'))).toBe(true);
     expect(isTerminalPassthroughChord(parseChord('ctrl+shift+k', 'linux'))).toBe(false);
     expect(isTerminalPassthroughChord(parseChord('cmd+k', 'darwin'))).toBe(false);
   });

@@ -205,11 +205,12 @@ export function formatChord(chord: Chord, platform: Platform): string {
 
 /**
  * Plain `Ctrl+<key>` chords are shell line-editing keys (`Ctrl+K` kill line, `Ctrl+D` EOF). With
- * terminal passthrough enabled they go to the focused terminal instead of Arbora. `Ctrl+<digit>`
- * is not a line-editing key, so it stays with Arbora (panel focus).
+ * terminal passthrough enabled they go to the focused terminal instead of Arbora. `Ctrl+Tab` is
+ * one of those chords, so a focused terminal keeps it. `Ctrl+<digit>` is not, so it stays with
+ * Arbora (panel focus).
  */
 export function isTerminalPassthroughChord(chord: Chord): boolean {
-  return chord.ctrl && !chord.meta && !chord.alt && !chord.shift && chord.key !== 'tab' && !/^[0-9]$/.test(chord.key);
+  return chord.ctrl && !chord.meta && !chord.alt && !chord.shift && !/^[0-9]$/.test(chord.key);
 }
 
 /** Context the dispatcher needs to decide whether a binding applies. */
