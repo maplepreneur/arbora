@@ -43,11 +43,13 @@ describe('setup-1password --check', () => {
 });
 
 describe('setup-1password --yes and --uninstall', () => {
-  it('does not write the browser allow-list without a terminal', async () => {
+  it('does not write the browser allow-list or install packages without a terminal', async () => {
     const result = await run(['--yes'], '/usr/bin:/bin');
     expect(result.code).toBe(0);
     expect(result.out).toContain('Not writing that file');
-    expect(result.out).not.toMatch(/sudo /);
+    expect(result.out).toContain('did not install packages');
+    expect(result.out).toContain('1password-cli');
+    expect(result.out).not.toMatch(/\[sudo\]|password for/);
   });
 
   it('prints how to uninstall and removes nothing', async () => {

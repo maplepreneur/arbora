@@ -95,6 +95,60 @@ if [ "$CHECK" = 1 ]; then
   exit "$status"
 fi
 
+linux_family() {
+  id=unknown
+  like=""
+  if [ -r /etc/os-release ]; then
+    # shellcheck disable=SC1091
+    id=$(. /etc/os-release && printf '%s' "${ID:-unknown}")
+    like=$(. /etc/os-release && printf '%s' "${ID_LIKE:-}")
+  fi
+  case " $id $like " in
+    *\ arch\ * | *\ omarchy\ *) printf 'arch' ;;
+    *debian* | *ubuntu*) printf 'debian' ;;
+    *fedora* | *rhel*) printf 'fedora' ;;
+    *) printf 'other' ;;
+  esac
+}
+
+print_linux_install() {
+  echo "Linux family: $(linux_family)"
+  case "$(linux_family)" in
+    arch)
+      if command -v yay >/dev/null 2>&1; then
+        echo "Install: yay -S 1password 1password-cli"
+      elif command -v paru >/dev/null 2>&1; then
+        echo "Install: paru -S 1password 1password-cli"
+      else
+        echo "Install: yay -S 1password 1password-cli"
+        echo "yay and paru are not installed, so those packages were not built."
+      fi
+      ;;
+    debian)
+      echo "Install from 1Password's apt repository, then: apt install 1password 1password-cli"
+      echo "The repository steps need a root prompt. They are not run from here."
+      ;;
+    fedora)
+      echo "Install from 1Password's rpm repository, then: dnf install 1password 1password-cli"
+      echo "The repository steps need a root prompt. They are not run from here."
+      ;;
+    *)
+      echo "Install from https://downloads.1password.com (apt, rpm, or the Arch package)."
+      ;;
+  esac
+  echo "This run did not install packages."
+}
+
+fetch_extension() {
+  script_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+  fetch="$script_dir/../apps/desktop/scripts/fetch-devtools-extensions.mjs"
+  if ! command -v node >/dev/null 2>&1 || [ ! -f "$fetch" ]; then
+    echo "extension: skipped (node or the fetch script is not available)"
+    return 0
+  fi
+  node "$fetch" --only 1password || echo "extension: fetch failed"
+}
+
 os=$(uname -s)
 echo "1Password for Arbora. Turn on Integrate with 1Password CLI in the 1Password app."
 echo "Browser integration lets the extension fill pages. Arbora's agent uses the op command."
@@ -109,6 +163,8 @@ if [ "$UNINSTALL" = 1 ]; then
   exit 0
 fi
 
+fetch_extension
+
 case "$os" in
   Darwin)
     echo "Install: brew install --cask 1password 1password-cli"
@@ -117,7 +173,7 @@ case "$os" in
     fi
     ;;
   Linux)
-    echo "Install from https://downloads.1password.com (apt, rpm, or the Arch package)."
+    print_linux_install
     echo "Then allow Arbora to talk to 1Password. Add these names, one per line, to"
     echo "/etc/1password/custom_allowed_browsers (the packaged app is arbora, pnpm dev is electron):"
     echo "  arbora"
