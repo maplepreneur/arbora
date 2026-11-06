@@ -303,6 +303,16 @@ export class ArboraToolHost implements BrowserToolHost {
     return { png: shot.png, cssWidth: shot.cssWidth, cssHeight: shot.cssHeight, title: state.title, url: state.url };
   }
 
+  async elementRect(
+    tabId: string,
+    selector: string,
+  ): Promise<{ x: number; y: number; width: number; height: number } | null> {
+    const tabs = this.requireTabs();
+    const resolved = await tabs.resolve(tabId);
+    this.assertGranted(tabs, resolved.id, resolved.role);
+    return resolved.service.elementRect(selector);
+  }
+
   private requireTabs(): BrowserTabs {
     const tabs = this.options.tabs?.() ?? null;
     if (!tabs) throw new ToolError('Open a project first.');

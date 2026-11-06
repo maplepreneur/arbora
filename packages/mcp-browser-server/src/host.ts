@@ -1,3 +1,4 @@
+import type { CompareRect } from './compare.js';
 import type { Cdp } from './cdp.js';
 import type { Box } from './input.js';
 
@@ -108,6 +109,8 @@ export interface BrowserToolHost {
   openTab?(url: string | undefined): Promise<string>;
   closeTab?(id: string): Promise<void>;
   captureTab?(tabId: string): Promise<TabCapture>;
+  /** The CSS box of an element on a granted tab, for comparing one frame rather than the whole page. */
+  elementRect?(tabId: string, selector: string): Promise<CompareRect | null>;
   /** Writes one compare image under `.arbora/screenshots/<thread>/`. Returns a project-relative path. */
   saveCompare?(png: Uint8Array): string | null;
   /** The project's design-match stop rule. Missing means 0.92 and 5 rounds. */

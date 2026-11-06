@@ -7,7 +7,8 @@ import { click, elementBox, hover, pressKey, scroll, selectOptions, typeText } f
 import { evaluate, InflightRequests, truncate, waitFor } from './page.js';
 import { RefTable, resolveElement, type ElementTarget } from './refs.js';
 import { formatSnapshot, maskSecretNodes, type AxNode } from './snapshot.js';
-import { comparePngs } from './compare.js';
+import { cropBitmap, comparePngs, type CompareRect } from './compare.js';
+import { decodePng, encodePng } from './png.js';
 import { actionTraceTitle, compareSavedPath, compareScoreTitle, isTracedBrowserTool } from './trace.js';
 
 export const DEFAULT_WAIT_MS = 5000;
@@ -566,18 +567,18 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
 
   tool(
     'browser_compare',
-    'Screenshot two granted tabs and score how alike they look. Use this to match a Figma (or other design) tab against the app tab. Returns a score from 0 to 1, the worst cells, and a side-by-side, overlay, or diff image. Fonts and pixel density differ from Figma, so a perfect score is not the goal: repeat the edit-and-compare loop until the score stops moving or list the remaining differences.',
+    'Screenshot two granted tabs and score how alike they look. Use this to match a Figma frame against the app. Pass a string tab id, or { target, rect } / { target, selector } to score one frame instead of the browser chrome. Returns a score from 0 to 1, the worst cells, and a side-by-side, overlay, or diff image. Fonts and pixel density differ from Figma, so a perfect score is not the goal: repeat the edit-and-compare loop until the score stops moving or list the remaining differences.',
     {
-      left: z.string().describe('Tab id, "app", or "active"'),
-      right: z.string().describe('Tab id, "app", or "active"'),
+      left: compareSideSchema.describe('Tab id, "app", or "active", or { target, rect } / { target, selector }'),
+      right: compareSideSchema.describe('Tab id, "app", or "active", or { target, rect } / { target, selector }'),
       mode: z.enum(['side_by_side', 'overlay', 'diff']).optional(),
     },
     async ({ left, right, mode }) => {
       if (!host.captureTab) {
         return { isError: true, content: [{ type: 'text', text: 'Comparing tabs is not available.' }] };
       }
-      const [a, b] = await Promise.all([host.captureTab(left), host.captureTab(right)]);
-      const output = comparePngs(Buffer.from(a.png), Buffer.from(b.png), mode ?? 'side_by_side', {
+      const [a, b] = await Promise.all([framedCapture(host, left), framedCapture(host, right)]);
+      const output = comparePngs(a.png, b.png, mode ?? 'side_by_side', {
         aWidth: a.cssWidth,
         aHeight: a.cssHeight,
         bWidth: b.cssWidth,
@@ -601,6 +602,58 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
     },
     { readOnlyHint: true },
   );
+}
+
+const compareRectSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  width: z.number().positive(),
+  height: z.number().positive(),
+});
+
+const compareSideSchema = z.union([
+  z.string(),
+  z.object({
+    target: z.string(),
+    selector: z.string().min(1).optional(),
+    rect: compareRectSchema.optional(),
+  }),
+]);
+
+type CompareSide = string | { target: string; selector?: string | undefined; rect?: CompareRect | undefined };
+
+/** A tab capture cropped to a frame when the caller named a rect or a selector. */
+async function framedCapture(
+  host: BrowserToolHost,
+  side: CompareSide,
+): Promise<{ png: Buffer; cssWidth: number; cssHeight: number; title: string; url: string }> {
+  const spec = typeof side === 'string' ? { target: side } : side;
+  if (!host.captureTab) throw new ToolError('Comparing tabs is not available.');
+  const shot = await host.captureTab(spec.target);
+  let rect = spec.rect;
+  if (!rect && spec.selector) {
+    if (!host.elementRect) throw new ToolError('Comparing an element is not available.');
+    const found = await host.elementRect(spec.target, spec.selector);
+    if (!found) throw new ToolError(`No visible element matches ${spec.selector}`);
+    rect = found;
+  }
+  if (!rect) {
+    return {
+      png: Buffer.from(shot.png),
+      cssWidth: shot.cssWidth,
+      cssHeight: shot.cssHeight,
+      title: shot.title,
+      url: shot.url,
+    };
+  }
+  const cropped = cropBitmap(decodePng(Buffer.from(shot.png)), shot.cssWidth, shot.cssHeight, rect);
+  return {
+    png: encodePng(cropped.bitmap),
+    cssWidth: cropped.cssWidth,
+    cssHeight: cropped.cssHeight,
+    title: shot.title,
+    url: shot.url,
+  };
 }
 
 /** Backend node ids of password and one-time-code fields, so the snapshot can hide their values. */

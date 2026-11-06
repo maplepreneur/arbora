@@ -39,6 +39,34 @@ const TOP_K = 5;
 const C1 = (0.01 * 255) ** 2;
 const C2 = (0.03 * 255) ** 2;
 
+/** Crops a capture to a CSS rectangle. The result's CSS size is the rectangle that was kept. */
+export function cropBitmap(
+  bitmap: Bitmap,
+  cssWidth: number,
+  cssHeight: number,
+  rect: CompareRect,
+): { bitmap: Bitmap; cssWidth: number; cssHeight: number } {
+  if (cssWidth <= 0 || cssHeight <= 0 || bitmap.width <= 0 || bitmap.height <= 0) {
+    throw new Error('The capture has no size');
+  }
+  const scaleX = bitmap.width / cssWidth;
+  const scaleY = bitmap.height / cssHeight;
+  const x = clampInt(rect.x * scaleX, 0, bitmap.width - 1);
+  const y = clampInt(rect.y * scaleY, 0, bitmap.height - 1);
+  const width = clampInt(rect.width * scaleX, 1, bitmap.width - x);
+  const height = clampInt(rect.height * scaleY, 1, bitmap.height - y);
+  const rgba = new Uint8Array(width * height * 4);
+  for (let row = 0; row < height; row += 1) {
+    const src = ((y + row) * bitmap.width + x) * 4;
+    rgba.set(bitmap.rgba.subarray(src, src + width * 4), row * width * 4);
+  }
+  return { bitmap: { width, height, rgba }, cssWidth: width / scaleX, cssHeight: height / scaleY };
+}
+
+function clampInt(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, Math.round(value)));
+}
+
 export function comparePngs(
   aPng: Buffer,
   bPng: Buffer,

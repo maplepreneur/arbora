@@ -1,6 +1,6 @@
 import { crc32, deflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { compareBitmaps } from './compare.js';
+import { compareBitmaps, cropBitmap } from './compare.js';
 import { decodePng, encodePng, type Bitmap } from './png.js';
 
 function solid(width: number, height: number, rgba: [number, number, number, number]): Bitmap {
@@ -29,6 +29,24 @@ function withBox(base: Bitmap, x: number, y: number, size: number, rgba: [number
 }
 
 const css = { aWidth: 48, aHeight: 48, bWidth: 48, bHeight: 48 };
+
+describe('cropBitmap', () => {
+  it('keeps a frame and ignores the chrome around it', () => {
+    const page = withBox(solid(48, 48, [255, 255, 255, 255]), 16, 16, 16, [200, 30, 30, 255]);
+    const frame = cropBitmap(page, 48, 48, { x: 16, y: 16, width: 16, height: 16 });
+    const red = solid(frame.bitmap.width, frame.bitmap.height, [200, 30, 30, 255]);
+    expect(frame.cssWidth).toBe(16);
+    expect(frame.cssHeight).toBe(16);
+    expect(
+      compareBitmaps(frame.bitmap, red, 'side_by_side', {
+        aWidth: frame.cssWidth,
+        aHeight: frame.cssHeight,
+        bWidth: frame.cssWidth,
+        bHeight: frame.cssHeight,
+      }).json.score,
+    ).toBe(1);
+  });
+});
 
 describe('compareBitmaps', () => {
   it('scores identical images at 1 and round-trips the PNG', () => {

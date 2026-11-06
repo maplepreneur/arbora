@@ -1209,6 +1209,32 @@ export class BrowserService {
     }
   }
 
+  /** The viewport box of an element, in CSS pixels. Null when it is missing or has no size. */
+  async elementRect(selector: string): Promise<{ x: number; y: number; width: number; height: number } | null> {
+    const value: unknown = await this.contents.executeJavaScriptInIsolatedWorld(PROBE_WORLD_ID, [
+      {
+        code: `(() => {
+          const el = document.querySelector(${JSON.stringify(selector)});
+          if (!el) return null;
+          const box = el.getBoundingClientRect();
+          if (box.width <= 0 || box.height <= 0) return null;
+          return { x: box.x, y: box.y, width: box.width, height: box.height };
+        })()`,
+      },
+    ]);
+    if (!value || typeof value !== 'object') return null;
+    const box = value as { x?: unknown; y?: unknown; width?: unknown; height?: unknown };
+    if (
+      typeof box.x !== 'number' ||
+      typeof box.y !== 'number' ||
+      typeof box.width !== 'number' ||
+      typeof box.height !== 'number'
+    ) {
+      return null;
+    }
+    return { x: box.x, y: box.y, width: box.width, height: box.height };
+  }
+
   /**
    * The current value of a named login field, read in the isolated world. The page sends a name
    * or id, not a CSS selector, and the value never goes to the renderer.
