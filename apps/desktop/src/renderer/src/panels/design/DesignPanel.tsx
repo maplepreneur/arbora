@@ -41,7 +41,7 @@ import { isListed, useAgents } from '../../agent-store';
 import { toggleDefaultModel } from '../../agent-defaults';
 import { useAutoVerify, usePickableAgents } from '../../agent-pickers';
 import { Picker } from '../../components/Picker';
-import { applyDesignToSource, discardDesign, resendDesignSession, saveDesignTo } from '../../commands';
+import { applyDesignToSource, discardDesign, saveDesignTo } from '../../commands';
 import { SessionHistory } from './SessionHistory';
 import type { DesignPending } from '../../mode';
 import { dispatchMode, openSettings, setDesignTarget, showToast, useApp } from '../../store';
