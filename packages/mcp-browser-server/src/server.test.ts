@@ -364,6 +364,17 @@ describe('BrowserMcpServer', () => {
     expect(errors).not.toContain('hello');
   });
 
+  it('accepts compare sides as left/right or a/b', async () => {
+    const { client } = await connect();
+    expect(textOf(await client.callTool({ name: 'browser_compare', arguments: { a: 'app', b: 'figma' } }))).toBe(
+      'Comparing tabs is not available.',
+    );
+    expect(textOf(await client.callTool({ name: 'browser_compare', arguments: { left: 'app', right: 'figma' } }))).toBe(
+      'Comparing tabs is not available.',
+    );
+    expect(textOf(await client.callTool({ name: 'browser_compare', arguments: {} }))).toMatch(/left and right/);
+  });
+
   it('names the tab a result came from', async () => {
     const { client, state } = await connect();
     state.page = { ...state.page, tabId: 'figma', role: 'reference' };

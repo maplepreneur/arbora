@@ -600,22 +600,31 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
 
   tool(
     'browser_compare',
-    'Screenshot two granted tabs and score how alike they look. Use this to match a Figma frame against the app. Pass a string tab id, or { target, rect } / { target, selector } to score one frame instead of the browser chrome. Returns a score from 0 to 1, the worst cells, and a side-by-side, overlay, or diff image. Fonts and pixel density differ from Figma, so a perfect score is not the goal: repeat the edit-and-compare loop until the score stops moving or list the remaining differences.',
+    'Screenshot two granted tabs and score how alike they look. Use this to match a Figma frame against the app. Pass left and right, or a and b: a string tab id, or { target, rect } / { target, selector } to score one frame instead of the browser chrome. Returns a score from 0 to 1, the worst cells, and a side-by-side, overlay, or diff image. Fonts and pixel density differ from Figma, so a perfect score is not the goal: repeat the edit-and-compare loop until the score stops moving or list the remaining differences.',
     {
-      left: compareSideSchema.describe('Tab id, "app", or "active", or { target, rect } / { target, selector }'),
-      right: compareSideSchema.describe('Tab id, "app", or "active", or { target, rect } / { target, selector }'),
+      left: compareSideSchema
+        .optional()
+        .describe('Tab id, "app", or "active", or { target, rect } / { target, selector }'),
+      right: compareSideSchema
+        .optional()
+        .describe('Tab id, "app", or "active", or { target, rect } / { target, selector }'),
+      a: compareSideSchema.optional().describe('Same as left'),
+      b: compareSideSchema.optional().describe('Same as right'),
       mode: z.enum(['side_by_side', 'overlay', 'diff']).optional(),
     },
-    async ({ left, right, mode }) => {
+    async ({ left, right, a, b, mode }) => {
+      const one = left ?? a;
+      const two = right ?? b;
+      if (one === undefined || two === undefined) throw new ToolError('Pass left and right, or a and b.');
       if (!host.captureTab) {
         return { isError: true, content: [{ type: 'text', text: 'Comparing tabs is not available.' }] };
       }
-      const [a, b] = await Promise.all([framedCapture(host, left), framedCapture(host, right)]);
-      const output = comparePngs(a.png, b.png, mode ?? 'side_by_side', {
-        aWidth: a.cssWidth,
-        aHeight: a.cssHeight,
-        bWidth: b.cssWidth,
-        bHeight: b.cssHeight,
+      const [first, second] = await Promise.all([framedCapture(host, one), framedCapture(host, two)]);
+      const output = comparePngs(first.png, second.png, mode ?? 'side_by_side', {
+        aWidth: first.cssWidth,
+        aHeight: first.cssHeight,
+        bWidth: second.cssWidth,
+        bHeight: second.cssHeight,
       });
       const saved = host.saveCompare?.(output.png) ?? null;
       const stop = host.designMatch?.() ?? { threshold: 0.92, maxRounds: 5 };
@@ -623,8 +632,8 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
         ...output.json,
         ...(saved ? { saved } : {}),
         stop,
-        left: { id: a.id, role: a.role, title: a.title, url: a.url },
-        right: { id: b.id, role: b.role, title: b.title, url: b.url },
+        left: { id: first.id, role: first.role, title: first.title, url: first.url },
+        right: { id: second.id, role: second.role, title: second.title, url: second.url },
       });
       return {
         content: [
