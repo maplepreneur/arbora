@@ -75,7 +75,7 @@ report_check() {
       check_row desktop fail "not checked on this OS"
       ;;
   esac
-  script_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+  script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
   extension_dir=""
   for candidate in \
     "$script_dir/../apps/desktop/resources/extensions/1password" \
@@ -105,6 +105,7 @@ linux_family() {
   if [ -r /etc/os-release ]; then
     # shellcheck disable=SC1091
     id=$(. /etc/os-release && printf '%s' "${ID:-unknown}")
+    # shellcheck disable=SC1091
     like=$(. /etc/os-release && printf '%s' "${ID_LIKE:-}")
   fi
   case " $id $like " in
@@ -156,7 +157,7 @@ EOF
 }
 
 fetch_extension() {
-  script_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+  script_dir=$(CDPATH='' cd -- "$(dirname "$0")" && pwd)
   fetch="$script_dir/../apps/desktop/scripts/fetch-devtools-extensions.mjs"
   if ! command -v node >/dev/null 2>&1 || [ ! -f "$fetch" ]; then
     echo "extension: skipped (node or the fetch script is not available)"
