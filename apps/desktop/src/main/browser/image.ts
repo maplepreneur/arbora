@@ -45,6 +45,33 @@ export function drawOutline(
   fill(Math.max(left, right - t), top, right, bottom);
 }
 
+/** Flat fill painted over a filled password or one-time-code field in a screenshot. */
+export const SECRET_COVER = { r: 0x3a, g: 0x3a, b: 0x3a } as const;
+
+/** Fills a device-pixel rect so a password drawn in that box is not in the image. */
+export function coverRect(
+  bitmap: Uint8Array,
+  width: number,
+  height: number,
+  rect: Rect,
+  color: { r: number; g: number; b: number } = SECRET_COVER,
+): void {
+  if (bitmap.length < width * height * 4) throw new RangeError('bitmap is smaller than width * height * 4');
+  const xs = Math.max(0, Math.round(rect.x));
+  const ys = Math.max(0, Math.round(rect.y));
+  const xe = Math.min(width, Math.round(rect.x + rect.width));
+  const ye = Math.min(height, Math.round(rect.y + rect.height));
+  for (let y = ys; y < ye; y += 1) {
+    for (let x = xs; x < xe; x += 1) {
+      const i = (y * width + x) * 4;
+      bitmap[i] = color.b;
+      bitmap[i + 1] = color.g;
+      bitmap[i + 2] = color.r;
+      bitmap[i + 3] = 0xff;
+    }
+  }
+}
+
 export function scaleRect(rect: Rect, factor: number): Rect {
   return { x: rect.x * factor, y: rect.y * factor, width: rect.width * factor, height: rect.height * factor };
 }

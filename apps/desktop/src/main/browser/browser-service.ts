@@ -51,7 +51,7 @@ import {
   NetworkTracker,
   type ProblemDraft,
 } from './cdp-problems.js';
-import { drawOutline, pngSize, scaleRect } from './image.js';
+import { coverRect, drawOutline, pngSize, scaleRect } from './image.js';
 
 export const PROBLEM_BUFFER_SIZE = 500;
 const FOCUS_GUARD_AFTER_LOAD_MS = 1000;
@@ -1271,8 +1271,67 @@ export class BrowserService {
       ]);
       const size = image.getSize();
       if (size.width === 0 || size.height === 0) throw new Error('The tab screenshot was empty');
-      return image;
+      const { innerWidth } = await this.metrics();
+      return this.withoutSecretPixels(image, 'viewport', innerWidth);
     });
+  }
+
+  /** CSS boxes of password and one-time-code fields that currently hold a value. */
+  private async secretFieldRects(space: 'viewport' | 'document'): Promise<Rect[]> {
+    if (this.contents.isDestroyed()) return [];
+    const value: unknown = await this.contents.executeJavaScriptInIsolatedWorld(PROBE_WORLD_ID, [
+      {
+        code: `(() => {
+          const origin = ${space === 'document' ? 'true' : 'false'};
+          const nodes = document.querySelectorAll('input[type="password"], input[autocomplete="current-password"], input[autocomplete="one-time-code"]');
+          const rects = [];
+          for (const el of nodes) {
+            if (!el.value) continue;
+            const box = el.getBoundingClientRect();
+            if (box.width <= 0 || box.height <= 0) continue;
+            const x = box.x + (origin ? window.scrollX : 0);
+            const y = box.y + (origin ? window.scrollY : 0);
+            rects.push({ x, y, width: box.width, height: box.height });
+          }
+          return rects;
+        })()`,
+      },
+    ]);
+    if (!Array.isArray(value)) return [];
+    const rects: Rect[] = [];
+    for (const entry of value) {
+      if (!entry || typeof entry !== 'object') continue;
+      const box = entry as { x?: unknown; y?: unknown; width?: unknown; height?: unknown };
+      if (
+        typeof box.x !== 'number' ||
+        typeof box.y !== 'number' ||
+        typeof box.width !== 'number' ||
+        typeof box.height !== 'number'
+      ) {
+        continue;
+      }
+      rects.push({ x: box.x, y: box.y, width: box.width, height: box.height });
+    }
+    return rects;
+  }
+
+  /** Paints over filled secret fields. The values are never read into this process's logs. */
+  private async withoutSecretPixels(
+    image: NativeImage,
+    space: 'viewport' | 'document',
+    cssWidth: number,
+  ): Promise<NativeImage> {
+    let rects: Rect[];
+    try {
+      rects = await this.secretFieldRects(space);
+    } catch {
+      return image;
+    }
+    if (rects.length === 0) return image;
+    const pixels = toPixels(image);
+    const dpr = cssWidth > 0 ? pixels.width / cssWidth : 1;
+    for (const rect of rects) coverRect(pixels.bitmap, pixels.width, pixels.height, scaleRect(rect, dpr));
+    return nativeImage.createFromBitmap(pixels.bitmap, { width: pixels.width, height: pixels.height });
   }
 
   private async captureViewport(request: ScreenshotRequest): Promise<ScreenshotResult> {
@@ -1311,7 +1370,13 @@ export class BrowserService {
         }),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Screenshot timed out')), 8_000)),
       ])) as { data: string };
-      const pixels = toPixels(nativeImage.createFromBuffer(Buffer.from(shot.data, 'base64')));
+      const pixels = toPixels(
+        await this.withoutSecretPixels(
+          nativeImage.createFromBuffer(Buffer.from(shot.data, 'base64')),
+          'document',
+          width,
+        ),
+      );
       const dpr = pixels.width / width;
       if (request.highlight) {
         drawOutline(

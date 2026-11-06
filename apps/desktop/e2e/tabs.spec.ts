@@ -204,6 +204,39 @@ process.exit(2);
           { timeout: 20_000 },
         )
         .toBe('welcome');
+      const appTab = (await tabs(page)).find((tab) => tab.role === 'app');
+      if (!appTab) throw new Error('No app tab');
+      await page.evaluate((id) => window.arbora.invoke('browser.tabs.activate', { id }), appTab.id);
+      const shot = await page.evaluate(() =>
+        window.arbora.invoke('browser.screenshot', { mode: 'viewport', save: false }),
+      );
+      const centers = await launched.app.evaluate(async ({ webContents }, pageUrl) => {
+        const view = webContents.getAllWebContents().find((wc) => wc.getURL().startsWith(pageUrl));
+        if (!view) return [];
+        return (await view.executeJavaScript(`(() => {
+          const nodes = document.querySelectorAll('input[type="password"], input[autocomplete="one-time-code"]');
+          return [...nodes].filter((el) => el.value).map((el) => {
+            const box = el.getBoundingClientRect();
+            return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+          });
+        })()`)) as { x: number; y: number }[];
+      }, login.url);
+      expect(centers.length).toBeGreaterThanOrEqual(2);
+      const samples = await launched.app.evaluate(
+        ({ nativeImage }, input) => {
+          const image = nativeImage.createFromBuffer(Buffer.from(input.pngBase64, 'base64'));
+          const size = image.getSize();
+          const bitmap = image.toBitmap();
+          return input.centers.map((center) => {
+            const x = Math.min(size.width - 1, Math.max(0, Math.round(center.x * input.dpr)));
+            const y = Math.min(size.height - 1, Math.max(0, Math.round(center.y * input.dpr)));
+            const index = (y * size.width + x) * 4;
+            return [bitmap[index + 2], bitmap[index + 1], bitmap[index]];
+          });
+        },
+        { pngBase64: shot.pngBase64, dpr: shot.dpr, centers },
+      );
+      for (const [red, green, blue] of samples) expect([red, green, blue]).toEqual([0x3a, 0x3a, 0x3a]);
       const transcript = await page.getByTestId('transcript').innerText();
       expect(transcript).not.toContain(PASSWORD);
       expect(transcript).not.toContain(OTP);

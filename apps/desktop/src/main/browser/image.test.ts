@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { drawOutline, fitWithin, pngSize, scaleRect } from './image.js';
+import { coverRect, drawOutline, fitWithin, pngSize, scaleRect, SECRET_COVER } from './image.js';
 
 const RED = { r: 255, g: 0, b: 0 };
 
@@ -32,6 +32,19 @@ describe('drawOutline', () => {
 
   it('rejects undersized bitmaps', () => {
     expect(() => drawOutline(new Uint8Array(4), 2, 2, { x: 0, y: 0, width: 1, height: 1 }, 1)).toThrow(RangeError);
+  });
+});
+
+describe('coverRect', () => {
+  it('fills the field and leaves the pixels outside it', () => {
+    const width = 6;
+    const bitmap = new Uint8Array(width * 4 * 4);
+    bitmap.fill(255);
+    coverRect(bitmap, width, 4, { x: 1, y: 1, width: 3, height: 2 });
+    const i = (1 * width + 1) * 4;
+    expect([bitmap[i + 2], bitmap[i + 1], bitmap[i]]).toEqual([SECRET_COVER.r, SECRET_COVER.g, SECRET_COVER.b]);
+    expect(bitmap[(0 * width + 0) * 4]).toBe(255);
+    expect(bitmap[(1 * width + 4) * 4]).toBe(255);
   });
 });
 
