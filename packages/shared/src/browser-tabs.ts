@@ -320,8 +320,7 @@ export function setBrowserTabRole(set: BrowserTabSet, id: string): BrowserTabSet
   if (!target || target.role === 'app') return set;
   const tabs = set.tabs.map((entry) => {
     if (entry.id === id) return { ...entry, role: 'app' as const, useProjectSession: true, pinned: true };
-    if (entry.role === 'app')
-      return { ...entry, role: 'reference' as const, pinned: false, useProjectSession: false };
+    if (entry.role === 'app') return { ...entry, role: 'reference' as const, pinned: false, useProjectSession: false };
     return entry;
   });
   const app = tabs.find((entry) => entry.role === 'app');

@@ -88,7 +88,8 @@ test.describe('Stage 9 onboarding', () => {
       await page.getByTestId('onboarding-next').click();
       await page.getByTestId('onboarding-sounds').click();
       await page.getByTestId('onboarding-next').click();
-      await expect(page.getByTestId('onboarding-step-passwords')).toBeVisible();
+      await expect(page.getByTestId('onboarding-step-passwords')).toContainText('Arbora works without it');
+      await expect(page.getByTestId('onboarding-passwords')).not.toBeChecked();
       await page.getByTestId('passwords-check').click();
       await expect(page.getByTestId('passwords-check-result')).toBeVisible();
       await page.getByTestId('onboarding-next').click();

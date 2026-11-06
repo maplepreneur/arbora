@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { resolvedPasswordMode } from '@arbora/shared';
+import { onePasswordChoice, resolvedPasswordMode } from '@arbora/shared';
 import { updateSettings } from '../../settings-client';
 import { useApp } from '../../store';
 import { Segmented, SettingRow, Toggle } from './controls';
@@ -22,7 +22,7 @@ export function PasswordCheck() {
               setStatus(
                 result.installed && result.version
                   ? `op ${result.version} · ${result.mode}`
-                  : 'op is not installed. Run pnpm setup:1password in a terminal.',
+                  : 'op is not installed. Arbora works without it. Run setup if you want 1Password.',
               );
             })
             .catch((error: unknown) => setStatus((error as Error).message))
@@ -77,18 +77,20 @@ export function SetupButton() {
 /** 1Password is the only password provider. Arbora stores no passwords of its own. */
 export function PasswordsSection() {
   const passwords = useApp((s) => s.settings.passwords);
+  const enabled = useApp((s) => s.settings.extensions.enabled);
   const on = passwords.provider === '1password';
   const mode = resolvedPasswordMode(passwords.mode);
   return (
     <div>
       <SettingRow
         title="1Password"
-        detail="Fills logins for the app and for tools such as Figma. Run pnpm setup:1password once so the op command is on your PATH."
+        detail="Optional. Arbora works without it. Turn it on here, during setup, or in Settings → Extensions. It fills logins for the app and for tools such as Figma."
       >
         <Toggle
           on={on}
           label="Use 1Password"
-          onChange={(next) => void updateSettings({ passwords: { provider: next ? '1password' : 'none' } })}
+          testId="passwords-provider"
+          onChange={(next) => void updateSettings(onePasswordChoice(enabled, next))}
         />
       </SettingRow>
       <SettingRow

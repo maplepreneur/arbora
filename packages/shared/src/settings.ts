@@ -288,6 +288,21 @@ export const passwordsSettingsSchema = z.object({
 });
 export type PasswordsSettings = z.infer<typeof passwordsSettingsSchema>;
 
+/**
+ * 1Password is optional. Turning it on loads the extension and selects it as the password
+ * provider; turning it off does both the other way. React and Vue stay as they were.
+ */
+export function onePasswordChoice(
+  enabled: readonly CatalogExtensionId[],
+  on: boolean,
+): { extensions: { enabled: CatalogExtensionId[] }; passwords: { provider: '1password' | 'none' } } {
+  const rest = enabled.filter((id) => id !== '1password');
+  return {
+    extensions: { enabled: on ? [...rest, '1password'] : [...rest] },
+    passwords: { provider: on ? '1password' : 'none' },
+  };
+}
+
 export const browserSettingsSchema = z.object({
   /** Load the bundled React and Vue DevTools into the browser panel's session. */
   devToolsExtensions: z.boolean().default(true),

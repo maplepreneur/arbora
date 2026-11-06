@@ -1,4 +1,4 @@
-import type { ExtensionSettings } from '@arbora/shared';
+import { onePasswordChoice, type ExtensionSettings } from '@arbora/shared';
 import { updateSettings } from '../../settings-client';
 import { useApp } from '../../store';
 import { SettingRow, Toggle } from './controls';
@@ -7,7 +7,8 @@ const CATALOG: readonly { id: ExtensionSettings['enabled'][number]; title: strin
   {
     id: '1password',
     title: '1Password',
-    detail: 'Sign in to the app you are building, and to tools such as Figma. The agent never sees the password.',
+    detail:
+      'Optional. Arbora works without it. Turn it on here, or during setup, to sign in to the app and to tools such as Figma. The agent never sees the password.',
   },
   {
     id: 'react-devtools',
@@ -25,6 +26,10 @@ const CATALOG: readonly { id: ExtensionSettings['enabled'][number]; title: strin
 export function ExtensionsSection() {
   const enabled = useApp((s) => s.settings.extensions.enabled);
   const toggle = (id: ExtensionSettings['enabled'][number], on: boolean): void => {
+    if (id === '1password') {
+      void updateSettings(onePasswordChoice(enabled, on));
+      return;
+    }
     const next = on ? [...enabled.filter((entry) => entry !== id), id] : enabled.filter((entry) => entry !== id);
     void updateSettings({ extensions: { enabled: next } });
   };
@@ -36,7 +41,12 @@ export function ExtensionsSection() {
       </p>
       {CATALOG.map((entry) => (
         <SettingRow key={entry.id} title={entry.title} detail={entry.detail}>
-          <Toggle on={enabled.includes(entry.id)} label={entry.title} onChange={(on) => toggle(entry.id, on)} />
+          <Toggle
+            on={enabled.includes(entry.id)}
+            label={entry.title}
+            testId={`extension-${entry.id}`}
+            onChange={(on) => toggle(entry.id, on)}
+          />
         </SettingRow>
       ))}
     </div>

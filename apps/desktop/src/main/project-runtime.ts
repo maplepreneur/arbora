@@ -204,7 +204,7 @@ export class ProjectRuntime {
       threadId,
       tabs: () => host.tabs?.() ?? null,
       ...(host.grants ? { grants: host.grants } : {}),
-      grantsChanged: (threadId, tabIds) => host.send('agent.grantsChanged', { threadId, tabIds }),
+      grantsChanged: (threadId, tabIds) => host.send('agent.grantsChanged', { threadId, tabIds: [...tabIds] }),
       passwords: () => settings.get().passwords,
       passwordProvider: this.passwords,
       allowLoginOrigin: (origin) => {

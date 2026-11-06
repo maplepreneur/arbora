@@ -4,7 +4,7 @@ import { basename, join } from 'node:path';
 import type { WebContentsView } from 'electron';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import type { BrowserTabSnapshot, NavigationState } from '@arbora/shared';
-import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, showRight, startAgent, tempUserData } from './app';
+import { checkedAgents, DESKTOP_ROOT, FIXTURES, focusChrome, launch, showRight, startAgent, tempUserData } from './app';
 import { startStaticFixture, startViteFixture } from './servers';
 
 const FAKE_AGENT = join(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
@@ -1034,6 +1034,56 @@ if (args[1] === 'create') {
       await expect(page.getByTestId('passwords-setup-result')).toContainText('setup-1password.sh');
     } finally {
       await app.close();
+    }
+  });
+
+  test('offers 1Password during setup and turns it on later from Extensions', async () => {
+    const userData = tempUserData();
+    const project = mkdtempSync(join(tmpdir(), 'arbora-optional-1password-'));
+    writeFileSync(join(project, 'package.json'), JSON.stringify({ name: 'optional-1password', private: true }));
+    const read = (): { passwords?: { provider?: string }; extensions?: { enabled?: string[] } } =>
+      JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')) as {
+        passwords?: { provider?: string };
+        extensions?: { enabled?: string[] };
+      };
+    const { app, page } = await launch(userData, [project], { ARBORA_SKIP_ONBOARDING: '0' });
+    try {
+      await expect(page.getByTestId('onboarding')).toBeVisible();
+      await page.getByRole('navigation', { name: 'Setup steps' }).getByRole('button', { name: 'Passwords' }).click();
+      const step = page.getByTestId('onboarding-step-passwords');
+      await expect(step).toContainText('Arbora works without it');
+      await expect(step).toContainText('Settings → Extensions');
+      await expect(page.getByTestId('onboarding-passwords')).not.toBeChecked();
+      await page.getByTestId('onboarding-next').click();
+      await expect(page.getByTestId('onboarding-step-finish')).toBeVisible();
+      await page.getByRole('navigation', { name: 'Setup steps' }).getByRole('button', { name: 'Passwords' }).click();
+      await page.getByTestId('onboarding-passwords').click();
+      await expect.poll(() => read().passwords?.provider).toBe('1password');
+      expect(read().extensions?.enabled).toEqual(
+        expect.arrayContaining(['1password', 'react-devtools', 'vue-devtools']),
+      );
+      await page.getByTestId('onboarding-passwords').click();
+      await expect.poll(() => read().passwords?.provider).toBe('none');
+      expect(read().extensions?.enabled ?? []).not.toContain('1password');
+      await page.getByTestId('onboarding-skip').click();
+      await expect(page.getByTestId('onboarding')).toHaveCount(0);
+      await focusChrome(page);
+      await page.keyboard.press('ControlOrMeta+Comma');
+      await expect(page.getByTestId('settings-page')).toBeVisible();
+      await page.getByTestId('settings-nav-extensions').click();
+      const toggle = page.getByTestId('extension-1password');
+      await expect(toggle).toHaveAttribute('aria-checked', 'false');
+      await toggle.click();
+      await expect.poll(() => read().passwords?.provider).toBe('1password');
+      expect(read().extensions?.enabled).toContain('1password');
+      await expect(toggle).toHaveAttribute('aria-checked', 'true');
+      await toggle.click();
+      await expect.poll(() => read().passwords?.provider).toBe('none');
+      expect(read().extensions?.enabled ?? []).not.toContain('1password');
+      expect(read().extensions?.enabled).toEqual(expect.arrayContaining(['react-devtools', 'vue-devtools']));
+    } finally {
+      await app.close();
+      rmSync(project, { recursive: true, force: true });
     }
   });
 });

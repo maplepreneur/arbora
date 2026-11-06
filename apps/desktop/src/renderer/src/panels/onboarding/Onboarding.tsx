@@ -16,7 +16,7 @@ import {
   Volume2,
   X,
 } from 'lucide-react';
-import { CommandId, type AgentVerification } from '@arbora/shared';
+import { CommandId, onePasswordChoice, type AgentVerification } from '@arbora/shared';
 import { toggleDefaultAgent, useDefaultAgentId } from '../../agent-defaults';
 import { usePickableAgents, verifyAgent } from '../../agent-pickers';
 import { loadAgentSnapshot, useAgents } from '../../agent-store';
@@ -519,27 +519,26 @@ function AlertsStep() {
 
 function PasswordsStep() {
   const on = useApp((s) => s.settings.passwords.provider === '1password');
+  const enabled = useApp((s) => s.settings.extensions.enabled);
   return (
     <StepShell
-      title="Sign in with 1Password"
-      lead="Use it for the app and for tools such as Figma. Arbora never stores the password. The check only looks for the op command."
+      title="1Password"
+      lead="Optional. Arbora works without it. Turn it on to sign in to the app and to tools such as Figma, or leave it off and enable it later in Settings → Extensions. Arbora never stores the password."
     >
       <label className="flex items-center gap-2 text-sm">
         <input
           type="checkbox"
           data-testid="onboarding-passwords"
           checked={on}
-          onChange={(event) =>
-            void updateSettings({ passwords: { provider: event.target.checked ? '1password' : 'none' } })
-          }
+          onChange={(event) => void updateSettings(onePasswordChoice(enabled, event.target.checked))}
         />
         Use 1Password
       </label>
       <PasswordCheck />
       <SetupButton />
       <p className="text-xs text-fg-subtle">
-        Run setup opens the script in a terminal. On Linux it asks before it uses sudo. The app does not install
-        packages itself.
+        You can skip this step. Run setup is only for when you want 1Password. It opens the script in a terminal and, on
+        Linux, asks before it uses sudo. The app does not install packages itself.
       </p>
     </StepShell>
   );

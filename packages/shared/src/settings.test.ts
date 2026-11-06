@@ -5,6 +5,7 @@ import {
   applySettingsPatch,
   appSettingsPatchSchema,
   defaultSettings,
+  onePasswordChoice,
   fontFamily,
   isPickableAgent,
   MONO_FONT_STACK,
@@ -26,6 +27,20 @@ import {
   SettingsMigrationError,
   type Migration,
 } from './settings.js';
+
+describe('onePasswordChoice', () => {
+  it('turns the extension and the password provider on and off together', () => {
+    const devtools = ['react-devtools', 'vue-devtools'] as const;
+    expect(onePasswordChoice(devtools, true)).toEqual({
+      extensions: { enabled: ['react-devtools', 'vue-devtools', '1password'] },
+      passwords: { provider: '1password' },
+    });
+    expect(onePasswordChoice(['vue-devtools', '1password', 'react-devtools'], false)).toEqual({
+      extensions: { enabled: ['vue-devtools', 'react-devtools'] },
+      passwords: { provider: 'none' },
+    });
+  });
+});
 
 describe('migrateSettings', () => {
   it('treats a non-object as an empty current-version file', () => {

@@ -69,8 +69,7 @@ export function decodePng(png: Buffer): Bitmap {
       width = data.readUInt32BE(0);
       height = data.readUInt32BE(4);
       const color = data[9];
-      if (data[8] !== 8 || (color !== 6 && color !== 2))
-        throw new Error('Only 8-bit RGB or RGBA PNGs can be compared');
+      if (data[8] !== 8 || (color !== 6 && color !== 2)) throw new Error('Only 8-bit RGB or RGBA PNGs can be compared');
       channels = color === 6 ? 4 : 3;
     } else if (type === 'IDAT') {
       idat.push(Buffer.from(data));
