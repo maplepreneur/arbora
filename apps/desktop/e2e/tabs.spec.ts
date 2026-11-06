@@ -79,6 +79,40 @@ async function openUrl(page: Page, url: string): Promise<void> {
 }
 
 test.describe('Stage 12 tabs and 1Password', () => {
+  test('sends the tab that was right-clicked, not the active one', async () => {
+    const { app, page } = await launch(tempUserData(), [DESIGN]);
+    try {
+      await page.getByTestId('browser-tab-new').click();
+      const open = await tabs(page);
+      const reference = open.find((tab) => tab.role === 'reference');
+      const appTab = open.find((tab) => tab.role === 'app');
+      if (!reference || !appTab) throw new Error('Need an app tab and a reference tab');
+      await page.evaluate((id) => window.arbora.invoke('browser.tabs.activate', { id }), appTab.id);
+      const referenceTab = page.locator(`[data-testid="browser-tab"][data-tab-id="${reference.id}"]`);
+      await expect(referenceTab).toHaveAttribute('data-active', 'false');
+      await referenceTab.click({ button: 'right' });
+      await expect
+        .poll(() => app.evaluate(() => Boolean((global as { arboraContextMenu?: unknown }).arboraContextMenu)))
+        .toBe(true);
+      await app.evaluate(() => {
+        const menu = (
+          global as {
+            arboraContextMenu?: { items: { label: string; click: () => void }[]; closePopup: () => void };
+          }
+        ).arboraContextMenu;
+        const item = menu?.items.find((entry) => entry.label === 'Send tab to agent');
+        if (!menu || !item) throw new Error('Send tab to agent is not in the tab menu');
+        item.click();
+        menu.closePopup();
+      });
+      const popover = page.getByTestId('browser-send-tab');
+      await expect(popover).toBeVisible({ timeout: 5_000 });
+      await expect(popover).toHaveAttribute('data-tab-id', reference.id);
+    } finally {
+      await app.close();
+    }
+  });
+
   test('shows memory and CPU on a tab hover', async () => {
     const design = await startStaticFixture(DESIGN);
     const { app, page } = await launch(tempUserData(), [DESIGN]);

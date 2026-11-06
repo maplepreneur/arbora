@@ -705,10 +705,18 @@ function main(): void {
                   },
             ),
           );
+          if (process.env['ARBORA_E2E'] === '1') {
+            (global as { arboraContextMenu?: Menu }).arboraContextMenu = menu;
+          }
           menu.popup({
             window: windowFor(event.sender).window,
             // `callback` can run before `click`; let the click land first.
-            callback: () => setTimeout(() => resolveMenu({ id: chosen }), 0),
+            callback: () => {
+              if (process.env['ARBORA_E2E'] === '1') {
+                delete (global as { arboraContextMenu?: Menu }).arboraContextMenu;
+              }
+              setTimeout(() => resolveMenu({ id: chosen }), 0);
+            },
           });
         }),
     );

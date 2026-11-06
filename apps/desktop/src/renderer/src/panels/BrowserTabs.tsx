@@ -12,9 +12,19 @@ import { useApp } from '../store';
 export function BrowserTabStrip() {
   const tabs = useApp((s) => s.browserTabs);
   const [dragged, setDragged] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
+  const [sendingId, setSendingId] = useState<string | null>(null);
   const [fullPage, setFullPage] = useState(false);
-  useEffect(() => registerSendTabOpener(() => setSending(true)), []);
+  useEffect(() => {
+    openSendForTab = setSendingId;
+    const unregister = registerSendTabOpener(() => {
+      const active = useApp.getState().browserTabs.find((tab) => tab.active);
+      if (active) setSendingId(active.id);
+    });
+    return () => {
+      if (openSendForTab === setSendingId) openSendForTab = null;
+      unregister();
+    };
+  }, []);
   if (tabs.length === 0) return null;
   return (
     <div className="relative shrink-0">
@@ -50,21 +60,26 @@ export function BrowserTabStrip() {
           aria-label="Send tab to agent"
           data-testid="browser-tab-send"
           title="Send tab to agent"
-          onClick={() => setSending(true)}
+          onClick={() => {
+            const active = useApp.getState().browserTabs.find((tab) => tab.active);
+            if (active) setSendingId(active.id);
+          }}
           className="mb-0.5 flex h-6 shrink-0 items-center gap-1 rounded px-1.5 text-[11px] text-fg-subtle hover:bg-bg-muted hover:text-fg"
         >
           <Send size={12} />
           Send
         </button>
       </div>
-      {sending && (
+      {sendingId && (
         <form
           data-testid="browser-send-tab"
+          data-tab-id={sendingId}
           className="absolute right-1 top-full z-30 mt-1 w-64 rounded border border-border bg-bg-elevated p-2 text-xs shadow-lg"
           onSubmit={(event) => {
             event.preventDefault();
-            setSending(false);
-            void sendActiveTab(fullPage);
+            const tabId = sendingId;
+            setSendingId(null);
+            void sendActiveTab(fullPage, tabId);
           }}
         >
           <label className="flex items-center gap-2">
@@ -77,7 +92,7 @@ export function BrowserTabStrip() {
             Include a full-page screenshot
           </label>
           <div className="mt-2 flex justify-end gap-1">
-            <button type="button" className="rounded px-2 py-1 hover:bg-bg-muted" onClick={() => setSending(false)}>
+            <button type="button" className="rounded px-2 py-1 hover:bg-bg-muted" onClick={() => setSendingId(null)}>
               Cancel
             </button>
             <button
@@ -203,6 +218,13 @@ function TabButton({
   );
 }
 
+let openSendForTab: ((tabId: string) => void) | null = null;
+
+/** Opens the send popover for this tab, including one that is not active. */
+function openSendFor(tabId: string): void {
+  openSendForTab?.(tabId);
+}
+
 function RoleIcon({ role }: { role: BrowserTabSnapshot['role'] }) {
   switch (role) {
     case 'app':
@@ -249,7 +271,7 @@ async function showTabMenu(tab: BrowserTabSnapshot): Promise<void> {
       await window.arbora.invoke('browser.tabs.closeOthers', { id: tab.id });
       return;
     case 'send':
-      executeCommand(CommandId.browserSendTab);
+      openSendFor(tab.id);
       return;
     case 'pin':
       await window.arbora.invoke('browser.tabs.pin', { id: tab.id, pinned: !tab.pinned });

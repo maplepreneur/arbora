@@ -788,18 +788,24 @@ function requestSendTab(): void {
 
 let sendInFlight = false;
 
-export async function sendActiveTab(fullPage = false): Promise<void> {
+export async function sendActiveTab(fullPage = false, tabId?: string): Promise<void> {
   if (sendInFlight) return;
   const agentId = defaultAgentId();
   if (!agentId) {
     showToast('Choose an agent first');
     return;
   }
+  const tab = tabId
+    ? useApp.getState().browserTabs.find((entry) => entry.id === tabId)
+    : useApp.getState().browserTabs.find((entry) => entry.active);
+  if (tabId && !tab) {
+    showToast('That tab is closed');
+    return;
+  }
   sendInFlight = true;
-  const active = useApp.getState().browserTabs.find((tab) => tab.active);
   try {
     const { threadId } = await window.arbora.invoke('browser.tabs.send', {
-      ...(active ? { tabId: active.id } : {}),
+      ...(tab ? { tabId: tab.id } : {}),
       text: 'Implement this design',
       fullPage,
       agentId,
