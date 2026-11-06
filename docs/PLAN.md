@@ -8,9 +8,9 @@ The companion document [BUILD_STAGES.md](./BUILD_STAGES.md) breaks the build int
 
 Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents must update this section and that table at the end of every piece of work.
 
-**Now:** Stages 0–9 are `Done`. Stage 9 is `Done` for now (6 Nov 2026, `v0.0.5`). Launch checks wait: **Cut a beta**, the packaged memory budget, a macOS `.dmg` open check, fresh installs per OS, and `arch-ok`. Stage 10 (Grove) is `In progress (PR #76, merged)` and is not `arch-ok`. Stage 11 (Stretch) is `In progress (PR #88, merged)` on `beta` ([PR #88](https://github.com/maplepreneur/arbora/pull/88), Linux CI [run 42239297446](https://github.com/maplepreneur/arbora/actions/runs/42239297446), green): the dev plugin ([PR #81](https://github.com/maplepreneur/arbora/pull/81)), worktrees ([PR #82](https://github.com/maplepreneur/arbora/pull/82)), Tailwind write-through ([PR #83](https://github.com/maplepreneur/arbora/pull/83)), design session history ([PR #84](https://github.com/maplepreneur/arbora/pull/84)), MCP action traces ([PR #85](https://github.com/maplepreneur/arbora/pull/85)), the opt-in TypeScript language server ([PR #86](https://github.com/maplepreneur/arbora/pull/86)) and source maps ([PR #87](https://github.com/maplepreneur/arbora/pull/87)). Local check of that combination on 6 Nov 2026: `pnpm typecheck`, `pnpm lint`, 812 unit tests, and e2e 56 passed / 1 skipped (the packaged memory budget). Not `arch-ok`. Antigravity (`agy acp`, CLI 1.5.2) and the settings reorganization are `In progress (PR #92)` ([PR #92](https://github.com/maplepreneur/arbora/pull/92), open, not merged). `initialize`, `session/new` and a one-word prompt succeeded with a cached login. The Stage 3 file-edit matrix for it is not run. There is no Grove settings page: General, Agents and Keyboard hold the old Grove controls. Local check on 6 Nov 2026: `pnpm typecheck`, `pnpm lint`, 813 unit tests, and e2e 56 passed / 1 skipped (the packaged memory budget). Not `arch-ok`.
+**Now:** Stages 0–9 are `Done`. Stage 9 is `Done` for now (6 Nov 2026, `v0.0.5`). Launch checks wait: **Cut a beta**, the packaged memory budget, a macOS `.dmg` open check, fresh installs per OS, and `arch-ok`. Stage 10 (Grove) is `In progress (PR #76, merged)` and is not `arch-ok`. Stage 11 (Stretch) is `In progress (PR #88, merged)` on `beta` ([PR #88](https://github.com/maplepreneur/arbora/pull/88), Linux CI [run 42239297446](https://github.com/maplepreneur/arbora/actions/runs/42239297446), green): the dev plugin ([PR #81](https://github.com/maplepreneur/arbora/pull/81)), worktrees ([PR #82](https://github.com/maplepreneur/arbora/pull/82)), Tailwind write-through ([PR #83](https://github.com/maplepreneur/arbora/pull/83)), design session history ([PR #84](https://github.com/maplepreneur/arbora/pull/84)), MCP action traces ([PR #85](https://github.com/maplepreneur/arbora/pull/85)), the opt-in TypeScript language server ([PR #86](https://github.com/maplepreneur/arbora/pull/86)) and source maps ([PR #87](https://github.com/maplepreneur/arbora/pull/87)). Local check of that combination on 6 Nov 2026: `pnpm typecheck`, `pnpm lint`, 812 unit tests, and e2e 56 passed / 1 skipped (the packaged memory budget). Not `arch-ok`. On 6 Nov 2026 Stage 12 dropped passwords and Stage 14 dropped its browser-extension catalog. Browser extensions are React, Vue and Svelte DevTools only. Stage 14 is coding tools, starting with Robocop. Antigravity (`agy acp`, CLI 1.5.2) and the settings reorganization are `In progress (PR #92)` ([PR #92](https://github.com/maplepreneur/arbora/pull/92), open, not merged). `initialize`, `session/new` and a one-word prompt succeeded with a cached login. The Stage 3 file-edit matrix for it is not run. There is no Grove settings page: General, Agents and Keyboard hold the old Grove controls. Local check on 6 Nov 2026: `pnpm typecheck`, `pnpm lint`, 813 unit tests, and e2e 56 passed / 1 skipped (the packaged memory budget). Not `arch-ok`.
 
-**Next:** `arch-ok` for Grove and for Stage 11 on Omarchy/Hyprland, and the Appendix B Grove row with a real agent. Stages 12–17 stay specified and not started. Stages 16 and 17 were specified in [PR #80](https://github.com/maplepreneur/arbora/pull/80).
+**Next:** `arch-ok` for Grove and for Stage 11 on Omarchy/Hyprland, and the Appendix B Grove row with a real agent. Stages 12–17 stay specified and not started. Stages 16 and 17 were specified in [PR #80](https://github.com/maplepreneur/arbora/pull/80). On 6 Nov 2026 Stage 12 dropped passwords and Stage 14 dropped its browser-extension catalog. Browser extensions are React, Vue and Svelte DevTools only. Stage 14 is coding tools, starting with Robocop.
 
 **Blockers / open:** Grove and Stage 11 have no `arch-ok`. Stage 9 launch checks stay parked. Dependabot [#64](https://github.com/maplepreneur/arbora/pull/64) (`@types/node` 22 → 26) stays open: CI and `engines` are Node 22, and Electron 45 runs Node 24. `v0.0.5` is the latest stable. Distribution is unsigned GitHub Releases. Until someone runs **Cut a beta**, the Beta channel only offers stable releases. Stage 6's Appendix B design-save row is still empty. Claude Code and Codex stay built-in and untested. The macOS e2e clipboard step is still flaky. Agent mode's target picker is not filtered by sign-in yet. The Stage 8 scratch repo cannot be deleted with the current `gh` token.
 
@@ -20,7 +20,7 @@ Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents 
 
 | Area | Summary |
 | --- | --- |
-| Browser panel | Embedded Chromium showing the user's dev server. URL bar, navigation, viewport presets, screenshots, console/network capture, React/Vue DevTools. |
+| Browser panel | Embedded Chromium showing the user's dev server. URL bar, navigation, viewport presets, screenshots, console/network capture, React/Vue/Svelte DevTools. |
 | Agent panel | Any ACP agent (Claude Code, Codex, Kimi Code, Grok Build, OpenCode, Antigravity, custom). Streaming messages, tool calls, diffs, permissions, plans, slash commands. Docked beside the browser. |
 | Grove | A second workspace that takes the whole window: every ACP session in the project with a live status, one transcript, a task-first launcher, and helper agents a lead agent can start and steer over MCP. Title-bar switch, hotkeys, a default agent, and the bell when an agent needs you. |
 | Agent mode (`Mod+K`) | Inspector-style hover/click on components. Click opens a prompt popover. Submit sends prompt + component source + screenshot to the agent. |
@@ -31,9 +31,8 @@ Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents 
 | Files and editor | Explorer, quick open, ripgrep search, CodeMirror editor with highlighting and diagnostics. Zed-like lightness; hand editing is secondary. |
 | Browser tabs | Several tabs per project: one **app tab** (the dev server) and any number of **reference tabs** (a Figma file, docs, the production site). A good-enough everyday browser, so you do not alt-tab to Chrome to log in or look something up. |
 | Cross-tab agent work | Prompt from any tab and send it to a chosen project and thread. "Implement this design" from a Figma tab gives the agent read access to that tab. It studies the design, edits the project, screenshots the app tab and compares the two until they match. |
-| Passwords (1Password) | The 1Password extension (or the `op` CLI as a fallback) fills and saves logins in every tab. A setup script installs and connects 1Password. Agents can ask Arbora to log in to a site but never see a password. |
 | Themes | Light, dark and system stay. A `theme.json` can override the app's colour variables. Fonts and layout stay as they are. |
-| Extensions | Settings installs from a short approved catalog. Browser entries are Svelte DevTools and Bitwarden. Coding entries are linters and tools, starting with Robocop. |
+| Coding tools | Settings turns on extra linters from a short approved catalog, starting with Robocop. Browser extensions are only the bundled React, Vue and Svelte DevTools. |
 | Usage and cost | Each agent turn records input, output and cache tokens, the model that produced them, and the working time. Cost is those tokens times the provider's published API price for that model. The ledger is stored in the project first, and the app reads it from there. A later step copies the same rows into the account database so they are saved off the machine; the website reads that database. |
 | Publish | Connect Vercel or Cloudflare Pages. Developers see deployments and ship from the app. A site owner gets a simpler window: change the website, preview it, and publish it, without git or a terminal. |
 
@@ -42,7 +41,7 @@ Design principles:
 - The browser is the product. Everything else supports pointing at a thing and describing a change.
 - Two workspaces, one window. The browser workspace is the default. Grove is the other full layout, for several agents at once. Switching parks the page and keeps agents running. Quitting the app stops them.
 - Agents own their auth, models and tools. Arbora is a client, never a proxy for provider keys.
-- Secrets stay with the user. Passwords, one-time codes and vault contents never enter a prompt, a tool result, a log or a screenshot sent to an agent. Agents can ask Arbora to log in; they cannot read what was filled.
+- Secrets stay with the user. Arbora does not store passwords or fill them from a password manager. Password-field values never enter a prompt, a tool result, a log or a screenshot sent to an agent. The user signs in on the page.
 - One Chromium. No extra webviews, no language servers by default, no product telemetry. An Arbora account is required (Stage 15): the account server learns the email, the plan, the app version and OS at entitlement refresh. It does not learn project paths, prompts or source. Stage 16 writes token counts, the model, list-price cost and working time into the project first. Saving usage to the account, off until the user turns it on, copies those rows into the account database.
 - Every stage ends with an app you can actually use.
 
@@ -56,7 +55,7 @@ The browser panel needs four things that only Electron gives consistently across
 
 1. A full Chromium with identical rendering on Linux, macOS and Windows.
 2. Chrome DevTools Protocol (CDP) access to the embedded page (`webContents.debugger`).
-3. Loading DevTools extensions (React DevTools, Vue DevTools) via `session.loadExtension`.
+3. Loading DevTools extensions (React DevTools, Vue DevTools, Svelte DevTools) via `session.loadExtension`.
 4. Injecting a preload script into arbitrary user pages, plus programmatic screenshots (`capturePage`).
 
 Tauri uses the OS webview (WebKitGTK on Linux, WKWebView on macOS, WebView2 on Windows). There is no unified CDP, no extension loading, and rendering differs per platform. Lightness is achieved through architecture (one Chromium, lazy panels, no LSP by default), not runtime choice. See [ADR 0001](#adr-0001-electron-over-tauri).
@@ -204,7 +203,7 @@ arbora/
 - ACP `fs/*` handlers are path-scoped to the project root (resolve + prefix check, deny symlink escapes).
 - Agent navigation off the dev-server origin requires a one-time allow.
 - No remote code loading, no product telemetry. The usage ledger (Stage 16) is written under `.arbora/usage/` first. Saving to the account copies those rows into the account database and leaves the local files in place. A saved row has no prompts, paths or source. Host tokens (Stage 17) stay in the OS keychain and never enter a prompt.
-- Agents see a reference tab only after the user sends a prompt from it or grants it (`F-XTAB-03`). Agent-driven logins go through a permission card and the password manager, never through the agent (`F-VAULT-04`). Password-field values are redacted from snapshots, `browser_evaluate` results and the ACP log.
+- Agents see a reference tab only after the user sends a prompt from it or grants it (`F-XTAB-03`). Password-field values are redacted from snapshots, `browser_evaluate` results and the ACP log. Arbora does not fill, save or read a password manager.
 
 ---
 
@@ -230,7 +229,7 @@ Feature IDs (`F-AREA-NN`) are referenced from [BUILD_STAGES.md](./BUILD_STAGES.m
 - `F-BROWSER-04` Persistent session partition per project (logins survive restarts), with a "reset browser data" action.
 - `F-BROWSER-05` CDP attached on load: console messages and network failures buffered and shown in the Problems tab.
 - `F-BROWSER-06` Screenshot API: full viewport, element clip, optional highlight burn-in. PNG, returned as base64 and optionally written to `.arbora/screenshots/`.
-- `F-BROWSER-07` Bundled unpacked React DevTools and Vue DevTools loaded into the browser partition (never read from the user's Chrome profile).
+- `F-BROWSER-07` Bundled unpacked React DevTools, Vue DevTools and Svelte DevTools loaded into the browser partition (never read from the user's Chrome profile). React and Vue shipped in Stage 1. Svelte joins the same pin file, fetch script and toggle in Stage 12. No other Chrome extension loads.
 - `F-BROWSER-08` Browser preload bootstrap with a private IPC channel to main.
 
 ### 4.3 Agent mode (`F-INSPECT`)
@@ -316,7 +315,7 @@ Feature IDs (`F-AREA-NN`) are referenced from [BUILD_STAGES.md](./BUILD_STAGES.m
 ### 4.10 Onboarding and settings (`F-ONBOARD`)
 
 - `F-ONBOARD-01` First-run: pick project, detect dev command from `package.json` scripts, detect installed agents, test-launch chosen agent, verify keybindings. The Grove step (pick a default agent, press the workspace chord once) is added by Stage 10, not by the first version of this wizard.
-- `F-ONBOARD-02` Settings UI and JSON: agents (custom agents, env overrides, adapter versions), keybindings (an editor with conflict detection), the light/dark/system theme, notifications and sounds, browser partition reset, MCP tool permissions, dev-server command, screenshot storage, updates and diagnostics. The Grove section (`notify`, fallback agent) is added by Stage 10. Colour packs are Stage 13. The extension catalog is Stage 14. Model price overrides and usage sharing are Stage 16. Host connections are Stage 17.
+- `F-ONBOARD-02` Settings UI and JSON: agents (custom agents, env overrides, adapter versions), keybindings (an editor with conflict detection), the light/dark/system theme, notifications and sounds, browser partition reset, MCP tool permissions, dev-server command, screenshot storage, updates and diagnostics. The Grove section (`notify`, fallback agent) is added by Stage 10. Colour packs are Stage 13. Extra linters are Stage 14. Model price overrides and usage sharing are Stage 16. Host connections are Stage 17. There is no browser-extension catalog.
 
 ### 4.11 Non-functional (`F-NFR`)
 
@@ -541,7 +540,7 @@ The browser panel grows from one page to a tab strip, so Arbora is a browser you
 - `F-TABS-01` A tab strip above the URL bar. Each tab is its own `WebContentsView`. New tab `Mod+T`, close `Mod+W`, reopen closed `Mod+Shift+T`, next/previous `Ctrl+Tab` / `Ctrl+Shift+Tab` (also `Ctrl+PageDown` / `Ctrl+PageUp`), drag to reorder, middle-click to close. All chords are intercepted in main like the mode chords, so they work while the page has focus. Plain `Ctrl` chords still pass through to a focused terminal.
 - `F-TABS-02` Tab roles. Every project has exactly one **app tab**: pinned first, it cannot be closed, and it follows the dev server URL (`F-BROWSER-03`). Agent mode (`Mod+K`) and design mode (`Mod+D`) default to it. Every other tab is a **reference tab** (a Figma file, a design spec, docs, production, a competitor). The user can make any tab the app tab from its context menu. Each tab shows its role with an icon.
 - `F-TABS-03` Per-tab state: URL, title, favicon, zoom, viewport preset, history and its own console and network buffers. The Problems tab filters by tab and defaults to the app tab. Tabs are saved per project and restored lazily: only the active tab loads at startup, and the others load when first shown. Background tabs are throttled. Above a cap (default 12 live tabs), the least recently used reference tab is discarded to a placeholder that reloads on focus.
-- `F-TABS-04` Partitions. The app tab keeps the project partition (`F-BROWSER-04`), so dev-server cookies stay per project. Reference tabs use one shared persistent partition, `persist:arbora-web`, so logging in to Figma or GitHub once works in every project. A per-tab "use project session" toggle covers sites that must share the app's cookies. Bundled extensions (React DevTools, Vue DevTools, 1Password) load into both.
+- `F-TABS-04` Partitions. The app tab keeps the project partition (`F-BROWSER-04`), so dev-server cookies stay per project. Reference tabs use one shared persistent partition, `persist:arbora-web`, so logging in to Figma or GitHub once works in every project. A per-tab "use project session" toggle covers sites that must share the app's cookies. Bundled DevTools (React, Vue and Svelte) load into both. Nothing else does.
 - `F-TABS-05` `window.open` and `target="_blank"` to http(s) open as a reference tab next to the opener instead of the OS browser. This is a setting, on by default; other schemes still go to the OS. OAuth popups that need `window.opener` (Google, GitHub, Figma sign-in) open as a child popup window tied to the tab, not a tab, so the login flow can complete and close itself.
 - `F-TABS-06` Agents address tabs. Every Stage 5 browser tool takes `target`: a tab id, `"app"` (the default), or `"active"`. New tools: `browser_tabs` lists `{ id, role, url, title, active, granted }`; `browser_tab_open` opens a reference tab, which belongs to the session and is closed when the session ends unless the user pins it; `browser_tab_close` closes only tabs the agent opened. Tools act on background tabs without switching the user's view. Results always name the tab they came from.
 - `F-TABS-07` Tab memory: per-tab CPU and memory in a hover card, and a "Discard tab" command, so a heavy Figma file does not slow the app tab down.
@@ -570,36 +569,11 @@ Prompts can start in any tab and go to any open project. The motivating flow: a 
   Arbora never stores a Figma API token. The same approach covers other canvas tools (Penpot, Framer, Canva).
 - `F-XTAB-07` Loop visibility. While the loop runs, the thread shows a "Matching design" card: the round number, the latest reference and app screenshots side by side, the score history, and a Stop button. Stop sends `session/cancel`. Each round's images are saved under `.arbora/screenshots/<thread>/` and linked from the transcript.
 
-### 4.15 Passwords: 1Password (`F-VAULT`)
+### 4.15 Passwords (`F-VAULT`) — dropped 6 Nov 2026
 
-Arbora's browser fills and saves passwords like a normal browser through 1Password. It is the first provider behind a small `PasswordProvider` interface (`listLogins(origin)`, `fill(target, item)`, `save(origin, credentials)`, `totp(item)`), so Bitwarden (`bw`) or the OS keychain can follow.
+`F-VAULT-01` through `F-VAULT-06` are retired. A review of loading the 1Password browser extension in Electron showed it cannot work: Electron does not implement native messaging (`chrome.runtime.connectNative`), so the extension cannot unlock through the 1Password desktop app, and Electron does not draw extension popups. The `op` CLI fill and save path is dropped with it. Arbora does not integrate a password manager. The user signs in on the page. See [ADR 0006](#adr-0006-no-password-manager).
 
-- `F-VAULT-01` Setup script. It lives at `scripts/setup-1password.sh` (Linux and macOS) and `scripts/setup-1password.ps1` (Windows), and can also be run from Settings → Passwords and the onboarding wizard. It is idempotent and has `--check` (report only), `--yes` (non-interactive) and `--uninstall` (removes only what it added). It never reads, prints or stores a secret. In order:
-  1. Detect the OS and distribution.
-  2. Install the 1Password desktop app and the `op` CLI from official channels:
-     - Arch/Omarchy: AUR `1password` and `1password-cli` through `yay` or `paru` when present, else print the commands.
-     - Debian/Ubuntu: 1Password's apt repository with its signing key and debsig policy.
-     - Fedora: 1Password's rpm repository.
-     - macOS: `brew install --cask 1password 1password-cli`.
-     - Windows: `winget install AgileBits.1Password AgileBits.1Password.CLI`.
-  3. Fetch the pinned 1Password browser extension (Chrome Web Store id `aeblfdkhhhdcdjpifhhbdiojplfjncoa`) into Arbora's extensions folder with a recorded SHA-256, using the same pattern as `fetch-devtools-extensions.mjs`.
-  4. Register Arbora as a browser 1Password will talk to. On Linux, add the Arbora executable name to `/etc/1password/custom_allowed_browsers`, which needs sudo and explicit consent. On macOS and Windows, report what the 1Password app requires; the spike settles this.
-  5. Open 1Password's settings and tell the user to turn on "Integrate with 1Password CLI" and browser integration.
-  6. Verify that `op --version` works, `op account list` shows an account, the desktop app is running, and the extension loads. Print a pass/fail table.
-- `F-VAULT-02` Extension mode, preferred. The 1Password extension is loaded into the app and reference partitions (`F-TABS-04`). Its inline autofill menu and "Save login?" prompt work inside pages and unlock through the desktop app. Electron does not draw extension toolbar buttons or popups, so the browser chrome adds a 1Password button. It opens the extension's popup page in a small frameless `WebContentsView` anchored under the button, with the same view-over-DOM handling as other overlays.
-- `F-VAULT-03` CLI mode, the fallback when the extension cannot reach the desktop app inside Electron (see the Stage 12 spike). Arbora fills and saves natively:
-  - **Fill from 1Password** (key icon in the URL bar and on focused login fields, plus `Mod+Shift+L`) lists `op item list --categories Login --format json`, filtered by the tab's origin. On pick, main runs `op item get <id> --fields username,password --reveal` and types the values into the focused form through CDP `Input.insertText` in the isolated world.
-  - **Save to 1Password** appears after a form with a password field is submitted. It runs `op item create --category login` with a JSON template on stdin, so secrets never appear in `argv` or a temp file.
-  - `op` unlocks through the desktop app's CLI integration (biometrics or the system prompt). Arbora keeps no session token on disk.
-- `F-VAULT-04` Agent logins without secrets. MCP tool `browser_login { target, origin? }`:
-  1. Arbora finds matching logins.
-  2. A permission card shows the site and the item titles. It never shows usernames or passwords; this is the user's choice to make.
-  3. On approval, Arbora fills and submits through `F-VAULT-02` or `F-VAULT-03`.
-  4. The tool returns only `logged_in`, `needs_user` (a captcha, a new device, an unknown 2FA) or `failed`.
-
-  `browser_snapshot`, `browser_evaluate` and screenshots in tool results replace password-field values with `•••`. The ACP log and the redaction rules treat any `op` output as secret.
-- `F-VAULT-05` One-time codes. When the item has an OTP and the site asks for a second factor, the same approval fills it (`op item get --otp`). Passkeys are handed to the extension or the user; the agent never answers them.
-- `F-VAULT-06` Settings: `passwords.provider` (`none` | `1password`, default `none` until setup ran), `passwords.mode` (`auto` | `extension` | `cli`), `passwords.agentLogins` (`ask` | `never`, default `ask`), and per-origin "always allow agent login" entries. These are machine settings, never committed.
+Password-field values in `browser_snapshot`, `browser_evaluate` results and the ACP log are still replaced with `•••` (Stage 12). That is redaction, not a vault.
 
 ### 4.16 Themes (`F-THEME`)
 
@@ -609,14 +583,16 @@ Colour packs on top of `F-SHELL-06`. Stage 13. The built-in Arbora colours stay 
 - `F-THEME-02` Settings lists installed themes under the light/dark/system control, with a swatch, Import, Remove, Edit and Reset to Arbora. User themes are copies under the app's `userData/themes/`. The active id is `colorTheme` (default `arbora`). The existing `theme` field stays the mode.
 - `F-THEME-03` The active scheme's overrides are applied to the app chrome, the editor and the terminal. System mode follows the OS, and a change of OS theme reapplies. The embedded page is not restyled.
 
-### 4.17 Extensions (`F-EXT`)
+### 4.17 Coding tools (`F-EXT`)
 
-An approved catalog the user installs from Settings. Stage 14. See [ADR 0007](#adr-0007-approved-extensions-and-colour-themes).
+An approved catalog of extra linters the user turns on from Settings. Stage 14. See [ADR 0007](#adr-0007-devtools-only-and-themes-that-only-set-colours).
 
-- `F-EXT-01` The catalog is `apps/desktop/resources/extensions/catalog.json`, committed with the app. Each entry is a browser extension or a coding tool. Adding one is a code change. Settings has no field for a URL or a Chrome Web Store id. Bundled React DevTools and Vue DevTools stay on the Stage 1 path and are not rows in this catalog.
-- `F-EXT-02` Browser entries, first two: Svelte DevTools (store id `kfidecgcdjjfpeckbblhmfkhmlgecoff`) and Bitwarden (store id `nngceckbapebfimnlniiiahkandclblb`). Install downloads the pinned CRX, checks the SHA-256, and loads it into the project browser partition the way Stage 1 loads React DevTools. Svelte DevTools is a DevTools panel. Bitwarden is for the user filling their own logins. It is not a `PasswordProvider`, and agents do not log in through it (`F-VAULT` stays 1Password). A spike records what Electron can actually do with Bitwarden's popup and unlock before the settings row claims fill works.
+Browser Chrome extensions are not in this catalog. The only ones Arbora loads are the bundled React, Vue and Svelte DevTools (`F-BROWSER-07`). A general extension catalog, including Bitwarden, was dropped on 6 Nov 2026 for the same Electron limit as the password manager ([ADR 0006](#adr-0006-no-password-manager)).
+
+- `F-EXT-01` The catalog is `apps/desktop/resources/extensions/catalog.json`, committed with the app. Each entry is a coding tool. Adding one is a code change. Settings has no field for a URL, a Chrome Web Store id, or a browser extension.
+- `F-EXT-02` Retired 6 Nov 2026. It was the browser-extension half of the catalog (Svelte DevTools and Bitwarden). Svelte DevTools moved to the bundled DevTools path (`F-BROWSER-07`). Bitwarden is not loaded.
 - `F-EXT-03` Coding entries run a tool the user already has, and put its output in Problems next to ESLint and `tsc`. The first entry is Robocop (`robocop check` on `*.robot` and `*.resource`). If the binary is missing, the row shows `pip install robotframework-robocop` and copies that command. Arbora does not run the installer. Further linters are more rows of the same shape.
-- `F-EXT-04` Settings has an Extensions section with a Browser group and a Coding group. Each row can be enabled and removed. Nothing in the catalog is on until the user turns it on.
+- `F-EXT-04` Settings has a Coding tools section. Each row can be enabled and removed. Nothing in the catalog is on until the user turns it on. There is no Browser group.
 
 ### 4.18 Accounts and membership (`F-ACCOUNT`)
 
@@ -710,9 +686,9 @@ Detailed instructions, gotchas and progress live in [BUILD_STAGES.md](./BUILD_ST
 | 9 | Distribution and polish | Signing, installers, updater, onboarding, settings |
 | 10 | Grove | Second workspace: many ACP agents, title-bar switch, default agent, attention, task-first launcher, helper agents over MCP |
 | 11 | Stretch | Dev plugin for exact source mapping, worktree sessions, write-through |
-| 12 | Tabs, cross-tab agent work and passwords | Browser tabs with app and reference roles, prompts from any tab to any open project, the design-match loop (Figma → app), and 1Password with a setup script and secret-free agent logins |
+| 12 | Tabs and cross-tab agent work | Browser tabs with app and reference roles, prompts from any tab to any open project, the design-match loop (Figma → app), and Svelte DevTools beside React and Vue |
 | 13 | Themes | `theme.json` colour packs on the existing light/dark/system switch |
-| 14 | Extensions | Settings installs approved browser extensions (Svelte DevTools, Bitwarden) and coding tools (Robocop) |
+| 14 | Coding tools | Settings turns on approved linters, starting with Robocop. No browser-extension catalog |
 | 15 | Accounts and membership | Required sign-in, Arbora Pro at $5/month or $50/year with a 14-day trial, signed entitlements and Free/Pro gates |
 | 16 | Usage, cost and time | Token counts, model and list-price cost per session and per pull request, plus working time. Stored in the project first; copied to the account database when the user saves usage to their account |
 | 17 | Publish | Vercel and Cloudflare Pages for developers, and a site-owner window that previews and publishes a website |
@@ -767,25 +743,27 @@ Detailed instructions, gotchas and progress live in [BUILD_STAGES.md](./BUILD_ST
 
 **Rejected.** All tabs visible to every session (too much reach). A separate browser profile per agent session (logins would have to be repeated, and the design tab the user is looking at is the one the agent must see).
 
-### ADR 0006: Passwords through 1Password, never through the agent
+### ADR 0006: No password manager
 
-**Context.** Users want Arbora to be a browser they can log in with, and agents sometimes need to get past a login to verify their work. Storing passwords in Arbora, or giving them to an agent, would make Arbora a credential store and put secrets in model context and logs.
+**Context.** Users want Arbora to be a browser they can log in with, and agents sometimes need to get past a login to verify their work. The original decision (29 Oct 2026) was to integrate 1Password: the browser extension first, the `op` CLI as a fallback, and `browser_login` so an agent could ask Arbora to fill without seeing the secret. Storing passwords in Arbora, or giving them to an agent, was already rejected.
 
-**Decision.** Arbora integrates a password manager instead of storing passwords, starting with 1Password. The extension is preferred and the `op` CLI is the fallback. Agents ask for a login with `browser_login`; the user approves; Arbora fills. The tool result says only whether it worked.
+**Decision (revised 6 Nov 2026).** Arbora does not integrate a password manager. The user signs in on the page. Cookies in the tab's partition are what make the login last. Password-field values are redacted from snapshots, `browser_evaluate` results and the ACP log. There is no `browser_login`, no setup script, and no `PasswordProvider`.
 
-**Consequences.** It needs a setup script and per-OS install paths. Electron's partial extension support may push most users onto CLI mode, so Arbora owns a small fill/save UI. Redaction has to cover snapshots, `browser_evaluate` and logs. Users without 1Password get nothing until another provider is added.
+**Why the revision.** A review of loading the 1Password extension in Electron 45 showed it cannot work. Electron loads an MV3 service worker and a DevTools panel. It does not provide toolbar actions, extension popups, `chrome.identity`, or native messaging (`chrome.runtime.connectNative`). 1Password unlocks through its desktop app over native messaging, and on Linux the desktop app only talks to browsers it has been told to trust. Hosting the extension's popup ourselves would not fix the unlock. The CLI fallback would have made Arbora a second password UI (`op item get --reveal`, typing secrets into the page). That path is dropped with the extension. The same Electron limit rules out Bitwarden and any other Chrome extension that is not a DevTools panel.
 
-**Rejected.** A built-in password store (security liability, sync expectations). Passing credentials to the agent as env or prompt text (leaks into model context and transcripts). Reading the user's Chrome profile passwords (OS-keychain encrypted and explicitly out of scope, like Chrome extensions).
+**Consequences.** Logging in is manual. Reference tabs still share `persist:arbora-web`, so a login typed once is there in every project. Agents do not fill logins. The only Chrome extensions are React DevTools, Vue DevTools and Svelte DevTools.
 
-### ADR 0007: Approved extensions, and themes that only set colours
+**Rejected.** A built-in password store. Passing credentials to the agent. Reading the user's Chrome profile. The 1Password extension, the `op` CLI, and Bitwarden as a loaded extension.
+
+### ADR 0007: DevTools only, and themes that only set colours
 
 **Context.** People want Svelte DevTools, a password extension such as Bitwarden, and extra linters such as Robocop. They also want to recolour the app. An open Chrome Web Store browser, VS Code extensions, and a theme format that can set fonts, images or remote URLs would each pull in code or assets Arbora does not review.
 
-**Decision.** Extensions come from a catalog committed in the repo. Browser entries are pinned CRX files loaded the way React and Vue DevTools already are. Coding entries are commands the user has installed, and their output goes to Problems. Themes are `theme.json` files whose values are hex colours for the CSS variables the app already has. Light, dark and system stay the way the scheme is chosen.
+**Decision (revised 6 Nov 2026).** The only Chrome extensions are the bundled React, Vue and Svelte DevTools, loaded the way Stage 1 already loads React and Vue. Svelte is a DevTools panel on that same path, not a row the user installs. There is no browser-extension catalog. Bitwarden is not loaded (ADR 0006). Coding tools are a catalog committed in the repo: commands the user has installed, output in Problems, starting with Robocop. Themes are `theme.json` files whose values are hex colours for the CSS variables the app already has. Light, dark and system stay the way the scheme is chosen.
 
-**Consequences.** A new extension or linter is a pull request, not a settings paste. Bitwarden in the catalog fills for the user. Agent logins stay on 1Password (ADR 0006) because Electron's extension API is incomplete. A theme cannot restyle the embedded page or load a font. Stage 13 and Stage 14 are specified and are not the next stage.
+**Consequences.** A new linter is a pull request, not a settings paste. A new browser extension is out unless it is a DevTools panel of the same kind as React, Vue and Svelte, and even then it is a code change on the bundled path, not a catalog row. A theme cannot restyle the embedded page or load a font. Stage 13 and Stage 14 are specified and are not the next stage.
 
-**Rejected.** Loading extensions from the user's Chrome profile. A store UI. Running `pip` or `npm` on enable. A theme engine that accepts arbitrary CSS.
+**Rejected.** Loading extensions from the user's Chrome profile. A store UI. An installable CRX catalog. Bitwarden. Running `pip` or `npm` on enable. A theme engine that accepts arbitrary CSS.
 
 ---
 
@@ -793,11 +771,11 @@ Detailed instructions, gotchas and progress live in [BUILD_STAGES.md](./BUILD_ST
 
 **Context.** Arbora needs income to keep being built. It does not resell models (ADR 0002), so there is no usage to charge for; the value is the tool. The user wants every person to sign in and a paid membership at $5 a month or $50 a year.
 
-**Decision.** An Arbora account is required to use the app. Accounts, billing and entitlements live on a server next to the website (Stripe Billing, an auth provider such as Supabase Auth). The desktop app signs in through the system browser with PKCE and receives a server-signed entitlement it verifies offline. Free covers the first success and everyday use; Pro gates leverage: concurrent agents, Grove, design mode at volume, the design-match loop, worktrees and write-through, agent logins, project and agent groups. Limits are counted locally. The app sends no product telemetry. A user's token and cost ledger is Stage 16: it is stored in the project, and it is copied into the account database only when they turn on **Save usage to my account**.
+**Decision.** An Arbora account is required to use the app. Accounts, billing and entitlements live on a server next to the website (Stripe Billing, an auth provider such as Supabase Auth). The desktop app signs in through the system browser with PKCE and receives a server-signed entitlement it verifies offline. Free covers the first success and everyday use; Pro gates leverage: concurrent agents, Grove, design mode at volume, the design-match loop, worktrees and write-through, project and agent groups. Limits are counted locally. The app sends no product telemetry. A user's token and cost ledger is Stage 16: it is stored in the project, and it is copied into the account database only when they turn on **Save usage to my account**.
 
 **Consequences.** Arbora is no longer usable with no network at all: a first sign-in needs one, and the app runs 14 days offline after that. There is a server to run, legal pages to publish, and tax to handle. "No telemetry" now has a precise exception (the entitlement refresh). A second exception lands with Stage 16b: the usage rows the user chose to save. Unsigned builds can be patched to skip the gates; that is accepted. Security, privacy and data export are never gated, and a lapsed membership never deletes anything.
 
-**Rejected.** Charging the user for model tokens (the provider bills those; Arbora only estimates them from list prices). A license key typed into the app (no single account across machines, and keys leak). Gating agent mode or the browser tools (it would hide the product's point and degrade the user's own agents). A sign-in form inside Arbora (phishing-shaped; the browser already has the user's passwords and passkeys).
+**Rejected.** Charging the user for model tokens (the provider bills those; Arbora only estimates them from list prices). A license key typed into the app (no single account across machines, and keys leak). Gating agent mode or the browser tools (it would hide the product's point and degrade the user's own agents). A sign-in form inside Arbora (phishing-shaped; account sign-in stays in the system browser).
 
 ### ADR 0009: Cost is tokens times the provider's list price
 
@@ -827,12 +805,12 @@ Detailed instructions, gotchas and progress live in [BUILD_STAGES.md](./BUILD_ST
 - Agents own their auth; Arbora only passes optional env overrides.
 - Grove is an ACP session manager in a second workspace. It does not embed agent TUIs, and agents do not keep running after Arbora quits.
 - Design-mode edits go through the agent first; direct write-through is a stretch item.
-- "Linting" means surfacing the project's own ESLint/tsc output; LSP is opt-in. Extra linters (Stage 14) are an approved catalog on top of that, starting with Robocop.
+- "Linting" means surfacing the project's own ESLint/tsc output; LSP is opt-in. Extra linters (Stage 14) are an approved catalog of coding tools on top of that, starting with Robocop. That catalog does not install Chrome extensions.
 - Fixture apps in `fixtures/` are the acceptance baseline for every stage; they stay green.
-- Browser tabs, cross-tab prompts and passwords (Stage 12) wait until the single-tab workflow is solid. Reference tabs share one logged-in partition across projects; the app tab stays per project. Themes (Stage 13) and the extension catalog (Stage 14) are specified after that and are not the next stage.
-- 1Password is the first password manager. Arbora never stores a password and agents never receive one. Whether the extension's desktop-app unlock works inside Electron is unverified, so Stage 12 starts with a spike and the `op` CLI fallback is planned from the start.
+- Browser tabs and cross-tab prompts (Stage 12) wait until the single-tab workflow is solid. Reference tabs share one logged-in partition across projects; the app tab stays per project. Themes (Stage 13) and coding tools (Stage 14) are specified after that and are not the next stage.
+- Arbora does not integrate a password manager. Reviewed 6 Nov 2026: the 1Password extension cannot unlock inside Electron, and the CLI fallback is not being built (ADR 0006). The user signs in on the page. Password-field values are redacted before they reach an agent.
 - Figma and other canvas design tools are read through screenshots, their inspect panels and, optionally, their own MCP servers. Arbora ships no design-tool API keys.
 - Colour themes are hex overrides of the existing CSS variables (`F-THEME`, Stage 13). The light/dark/system control stays.
-- Extra browser extensions and linters come from an approved catalog (`F-EXT`, Stage 14). Svelte DevTools and Bitwarden are the first browser entries. Robocop is the first coding entry. Bitwarden does not replace 1Password for agent logins.
+- Chrome extensions are the bundled React, Vue and Svelte DevTools only (`F-BROWSER-07`). Svelte joins that path in Stage 12. There is no installable browser-extension catalog. Extra linters come from the coding-tool catalog (`F-EXT`, Stage 14), starting with Robocop.
 - Session and pull-request cost (Stage 16) is input, output and cache tokens times the provider's published API price for the model on that turn. Working time is stored beside it. The files in `.arbora/usage/` are the working copy. The account database receives a copy only after the user turns on **Save usage to my account**, and the website reads that database.
 - Publish (Stage 17) talks to the user's existing host. Vercel and Cloudflare Pages come first. `audience: "site"` is the window for a person changing a website; `build` keeps the developer window. Arbora does not host the site.
