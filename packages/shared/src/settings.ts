@@ -862,6 +862,12 @@ export const projectSettingsPatchSchema = z
     browserTools: z
       .object({ evaluate: browserToolPolicySchema.optional(), terminalRun: browserToolPolicySchema.optional() })
       .nullable(),
+    designMatch: z
+      .object({
+        threshold: z.number().min(0).max(1),
+        maxRounds: z.number().int().min(1).max(20),
+      })
+      .nullable(),
   })
   .partial();
 export type ProjectSettingsPatch = z.infer<typeof projectSettingsPatchSchema>;

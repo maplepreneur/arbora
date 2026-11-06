@@ -42,6 +42,7 @@ import { LspSession } from './lsp/lsp-session.js';
 import { keepRunningAfterLastWindow } from './grove-processes.js';
 import { buildMacMenu } from './menu.js';
 import { readProjectCommands, readProjectFramework } from './project-runtime.js';
+import { writeSkillFile } from './mcp/skill-file.js';
 import { ensureArboraGitignore, ensureProjectSettingsFile, updateProjectSettingsFile } from './project-settings.js';
 import { SettingsStore } from './settings-store.js';
 import { importableMcpServers } from './skills/mcp-import.js';
@@ -533,6 +534,7 @@ function main(): void {
       const w = windowFor(event.sender);
       if (!w.project) throw new Error('Open a project first');
       updateProjectSettingsFile(w.project.path, projectSettingsUpdates(patch));
+      writeSkillFile(w.project.path, settings.get().grove.orchestration);
       w.reloadProjectSettings();
       const info = w.info();
       if (!info) throw new Error('Open a project first');

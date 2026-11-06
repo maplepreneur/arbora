@@ -23,6 +23,9 @@ describe('setup-1password --check', () => {
     const result = await run(['--check'], '/usr/bin:/bin');
     expect(result.code).toBe(1);
     expect(result.out).toContain('op: not installed');
+    expect(result.out).toContain('account: fail');
+    expect(result.out).toContain('desktop: fail');
+    expect(result.out).toContain('extension:');
     expect(result.out).toContain('does not install');
     expect(result.out).not.toMatch(/sudo /);
   });

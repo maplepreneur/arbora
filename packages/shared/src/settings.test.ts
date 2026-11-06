@@ -487,5 +487,13 @@ describe('Stage 10 settings (Grove)', () => {
     expect(projectSettingsSchema.parse({}).startDefaultOnOpen).toBeUndefined();
     const patch = projectSettingsPatchSchema.parse({ startDefaultOnOpen: null, defaultAgent: 'codex' });
     expect(projectSettingsUpdates(patch)).toEqual({ startDefaultOnOpen: undefined, defaultAgent: 'codex' });
+    expect(projectSettingsSchema.parse({ designMatch: { threshold: 0.8, maxRounds: 3 } }).designMatch).toEqual({
+      threshold: 0.8,
+      maxRounds: 3,
+    });
+    expect(
+      projectSettingsUpdates(projectSettingsPatchSchema.parse({ designMatch: { threshold: 0.8, maxRounds: 3 } })),
+    ).toEqual({ designMatch: { threshold: 0.8, maxRounds: 3 } });
+    expect(projectSettingsPatchSchema.safeParse({ designMatch: { threshold: 1.2, maxRounds: 3 } }).success).toBe(false);
   });
 });

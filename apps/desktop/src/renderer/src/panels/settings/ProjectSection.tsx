@@ -135,6 +135,46 @@ export function ProjectSection() {
         </select>
       </SettingRow>
 
+      <SectionTitle>Design match</SectionTitle>
+      <TextSetting
+        key={`threshold:${settings.designMatch?.threshold ?? 0.92}`}
+        title="Stop score"
+        detail="The agent stops comparing when the score reaches this. Default 0.92."
+        value={settings.designMatch?.threshold !== undefined ? String(settings.designMatch.threshold) : undefined}
+        placeholder="0.92"
+        testId="project-design-threshold"
+        onSave={(raw) => {
+          const threshold = raw === null ? null : Number(raw);
+          if (threshold !== null && (!Number.isFinite(threshold) || threshold < 0 || threshold > 1)) {
+            showToast('Stop score must be between 0 and 1');
+            return;
+          }
+          const maxRounds = settings.designMatch?.maxRounds ?? 5;
+          void updateProjectSettings({
+            designMatch: threshold === null ? null : { threshold, maxRounds },
+          });
+        }}
+      />
+      <TextSetting
+        key={`rounds:${settings.designMatch?.maxRounds ?? 5}`}
+        title="Most rounds"
+        detail="The agent also stops after this many compares. Default 5."
+        value={settings.designMatch?.maxRounds !== undefined ? String(settings.designMatch.maxRounds) : undefined}
+        placeholder="5"
+        testId="project-design-rounds"
+        onSave={(raw) => {
+          const maxRounds = raw === null ? null : Number(raw);
+          if (maxRounds !== null && (!Number.isInteger(maxRounds) || maxRounds < 1 || maxRounds > 20)) {
+            showToast('Most rounds must be a whole number from 1 to 20');
+            return;
+          }
+          const threshold = settings.designMatch?.threshold ?? 0.92;
+          void updateProjectSettings({
+            designMatch: maxRounds === null ? null : { threshold, maxRounds },
+          });
+        }}
+      />
+
       <SectionTitle>Browser tools for agents (MCP)</SectionTitle>
       <SettingRow
         title="browser_evaluate"

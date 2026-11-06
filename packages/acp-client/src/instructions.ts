@@ -6,6 +6,8 @@ export interface PrefaceContext {
   readonly browserTools?: boolean;
   /** That server also has the Grove orchestration tools (a session that is not a helper). */
   readonly groveTools?: boolean;
+  /** Stop rule from the project's design-match settings. Missing means 0.92 and 5 rounds. */
+  readonly designMatch?: { readonly threshold: number; readonly maxRounds: number };
 }
 
 /** Agents read Windows paths fine either way, but prompts read better with forward slashes. */
@@ -78,6 +80,8 @@ the user, tell the user.
 export function browserSkill(context: PrefaceContext): string {
   const dev = context.devUrl ?? 'the URL shown in the browser panel (`devserver_status` has it)';
   const grove = context.groveTools ? GROVE_SKILL : '';
+  const threshold = context.designMatch?.threshold ?? 0.92;
+  const maxRounds = context.designMatch?.maxRounds ?? 5;
   return `# Arbora browser tools
 
 Arbora shows this project's dev server (${dev}) in an embedded browser. The \`arbora-browser\`
@@ -112,6 +116,6 @@ ${VERIFY_LOOP.join('\n')}
 
 \`browser_tabs\`: target \`app\` is this project. A reference tab works only after the user sends it; otherwise \`tab not granted\`.
 
-Figma is a canvas, so snapshot shows chrome, not layers. Screenshot the frame. A \`node-id\` in the URL opens it. Dev Mode text is in the page. Set \`app\` to that width with \`browser_set_viewport\`, edit source, wait for reload, then \`browser_compare\` (\`side_by_side\`, \`overlay\` or \`diff\`). Fix the highest differences. Stop at 0.92, after 5 rounds, or when the user stops. Finish with the score, what still differs, and the saved side-by-side. Do not call a design tool's API.
+Figma is a canvas, so snapshot shows chrome, not layers. Screenshot the frame. A \`node-id\` in the URL opens it. Dev Mode text is in the page. Set \`app\` to that width with \`browser_set_viewport\`, edit source, wait for reload, then \`browser_compare\` (\`side_by_side\`, \`overlay\` or \`diff\`). Fix the highest differences. Stop at ${threshold}, after ${maxRounds} rounds, or when the user stops. Finish with the score, what still differs, and the saved side-by-side. Do not call a design tool's API.
 ${grove}`;
 }

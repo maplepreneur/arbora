@@ -584,9 +584,11 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
         bHeight: b.cssHeight,
       });
       const saved = host.saveCompare?.(output.png) ?? null;
+      const stop = host.designMatch?.() ?? { threshold: 0.92, maxRounds: 5 };
       const json = JSON.stringify({
         ...output.json,
         ...(saved ? { saved } : {}),
+        stop,
         left: { title: a.title, url: a.url },
         right: { title: b.title, url: b.url },
       });

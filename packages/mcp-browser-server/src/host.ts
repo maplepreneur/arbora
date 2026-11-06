@@ -110,6 +110,8 @@ export interface BrowserToolHost {
   captureTab?(tabId: string): Promise<TabCapture>;
   /** Writes one compare image under `.arbora/screenshots/<thread>/`. Returns a project-relative path. */
   saveCompare?(png: Uint8Array): string | null;
+  /** The project's design-match stop rule. Missing means 0.92 and 5 rounds. */
+  designMatch?(): { readonly threshold: number; readonly maxRounds: number };
   /** Replaces secrets filled this session. */
   redactSecrets?(text: string): string;
   /** Fills a granted tab from 1Password. The result is a status, never a secret. */

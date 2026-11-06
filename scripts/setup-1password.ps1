@@ -22,8 +22,30 @@ function Show-OpStatus {
   return $true
 }
 
+function Show-CheckRow([string]$Label, [string]$State, [string]$Detail) {
+  if ([string]::IsNullOrWhiteSpace($Detail)) {
+    Write-Output "$Label`: $State"
+  } else {
+    Write-Output "$Label`: $State ($Detail)"
+  }
+}
+
 if ($Check) {
+  Write-Output "os: Windows"
   $installed = Show-OpStatus
+  if ($installed) {
+    $accounts = & op account list --format json 2>$null
+    if ($accounts -match '^\[\]') { Show-CheckRow account fail 'no account' }
+    elseif ($accounts -match '^\[') { Show-CheckRow account pass 'signed in' }
+    else { Show-CheckRow account fail 'could not list accounts' }
+  } else {
+    Show-CheckRow account fail 'op is not installed'
+  }
+  $desktop = Get-Process -Name '1Password' -ErrorAction SilentlyContinue
+  if ($null -eq $desktop) { Show-CheckRow desktop fail 'app not running' } else { Show-CheckRow desktop pass '' }
+  $root = Split-Path -Parent $PSScriptRoot
+  $extension = Join-Path $root 'apps\desktop\resources\extensions\1password\manifest.json'
+  if (Test-Path $extension) { Show-CheckRow extension pass '' } else { Show-CheckRow extension fail 'not downloaded' }
   Write-Output 'This check does not install anything and does not use sudo.'
   if ($installed) { exit 0 } else { exit 1 }
 }

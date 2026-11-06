@@ -162,6 +162,11 @@ export class ArboraToolHost implements BrowserToolHost {
     this.selected = resolved.service;
   }
 
+  designMatch(): { threshold: number; maxRounds: number } {
+    const match = this.options.projectSettings().designMatch;
+    return { threshold: match?.threshold ?? 0.92, maxRounds: match?.maxRounds ?? 5 };
+  }
+
   listTabs(): TabSummary[] {
     const tabs = this.options.tabs?.() ?? null;
     if (!tabs) return [];

@@ -501,6 +501,7 @@ export class BrowserService {
       if (show) {
         this.parkedNotice = false;
         this.view.setVisible(true);
+        this.setPageThrottled(false);
       } else {
         // Hide first. Focusing the host while the view is still visible does not stick, and a
         // hidden view that keeps the keyboard never delivers `before-input-event`.
@@ -508,6 +509,7 @@ export class BrowserService {
         this.view.setVisible(false);
         const stillFocused = !this.contents.isDestroyed() && this.contents.isFocused();
         if (wasFocused || stillFocused) this.releaseParkedFocus();
+        this.setPageThrottled(true);
       }
     }
     this.emulation = emulation;
@@ -535,8 +537,15 @@ export class BrowserService {
     } else {
       this.view.setVisible(false);
     }
+    this.setPageThrottled(true);
     this.emulation = emulation;
     void this.applyEmulation();
+  }
+
+  /** Background tabs yield CPU. A capture turns this off for one frame, then back on. */
+  private setPageThrottled(throttled: boolean): void {
+    if (this.contents.isDestroyed()) return;
+    this.contents.setBackgroundThrottling(throttled);
   }
 
   async screenshot(request: ScreenshotRequest): Promise<ScreenshotResult> {
@@ -1057,6 +1066,7 @@ export class BrowserService {
     if (hidden) {
       const width = Math.max(1, Math.round(rect?.width ?? 800));
       const height = Math.max(1, Math.round(rect?.height ?? 600));
+      this.setPageThrottled(false);
       this.view.setBounds({ x: Math.round(rect?.x ?? 0), y: Math.round(rect?.y ?? 0), width, height });
       this.hostWindow.contentView.addChildView(this.view, 0);
       this.view.setVisible(true);
@@ -1079,6 +1089,7 @@ export class BrowserService {
     } finally {
       if (hidden) {
         this.view.setVisible(false);
+        this.setPageThrottled(true);
         const ui = this.hostWindow.webContents;
         if (!ui.isDestroyed()) ui.focus();
       }

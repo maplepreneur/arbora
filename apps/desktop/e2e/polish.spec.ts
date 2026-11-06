@@ -300,6 +300,11 @@ test.describe('Stage 9 settings', () => {
       await expect
         .poll(() => JSON.parse(readFileSync(join(project, '.arbora', 'project.json'), 'utf8')) as object)
         .toMatchObject({ devCommand: 'pnpm start' });
+      await page.getByTestId('project-design-threshold').fill('0.8');
+      await page.getByTestId('project-design-threshold').press('Enter');
+      await expect
+        .poll(() => JSON.parse(readFileSync(join(project, '.arbora', 'project.json'), 'utf8')) as object)
+        .toMatchObject({ designMatch: { threshold: 0.8, maxRounds: 5 } });
       await page.getByTestId('project-tool-evaluate').locator('[data-value="allow"]').click();
       await expect
         .poll(() => JSON.parse(readFileSync(join(project, '.arbora', 'project.json'), 'utf8')) as object)

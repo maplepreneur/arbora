@@ -36,11 +36,60 @@ op_status() {
   return 1
 }
 
+check_row() {
+  label=$1
+  state=$2
+  detail=$3
+  if [ -n "$detail" ]; then
+    echo "$label: $state ($detail)"
+  else
+    echo "$label: $state"
+  fi
+}
+
 if [ "$CHECK" = 1 ]; then
+  echo "os: $(uname -s)"
   if op_status; then
     status=0
   else
     status=1
+  fi
+  if [ "$status" = 0 ]; then
+    accounts=$(op account list --format json 2>/dev/null || true)
+    case "$accounts" in
+      \[\]) check_row account fail "no account" ;;
+      \[*) check_row account pass "signed in" ;;
+      *) check_row account fail "could not list accounts" ;;
+    esac
+  else
+    check_row account fail "op is not installed"
+  fi
+  case "$(uname -s)" in
+    Darwin)
+      if pgrep -x 1Password >/dev/null 2>&1; then check_row desktop pass ""; else check_row desktop fail "app not running"; fi
+      ;;
+    Linux)
+      if pgrep -x 1password >/dev/null 2>&1; then check_row desktop pass ""; else check_row desktop fail "app not running"; fi
+      ;;
+    *)
+      check_row desktop fail "not checked on this OS"
+      ;;
+  esac
+  script_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+  extension_dir=""
+  for candidate in \
+    "$script_dir/../apps/desktop/resources/extensions/1password" \
+    "$script_dir/../resources/extensions/1password"
+  do
+    if [ -f "$candidate/manifest.json" ]; then
+      extension_dir=$candidate
+      break
+    fi
+  done
+  if [ -n "$extension_dir" ]; then
+    check_row extension pass ""
+  else
+    check_row extension fail "not downloaded"
   fi
   echo "This check does not install anything and does not use sudo."
   exit "$status"

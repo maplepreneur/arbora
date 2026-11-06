@@ -63,6 +63,7 @@ describe('browserSkill', () => {
     expect(skill).toContain('browser_compare');
     expect(skill).toContain('node-id');
     expect(skill).toContain('0.92');
+    expect(skill).toContain('5 rounds');
     expect(skill).not.toMatch(/token|bearer/i);
     expect(skill).not.toContain('grove_');
   });
@@ -71,6 +72,17 @@ describe('browserSkill', () => {
     const skill = browserSkill({ projectPath: '/p', devUrl: null, groveTools: true });
     expect(skill).toContain('## Grove helpers');
     expect(skill).toContain('grove_wait');
+    expect(skill.split(/\s+/).filter(Boolean).length).toBeLessThan(400);
+  });
+
+  it('uses the project design-match stop rule', () => {
+    const skill = browserSkill({
+      projectPath: '/p',
+      devUrl: null,
+      designMatch: { threshold: 0.8, maxRounds: 3 },
+    });
+    expect(skill).toContain('Stop at 0.8, after 3 rounds');
+    expect(skill).not.toContain('0.92');
     expect(skill.split(/\s+/).filter(Boolean).length).toBeLessThan(400);
   });
 });
