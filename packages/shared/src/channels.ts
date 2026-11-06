@@ -628,6 +628,18 @@ export const channels = {
   /** Children of a project folder, folders first. The watcher covers folders listed here. */
   'files.readDir': defineChannel('files.readDir', filePath, z.array(fileEntrySchema)),
   'files.read': defineChannel('files.read', filePath, fileContentSchema),
+  /** Starts the project's TypeScript language server, or reports why it cannot. */
+  'lsp.start': defineChannel(
+    'lsp.start',
+    none,
+    z.discriminatedUnion('ok', [
+      z.object({ ok: z.literal(true), tsserverPath: z.string() }),
+      z.object({ ok: z.literal(false), error: z.string() }),
+    ]),
+  ),
+  /** A bare JSON-RPC message for the running language server. */
+  'lsp.send': defineChannel('lsp.send', z.object({ message: z.string().max(8_000_000) }), none),
+  'lsp.stop': defineChannel('lsp.stop', none, none),
   /**
    * Writes `content` (any line ends) with `eol`, after the project's Prettier when `format` is set
    * and enabled in settings. Diagnostics follow through `editor.diagnostics`.
@@ -854,6 +866,10 @@ export const events = {
   ),
   /** A tool could not run (crash, timeout, bad config). Shown once per message. */
   'editor.toolError': defineEvent('editor.toolError', z.object({ source: z.string(), message: z.string() })),
+  /** A JSON-RPC message from the project's language server. */
+  'lsp.message': defineEvent('lsp.message', z.object({ message: z.string().max(8_000_000) })),
+  /** The language server process ended. */
+  'lsp.exited': defineEvent('lsp.exited', z.object({ reason: z.string() })),
 } as const;
 
 export type Channels = typeof channels;

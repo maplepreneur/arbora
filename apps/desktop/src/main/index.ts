@@ -37,6 +37,7 @@ import { BrowserSessions } from './browser/browser-sessions.js';
 import type { BrowserService } from './browser/browser-service.js';
 import { registerPageIpc } from './browser/page-ipc.js';
 import { defineHandler, sendEvent } from './ipc.js';
+import { LspSession } from './lsp/lsp-session.js';
 import { keepRunningAfterLastWindow } from './grove-processes.js';
 import { buildMacMenu } from './menu.js';
 import { readProjectCommands, readProjectFramework } from './project-runtime.js';
@@ -1056,6 +1057,57 @@ function main(): void {
     };
     defineHandler('files.readDir', isTrusted, ({ path }, event) => requireWorkspace(event.sender).readDir(path));
     defineHandler('files.read', isTrusted, ({ path }, event) => requireWorkspace(event.sender).read(path));
+    const lspSessions = new Map<number, LspSession>();
+    const lspWatched = new Set<number>();
+    const stopLsp = (id: number): void => {
+      const session = lspSessions.get(id);
+      if (!session) return;
+      session.stop();
+      lspSessions.delete(id);
+    };
+    defineHandler('lsp.start', isTrusted, (_request, event) => {
+      const window = windowFor(event.sender);
+      const projectPath = window.project?.path;
+      if (!projectPath) return { ok: false as const, error: 'Open a project first.' };
+      const id = window.contents.id;
+      const existing = lspSessions.get(id);
+      if (existing?.running && existing.projectPath === projectPath && existing.tsserver) {
+        return { ok: true as const, tsserverPath: existing.tsserver };
+      }
+      stopLsp(id);
+      const session = new LspSession({
+        projectPath,
+        execPath: process.execPath,
+        onMessage: (message) => {
+          if (!window.contents.isDestroyed()) sendEvent(window.contents, 'lsp.message', { message });
+        },
+        onExit: (reason) => {
+          lspSessions.delete(id);
+          if (!window.contents.isDestroyed()) sendEvent(window.contents, 'lsp.exited', { reason });
+        },
+      });
+      const started = session.start();
+      if (!started.ok) return started;
+      lspSessions.set(id, session);
+      if (!lspWatched.has(id)) {
+        lspWatched.add(id);
+        window.contents.once('destroyed', () => {
+          lspWatched.delete(id);
+          stopLsp(id);
+        });
+      }
+      return { ok: true as const, tsserverPath: started.tsserverPath };
+    });
+    defineHandler('lsp.send', isTrusted, ({ message }, event) => {
+      const session = lspSessions.get(windowFor(event.sender).contents.id);
+      if (!session?.running) throw new Error('The language server is not running.');
+      session.send(message);
+      return undefined;
+    });
+    defineHandler('lsp.stop', isTrusted, (_request, event) => {
+      stopLsp(windowFor(event.sender).contents.id);
+      return undefined;
+    });
     defineHandler('files.write', isTrusted, ({ path, content, eol, format }, event) =>
       requireWorkspace(event.sender).save(path, content, eol, format),
     );

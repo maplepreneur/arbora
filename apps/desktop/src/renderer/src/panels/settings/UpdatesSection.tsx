@@ -187,12 +187,6 @@ export function UpdatesSection() {
           <Sparkles size={11} /> Open
         </button>
       </SettingRow>
-      <SettingRow
-        title="Language servers"
-        detail="TypeScript LSP (hover, go to definition, completion) is an opt-in that ships with Stage 11."
-      >
-        <span className="rounded bg-bg-muted px-2 py-0.5 text-[11px] text-fg-subtle">Stage 11</span>
-      </SettingRow>
     </div>
   );
 }
