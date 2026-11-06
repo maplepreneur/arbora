@@ -17,14 +17,22 @@ const DEFAULT_TERMINAL_TIMEOUT_MS = 60_000;
 const MAX_TERMINAL_TIMEOUT_MS = 10 * 60_000;
 const DEFAULT_LOG_LINES = 100;
 const MAX_LOG_ENTRIES = 200;
+/**
+ * Tools that change a granted reference tab and therefore ask once.
+ * Click stays a read: moving around a design (Figma's canvas, an inspect control) is not typing.
+ */
 const WRITE_TOOLS = new Set([
   'browser_navigate',
-  'browser_click',
   'browser_type',
   'browser_press_key',
   'browser_select_option',
   'browser_login',
 ]);
+
+/** `read` is allowed on a granted reference tab. `write` asks once before it changes that tab. */
+export function referenceIntent(name: string): 'read' | 'write' {
+  return WRITE_TOOLS.has(name) ? 'write' : 'read';
+}
 
 /** Per-thread state shared by every MCP request of one agent session. */
 export class ToolContext {
@@ -196,7 +204,7 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
       // The SDK infers the callback's argument type from the shape; the cast keeps `run` generic.
       (async (args: z.infer<z.ZodObject<Shape>> & { target?: string }) => {
         try {
-          if (host.resolveTarget) await host.resolveTarget(args.target, WRITE_TOOLS.has(name) ? 'write' : 'read');
+          if (host.resolveTarget) await host.resolveTarget(args.target, referenceIntent(name));
           else checkTarget(args.target);
           const result = nameTabResult(host.page(), await run(args));
           const failed = result.isError === true;

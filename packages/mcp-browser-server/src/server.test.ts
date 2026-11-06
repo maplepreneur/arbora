@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { GroveSession, GroveStartRequest, GroveToolHost, GroveWaitRequest } from './grove-host.js';
 import type { BrowserToolHost, PageInfo, PermissionRequest, ToolPolicy, TraceStepInput } from './host.js';
 import { BrowserMcpServer, type McpActivity } from './server.js';
+import { referenceIntent } from './tools.js';
 import { runShim } from './shim.js';
 import type { AxNode } from './snapshot.js';
 import { FakeCdp } from './testing.js';
@@ -234,6 +235,20 @@ async function connect(
 afterEach(async () => {
   await Promise.all(clients.splice(0).map((c) => c.close()));
   await Promise.all(servers.splice(0).map((s) => s.stop()));
+});
+
+describe('reference tab access', () => {
+  it('lets a granted tab be clicked and asks before typing or navigating', () => {
+    expect(referenceIntent('browser_click')).toBe('read');
+    expect(referenceIntent('browser_snapshot')).toBe('read');
+    expect(referenceIntent('browser_hover')).toBe('read');
+    expect(referenceIntent('browser_scroll')).toBe('read');
+    expect(referenceIntent('browser_type')).toBe('write');
+    expect(referenceIntent('browser_navigate')).toBe('write');
+    expect(referenceIntent('browser_press_key')).toBe('write');
+    expect(referenceIntent('browser_select_option')).toBe('write');
+    expect(referenceIntent('browser_login')).toBe('write');
+  });
 });
 
 describe('BrowserMcpServer', () => {

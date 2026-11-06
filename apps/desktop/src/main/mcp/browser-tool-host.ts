@@ -347,7 +347,7 @@ export class ArboraToolHost implements BrowserToolHost {
     const answer = await this.options.askPermission({
       tool: 'navigate',
       title: 'Change this tab',
-      detail: 'The agent wants to type, click, or navigate in a reference tab you sent.',
+      detail: 'The agent wants to type or navigate in a reference tab you sent.',
     });
     if (answer !== 'once' && answer !== 'always') throw new ToolError('tab not granted');
     grants.allowWrite(key);
