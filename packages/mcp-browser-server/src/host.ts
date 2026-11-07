@@ -82,10 +82,7 @@ export interface BrowserToolHost {
   openTab?(url: string): Promise<{ id: string }>;
   closeTab?(id: string): Promise<void>;
   /** Viewport pixels for `target`, or the rectangle when `clip` is set. */
-  capture?(
-    target: string | undefined,
-    clip: Box | null,
-  ): Promise<{ width: number; height: number; rgba: Uint8Array }>;
+  capture?(target: string | undefined, clip: Box | null): Promise<{ width: number; height: number; rgba: Uint8Array }>;
   /** The page's CDP connection; throws (with a message for the agent) when it is unavailable. */
   cdp(): Promise<Cdp>;
   page(): PageInfo;

@@ -143,8 +143,7 @@ function histogramDistance(a: RgbaImage, b: RgbaImage): number {
   const right = new Float64Array(bins ** 3);
   const count = a.width * a.height;
   const bump = (bins: Float64Array, rgba: Uint8Array, offset: number): void => {
-    const index =
-      ((rgba[offset] ?? 0) >> 5) * 64 + ((rgba[offset + 1] ?? 0) >> 5) * 8 + ((rgba[offset + 2] ?? 0) >> 5);
+    const index = ((rgba[offset] ?? 0) >> 5) * 64 + ((rgba[offset + 1] ?? 0) >> 5) * 8 + ((rgba[offset + 2] ?? 0) >> 5);
     bins[index] = (bins[index] ?? 0) + 1;
   };
   for (let i = 0; i < count; i += 1) {
