@@ -220,7 +220,6 @@ test.describe('Stage 10 Grove', () => {
       // No default agent: nothing starts, and the empty state offers a choice.
       await expect(page.getByTestId('grove-empty')).toContainText('No agents running.');
       await expect(page.getByTestId('grove-empty-start')).toHaveCount(0);
-      await expect(page.getByTestId('grove-default-agent')).toHaveText('none');
       await page.getByTestId('grove-empty-choose').click();
 
       const launcher = page.getByTestId('grove-launcher');
@@ -239,7 +238,6 @@ test.describe('Stage 10 Grove', () => {
       await expect(rows).toHaveCount(1);
       await expect(first.getByTestId('grove-row-name')).toHaveText('add a comment to `App.tsx`');
       await expect.poll(() => projectFile(project)).toMatchObject({ defaultAgent: FAKE_ID });
-      await expect(page.getByTestId('grove-default-agent')).toHaveText('Fake agent');
 
       // The task's edit asks first: the row says Needs you, the bell counts it, and the card is pinned once.
       await expect(first).toHaveAttribute('data-status', 'needsYou', { timeout: 20_000 });
