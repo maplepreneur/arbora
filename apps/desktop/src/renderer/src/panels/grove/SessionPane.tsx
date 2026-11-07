@@ -31,7 +31,7 @@ function Memory({ kind, id }: { kind: 'agent' | 'terminal'; id: string }) {
   const sample = useGrove((s) => s.usage.find((entry) => entry.kind === kind && entry.id === id));
   if (!sample || sample.rssKb <= 0) return null;
   return (
-    <span data-testid="grove-memory" className="shrink-0 text-[11px] text-fg-subtle">
+    <span data-testid="grove-memory" className="hidden min-w-0 shrink truncate text-[11px] text-fg-subtle @lg:inline">
       {formatUsage(sample.rssKb, sample.cpuPercent)}
     </span>
   );
@@ -63,7 +63,7 @@ function Lineage({ session, model }: { session: GroveSession; model: GroveModel 
           data-thread-id={helper.id}
           title={`${helper.name}: ${SESSION_STATUS_LABEL[helper.status]}`}
           onClick={() => selectSession(helper.id)}
-          className="flex h-5 max-w-36 shrink-0 items-center gap-1 rounded-full border border-border px-1.5 text-[10.5px] text-fg-muted hover:bg-bg-muted hover:text-fg"
+          className="flex h-5 max-w-36 min-w-0 shrink-0 items-center gap-1 rounded-full border border-border px-1.5 text-[10.5px] text-fg-muted hover:bg-bg-muted hover:text-fg"
         >
           <StatusDot status={helper.status} />
           <span className="truncate">{helper.name}</span>
@@ -84,7 +84,7 @@ function PaneHeader({ session, model }: { session: GroveSession; model: GroveMod
   return (
     <header
       data-testid="grove-pane-header"
-      className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3"
+      className="@container flex h-10 shrink-0 items-center gap-2 overflow-hidden border-b border-border px-3"
     >
       <StatusDot status={session.status} large />
       {renaming ? (
@@ -109,7 +109,7 @@ function PaneHeader({ session, model }: { session: GroveSession; model: GroveMod
           {session.name}
         </h2>
       )}
-      <span data-testid="grove-session-status" className="shrink-0 text-[11px] text-fg-subtle">
+      <span data-testid="grove-session-status" className="min-w-0 shrink truncate text-[11px] text-fg-subtle">
         {archived ? 'Archived' : SESSION_STATUS_LABEL[session.status]} · {session.agentName}
       </span>
       <Memory kind="agent" id={session.id} />

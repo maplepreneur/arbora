@@ -40,7 +40,7 @@ import { useTerminals } from '../../terminal-store';
 import { AgentMark, agentIdForCliName } from './AgentMark';
 import { FrameworkMark } from './FrameworkMark';
 import { groupProjectTerminals } from './project-terminals';
-import { ListFooter, RecentSection, SessionRow } from './SessionList';
+import { RecentSection, SessionRow } from './SessionList';
 import {
   actionNavId,
   agentNavId,
@@ -545,7 +545,6 @@ export function GroveSide() {
           </div>
         ))}
       </div>
-      <ListFooter />
     </div>
   );
 }

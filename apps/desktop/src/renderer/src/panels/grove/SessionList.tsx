@@ -12,42 +12,26 @@ import {
   Square,
   TriangleAlert,
 } from 'lucide-react';
-import {
-  CommandId,
-  formatElapsed,
-  groveSummary,
-  SESSION_STATUS_LABEL,
-  type AgentGroup,
-  type GroveSection,
-} from '@arbora/shared';
-import { updateGroup, useAgents } from '../../agent-store';
-import { useDefaultAgentId } from '../../agent-defaults';
-import { usePickableAgents } from '../../agent-pickers';
+import { CommandId, formatElapsed, SESSION_STATUS_LABEL, type AgentGroup } from '@arbora/shared';
 import {
   archiveSession,
   claimListFocus,
-  openLauncher,
   RECENT_LIMIT,
   selectSession,
   stopSession,
   powerSession,
   restartSession,
-  setProjectDefaultAgent,
-  setStartDefaultOnOpen,
   startDefaultSession,
   useGrove,
 } from '../../grove-store';
-import type { GroveModel, GroveSession } from '../../grove-model';
+import type { GroveSession } from '../../grove-model';
 import { useChordLabel } from '../../keybindings';
-import { openSettings, useApp } from '../../store';
-import { formatWhen, groupColor, showMenu } from '../agent/ThreadList';
+import { formatWhen } from '../agent/ThreadList';
 import { sessionStats, type EditStats } from './changes';
 import { onAgentListKeyDown } from './agent-list-keys';
 import { hasProcess, openRowMenu } from './session-actions';
 import { AgentMark } from './AgentMark';
 import { StatusDot } from './StatusDot';
-
-const ROW_SELECTOR = '[data-testid="grove-row"], [data-testid="grove-recent-row"]';
 
 /** Takes `listFocusRequest` once: the selected row, else the first one. */
 function useListFocus(container: RefObject<HTMLElement | null>, rowSelector: string): void {
@@ -60,85 +44,6 @@ function useListFocus(container: RefObject<HTMLElement | null>, rowSelector: str
       root?.querySelector<HTMLElement>(rowSelector);
     (row ?? root)?.focus();
   }, [request, container, rowSelector]);
-}
-
-function ListHeader({ summary }: { summary: string }) {
-  const defaultId = useDefaultAgentId();
-  const defaultName = useAgents((s) => s.agents.find((agent) => agent.id === defaultId)?.name);
-  const starting = useGrove((s) => s.starting);
-  const newKey = useChordLabel(CommandId.groveNewDefault);
-  const launchKey = useChordLabel(CommandId.agentNewThread);
-  return (
-    <div className="shrink-0 border-b border-border p-2">
-      <div className="mb-1.5 flex items-baseline gap-2 px-0.5">
-        <h2 className="text-[13px] font-semibold">Grove</h2>
-        <span data-testid="grove-summary" className="min-w-0 flex-1 truncate text-[11px] text-fg-subtle">
-          {summary}
-        </span>
-      </div>
-      <div className="flex">
-        <button
-          type="button"
-          data-testid="grove-new"
-          data-agent={defaultId}
-          disabled={starting}
-          title={
-            defaultName
-              ? `Start ${defaultName}${newKey ? ` (${newKey})` : ''}`
-              : 'New agent: no default yet, so choose one'
-          }
-          onClick={() => startDefaultSession()}
-          className="flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded-l bg-accent px-2.5 py-1 text-left text-accent-fg hover:opacity-90 disabled:opacity-60"
-        >
-          <Plus size={14} className="shrink-0" />
-          <span className="flex min-w-0 flex-col leading-tight">
-            <span className="text-[12px] font-medium">New agent</span>
-            {defaultName && <span className="truncate text-[11px] opacity-80">{defaultName}</span>}
-          </span>
-        </button>
-        <button
-          type="button"
-          data-testid="grove-new-choose"
-          title={`New agent with a task…${launchKey ? ` (${launchKey})` : ''}`}
-          aria-label="New agent with a task"
-          onClick={openLauncher}
-          className="flex w-8 shrink-0 items-center justify-center rounded-r border-l border-accent-fg/25 bg-accent text-accent-fg hover:opacity-90"
-        >
-          <ChevronDown size={13} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function SectionHeading({ section, shown }: { section: GroveSection<GroveSession>; shown: boolean }) {
-  const { group } = section;
-  if (group) {
-    const summary = groveSummary(section.rows.map((row) => row.thread.status));
-    return (
-      <div data-testid="grove-group" data-group-id={group.id} className="flex h-7 items-center gap-1.5 px-1.5">
-        <button
-          type="button"
-          aria-expanded={!group.collapsed}
-          aria-label={group.collapsed ? `Expand ${group.name}` : `Collapse ${group.name}`}
-          onClick={() => void updateGroup(group.id, { collapsed: !group.collapsed })}
-          className="flex h-5 w-5 items-center justify-center rounded text-fg-subtle hover:text-fg"
-        >
-          {group.collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-        </button>
-        <span aria-hidden className="h-2 w-2 shrink-0 rounded-sm" style={{ background: groupColor(group.color) }} />
-        <span className="min-w-0 flex-1 truncate text-[10px] font-semibold tracking-wide uppercase">{group.name}</span>
-        <span className="shrink-0 text-[10px] text-fg-subtle tabular-nums">{summary || section.rows.length}</span>
-      </div>
-    );
-  }
-  if (!shown) return null;
-  return (
-    <h3 className="flex h-7 items-center gap-1 px-3 text-[10px] font-semibold tracking-wide text-fg-subtle uppercase">
-      {section.id === 'pinned' && <Pin size={10} />}
-      {section.id === 'threads' && section.title === 'Threads' ? 'Agents' : section.title}
-    </h3>
-  );
 }
 
 /** Seconds since the turn started, ticking. */
@@ -474,105 +379,6 @@ export function RecentSection({
         </button>
       )}
     </section>
-  );
-}
-
-/** The project's default agent, **Change**, and whether an empty Grove starts it. */
-export function ListFooter() {
-  const defaultId = useDefaultAgentId();
-  const defaultName = useAgents((s) => s.agents.find((agent) => agent.id === defaultId)?.name);
-  const startOnOpen = useApp((s) => s.project?.settings.startDefaultOnOpen !== false);
-  const pickable = usePickableAgents();
-  const change = async (): Promise<void> => {
-    if (pickable.length === 0) {
-      openSettings('agents');
-      return;
-    }
-    const choice = await showMenu(
-      pickable.map(({ agent }) => ({
-        id: agent.id,
-        label: agent.id === defaultId ? `${agent.name} (default)` : agent.name,
-        enabled: agent.id !== defaultId,
-      })),
-    );
-    if (choice) await setProjectDefaultAgent(choice);
-  };
-  return (
-    <div data-testid="grove-footer" className="shrink-0 border-t border-border px-2.5 py-2 text-[11px]">
-      <div className="flex items-center gap-1">
-        <span className="text-fg-subtle">Default:</span>
-        <span data-testid="grove-default-agent" className="min-w-0 flex-1 truncate font-medium">
-          {defaultName ?? 'none'}
-        </span>
-        <button
-          type="button"
-          data-testid="grove-change-default"
-          title="Choose the agent this project starts by default"
-          onClick={() => void change()}
-          className="shrink-0 rounded px-1 text-accent hover:bg-bg-muted"
-        >
-          Change
-        </button>
-      </div>
-      <label className="mt-1 flex items-center gap-1.5 text-fg-subtle">
-        <input
-          type="checkbox"
-          data-testid="grove-start-on-open"
-          checked={startOnOpen}
-          onChange={(event) => void setStartDefaultOnOpen(event.target.checked)}
-        />
-        Start when Grove is empty
-      </label>
-    </div>
-  );
-}
-
-/** The session list: header and split button, sections with their rows, Recent, and the footer. */
-export function SessionList({ model, selectedId }: { model: GroveModel; selectedId: string | null }) {
-  const groups = useAgents((s) => s.groups);
-  const scroller = useRef<HTMLDivElement>(null);
-  useListFocus(scroller, ROW_SELECTOR);
-  const nameOf = (threadId: string): string => model.byId.get(threadId)?.name ?? 'another agent';
-  const headings = model.sections.length > 1;
-  const tabId = model.order.some((session) => session.id === selectedId) ? selectedId : (model.order[0]?.id ?? null);
-  return (
-    <nav aria-label="Agent sessions" data-testid="grove-sessions" className="flex h-full min-w-0 flex-col bg-bg-subtle">
-      <ListHeader summary={model.summary} />
-      <div
-        ref={scroller}
-        tabIndex={-1}
-        className="min-h-0 flex-1 overflow-y-auto py-1 outline-none"
-        onKeyDown={(event) => onAgentListKeyDown(event, { order: model.order, selectedId, rowTestId: 'grove-row' })}
-      >
-        {model.listed.length === 0 && (
-          <p className="px-3 py-2 text-[11px] text-fg-subtle">No agents yet. Start one above.</p>
-        )}
-        {model.sections.map((section) =>
-          section.rows.length === 0 ? null : (
-            <section key={section.id} aria-label={section.title} data-testid={`grove-section-${section.id}`}>
-              <SectionHeading section={section} shown={headings} />
-              {!section.group?.collapsed && (
-                <ul>
-                  {section.rows.map((row) => (
-                    <SessionRow
-                      key={row.thread.id}
-                      session={row.thread}
-                      helper={row.helper}
-                      selected={row.thread.id === selectedId}
-                      tabStop={row.thread.id === tabId}
-                      groups={groups}
-                      nameOf={nameOf}
-                    />
-                  ))}
-                </ul>
-              )}
-            </section>
-          ),
-        )}
-        <RecentSection recent={model.recent} selectedId={selectedId} />
-      </div>
-      <ListFooter />
-    </nav>
   );
 }
 
