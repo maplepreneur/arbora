@@ -1,6 +1,17 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import clsx from 'clsx';
-import { Archive, ChevronDown, ChevronRight, MoreHorizontal, Pin, Plus, Square, TriangleAlert } from 'lucide-react';
+import {
+  Archive,
+  ChevronDown,
+  ChevronRight,
+  MoreHorizontal,
+  Pin,
+  Play,
+  Plus,
+  Power,
+  Square,
+  TriangleAlert,
+} from 'lucide-react';
 import {
   CommandId,
   formatElapsed,
@@ -19,6 +30,8 @@ import {
   RECENT_LIMIT,
   selectSession,
   stopSession,
+  powerSession,
+  restartSession,
   setProjectDefaultAgent,
   setStartDefaultOnOpen,
   startDefaultSession,
@@ -30,7 +43,7 @@ import { openSettings, useApp } from '../../store';
 import { formatWhen, groupColor, showMenu } from '../agent/ThreadList';
 import { sessionStats, type EditStats } from './changes';
 import { onAgentListKeyDown } from './agent-list-keys';
-import { openRowMenu } from './session-actions';
+import { hasProcess, openRowMenu } from './session-actions';
 import { AgentMark } from './AgentMark';
 import { StatusDot } from './StatusDot';
 
@@ -179,7 +192,9 @@ export function SessionRow({
   onNavigate?: () => void;
 }) {
   const stopKey = useChordLabel(CommandId.groveStopSession);
+  const powerKey = useChordLabel(CommandId.grovePowerSession);
   const archiveKey = useChordLabel(CommandId.groveArchiveSession);
+  const live = hasProcess(session);
   const revealed = selected || kbd;
   const stats = sessionStats(session.activity);
   const since = session.status === 'working' ? session.activity.turnStartedAt : null;
@@ -262,15 +277,35 @@ export function SessionRow({
             : 'pointer-events-none opacity-0 group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100',
         )}
       >
+        {session.archivedAt === null &&
+          (live ? (
+            <RowAction
+              testId="grove-row-stop"
+              label="Stop work"
+              chord={stopKey}
+              onClick={() => void stopSession(session.id)}
+            >
+              <Square size={9} fill="currentColor" />
+            </RowAction>
+          ) : (
+            <RowAction
+              testId="grove-row-start"
+              label="Start the agent"
+              chord={undefined}
+              onClick={() => void restartSession(session.id)}
+            >
+              <Play size={9} fill="currentColor" />
+            </RowAction>
+          ))}
         {session.archivedAt === null && (
           <RowAction
-            testId="grove-row-stop"
-            label="Stop"
-            chord={stopKey}
+            testId="grove-row-power"
+            label={live ? 'Power off' : 'Power on'}
+            chord={powerKey}
             danger
-            onClick={() => void stopSession(session.id)}
+            onClick={() => void powerSession(session.id)}
           >
-            <Square size={9} fill="currentColor" />
+            <Power size={11} />
           </RowAction>
         )}
         {session.archivedAt === null && (

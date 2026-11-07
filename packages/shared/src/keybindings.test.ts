@@ -246,6 +246,11 @@ describe('KeybindingTable', () => {
       intercept: false,
     });
     expect(table.match(parseChord('alt+s', 'linux'), grove)).toBeUndefined();
+    expect(table.match(parseChord('alt+o', 'linux'), chat)).toMatchObject({
+      commandId: CommandId.grovePowerSession,
+      intercept: false,
+    });
+    expect(table.match(parseChord('alt+o', 'linux'), grove)).toBeUndefined();
     const overridden = build('linux', { [CommandId.groveArchiveSession]: 'mod+shift+w' }).table;
     expect(overridden.match(parseChord('alt+a', 'linux'), chat)).toBeUndefined();
     expect(overridden.match(parseChord('ctrl+shift+w', 'linux'), chat)?.commandId).toBe(CommandId.groveArchiveSession);

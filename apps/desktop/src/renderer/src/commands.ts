@@ -57,6 +57,7 @@ import {
   resumeProjectSwitch,
   openLauncher,
   renameSession,
+  powerSession,
   restartSession,
   selectIndex,
   selectRelative,
@@ -1246,6 +1247,9 @@ async function runCommand(id: CommandId): Promise<void> {
       return;
     case CommandId.groveStopSession:
       withGroveSession((session) => void stopSession(session.id), true);
+      return;
+    case CommandId.grovePowerSession:
+      withGroveSession((session) => void powerSession(session.id), true);
       return;
     case CommandId.groveRestartSession:
       withGroveSession((session) => void restartSession(session.id), true);

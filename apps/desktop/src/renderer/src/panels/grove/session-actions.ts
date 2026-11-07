@@ -7,6 +7,7 @@ import {
   renameSession,
   restartSession,
   restoreSession,
+  powerSession,
   setProjectDefaultAgent,
   stopSession,
 } from '../../grove-store';
@@ -28,6 +29,7 @@ async function run(session: GroveSession, choice: string | null): Promise<void> 
     else if (choice === 'rename') renameSession(session.id);
     else if (choice === 'default') await setProjectDefaultAgent(session.agentId);
     else if (choice === 'stop') await stopSession(session.id);
+    else if (choice === 'power') await powerSession(session.id);
     else if (choice === 'restart') await restartSession(session.id);
     else if (choice === 'archive') archiveSession(session.id);
     else if (choice === 'restore') await restoreSession(session.id);
@@ -66,7 +68,8 @@ export async function openRowMenu(session: GroveSession, groups: readonly AgentG
     ...(moves.length > 0 ? [{ type: 'separator' as const }, ...moves] : []),
     { type: 'separator' },
     { id: 'default', label: 'Set as default agent' },
-    hasProcess(session) ? { id: 'stop', label: 'Stop' } : { id: 'restart', label: 'Restart' },
+    hasProcess(session) ? { id: 'stop', label: 'Stop work' } : { id: 'restart', label: 'Start the agent' },
+    { id: 'power', label: hasProcess(session) ? 'Power off (end process)' : 'Power on (start process)' },
     { id: 'archive', label: 'Archive' },
   ]);
   await run(session, choice);

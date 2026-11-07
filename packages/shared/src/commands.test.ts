@@ -90,19 +90,20 @@ describe('Grove commands', () => {
 
   it('are all intercepted, with workspace commands under View and session commands under Grove', () => {
     const grove = DEFAULT_COMMANDS.filter((c) => c.id.startsWith('arbora.grove.'));
-    expect(grove.length).toBe(25);
+    expect(grove.length).toBe(26);
     expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.groveFocusAgents)).toMatchObject({
       title: 'Focus agents',
       keybinding: 'mod+shift+a',
       when: 'grove',
       intercept: true,
     });
-    for (const id of [CommandId.groveArchiveSession, CommandId.groveStopSession]) {
+    for (const id of [CommandId.groveArchiveSession, CommandId.groveStopSession, CommandId.grovePowerSession]) {
       expect(DEFAULT_COMMANDS.find((c) => c.id === id)).toMatchObject({ when: 'agentPanel', intercept: false });
     }
     expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.groveArchiveSession)?.keybinding).toBe('alt+a');
     expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.groveArchiveSession)?.extraKeybindings).toBeUndefined();
     expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.groveStopSession)?.keybinding).toBe('alt+s');
+    expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.grovePowerSession)?.keybinding).toBe('alt+o');
     expect(DEFAULT_COMMANDS.find((c) => c.id === CommandId.groveNewTerminal)).toMatchObject({
       title: 'New Terminal',
       keybinding: 'mod+shift+t',

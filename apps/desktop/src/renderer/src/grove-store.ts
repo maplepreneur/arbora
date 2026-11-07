@@ -22,6 +22,7 @@ import {
   isListed,
   loadThread,
   newThread,
+  stopAgent,
   stopProcess,
   useAgents,
 } from './agent-store';
@@ -948,7 +949,26 @@ export async function restoreSession(threadId: string): Promise<void> {
   if (isGroveShowing()) selectSession(threadId);
 }
 
+/** Stops the agent's current work and keeps the process when it can, so the session goes Idle. */
 export async function stopSession(threadId: string): Promise<void> {
+  try {
+    await stopAgent(threadId);
+  } catch (error) {
+    showToast(ipcError(error));
+  }
+}
+
+/**
+ * Powers the agent process off or on. Off ends the process (the session shows Stopped); on starts
+ * it again like Restart.
+ */
+export async function powerSession(threadId: string): Promise<void> {
+  const session = groveModelNow().byId.get(threadId);
+  const running = session !== undefined && session.state.status !== 'idle' && session.state.status !== 'error';
+  if (!running) {
+    await restartSession(threadId);
+    return;
+  }
   try {
     await stopProcess(threadId);
   } catch (error) {

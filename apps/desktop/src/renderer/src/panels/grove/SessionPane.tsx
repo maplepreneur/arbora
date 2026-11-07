@@ -1,10 +1,11 @@
 import clsx from 'clsx';
-import { Archive, ArchiveRestore, MoreHorizontal, RotateCcw, Square } from 'lucide-react';
+import { Archive, ArchiveRestore, MoreHorizontal, Play, Power, Square } from 'lucide-react';
 import { CommandId, SESSION_STATUS_LABEL } from '@arbora/shared';
 import { renameThread, useAgents } from '../../agent-store';
 import {
   archiveSession,
   formatUsage,
+  powerSession,
   restartSession,
   restoreSession,
   selectSession,
@@ -77,6 +78,7 @@ function PaneHeader({ session, model }: { session: GroveSession; model: GroveMod
   const logOpen = useAgents((s) => s.logOpen);
   const archiveKey = useChordLabel(CommandId.groveArchiveSession);
   const stopKey = useChordLabel(CommandId.groveStopSession);
+  const powerKey = useChordLabel(CommandId.grovePowerSession);
   const archived = session.archivedAt !== null;
   const running = hasProcess(session);
   return (
@@ -118,10 +120,10 @@ function PaneHeader({ session, model }: { session: GroveSession; model: GroveMod
           <button
             type="button"
             data-testid="grove-stop"
-            title={`Stop the agent process${stopKey ? ` (${stopKey})` : ''}. The session stays, and the next message starts it again.`}
-            aria-label="Stop the agent process"
+            title={`Stop the agent's work${stopKey ? ` (${stopKey})` : ''}. The process stays up and the session goes Idle.`}
+            aria-label="Stop the agent's work"
             onClick={() => void stopSession(session.id)}
-            className={clsx(iconButton, 'text-danger hover:text-danger')}
+            className={iconButton}
           >
             <Square size={11} fill="currentColor" />
           </button>
@@ -129,14 +131,26 @@ function PaneHeader({ session, model }: { session: GroveSession; model: GroveMod
           <button
             type="button"
             data-testid="grove-restart"
-            title="Start the agent again"
-            aria-label="Restart the agent"
+            title="Start the agent"
+            aria-label="Start the agent"
             onClick={() => void restartSession(session.id)}
             className={iconButton}
           >
-            <RotateCcw size={13} />
+            <Play size={13} fill="currentColor" />
           </button>
         ))}
+      {!archived && (
+        <button
+          type="button"
+          data-testid="grove-power"
+          title={`${running ? 'Power off: end the agent process' : 'Power on: start the agent process'}${powerKey ? ` (${powerKey})` : ''}`}
+          aria-label={running ? 'Power off the agent process' : 'Power on the agent process'}
+          onClick={() => void powerSession(session.id)}
+          className={clsx(iconButton, running && 'hover:text-danger')}
+        >
+          <Power size={13} />
+        </button>
+      )}
       {!archived && (
         <button
           type="button"
