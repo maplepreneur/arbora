@@ -4,6 +4,7 @@ import { viewportPresetIdSchema } from './browser.js';
 import { browserTabRecordSchema } from './browser-tabs.js';
 import type { WorkspaceKind } from './keybindings.js';
 import { mcpServerConfigSchema } from './mcp-servers.js';
+import { modelPriceOverrideSchema, usageAllowanceSchema } from './usage.js';
 
 export const themeModeSchema = z.enum(['system', 'light', 'dark']);
 export type ThemeMode = z.infer<typeof themeModeSchema>;
@@ -252,7 +253,7 @@ export function layoutForAppLaunch(layout: Partial<LayoutState> | undefined, lau
 
 export const MAX_RECENT_PROJECTS = 10;
 
-export const SETTINGS_VERSION = 6;
+export const SETTINGS_VERSION = 7;
 
 export const browserSettingsSchema = z.object({
   /** Load the bundled React and Vue DevTools into the browser panel's session. */
@@ -510,6 +511,15 @@ export const taskAgentsSchema = z.object({
 });
 export type TaskAgents = z.infer<typeof taskAgentsSchema>;
 
+export const usageSettingsSchema = z.object({
+  /** User-set token budgets, not limits reported by the agent provider. */
+  allowances: z.record(z.string(), usageAllowanceSchema).default({}),
+  priceOverrides: z.array(modelPriceOverrideSchema).max(200).default([]),
+  /** Reserved for the account sync in Stage 16b; no rows leave this machine yet. */
+  saveToAccount: z.boolean().default(false),
+});
+export type UsageSettings = z.infer<typeof usageSettingsSchema>;
+
 /**
  * The agent and model for a task: the task's own choice, else the project's or the app's default
  * agent with its default model, else the first signed-in agent. Undefined when none is known.
@@ -555,6 +565,7 @@ export const appSettingsSchema = z.object({
   agents: agentSettingsSchema.default(agentSettingsSchema.parse({})),
   tasks: taskAgentsSchema.default(taskAgentsSchema.parse({})),
   git: gitSettingsSchema.default(gitSettingsSchema.parse({})),
+  usage: usageSettingsSchema.default(usageSettingsSchema.parse({})),
   /** MCP servers Arbora passes to every agent session (`session/new`), next to its browser tools. */
   mcpServers: z.array(mcpServerConfigSchema).max(100).default([]),
   notifications: notificationSettingsSchema.default(notificationSettingsSchema.parse({})),
@@ -601,6 +612,7 @@ export const appSettingsPatchSchema = z
     agents: agentSettingsPatchSchema,
     tasks: patchSchema(taskAgentsSchema),
     git: patchSchema(gitSettingsSchema),
+    usage: patchSchema(usageSettingsSchema),
     mcpServers: z
       .array(mcpServerConfigSchema)
       .max(100)
@@ -644,6 +656,7 @@ export function applySettingsPatch(current: AppSettings, patch: AppSettingsPatch
     ...(patch.agents !== undefined ? { agents: mergeAgentSettings(current.agents, patch.agents) } : {}),
     ...(patch.tasks !== undefined ? { tasks: mergeDefined(current.tasks, patch.tasks) } : {}),
     ...(patch.git !== undefined ? { git: mergeDefined(current.git, patch.git) } : {}),
+    ...(patch.usage !== undefined ? { usage: mergeDefined(current.usage, patch.usage) } : {}),
     ...(patch.mcpServers !== undefined ? { mcpServers: patch.mcpServers } : {}),
     ...(patch.notifications !== undefined
       ? { notifications: mergeDefined(current.notifications, patch.notifications) }
@@ -690,6 +703,8 @@ export const SETTINGS_MIGRATIONS: Readonly<Record<number, Migration>> = {
   4: (input) => ({ ...input, version: 5 }),
   // v6 added Grove's project list and trusted commands, defaulted by the schema.
   5: (input) => ({ ...input, version: 6 }),
+  // v7 added the local usage dashboard, allowances and price overrides, defaulted by the schema.
+  6: (input) => ({ ...input, version: 7 }),
 };
 
 function objectField(input: Record<string, unknown>, key: string): Record<string, unknown> | null {
@@ -785,6 +800,8 @@ export const projectSettingsSchema = z.object({
   defaultAgent: z.string().optional(),
   /** Start one session of the default agent when Grove opens with none listed (default on). */
   startDefaultOnOpen: z.boolean().optional(),
+  /** Stable id shared by clones when local usage rows are later saved to an account. */
+  usageProjectId: z.uuid().optional(),
   keybindings: keybindingOverridesSchema.optional(),
   /**
    * Standing answers for the agent browser tools that can do more than look: `browser_evaluate`

@@ -17,6 +17,7 @@ import { NotificationsSection } from './NotificationsSection';
 import { ProjectSection } from './ProjectSection';
 import { SkillsSection } from './SkillsSection';
 import { UpdatesSection } from './UpdatesSection';
+import { UsageSection } from './UsageSection';
 
 type Section = SettingsSection;
 
@@ -33,6 +34,7 @@ const SECTIONS: readonly { id: Section; label: string }[] = [
   { id: 'mcp', label: 'MCP servers' },
   { id: 'notifications', label: 'Notifications & sounds' },
   { id: 'keyboard', label: 'Keyboard' },
+  { id: 'usage', label: 'Usage' },
   { id: 'updates', label: 'Updates & diagnostics' },
 ];
 
@@ -292,6 +294,8 @@ function SectionBody({ section }: { section: Section }): ReactNode {
       return <NotificationsSection />;
     case 'keyboard':
       return <KeyboardSection />;
+    case 'usage':
+      return <UsageSection />;
     case 'updates':
       return <UpdatesSection />;
     default: {

@@ -65,6 +65,7 @@ import {
   useApp,
 } from './store';
 import { applyTerminalList, resetTerminals } from './terminal-store';
+import { loadUsage } from './usage-store';
 
 const SettingsPage = lazy(() => import('./panels/settings/SettingsPage'));
 const Onboarding = lazy(() => import('./panels/onboarding/Onboarding'));
@@ -102,6 +103,9 @@ function useMainEvents(): void {
     const { arbora } = window;
     const offs = [
       arbora.on('settings.changed', (settings) => useApp.setState({ settings })),
+      arbora.on('usage.changed', ({ projectPath }) => {
+        if (projectPath === activeProjectPath()) void loadUsage(true);
+      }),
       arbora.on('theme.changed', (theme) => useApp.setState({ theme })),
       arbora.on('project.changed', (project) => setProject(project)),
       arbora.on('window.stateChanged', (windowState) => useApp.setState({ windowState })),

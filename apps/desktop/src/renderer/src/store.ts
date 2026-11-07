@@ -89,6 +89,7 @@ export type SettingsSection =
   | 'mcp'
   | 'notifications'
   | 'keyboard'
+  | 'usage'
   | 'updates';
 
 export type Overlay = 'onboarding' | 'switcher' | 'update' | 'keybindings';

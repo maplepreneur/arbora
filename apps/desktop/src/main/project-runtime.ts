@@ -25,6 +25,7 @@ import type { SettingsStore } from './settings-store.js';
 import { DevServer } from './terminal/dev-server.js';
 import { findExecutable, type ShellEnvironment } from './terminal/shell-env.js';
 import { TerminalService } from './terminal/terminal-service.js';
+import { UsageLedger } from './usage/UsageLedger.js';
 
 export interface ProjectRuntimeHost {
   browser(): BrowserService | null;
@@ -65,6 +66,7 @@ export class ProjectRuntime {
   readonly terminals: TerminalService;
   readonly devServer: DevServer;
   readonly agents: AgentService;
+  readonly usage: UsageLedger;
   private disposed = false;
 
   constructor(
@@ -104,6 +106,12 @@ export class ProjectRuntime {
         host.reloadProjectSettings();
       },
     });
+    this.usage = new UsageLedger({
+      projectPath: path,
+      priceOverrides: () => settings.get().usage.priceOverrides,
+      environment,
+      onChanged: (threadId) => host.send('usage.changed', { projectPath: path, threadId }),
+    });
     this.agents = new AgentService({
       platform,
       projectPath: path,
@@ -121,6 +129,7 @@ export class ProjectRuntime {
         return url && /^https?:\/\//.test(url) ? url : null;
       },
       defaultModel: (agentId) => settings.get().agents.defaultModels[agentId],
+      usage: this.usage,
       permissions: {
         get: () => settings.get().agents.permissions,
         remember: (key, decision) =>
@@ -161,6 +170,7 @@ export class ProjectRuntime {
     if (this.disposed) return;
     this.disposed = true;
     await this.agents.dispose().catch((error: unknown) => console.warn(`[agent] dispose: ${(error as Error).message}`));
+    this.usage.dispose();
     this.terminals.dispose();
   }
 

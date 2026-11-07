@@ -81,6 +81,7 @@ import {
 import { mcpServerConfigSchema } from './mcp-servers.js';
 import { devServerStatusSchema, terminalInfoSchema, terminalKindSchema, terminalSizeSchema } from './terminal.js';
 import { installKindSchema, updateStateSchema } from './updates.js';
+import { usageRangeSchema, usageTurnSchema } from './usage.js';
 
 const terminalId = z.object({ id: z.string() });
 const filePath = z.object({ path: relativePathSchema });
@@ -826,6 +827,22 @@ export const channels = {
     z.object({ content: z.string().nullable(), error: z.string().optional() }),
   ),
 
+  /** Local, privacy-safe turn rows; prompts and project paths never cross this channel. */
+  'usage.summary': defineChannel(
+    'usage.summary',
+    z.object({
+      range: usageRangeSchema.default('all'),
+      threadId: z.string().optional(),
+      prNumber: z.number().int().positive().optional(),
+    }),
+    z.object({ turns: z.array(usageTurnSchema) }),
+  ),
+  'usage.export': defineChannel(
+    'usage.export',
+    z.object({ format: z.enum(['json', 'csv']) }),
+    z.object({ path: z.string().nullable() }),
+  ),
+
   'git.status': defineChannel('git.status', none, gitStatusSchema),
   'git.diff': defineChannel(
     'git.diff',
@@ -903,6 +920,7 @@ export const channels = {
 /** Main -> renderer events. */
 export const events = {
   'settings.changed': defineEvent('settings.changed', appSettingsSchema),
+  'usage.changed': defineEvent('usage.changed', z.object({ projectPath: z.string(), threadId: z.string() })),
   'theme.changed': defineEvent('theme.changed', themeStateSchema),
   'project.changed': defineEvent('project.changed', projectInfoSchema.nullable()),
   'window.stateChanged': defineEvent('window.stateChanged', windowStateSchema),

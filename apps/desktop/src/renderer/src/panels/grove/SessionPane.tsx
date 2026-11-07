@@ -15,6 +15,7 @@ import {
 } from '../../grove-store';
 import type { GroveModel, GroveSession } from '../../grove-model';
 import { ModeSwitch } from '../../components/ModeSwitch';
+import { UsageBadge } from '../../components/UsageBadge';
 import { ipcError } from '../../ipc-error';
 import { useChordLabel } from '../../keybindings';
 import { showToast } from '../../store';
@@ -113,6 +114,7 @@ function PaneHeader({ session, model }: { session: GroveSession; model: GroveMod
         {archived ? 'Archived' : SESSION_STATUS_LABEL[session.status]} · {session.agentName}
       </span>
       <Memory kind="agent" id={session.id} />
+      <UsageBadge threadId={session.id} includeHelpers={session.parentThreadId === null} />
       <Lineage session={session} model={model} />
       <div className="flex-1" />
       {!archived &&

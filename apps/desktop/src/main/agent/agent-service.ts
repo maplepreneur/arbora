@@ -32,8 +32,12 @@ import {
   ACP_LOG_LIMIT,
   DEFAULT_THREAD_TITLE,
   EDIT_TOOL_KINDS,
+  addTokens,
+  emptyTokens,
   idleThreadState,
+  parseUsageReport,
   permissionMemoryKey,
+  sliceTokens,
   stopReasonSchema,
   type ActionTraceStep,
   type AcpLogEntry,
@@ -51,9 +55,12 @@ import {
   type ThreadEvent,
   type ThreadState,
   type ThreadSummary,
+  type TokenCount,
   type ToolKind,
+  type UsageReport,
 } from '@arbora/shared';
 import type { TerminalService } from '../terminal/terminal-service.js';
+import type { UsageTurnInput } from '../usage/UsageLedger.js';
 import { AgentTerminals } from './agent-terminals.js';
 import { runAgentTask } from './agent-task.js';
 import { attachmentBlocks } from './attachments.js';
@@ -66,6 +73,11 @@ export interface AgentServiceEvents {
   threadState(threadId: string, state: ThreadState): void;
   log(threadId: string, entry: AcpLogEntry): void;
   fileChanged(threadId: string, path: string): void;
+}
+
+export interface AgentUsageRecorder {
+  lastReport(threadId: string): { modelId: string; tokens: TokenCount } | null;
+  record(input: UsageTurnInput, lastReport: { modelId: string; tokens: TokenCount } | null): unknown;
 }
 
 export interface AgentServiceOptions {
@@ -84,6 +96,7 @@ export interface AgentServiceOptions {
     remember(key: string, decision: 'allow' | 'reject'): void;
   };
   readonly events: AgentServiceEvents;
+  readonly usage?: AgentUsageRecorder;
   readonly now?: () => number;
   /** Arbora's MCP servers (the Stage 5 browser tools) for a new agent session of `threadId`. */
   readonly mcp?: (threadId: string) => Promise<McpAttachment>;
@@ -134,6 +147,17 @@ interface PendingPermission {
   resolve(optionId: string | null): void;
 }
 
+interface ActiveTurn {
+  readonly id: string;
+  readonly startedAt: number;
+  tokens: TokenCount;
+  tokensReported: boolean;
+  modelId: string;
+  reportedCost: { amount: number; currency: string } | null;
+  pausedAt: number | null;
+  pausedMs: number;
+}
+
 interface ThreadRecord {
   thread: Thread;
   normalizer: UpdateNormalizer;
@@ -153,6 +177,8 @@ interface ThreadRecord {
   initialModel: string | undefined;
   /** Prompts accepted but not finished, including ones still waiting for the agent to start. */
   promptsInFlight: number;
+  activeTurn: ActiveTurn | null;
+  lastUsageReport: { modelId: string; tokens: TokenCount } | null;
 }
 
 export interface CreateThreadOptions {
@@ -277,6 +303,7 @@ export class AgentService {
   async deleteThread(threadId: string): Promise<void> {
     const record = this.records.get(threadId);
     if (!record) return;
+    this.finishTurn(record);
     this.records.delete(threadId);
     this.wakeWaiters();
     clearTimeout(record.saveTimer);
@@ -657,6 +684,7 @@ export class AgentService {
     this.wakeWaiters();
     for (const record of this.records.values()) {
       clearTimeout(record.saveTimer);
+      this.finishTurn(record);
       this.saveNow(record);
     }
     await Promise.all([...this.records.values()].map((record) => this.stopRuntime(record)));
@@ -681,6 +709,8 @@ export class AgentService {
       saveTimer: undefined,
       initialModel: undefined,
       promptsInFlight: 0,
+      activeTurn: null,
+      lastUsageReport: this.options.usage?.lastReport(thread.id) ?? null,
     };
   }
 
@@ -753,6 +783,9 @@ export class AgentService {
         case 'configOptions':
           this.setState(record, { configOptions: update.options });
           break;
+        case 'usage':
+          this.onUsage(record, update.report);
+          break;
         case 'title':
           // Kimi titles the thread after the first prompt, which is our preface; keep ours then.
           if (isPrefaceTitle(update.title)) break;
@@ -766,6 +799,63 @@ export class AgentService {
         }
       }
     }
+  }
+
+  private onUsage(record: ThreadRecord, report: UsageReport): void {
+    if (report.context) this.setState(record, { contextUsage: report.context });
+    const turn = record.activeTurn;
+    if (!turn) return;
+    if (report.reportedCost) turn.reportedCost = report.reportedCost;
+    if (!report.tokens) return;
+    const modelId = report.modelId ?? this.currentModel(record) ?? turn.modelId;
+    const next = { modelId, tokens: report.tokens };
+    const slice = sliceTokens(record.lastUsageReport, next);
+    record.lastUsageReport = next;
+    turn.tokens = addTokens(turn.tokens, slice);
+    turn.tokensReported = true;
+    turn.modelId = modelId;
+  }
+
+  private currentModel(record: ThreadRecord): string | undefined {
+    return record.thread.state.configOptions.find(
+      (option): option is Extract<typeof option, { type: 'select' }> =>
+        option.type === 'select' && (option.category === 'model' || option.id === LEGACY_MODEL_OPTION_ID),
+    )?.currentValue;
+  }
+
+  private finishTurn(record: ThreadRecord): void {
+    const turn = record.activeTurn;
+    if (!turn) return;
+    record.activeTurn = null;
+    const pausedMs = turn.pausedMs + (turn.pausedAt === null ? 0 : Math.max(0, this.now() - turn.pausedAt));
+    this.options.usage?.record(
+      {
+        id: turn.id,
+        threadId: record.thread.id,
+        agentId: record.thread.agentId,
+        modelId: turn.modelId,
+        inputTokens: turn.tokens.input,
+        outputTokens: turn.tokens.output,
+        cacheReadTokens: turn.tokens.cacheRead,
+        cacheWriteTokens: turn.tokens.cacheWrite,
+        tokensReported: turn.tokensReported,
+        durationMs: Math.max(0, this.now() - turn.startedAt - pausedMs),
+        reportedCost: turn.reportedCost,
+        parentThreadId: record.thread.parentThreadId,
+      },
+      record.lastUsageReport,
+    );
+  }
+
+  private pauseTurn(record: ThreadRecord): void {
+    if (record.activeTurn && record.activeTurn.pausedAt === null) record.activeTurn.pausedAt = this.now();
+  }
+
+  private resumeTurn(record: ThreadRecord): void {
+    const turn = record.activeTurn;
+    if (!turn || turn.pausedAt === null) return;
+    turn.pausedMs += Math.max(0, this.now() - turn.pausedAt);
+    turn.pausedAt = null;
   }
 
   private scheduleSave(record: ThreadRecord): void {
@@ -1074,6 +1164,17 @@ export class AgentService {
         this.emitThreads();
       }
     }
+    this.finishTurn(record);
+    record.activeTurn = {
+      id: randomUUID(),
+      startedAt: this.now(),
+      tokens: emptyTokens(),
+      tokensReported: false,
+      modelId: this.currentModel(record) ?? 'unknown',
+      reportedCost: null,
+      pausedAt: null,
+      pausedMs: 0,
+    };
     this.emitChanges(record, record.normalizer.userMessage(shown));
     record.stopRequested = false;
     this.setState(record, { status: 'prompting', error: null });
@@ -1094,6 +1195,7 @@ export class AgentService {
         // Claude Code's adapter accepts `session/new` and only refuses the first prompt; keep the
         // prompt so it goes out once the user has logged in.
         record.pendingPrompt = { blocks, attachments, title };
+        record.activeTurn = null;
         this.setState(record, { status: 'auth_required', error: this.authHint(record, message) });
         return { stopReason: null, error: 'auth_required' };
       }
@@ -1102,6 +1204,7 @@ export class AgentService {
       return { stopReason: null, error: message };
     } finally {
       this.cancelPendingPermissions(record);
+      this.finishTurn(record);
     }
   }
 
@@ -1144,6 +1247,9 @@ export class AgentService {
   }
 
   private onLog(record: ThreadRecord, entry: AcpLogMessage): void {
+    // The stable SDK drops unknown usage_update fields; the raw tee still has the billable split.
+    const usage = rawUsageUpdate(entry.message);
+    if (usage) this.onUsage(record, parseUsageReport(usage));
     this.pushLog(record, { direction: entry.direction, message: redact(entry.message) });
   }
 
@@ -1221,10 +1327,12 @@ export class AgentService {
 
   /** Waits for the renderer's answer to a permission card; null when cancelled or aborted. */
   private waitForPermission(record: ThreadRecord, requestId: string, signal?: AbortSignal): Promise<string | null> {
+    this.pauseTurn(record);
     return new Promise<string | null>((resolvePermission) => {
       const pending: PendingPermission = {
         resolve: (optionId) => {
           record.pendingPermissions.delete(requestId);
+          if (record.pendingPermissions.size === 0) this.resumeTurn(record);
           signal?.removeEventListener('abort', onAbort);
           resolvePermission(optionId);
         },
@@ -1290,6 +1398,18 @@ export class AgentService {
       throw error;
     }
   }
+}
+
+function rawUsageUpdate(message: unknown): object | null {
+  if (message === null || typeof message !== 'object' || !('method' in message) || !('params' in message)) return null;
+  if (message.method !== 'session/update' || message.params === null || typeof message.params !== 'object') return null;
+  const update = 'update' in message.params ? message.params.update : null;
+  return update !== null &&
+    typeof update === 'object' &&
+    'sessionUpdate' in update &&
+    update.sessionUpdate === 'usage_update'
+    ? update
+    : null;
 }
 
 /** Config options in Arbora's schema; variants from newer protocol versions are skipped. */

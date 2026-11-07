@@ -304,6 +304,11 @@ export const threadStateSchema = z.object({
       embeddedContext: z.boolean(),
     })
     .nullable(),
+  /** Latest context-window reading; unlike billable token splits, this is never priced. */
+  contextUsage: z
+    .object({ used: z.number().int().nonnegative(), size: z.number().int().nonnegative() })
+    .nullable()
+    .optional(),
   /** Set when a restored thread could not be loaded/resumed and started a fresh ACP session. */
   contextLost: z.boolean(),
 });
@@ -318,6 +323,7 @@ export function idleThreadState(): ThreadState {
     configOptions: [],
     availableCommands: [],
     capabilities: null,
+    contextUsage: null,
     contextLost: false,
   };
 }

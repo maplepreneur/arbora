@@ -40,6 +40,7 @@ import {
   type PromptResponse,
   type SessionConfigOption,
   type SessionModeState,
+  type SessionUpdate,
 } from '@agentclientprotocol/sdk';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -438,6 +439,32 @@ async function handlePrompt(cx: AgentContext, params: PromptRequest): Promise<Pr
     update: { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'Thinking about the request…' } },
   });
   await say(cx, sessionId, `Working on: ${text.split('\n').pop() ?? ''}`, state);
+
+  if (/usage tokens/i.test(text)) {
+    for (const [input_tokens, output_tokens] of [
+      [1_000_000, 250_000],
+      [1_000_000, 500_000],
+    ] as const) {
+      const update = {
+        sessionUpdate: 'usage_update',
+        used: 5000,
+        size: 200_000,
+        input_tokens,
+        output_tokens,
+        cache_read_input_tokens: 2_000_000,
+        cache_creation_input_tokens: 0,
+      } as SessionUpdate;
+      await cx.notify(methods.client.session.update, { sessionId, update });
+    }
+    await sleep(20);
+  }
+  if (/usage context/i.test(text)) {
+    await cx.notify(methods.client.session.update, {
+      sessionId,
+      update: { sessionUpdate: 'usage_update', used: 5000, size: 200_000 },
+    });
+    await sleep(20);
+  }
 
   if (/crash/i.test(text)) {
     process.stderr.write('fake agent crashing on purpose\n');

@@ -167,9 +167,25 @@ describe('UpdateNormalizer', () => {
     expect(n.events).toEqual([]);
   });
 
-  it('ignores usage and compaction updates and unknown variants', () => {
+  it('keeps billable usage separate from context, and ignores compaction and unknown variants', () => {
     const n = normalizer();
-    expect(n.apply({ sessionUpdate: 'usage_update', used: 1, size: 2 })).toEqual({ changes: [], state: [] });
+    expect(n.apply({ sessionUpdate: 'usage_update', used: 1, size: 2 })).toEqual({
+      changes: [],
+      state: [
+        { type: 'usage', report: { modelId: null, tokens: null, context: { used: 1, size: 2 }, reportedCost: null } },
+      ],
+    });
+    expect(
+      n.apply({
+        sessionUpdate: 'usage_update',
+        used: 3,
+        size: 4,
+        input_tokens: 10,
+        output_tokens: 5,
+        cache_read_input_tokens: 2,
+        cache_creation_input_tokens: 1,
+      } as SessionUpdate).state[0],
+    ).toMatchObject({ type: 'usage', report: { tokens: { input: 10, output: 5, cacheRead: 2, cacheWrite: 1 } } });
     expect(n.apply({ sessionUpdate: '_vendor_thing', foo: 1 } as unknown as SessionUpdate)).toEqual({
       changes: [],
       state: [],

@@ -433,12 +433,12 @@ describe('Stage 9 settings', () => {
 });
 
 describe('Stage 10 settings (Grove)', () => {
-  it('upgrades a v4 file to v5 with Grove defaults and the browser workspace', () => {
+  it('upgrades a v4 file with Grove and usage defaults and the browser workspace', () => {
     const layout = { groups: {}, sidebarView: 'files', bottomTab: 'terminal' };
     const { settings, warnings } = loadSettings({ version: 4, theme: 'dark', projects: { '/p': { layout } } });
     expect(warnings).toEqual([]);
-    expect(SETTINGS_VERSION).toBe(6);
-    expect(settings.version).toBe(6);
+    expect(SETTINGS_VERSION).toBe(7);
+    expect(settings.version).toBe(7);
     expect(settings.theme).toBe('dark');
     expect(settings.grove).toEqual({
       orchestration: true,
@@ -448,9 +448,10 @@ describe('Stage 10 settings (Grove)', () => {
       launch: 'browser',
       bestOf: [],
     });
+    expect(settings.usage).toEqual({ allowances: {}, priceOverrides: [], saveToAccount: false });
     expect(settings.projects['/p']?.layout).toMatchObject({ workspace: 'browser', groveThreadId: null });
     expect(migrateSettings({ version: 4, grove: { maxChildren: 2 } })).toEqual({
-      version: 6,
+      version: 7,
       grove: { maxChildren: 2 },
     });
   });
