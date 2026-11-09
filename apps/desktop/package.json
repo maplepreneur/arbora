@@ -2,7 +2,7 @@
   "name": "@arbora/desktop",
   "productName": "Arbora",
   "desktopName": "arbora.desktop",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "Design Mode for Agents",
   "author": {
     "name": "Arbora",
