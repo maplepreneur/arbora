@@ -6,11 +6,13 @@ export function Toggle({
   onChange,
   label,
   testId,
+  disabled = false,
 }: {
   on: boolean;
   onChange: (on: boolean) => void;
   label: string;
   testId?: string;
+  disabled?: boolean;
 }) {
   return (
     <button
@@ -19,8 +21,12 @@ export function Toggle({
       aria-checked={on}
       aria-label={label}
       data-testid={testId}
+      disabled={disabled}
       onClick={() => onChange(!on)}
-      className={clsx('relative h-4 w-7 shrink-0 rounded-full transition-colors', on ? 'bg-accent' : 'bg-border')}
+      className={clsx(
+        'relative h-4 w-7 shrink-0 rounded-full transition-colors disabled:opacity-40',
+        on ? 'bg-accent' : 'bg-border',
+      )}
     >
       <span
         className={clsx(

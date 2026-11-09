@@ -42,6 +42,7 @@ import { useChordLabel } from '../keybindings';
 import { useGrove } from '../grove-store';
 import { useApp } from '../store';
 import { AgentModeLayer } from './agent-mode/AgentModeLayer';
+import { TabStrip } from './browser/TabStrip';
 
 const DEFAULT_DEV_URL = 'http://localhost:5173';
 
@@ -354,6 +355,40 @@ function loadErrorHint(error: LoadError): string {
   return '';
 }
 
+function NoTabs() {
+  return (
+    <div
+      data-testid="browser-no-tabs"
+      className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center"
+    >
+      <Globe size={28} strokeWidth={1.25} className="text-fg-subtle" />
+      <div className="font-medium text-fg-muted">No browser tabs</div>
+      <div className="max-w-xs text-xs text-fg-subtle">
+        Open a tab for the app you are building, and another for a Figma file or docs. Close the last tab to leave the
+        browser empty.
+      </div>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          data-testid="browser-open-app-tab"
+          onClick={() => void window.arbora.invoke('browser.tabs.open', { role: 'app' })}
+          className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg hover:opacity-90"
+        >
+          Open app tab
+        </button>
+        <button
+          type="button"
+          data-testid="browser-open-reference-tab"
+          onClick={() => executeCommand(CommandId.browserNewTab)}
+          className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-bg-muted"
+        >
+          New tab
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function EmptyState({ devUrl }: { devUrl: string }) {
   const focusLabel = useChordLabel(CommandId.browserFocusUrl);
   return (
@@ -480,6 +515,7 @@ export default function BrowserPanel({
   const designChanges = useApp((s) => s.design.cursor);
   const showingOriginal = useApp((s) => s.design.showingOriginal);
   const state = useApp((s) => s.browser);
+  const browserTabs = useApp((s) => s.browserTabs);
   const groveDialog = useGrove((s) => s.searchOpen || s.launcherOpen || s.projectSwitch !== null);
   const contentHidden = useApp((s) => s.layout.contentHidden);
   const paletteOpen = useApp((s) => s.paletteOpen || s.overlay !== null) || groveDialog;
@@ -488,18 +524,20 @@ export default function BrowserPanel({
   const exitLabel = useChordLabel(CommandId.exitMode);
   const viewportRef = useRef<HTMLDivElement>(null);
 
-  const empty = !state || (!state.url && !state.loading);
+  const noTabs = browserTabs !== null && browserTabs.tabs.length === 0;
+  const empty = !noTabs && (!state || (!state.url && !state.loading));
   const error = state?.error ?? null;
   const prompting = mode.kind === 'agent' && mode.phase === 'prompting' ? mode.selection : null;
   // Anything rendered in the viewport area (or over it, like the palette) needs the view hidden.
   // A hidden content pane must park the page. A zero-size view captures empty screenshots.
-  const hidden = empty || error !== null || paletteOpen || prompting !== null || contentHidden || menuPark;
+  const hidden = noTabs || empty || error !== null || paletteOpen || prompting !== null || contentHidden || menuPark;
   const preset = state?.preset ?? 'responsive';
   useViewBounds(viewportRef, hidden, preset);
 
   return (
     <div className="flex h-full flex-col bg-bg" data-testid="browser-panel">
-      <Toolbar state={state} />
+      <TabStrip tabs={browserTabs} />
+      {noTabs ? null : <Toolbar state={state} />}
       {mode.kind !== 'idle' && (
         <div
           data-testid="mode-banner"
@@ -527,7 +565,9 @@ export default function BrowserPanel({
         data-preset={preset}
         className={clsx('relative min-h-0 flex-1', preset !== 'responsive' && 'bg-bg-muted')}
       >
-        {error ? (
+        {noTabs ? (
+          <NoTabs />
+        ) : error ? (
           <ErrorState error={error} />
         ) : empty ? (
           <EmptyState devUrl={devUrl} />

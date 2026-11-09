@@ -1,37 +1,40 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import clsx from 'clsx';
 import { FileJson, X } from 'lucide-react';
-import { CommandId, type ThemeMode } from '@arbora/shared';
+import { CommandId } from '@arbora/shared';
+import { useAgents } from '../../agent-store';
 import { executeCommand } from '../../commands';
-import { updateSettings } from '../../settings-client';
+import { setStartDefaultOnOpen } from '../../grove-store';
+import { updateProjectSettings, updateSettings } from '../../settings-client';
 import { useApp, type SettingsSection } from '../../store';
 import { AgentsSection } from './AgentsSection';
 import { AppearanceSection } from './AppearanceSection';
 import { GitSection } from './GitSection';
-import { GroveSection } from './GroveSection';
-import { inputClass, Segmented, SettingRow, Toggle } from './controls';
+import { inputClass, SectionTitle, Segmented, SettingRow, Toggle } from './controls';
 import { KeyboardSection } from './KeyboardSection';
 import { McpSection } from './McpSection';
 import { NotificationsSection } from './NotificationsSection';
 import { ProjectSection } from './ProjectSection';
 import { SkillsSection } from './SkillsSection';
 import { UpdatesSection } from './UpdatesSection';
+import { UsageSection } from './UsageSection';
 
 type Section = SettingsSection;
 
 const SECTIONS: readonly { id: Section; label: string }[] = [
-  { id: 'agents', label: 'Agents' },
-  { id: 'grove', label: 'Grove' },
   { id: 'general', label: 'General' },
   { id: 'appearance', label: 'Appearance' },
-  { id: 'notifications', label: 'Notifications & sounds' },
+  { id: 'agents', label: 'Agents' },
   { id: 'editor', label: 'Editor' },
+  { id: 'terminal', label: 'Terminal' },
   { id: 'git', label: 'Git' },
-  { id: 'skills', label: 'Skills' },
-  { id: 'mcp', label: 'MCP servers' },
   { id: 'browser', label: 'Browser' },
   { id: 'project', label: 'Project' },
+  { id: 'skills', label: 'Skills' },
+  { id: 'mcp', label: 'MCP servers' },
+  { id: 'notifications', label: 'Notifications & sounds' },
   { id: 'keyboard', label: 'Keyboard' },
+  { id: 'usage', label: 'Usage' },
   { id: 'updates', label: 'Updates & diagnostics' },
 ];
 
@@ -39,55 +42,78 @@ function close(): void {
   useApp.setState({ settingsOpen: false });
 }
 
-// --- Other sections --------------------------------------------------------------------------------
-
-const THEMES: readonly { value: ThemeMode; label: string }[] = [
-  { value: 'system', label: 'System' },
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
-];
+function ProjectDefaults() {
+  const project = useApp((s) => s.project);
+  const agents = useAgents((s) => s.agents);
+  const appDefault = useApp((s) => s.settings.agents.defaultAgent);
+  if (!project) {
+    return <p className="py-3 text-sm text-fg-muted">Open a project to choose the agent it starts.</p>;
+  }
+  const own = agents.find((agent) => agent.id === appDefault)?.name;
+  const projectDefault = project.settings.defaultAgent;
+  const startOnOpen = project.settings.startDefaultOnOpen !== false;
+  return (
+    <>
+      <SettingRow
+        title="Default agent"
+        detail="New Agent starts it, and so does opening this project with no agents. Saved in .arbora/project.json for everyone on the project."
+      >
+        <select
+          aria-label="Default agent for this project"
+          data-testid="setting-grove-default-agent"
+          value={projectDefault ?? ''}
+          onChange={(e) => void updateProjectSettings({ defaultAgent: e.target.value || null })}
+          className="h-7 max-w-56 rounded border border-border bg-bg px-1.5 text-xs"
+        >
+          <option value="">{own ? `My default (${own})` : 'My default (none)'}</option>
+          {agents.map((agent) => (
+            <option key={agent.id} value={agent.id}>
+              {agent.name}
+            </option>
+          ))}
+        </select>
+      </SettingRow>
+      <SettingRow
+        title="Start it when the project has no agents"
+        detail="Opening a project with no agents starts one session of the default agent, once per visit."
+      >
+        <Toggle
+          on={startOnOpen}
+          label="Start the default agent when the project has no agents"
+          testId="setting-grove-start-on-open"
+          onChange={(on) => void setStartDefaultOnOpen(on)}
+        />
+      </SettingRow>
+    </>
+  );
+}
 
 function GeneralSection() {
-  const theme = useApp((s) => s.theme.mode);
   const isMac = useApp((s) => s.info.platform === 'darwin');
   const quitOnLastWindowClose = useApp((s) => s.settings.quitOnLastWindowClose);
   return (
-    <div>
-      <SettingRow title="Theme">
-        <div role="radiogroup" className="flex rounded-md border border-border bg-bg-muted p-0.5">
-          {THEMES.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              role="radio"
-              aria-checked={theme === option.value}
-              onClick={() => {
-                void window.arbora.invoke('theme.set', { mode: option.value }).then((next) => {
-                  useApp.setState({ theme: next });
-                });
-              }}
-              className={clsx(
-                'rounded px-2 py-0.5 text-xs',
-                theme === option.value ? 'bg-bg text-fg shadow-sm' : 'text-fg-subtle hover:text-fg',
-              )}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      </SettingRow>
+    <div data-testid="general-section">
+      <p className="mb-2 text-sm text-fg-muted">
+        Projects you have not closed stay in the sidebar. They keep running when you switch or close the window.
+        Quitting Arbora stops them after you confirm. Close a project in the sidebar to drop it from that list.
+      </p>
+      <SectionTitle>This project</SectionTitle>
+      <ProjectDefaults />
       {isMac && (
-        <SettingRow
-          title="Quit when the last window closes"
-          detail="Stops dev servers and agents. Off keeps Arbora running in the dock with no window."
-        >
-          <Toggle
-            on={quitOnLastWindowClose}
-            label="Quit when the last window closes"
-            testId="setting-quit-on-last-window-close"
-            onChange={(on) => void updateSettings({ quitOnLastWindowClose: on })}
-          />
-        </SettingRow>
+        <>
+          <SectionTitle>Window</SectionTitle>
+          <SettingRow
+            title="Quit when the last window closes"
+            detail="Stops dev servers and agents. Off keeps Arbora running in the dock with no window."
+          >
+            <Toggle
+              on={quitOnLastWindowClose}
+              label="Quit when the last window closes"
+              testId="setting-quit-on-last-window-close"
+              onChange={(on) => void updateSettings({ quitOnLastWindowClose: on })}
+            />
+          </SettingRow>
+        </>
       )}
     </div>
   );
@@ -138,8 +164,13 @@ function EditorSection() {
           onChange={(on) => void updateSettings({ editor: { tscOnSave: on } })}
         />
       </SettingRow>
-      <SettingRow title="Terminal shell" detail="Empty uses $SHELL (macOS, Linux) or PowerShell (Windows).">
-        <ShellInput />
+      <SettingRow title="Word wrap" detail="Wrap long lines in the editor. Off scrolls sideways.">
+        <Toggle
+          on={editor.wordWrap}
+          label="Word wrap"
+          testId="setting-word-wrap"
+          onChange={(on) => void updateSettings({ editor: { wordWrap: on } })}
+        />
       </SettingRow>
     </div>
   );
@@ -160,6 +191,25 @@ function ShellInput() {
       }}
       className={clsx(inputClass, 'w-48 font-mono')}
     />
+  );
+}
+
+function TerminalSection() {
+  const cursorBlink = useApp((s) => s.settings.terminal.cursorBlink);
+  return (
+    <div data-testid="terminal-section">
+      <SettingRow title="Shell" detail="Empty uses $SHELL (macOS, Linux) or PowerShell (Windows).">
+        <ShellInput />
+      </SettingRow>
+      <SettingRow title="Blinking cursor" detail="The block cursor blinks while a terminal is open.">
+        <Toggle
+          on={cursorBlink}
+          label="Blinking cursor"
+          testId="setting-cursor-blink"
+          onChange={(on) => void updateSettings({ terminal: { cursorBlink: on } })}
+        />
+      </SettingRow>
+    </div>
   );
 }
 
@@ -218,7 +268,42 @@ function BrowserSection() {
   );
 }
 
-// --- Page ------------------------------------------------------------------------------------------
+function SectionBody({ section }: { section: Section }): ReactNode {
+  switch (section) {
+    case 'general':
+      return <GeneralSection />;
+    case 'appearance':
+      return <AppearanceSection />;
+    case 'agents':
+      return <AgentsSection />;
+    case 'editor':
+      return <EditorSection />;
+    case 'terminal':
+      return <TerminalSection />;
+    case 'git':
+      return <GitSection />;
+    case 'browser':
+      return <BrowserSection />;
+    case 'project':
+      return <ProjectSection />;
+    case 'skills':
+      return <SkillsSection />;
+    case 'mcp':
+      return <McpSection />;
+    case 'notifications':
+      return <NotificationsSection />;
+    case 'keyboard':
+      return <KeyboardSection />;
+    case 'usage':
+      return <UsageSection />;
+    case 'updates':
+      return <UpdatesSection />;
+    default: {
+      const unreachable: never = section;
+      return unreachable;
+    }
+  }
+}
 
 /** Settings, shown in place of the browser pane. `Mod+,` opens and closes it. */
 export default function SettingsPage() {
@@ -266,19 +351,7 @@ export default function SettingsPage() {
           </button>
         </header>
         <div className="mx-auto max-w-3xl px-6 py-5">
-          {section === 'agents' && <AgentsSection />}
-          {section === 'grove' && <GroveSection />}
-          {section === 'general' && <GeneralSection />}
-          {section === 'appearance' && <AppearanceSection />}
-          {section === 'editor' && <EditorSection />}
-          {section === 'git' && <GitSection />}
-          {section === 'skills' && <SkillsSection />}
-          {section === 'mcp' && <McpSection />}
-          {section === 'browser' && <BrowserSection />}
-          {section === 'notifications' && <NotificationsSection />}
-          {section === 'project' && <ProjectSection />}
-          {section === 'keyboard' && <KeyboardSection />}
-          {section === 'updates' && <UpdatesSection />}
+          <SectionBody section={section} />
         </div>
       </main>
     </div>

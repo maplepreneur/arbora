@@ -61,4 +61,6 @@ electron="$repo/node_modules/electron/dist/electron"
 unset ELECTRON_RENDERER_URL ELECTRON_RUN_AS_NODE
 # Settings → Updates says what this launcher does with the checkout.
 export ARBORA_LAUNCHER=1
-exec "$electron" --class=arbora "$desktop" "$@" >>"$log" 2>&1
+# Like the zeditor/cursor CLIs: launch detached so `arbora [dir]` returns the prompt
+# immediately; logs keep streaming to the launcher log.
+nohup "$electron" --class=arbora "$desktop" "$@" >>"$log" 2>&1 </dev/null &

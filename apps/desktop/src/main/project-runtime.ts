@@ -25,9 +25,22 @@ import type { SettingsStore } from './settings-store.js';
 import { DevServer } from './terminal/dev-server.js';
 import { findExecutable, type ShellEnvironment } from './terminal/shell-env.js';
 import { TerminalService } from './terminal/terminal-service.js';
+import { UsageLedger } from './usage/UsageLedger.js';
 
 export interface ProjectRuntimeHost {
   browser(): BrowserService | null;
+  /** The page an agent thread may use. `target` is a tab id, `app`, or `active`. */
+  browserForAgent(threadId: string, target: string | undefined): Promise<BrowserService>;
+  listBrowserTabs(threadId: string): {
+    id: string;
+    role: 'app' | 'reference';
+    url: string;
+    title: string;
+    active: boolean;
+    granted: boolean;
+  }[];
+  openAgentBrowserTab(threadId: string, url: string): Promise<{ id: string }>;
+  closeAgentBrowserTab(threadId: string, id: string): Promise<void>;
   /** A window showing this project loaded the URL in its browser. */
   suggestUrl(url: string): boolean;
   reloadProjectSettings(): void;
@@ -53,6 +66,7 @@ export class ProjectRuntime {
   readonly terminals: TerminalService;
   readonly devServer: DevServer;
   readonly agents: AgentService;
+  readonly usage: UsageLedger;
   private disposed = false;
 
   constructor(
@@ -92,6 +106,12 @@ export class ProjectRuntime {
         host.reloadProjectSettings();
       },
     });
+    this.usage = new UsageLedger({
+      projectPath: path,
+      priceOverrides: () => settings.get().usage.priceOverrides,
+      environment,
+      onChanged: (threadId) => host.send('usage.changed', { projectPath: path, threadId }),
+    });
     this.agents = new AgentService({
       platform,
       projectPath: path,
@@ -109,6 +129,7 @@ export class ProjectRuntime {
         return url && /^https?:\/\//.test(url) ? url : null;
       },
       defaultModel: (agentId) => settings.get().agents.defaultModels[agentId],
+      usage: this.usage,
       permissions: {
         get: () => settings.get().agents.permissions,
         remember: (key, decision) =>
@@ -149,6 +170,7 @@ export class ProjectRuntime {
     if (this.disposed) return;
     this.disposed = true;
     await this.agents.dispose().catch((error: unknown) => console.warn(`[agent] dispose: ${(error as Error).message}`));
+    this.usage.dispose();
     this.terminals.dispose();
   }
 
@@ -171,6 +193,10 @@ export class ProjectRuntime {
     const toolHost = new ArboraToolHost({
       projectPath,
       browser: () => host.browser(),
+      resolveTab: (target) => host.browserForAgent(threadId, target),
+      listTabs: () => host.listBrowserTabs(threadId),
+      openTab: (url) => host.openAgentBrowserTab(threadId, url),
+      closeTab: (id) => host.closeAgentBrowserTab(threadId, id),
       devServer: () => this.devServer,
       terminals: () => this.terminals,
       projectSettings: () => this.projectSettings(),

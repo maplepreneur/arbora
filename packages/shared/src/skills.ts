@@ -2,9 +2,10 @@ import { z } from 'zod';
 
 /**
  * Folders agents read user-level skills from, deduplicated: Codex, Kimi and most others share
- * `~/.agents/skills`. Paths follow the `skills` CLI (skills.sh) so both tools agree.
+ * `~/.agents/skills`. Antigravity reads `~/.gemini/config/skills`. Paths follow the `skills` CLI
+ * (skills.sh) where that CLI names a folder, so both tools agree.
  */
-export const SKILL_TARGET_IDS = ['claude', 'agents', 'grok', 'opencode', 'cursor'] as const;
+export const SKILL_TARGET_IDS = ['claude', 'agents', 'grok', 'opencode', 'antigravity', 'cursor'] as const;
 export type SkillTargetId = (typeof SKILL_TARGET_IDS)[number];
 export const skillTargetIdSchema = z.enum(SKILL_TARGET_IDS);
 
@@ -20,6 +21,7 @@ export const SKILL_TARGETS: readonly SkillTargetDescriptor[] = [
   { id: 'agents', label: 'Codex, Kimi', agents: ['codex', 'kimi'] },
   { id: 'grok', label: 'Grok', agents: ['grok'] },
   { id: 'opencode', label: 'OpenCode', agents: ['opencode'] },
+  { id: 'antigravity', label: 'Antigravity', agents: ['antigravity'] },
   { id: 'cursor', label: 'Cursor', agents: [] },
 ];
 
@@ -53,6 +55,13 @@ export function skillTargetPaths(id: SkillTargetId, { home, env }: SkillPathEnv)
       const root = joinPath(configHome, 'opencode');
       return { root, skills: joinPath(root, 'skills') };
     }
+    case 'antigravity':
+      // The CLI's own data dir says it has been run. Skills live in the folder the CLI and the
+      // Antigravity app both read (https://antigravity.google/docs/skills/).
+      return {
+        root: joinPath(home, '.gemini', 'antigravity-cli'),
+        skills: joinPath(home, '.gemini', 'config', 'skills'),
+      };
     case 'cursor':
       return { root: joinPath(home, '.cursor'), skills: joinPath(home, '.cursor', 'skills') };
     default: {

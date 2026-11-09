@@ -102,6 +102,11 @@ export interface BrowserServiceOptions {
   readonly saveState: (state: ProjectBrowserState) => void;
   /** Runs before page DevTools open; true means extensions were just loaded and the page must reload. */
   readonly beforeDevTools?: () => Promise<boolean>;
+  /**
+   * `window.open` and `target="_blank"` to http(s). When set, those become a reference tab.
+   * Popups that need `window.opener` stay child windows of this tab's session.
+   */
+  readonly openReferenceTab?: (url: string) => void;
 }
 
 interface Metrics {
@@ -149,6 +154,8 @@ export class BrowserService {
   /** An agent's `browser_set_viewport` size; cleared when a preset is chosen. */
   private viewportOverride: { width: number; height: number; dpr: number } | null = null;
   private viewRect: Rect | null = null;
+  /** OAuth popups created by this tab. Closed with the tab. */
+  private readonly popups: BrowserWindow[] = [];
   /** Last `pageFocused` value sent, so blur/focus chatter does not spam the renderer. */
   private lastPageFocused = false;
   /** One reclaim notice per time the view is parked, even if Chromium focuses it again. */
@@ -665,19 +672,70 @@ export class BrowserService {
       this.contents.close();
     }
     // After closing: an orphaned page's webContents would keep Electron from exiting.
+    for (const popup of this.popups) {
+      if (!popup.isDestroyed()) popup.close();
+    }
+    this.popups.length = 0;
     if (pendingSave) this.saveNow();
+  }
+
+  /**
+   * A link that asks for a new browsing context. Popups that need `window.opener` (OAuth) stay
+   * child windows on this tab's session. Everything else http(s) becomes a reference tab.
+   */
+  private openFromPage(details: { url: string; disposition: string }):
+    | { action: 'deny' }
+    | {
+        action: 'allow';
+        overrideBrowserWindowOptions: {
+          parent: BrowserWindow;
+          webPreferences: {
+            session: Session;
+            contextIsolation: true;
+            sandbox: true;
+            nodeIntegration: false;
+          };
+        };
+      } {
+    if (details.disposition === 'new-window' && /^https?:/.test(details.url)) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          parent: this.hostWindow,
+          webPreferences: {
+            session: this.options.session,
+            contextIsolation: true,
+            sandbox: true,
+            nodeIntegration: false,
+          },
+        },
+      };
+    }
+    const normalized = normalizeUrl(details.url);
+    if (normalized) this.options.openReferenceTab?.(normalized);
+    else if (/^https?:/.test(details.url)) void shell.openExternal(details.url);
+    return { action: 'deny' };
   }
 
   private wireContents(): void {
     const contents = this.contents;
     const refresh = (): void => this.update({});
 
-    contents.setWindowOpenHandler(({ url }) => {
-      // Single-tab browser until Stage 11: local links stay in the panel, everything else goes to the OS.
-      const normalized = normalizeUrl(url);
+    contents.setWindowOpenHandler((details) => {
+      if (this.options.openReferenceTab) return this.openFromPage(details);
+      // Without a tab list, same-origin links stay here and other http(s) links go to the OS.
+      const normalized = normalizeUrl(details.url);
       if (normalized && new URL(normalized).origin === safeOrigin(this.state.url)) this.navigate(normalized);
-      else if (/^https?:/.test(url)) void shell.openExternal(url);
+      else if (/^https?:/.test(details.url)) void shell.openExternal(details.url);
       return { action: 'deny' };
+    });
+    contents.on('did-create-window', (child) => {
+      this.popups.push(child);
+      child.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+      child.on('closed', () => {
+        const index = this.popups.indexOf(child);
+        if (index >= 0) this.popups.splice(index, 1);
+      });
     });
     contents.on('will-navigate', (event, url) => {
       if (!/^https?:/.test(url)) {
@@ -965,6 +1023,8 @@ export class BrowserService {
   }
 
   private async captureViewport(request: ScreenshotRequest): Promise<ScreenshotResult> {
+    // A parked tab paints nothing for capturePage. CDP still has the frame if throttling is off.
+    if (!this.visible) return this.captureHiddenViewport(request);
     const [{ innerWidth }, captured] = await Promise.all([this.metrics(), this.contents.capturePage()]);
     let pixels = toPixels(captured);
     const dpr = pixels.width / innerWidth;
@@ -977,6 +1037,39 @@ export class BrowserService {
     if (highlight)
       drawOutline(pixels.bitmap, pixels.width, pixels.height, scaleRect(highlight, dpr), HIGHLIGHT_THICKNESS_CSS * dpr);
     return encode(pixels, dpr);
+  }
+
+  private async captureHiddenViewport(request: ScreenshotRequest): Promise<ScreenshotResult> {
+    if (!this.contents.isDestroyed()) this.contents.setBackgroundThrottling(false);
+    try {
+      if (!this.debuggerAttached) await this.attachDebugger();
+      if (!this.debuggerAttached) throw new Error('Screenshots of a background tab need the debugger');
+      const { innerWidth } = await this.metrics();
+      const shot = (await this.contents.debugger.sendCommand('Page.captureScreenshot', {
+        format: 'png',
+        fromSurface: true,
+      })) as { data: string };
+      let pixels = toPixels(nativeImage.createFromBuffer(Buffer.from(shot.data, 'base64')));
+      const dpr = pixels.width / innerWidth;
+      let highlight = request.highlight;
+      if (request.mode === 'element') {
+        if (!request.rect) throw new Error('Element screenshots need a rect');
+        pixels = cropPixels(pixels, scaleRect(request.rect, dpr));
+        if (highlight) highlight = { ...highlight, x: highlight.x - request.rect.x, y: highlight.y - request.rect.y };
+      }
+      if (highlight) {
+        drawOutline(
+          pixels.bitmap,
+          pixels.width,
+          pixels.height,
+          scaleRect(highlight, dpr),
+          HIGHLIGHT_THICKNESS_CSS * dpr,
+        );
+      }
+      return encode(pixels, dpr);
+    } finally {
+      if (!this.contents.isDestroyed()) this.contents.setBackgroundThrottling(true);
+    }
   }
 
   private async captureFullPage(request: ScreenshotRequest): Promise<ScreenshotResult> {

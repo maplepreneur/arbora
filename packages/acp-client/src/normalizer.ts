@@ -11,6 +11,7 @@ import {
   sessionConfigOptionSchema,
   toolCallContentSchema,
   toolCallLocationSchema,
+  parseUsageReport,
   type ActionTraceStep,
   type AvailableCommand,
   type ContentBlock,
@@ -24,6 +25,7 @@ import {
   type ToolCallEvent,
   type ToolCallLocation,
   type ToolKind,
+  type UsageReport,
 } from '@arbora/shared';
 
 /** Session-level facts carried by `session/update` that are not transcript entries. */
@@ -31,7 +33,8 @@ export type StateUpdate =
   | { type: 'availableCommands'; commands: AvailableCommand[] }
   | { type: 'currentMode'; modeId: string }
   | { type: 'configOptions'; options: SessionConfigOption[] }
-  | { type: 'title'; title: string };
+  | { type: 'title'; title: string }
+  | { type: 'usage'; report: UsageReport };
 
 export interface NormalizedUpdate {
   readonly changes: ThreadChange[];
@@ -190,6 +193,7 @@ export class UpdateNormalizer {
         return { changes: [this.append(event)], state: [] };
       }
       case 'usage_update':
+        return { changes: [], state: [{ type: 'usage', report: parseUsageReport(update) }] };
       case 'compaction_update':
       case 'compaction_summary_chunk':
         return NONE;

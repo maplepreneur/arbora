@@ -58,6 +58,7 @@ type Session = TextSession | { readonly kind: 'other'; path: string; readonly co
 const sessions = new Map<string, Session>();
 const loading = new Map<string, Promise<Session>>();
 const fontSize = new Compartment();
+const wordWrap = new Compartment();
 const lspSupport = new Compartment();
 let view: EditorView | null = null;
 let viewPath: string | null = null;
@@ -98,6 +99,7 @@ function extensions(session: TextSession): Extension[] {
     editorTheme,
     editorHighlighting,
     fontSize.of(fontSizeTheme(useApp.getState().settings.editor.fontSize)),
+    wordWrap.of(useApp.getState().settings.editor.wordWrap ? EditorView.lineWrapping : []),
     lspSupport.of([]),
     session.large ? [] : languageFor(session.path),
     EditorState.readOnly.of(session.large),
@@ -390,10 +392,25 @@ function notify(): void {
   for (const listener of listeners) listener();
 }
 
-/** Font size follows the setting live. */
+/** Applies word wrap to the open file and to sessions that are not on screen. */
+function applyWordWrap(on: boolean): void {
+  const extension = on ? EditorView.lineWrapping : [];
+  for (const session of sessions.values()) {
+    if (session.kind !== 'text') continue;
+    const effects = wordWrap.reconfigure(extension);
+    if (view && viewPath === session.path) view.dispatch({ effects });
+    else session.state = session.state.update({ effects }).state;
+  }
+}
+
+/** Font size and word wrap follow the settings live. */
 useApp.subscribe((state, previous) => {
-  if (state.settings.editor.fontSize === previous.settings.editor.fontSize) return;
-  view?.dispatch({ effects: fontSize.reconfigure(fontSizeTheme(state.settings.editor.fontSize)) });
+  if (state.settings.editor.fontSize !== previous.settings.editor.fontSize) {
+    view?.dispatch({ effects: fontSize.reconfigure(fontSizeTheme(state.settings.editor.fontSize)) });
+  }
+  if (state.settings.editor.wordWrap !== previous.settings.editor.wordWrap) {
+    applyWordWrap(state.settings.editor.wordWrap);
+  }
 });
 
 /** Diagnostics follow the store. */

@@ -29,6 +29,7 @@ import {
   type GithubPr,
 } from '@arbora/shared';
 import { useAgents } from '../agent-store';
+import { PullRequestUsage } from '../components/UsageBadge';
 import { openDiff } from '../files-store';
 import { aiPullRequest, commitStaged, fetchRemote, generateCommitMessage, pull, push, stageAll } from '../git-actions';
 import { refreshGit, useGit } from '../git-client';
@@ -692,6 +693,7 @@ function GithubSection({ disabled }: { disabled: boolean }) {
           <GitPullRequest className="size-3 shrink-0 text-accent" />
           <span className="shrink-0 text-fg-subtle">#{pr.number}</span>
           <span className="truncate">{pr.title}</span>
+          <PullRequestUsage number={pr.number} />
         </button>
       ))}
       {open && (

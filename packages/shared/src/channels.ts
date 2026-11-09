@@ -22,6 +22,7 @@ import {
   viewportEmulationSchema,
   viewportPresetIdSchema,
 } from './browser.js';
+import { browserTabRoleSchema, browserTabsSnapshotSchema } from './browser-tabs.js';
 import { designSessionDetailSchema } from './design-session.js';
 import { designCommandSchema, designSessionSummarySchema, designStateSchema, stylingApproachSchema } from './design.js';
 import { agentModeIncludeSchema, agentModeSelectionSchema, agentModeTargetSchema } from './inspector.js';
@@ -80,6 +81,7 @@ import {
 import { mcpServerConfigSchema } from './mcp-servers.js';
 import { devServerStatusSchema, terminalInfoSchema, terminalKindSchema, terminalSizeSchema } from './terminal.js';
 import { installKindSchema, updateStateSchema } from './updates.js';
+import { usageRangeSchema, usageTurnSchema } from './usage.js';
 
 const terminalId = z.object({ id: z.string() });
 const filePath = z.object({ path: relativePathSchema });
@@ -337,6 +339,58 @@ export const channels = {
     'browser.suggestUrl',
     z.object({ url: z.string() }),
     z.object({ navigated: z.boolean() }),
+  ),
+  'browser.tabs.list': defineChannel('browser.tabs.list', none, browserTabsSnapshotSchema),
+  'browser.tabs.open': defineChannel(
+    'browser.tabs.open',
+    z.object({ url: z.string().optional(), role: browserTabRoleSchema.optional() }),
+    browserTabsSnapshotSchema,
+  ),
+  'browser.tabs.close': defineChannel(
+    'browser.tabs.close',
+    z.object({ id: z.string().optional() }),
+    browserTabsSnapshotSchema,
+  ),
+  'browser.tabs.activate': defineChannel(
+    'browser.tabs.activate',
+    z.object({ id: z.string() }),
+    browserTabsSnapshotSchema,
+  ),
+  'browser.tabs.move': defineChannel(
+    'browser.tabs.move',
+    z.object({ id: z.string(), toIndex: z.number().int().min(0) }),
+    browserTabsSnapshotSchema,
+  ),
+  'browser.tabs.setRole': defineChannel(
+    'browser.tabs.setRole',
+    z.object({ id: z.string(), role: browserTabRoleSchema }),
+    browserTabsSnapshotSchema,
+  ),
+  'browser.tabs.setProjectSession': defineChannel(
+    'browser.tabs.setProjectSession',
+    z.object({ id: z.string(), projectSession: z.boolean() }),
+    browserTabsSnapshotSchema,
+  ),
+  'browser.tabs.duplicate': defineChannel(
+    'browser.tabs.duplicate',
+    z.object({ id: z.string() }),
+    browserTabsSnapshotSchema,
+  ),
+  'browser.tabs.closeOthers': defineChannel(
+    'browser.tabs.closeOthers',
+    z.object({ id: z.string() }),
+    browserTabsSnapshotSchema,
+  ),
+  'browser.tabs.reopen': defineChannel('browser.tabs.reopen', none, browserTabsSnapshotSchema),
+  'browser.tabs.grant': defineChannel(
+    'browser.tabs.grant',
+    z.object({ id: z.string(), threadId: z.string() }),
+    browserTabsSnapshotSchema,
+  ),
+  'browser.tabs.cycle': defineChannel(
+    'browser.tabs.cycle',
+    z.object({ direction: z.union([z.literal(1), z.literal(-1)]) }),
+    browserTabsSnapshotSchema,
   ),
 
   /** Starts a shell (or `command` through the shell) in the project folder. */
@@ -773,6 +827,22 @@ export const channels = {
     z.object({ content: z.string().nullable(), error: z.string().optional() }),
   ),
 
+  /** Local, privacy-safe turn rows; prompts and project paths never cross this channel. */
+  'usage.summary': defineChannel(
+    'usage.summary',
+    z.object({
+      range: usageRangeSchema.default('all'),
+      threadId: z.string().optional(),
+      prNumber: z.number().int().positive().optional(),
+    }),
+    z.object({ turns: z.array(usageTurnSchema) }),
+  ),
+  'usage.export': defineChannel(
+    'usage.export',
+    z.object({ format: z.enum(['json', 'csv']) }),
+    z.object({ path: z.string().nullable() }),
+  ),
+
   'git.status': defineChannel('git.status', none, gitStatusSchema),
   'git.diff': defineChannel(
     'git.diff',
@@ -850,6 +920,7 @@ export const channels = {
 /** Main -> renderer events. */
 export const events = {
   'settings.changed': defineEvent('settings.changed', appSettingsSchema),
+  'usage.changed': defineEvent('usage.changed', z.object({ projectPath: z.string(), threadId: z.string() })),
   'theme.changed': defineEvent('theme.changed', themeStateSchema),
   'project.changed': defineEvent('project.changed', projectInfoSchema.nullable()),
   'window.stateChanged': defineEvent('window.stateChanged', windowStateSchema),
@@ -862,6 +933,7 @@ export const events = {
     z.object({ commandId: z.string(), fromPage: z.boolean().optional() }),
   ),
   'browser.stateChanged': defineEvent('browser.stateChanged', navigationStateSchema),
+  'browser.tabsChanged': defineEvent('browser.tabsChanged', browserTabsSnapshotSchema),
   /** The live page view gained or lost keyboard focus. False while the view is parked. */
   'browser.pageFocused': defineEvent('browser.pageFocused', z.object({ focused: z.boolean() })),
   /**

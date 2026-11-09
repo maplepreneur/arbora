@@ -508,7 +508,8 @@ export function ThreadList() {
       {threads.length === 0 && groups.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center text-xs text-fg-subtle">
           <Bot size={24} className="opacity-50" />
-          No threads yet. Start one with Claude Code, Codex, Kimi Code, Grok Build, OpenCode or a custom agent.
+          No threads yet. Start one with Claude Code, Codex, Kimi Code, Grok Build, OpenCode, Antigravity or a custom
+          agent.
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">

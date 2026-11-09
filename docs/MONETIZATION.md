@@ -61,12 +61,10 @@ A merchant of record (Paddle, or Lemon Squeezy) handles VAT and sales tax worldw
 | 9 Polish | **Project groups** and **agent groups** | — | ✓ | Organising many projects and agents is a power-user need |
 | 10 Grove | The many-agents workspace, attention badge, default agent | View only, with the 1-agent limit | ✓ | Grove is the multi-agent feature |
 | 11 Stretch | Worktree sessions, Tailwind write-through, design session history, action traces, LSP, source-map mapping, Grove orchestration | LSP and source maps ✓ | ✓ all | Write-through, worktrees and orchestration are leverage; LSP is expected |
-| 12a Tabs | App tab plus reference tabs | ✓, **up to 3 reference tabs** | ✓ unlimited | Everyday browsing stays Free |
+| 12a Tabs | App tab plus reference tabs. Svelte DevTools bundled with React and Vue | ✓, **up to 3 reference tabs** | ✓ unlimited | Everyday browsing stays Free. DevTools are not gated |
 | 12b Cross-tab work | Prompt from any tab to any project, the design-match loop (Figma → app), `browser_compare` | — | ✓ | The headline Pro feature for agencies |
-| 12c Passwords | 1Password fill and save for the user | ✓ | ✓ | Security features are never gated |
-| 12c Passwords | `browser_login`: agents log in through 1Password | — | ✓ | Automation, not safety |
 | 13 Themes | `theme.json` colour packs | ✓ import | ✓ | Cosmetic; community themes help adoption |
-| 14 Extensions | Approved catalog (Svelte DevTools, Bitwarden, Robocop) | ✓ | ✓ | Small, and helps adoption |
+| 14 Coding tools | Approved linter catalog, starting with Robocop | ✓ | ✓ | Small, and helps adoption |
 | 16 Usage | Token counts, list-price cost and working time, on the machine, per session, per pull request and over time; JSON and CSV export | ✓ | ✓ | The user's own record of their agents. Never gated, and never used as a gate counter |
 | 16 Usage | **Save usage to my account**: the same rows copied into the account database, and the website page that reads them | ✓ | ✓ | Saving the record off the machine. The local files stay either way |
 | 17 Publish | One linked Vercel or Cloudflare Pages site, preview and publish, including the site-owner window | ✓ | ✓ | The first website has to work without a membership pitch |
@@ -74,9 +72,9 @@ A merchant of record (Paddle, or Lemon Squeezy) handles VAT and sales tax worldw
 
 ### Rules for gating (keep to these when new features land)
 
-1. **Never gate safety, privacy or the user's data.** Permission cards, redaction, sandboxing, password filling for the user, diagnostics export, uninstall, exporting threads and design sessions: always on. A lapsed membership must never hide or delete the user's threads, groups or settings; Pro-only items become read-only.
+1. **Never gate safety, privacy or the user's data.** Permission cards, redaction, sandboxing, diagnostics export, uninstall, exporting threads and design sessions: always on. A lapsed membership must never hide or delete the user's threads, groups or settings; Pro-only items become read-only.
 2. **Never gate the first success.** Open a project, start the dev server, connect an agent, `Mod+K` a component and see the change: all Free.
-3. **Gate leverage, not friction.** Parallel agents, Grove, design mode at volume, the design-match loop, worktrees, write-through, agent logins, groups, further linked host projects.
+3. **Gate leverage, not friction.** Parallel agents, Grove, design mode at volume, the design-match loop, worktrees, write-through, groups, further linked host projects.
 4. **Limits count things the app already knows locally** (running agents, design saves this month, reference tabs). Those counters stay in local settings and are not uploaded. A determined user can reset one. That is acceptable at $5; do not build tracking to stop it. Stage 16's token ledger is a different record: it is stored in the project, and it is copied to the account database only when the user turns on **Save usage to my account**. Do not use that ledger to enforce a gate.
 5. **Show the gate where the user meets it**, with what Pro unlocks and the price ("Run another agent with Pro, $50/year"). One click opens checkout. No nagging elsewhere: no banners, no countdowns outside the trial's last 3 days.
 6. **Agents keep working when a membership lapses mid-session.** Limits apply to the next start, not to a turn in flight.

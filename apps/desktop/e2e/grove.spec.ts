@@ -220,7 +220,6 @@ test.describe('Stage 10 Grove', () => {
       // No default agent: nothing starts, and the empty state offers a choice.
       await expect(page.getByTestId('grove-empty')).toContainText('No agents running.');
       await expect(page.getByTestId('grove-empty-start')).toHaveCount(0);
-      await expect(page.getByTestId('grove-default-agent')).toHaveText('none');
       await page.getByTestId('grove-empty-choose').click();
 
       const launcher = page.getByTestId('grove-launcher');
@@ -239,7 +238,6 @@ test.describe('Stage 10 Grove', () => {
       await expect(rows).toHaveCount(1);
       await expect(first.getByTestId('grove-row-name')).toHaveText('add a comment to `App.tsx`');
       await expect.poll(() => projectFile(project)).toMatchObject({ defaultAgent: FAKE_ID });
-      await expect(page.getByTestId('grove-default-agent')).toHaveText('Fake agent');
 
       // The task's edit asks first: the row says Needs you, the bell counts it, and the card is pinned once.
       await expect(first).toHaveAttribute('data-status', 'needsYou', { timeout: 20_000 });
@@ -367,13 +365,15 @@ test.describe('Stage 10 Grove', () => {
       const leadId = await rows.getAttribute('data-thread-id');
       if (!leadId) throw new Error('no lead');
 
-      // Settings opens in the pane while Grove shows, with a Grove section.
+      // Settings opens in the pane. The old Grove page is split across General, Agents and Keyboard.
       await page.keyboard.press('ControlOrMeta+,');
       await expect(page.getByTestId('grove').getByTestId('settings-page')).toBeVisible();
-      await page.getByTestId('settings-nav-grove').click();
+      await page.getByTestId('settings-nav-general').click();
       await expect(page.getByTestId('setting-grove-default-agent')).toHaveValue(FAKE_ID);
       await expect(page.getByTestId('setting-grove-start-on-open')).toHaveAttribute('aria-checked', 'false');
+      await page.getByTestId('settings-nav-keyboard').click();
       await expect(page.getByTestId('grove-chords')).toContainText(isMac ? '⌥⌘M' : 'Ctrl+Alt+M');
+      await page.getByTestId('settings-nav-agents').click();
       await page.getByTestId('setting-grove-max-children').selectOption('2');
       await expect
         .poll(() => savedSettings(userData).grove)

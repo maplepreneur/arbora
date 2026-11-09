@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'no
 import { join } from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import type { NavigationState, ScreenshotResult } from '@arbora/shared';
-import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, showRight, tempUserData } from './app';
+import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, showRight, startAgent, tempUserData } from './app';
 import { freePort, startSelfSignedServer, startViteFixture, type RunningServer } from './servers';
 
 const VITE_REACT = join(FIXTURES, 'vite-react');
@@ -50,6 +50,29 @@ function keyInWindow(app: ElectronApplication, keyCode: string, modifiers: strin
 }
 
 /** Sends native input to the page (goes through `before-input-event`, unlike CDP key events). */
+function keyInVisiblePage(app: ElectronApplication, keyCode: string, modifiers: string[] = []): Promise<void> {
+  return app.evaluate(
+    ({ BrowserWindow }, input) => {
+      const view = BrowserWindow.getAllWindows()[0]?.contentView.children.find((child) => child.getVisible());
+      const contents = (
+        view as
+          | {
+              webContents?: {
+                focus(): void;
+                sendInputEvent(event: { type: 'keyDown' | 'keyUp'; keyCode: string; modifiers: string[] }): void;
+              };
+            }
+          | undefined
+      )?.webContents;
+      if (!contents) throw new Error('No visible browser tab');
+      contents.focus();
+      contents.sendInputEvent({ type: 'keyDown', keyCode: input.keyCode, modifiers: input.modifiers });
+      contents.sendInputEvent({ type: 'keyUp', keyCode: input.keyCode, modifiers: input.modifiers });
+    },
+    { keyCode, modifiers },
+  );
+}
+
 function keyInPage(app: ElectronApplication, keyCode: string, modifiers: string[] = []): Promise<void> {
   return app.evaluate(
     ({ webContents }, input) => {
@@ -313,11 +336,27 @@ test.describe('Stage 1 browser panel', () => {
       await expect
         .poll(() => {
           const settings = JSON.parse(readFileSync(join(userData, 'settings.json'), 'utf8')) as {
-            projects: Record<string, { browser?: { preset: string; lastUrl?: string } }>;
+            projects: Record<
+              string,
+              {
+                browser?: {
+                  preset: string;
+                  lastUrl?: string;
+                  zoomFactor?: number;
+                  tabs?: { role: string; url: string }[];
+                };
+              }
+            >;
           };
-          return Object.values(settings.projects)[0]?.browser;
+          const browser = Object.values(settings.projects)[0]?.browser;
+          return {
+            preset: browser?.preset,
+            zoomFactor: browser?.zoomFactor,
+            lastUrl: browser?.lastUrl,
+            role: browser?.tabs?.find((tab) => tab.url === vite.url)?.role,
+          };
         })
-        .toEqual({ preset: 'desktop', zoomFactor: 1, lastUrl: vite.url });
+        .toEqual({ preset: 'desktop', zoomFactor: 1, lastUrl: vite.url, role: 'app' });
       await app.close();
 
       ({ app, page } = await launch(userData, [VITE_REACT]));
@@ -543,6 +582,104 @@ test.describe('Stage 1 browser panel', () => {
         .toContainEqual(expect.stringMatching(/Components/));
       await page.getByTestId('browser-devtools').click();
       await expect.poll(async () => (await browserState(page))?.devToolsOpen).toBe(false);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+test.describe('Stage 12 browser tabs', () => {
+  test('closes every tab, reopens one, and grants a reference tab to the agent', async () => {
+    const userData = tempUserData();
+    writeFileSync(
+      join(userData, 'settings.json'),
+      JSON.stringify({
+        version: 3,
+        agents: {
+          custom: [{ id: 'fake', name: 'Fake agent', command: process.execPath, args: [FAKE_AGENT], env: {} }],
+          permissions: {},
+          ...checkedAgents(['fake']),
+        },
+      }),
+    );
+    const { app, page } = await launch(userData, [VITE_REACT]);
+    try {
+      await expect(page.getByTestId('browser-panel')).toBeVisible();
+      await openUrl(page, vite.url, FIXTURE_TITLE);
+      const referenceUrl = `${vite.url.replace(/\/$/, '')}/?design=reference`;
+      await page.evaluate((url) => window.arbora.invoke('browser.tabs.open', { url, role: 'reference' }), referenceUrl);
+      await expect(page.getByTestId('browser-tab')).toHaveCount(2);
+      await expect(page.getByTestId('browser-tab').first()).toHaveAttribute('data-role', 'app');
+      await expect(page.getByTestId('browser-tab').nth(1)).toHaveAttribute('data-role', 'reference');
+      await expect(page.getByTestId('browser-tab').nth(1)).toHaveAttribute('data-active', 'true');
+
+      await keyInVisiblePage(app, 'W', [MOD]);
+      await expect.poll(() => page.getByTestId('browser-tab').count()).toBe(1);
+      await keyInVisiblePage(app, 'W', [MOD]);
+      await expect(page.getByTestId('browser-no-tabs')).toBeVisible();
+      await expect(page.getByTestId('app')).toBeVisible();
+
+      await keyInWindow(app, 'T', [MOD]);
+      await expect(page.getByTestId('browser-tab')).toHaveCount(1);
+      await expect(page.getByTestId('browser-tab')).toHaveAttribute('data-role', 'reference');
+      await page.getByTestId('browser-tab').hover();
+      await page.getByTestId('browser-tab-close').click();
+      await expect(page.getByTestId('browser-no-tabs')).toBeVisible();
+      await page.getByTestId('browser-open-app-tab').click();
+      await expect(page.getByTestId('browser-tab')).toHaveAttribute('data-role', 'app');
+      await openUrl(page, vite.url, FIXTURE_TITLE);
+
+      await page.evaluate((url) => window.arbora.invoke('browser.tabs.open', { url, role: 'reference' }), referenceUrl);
+      await expect
+        .poll(
+          async () => {
+            const tabs = await page.evaluate(() => window.arbora.invoke('browser.tabs.list'));
+            const reference = tabs.tabs.find((tab) => tab.role === 'reference');
+            return reference?.url.startsWith(referenceUrl) === true && !reference.loading;
+          },
+          { timeout: 20_000 },
+        )
+        .toBe(true);
+      const refId = await page.evaluate(async () => {
+        const tabs = await window.arbora.invoke('browser.tabs.list');
+        return tabs.tabs.find((tab) => tab.role === 'reference')?.id ?? '';
+      });
+      expect(refId).not.toBe('');
+      await startAgent(page, 'fake');
+      const threadId = await page
+        .locator('[data-testid="grove-row"][aria-current="true"]')
+        .getAttribute('data-thread-id');
+      if (!threadId) throw new Error('No selected agent thread');
+
+      const composer = page.getByTestId('composer-input');
+      await composer.fill(`tab grant ${refId}`);
+      await composer.press('Enter');
+      const refused = page.getByTestId('agent-message').last();
+      await expect(refused).toContainText('Reference: ERROR tab not granted', { timeout: 30_000 });
+      await expect(refused).toContainText('App shot: 1 image');
+      await expect(refused).toContainText('Compare: ERROR tab not granted');
+      await expect(refused).toContainText(`Default: Page URL: ${vite.url}`);
+      await expect(refused).not.toContainText(`Default: Page URL: ${referenceUrl}`);
+      await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready');
+      await expect(page.locator('[data-testid="browser-tab"][data-role="reference"]')).toHaveAttribute(
+        'data-active',
+        'true',
+      );
+
+      await page.evaluate((input) => window.arbora.invoke('browser.tabs.grant', input), { id: refId, threadId });
+      const before = await page.getByTestId('agent-message').count();
+      await composer.fill(`tab grant ${refId}`);
+      await composer.press('Enter');
+      await expect.poll(() => page.getByTestId('agent-message').count()).toBeGreaterThan(before);
+      const granted = page.getByTestId('agent-message').last();
+      await expect(granted).toContainText(`Reference: Page URL: ${referenceUrl}`, { timeout: 30_000 });
+      await expect(granted).toContainText('granted=true');
+      await expect(granted).toContainText('Reference shot: 1 image');
+      await expect(granted).toContainText(/Compare: score 0\.\d+|Compare: score 1/);
+      await expect(page.locator('[data-testid="browser-tab"][data-role="reference"]')).toHaveAttribute(
+        'data-active',
+        'true',
+      );
     } finally {
       await app.close();
     }

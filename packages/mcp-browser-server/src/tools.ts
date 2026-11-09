@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
+import { compareImages, type RgbaImage } from './compare.js';
 import { ToolError, type Cdp } from './cdp.js';
 import type { BrowserToolHost, GuardedTool, LogEntry, LogLevel, PageInfo } from './host.js';
 import { click, elementBox, hover, pressKey, scroll, selectOptions, typeText } from './input.js';
@@ -62,8 +63,11 @@ export class ToolContext {
   }
 }
 
-/** Every tool takes `target` so multi-tab (Stage 12) can be added without changing signatures. */
-const target = z.string().optional().describe('Browser tab to act on. Only the current tab exists for now; omit it.');
+/** Every tool takes `target`: a tab id, `app` (the default), or `active`. */
+const target = z
+  .string()
+  .optional()
+  .describe('Browser tab: a tab id from browser_tabs, "app" (the default), or "active".');
 
 const elementTarget = {
   ref: z.string().optional().describe('Element ref from the latest browser_snapshot, e.g. "e12"'),
@@ -85,7 +89,11 @@ function resultError(result: CallToolResult): string {
   return 'The tool failed.';
 }
 
-function checkTarget(value: string | undefined): void {
+async function checkTarget(host: BrowserToolHost, value: string | undefined): Promise<void> {
+  if (host.prepareTarget) {
+    await host.prepareTarget(value);
+    return;
+  }
   if (value !== undefined && value !== '' && value !== 'current') {
     throw new ToolError(`Unknown tab ${value}; Arbora has a single browser tab for now (omit "target").`);
   }
@@ -140,15 +148,24 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
     description: string,
     shape: Shape,
     run: (args: z.infer<z.ZodObject<Shape>>) => Promise<CallToolResult>,
-    annotations: { readOnlyHint?: boolean; destructiveHint?: boolean; openWorldHint?: boolean } = {},
+    annotations: {
+      readOnlyHint?: boolean;
+      destructiveHint?: boolean;
+      openWorldHint?: boolean;
+      /** The tool selects its own pages, so the shared `target` is not applied first. */
+      managesTarget?: boolean;
+    } = {},
   ): void => {
+    const { managesTarget, ...mcpAnnotations } = annotations;
     server.registerTool(
       name,
-      { description, inputSchema: { ...shape, target }, annotations },
+      { description, inputSchema: { ...shape, target }, annotations: mcpAnnotations },
       // The SDK infers the callback's argument type from the shape; the cast keeps `run` generic.
       (async (args: z.infer<z.ZodObject<Shape>> & { target?: string }) => {
+        let armed = false;
         try {
-          checkTarget(args.target);
+          if (!managesTarget) await checkTarget(host, args.target);
+          armed = !managesTarget && host.prepareTarget !== undefined;
           const result = await run(args);
           const failed = result.isError === true;
           await record(name, args, !failed, failed ? resultError(result) : null);
@@ -157,6 +174,8 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
           const message = error instanceof Error ? error.message : String(error);
           await record(name, args, false, message);
           return { isError: true, content: [{ type: 'text', text: message }] };
+        } finally {
+          if (armed) host.releaseTarget?.();
         }
       }) as never,
     );
@@ -166,6 +185,42 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
     const cdp = await context.cdp();
     return { cdp, node: await resolveElement(cdp, context.refs, args) };
   };
+
+  tool(
+    'browser_tabs',
+    'List the browser tabs in this project. The app tab is always available. A reference tab (Figma, docs) can be used only after the user grants it. Pass an id as target.',
+    {},
+    () => {
+      const tabs = host.listTabs?.() ?? [];
+      if (tabs.length === 0) return Promise.resolve(text('No browser tabs are open.'));
+      const lines = tabs.map(
+        (tab) =>
+          `${tab.id} role=${tab.role} active=${tab.active} granted=${tab.granted} title=${tab.title || '(untitled)'} url=${tab.url || '(empty)'}`,
+      );
+      return Promise.resolve(text(lines.join('\n')));
+    },
+    { readOnlyHint: true },
+  );
+  tool(
+    'browser_tab_open',
+    'Open a reference tab in the background and grant it to this thread. It does not switch the tab the user is looking at.',
+    { url: z.string().describe('http(s) URL to open') },
+    async ({ url }) => {
+      if (!host.openTab) throw new ToolError('Opening a tab is not available.');
+      const opened = await host.openTab(url);
+      return text(`Opened tab ${opened.id}. Use it as target.`);
+    },
+  );
+  tool(
+    'browser_tab_close',
+    'Close a reference tab this thread opened.',
+    { id: z.string().describe('Tab id returned by browser_tab_open') },
+    async ({ id }) => {
+      if (!host.closeTab) throw new ToolError('Closing a tab is not available.');
+      await host.closeTab(id);
+      return text(`Closed tab ${id}.`);
+    },
+  );
 
   // --- Navigation ------------------------------------------------------------------------------
 
@@ -258,6 +313,62 @@ export function registerBrowserTools(server: McpServer, context: ToolContext): v
       };
     },
     { readOnlyHint: true },
+  );
+
+  const capturePage = async (page: {
+    target?: string | undefined;
+    selector?: string | undefined;
+    rect?: { x: number; y: number; width: number; height: number } | undefined;
+  }): Promise<RgbaImage> => {
+    if (!host.capture) throw new ToolError('Comparing pages is not available.');
+    let clip = page.rect ?? null;
+    if (page.selector) {
+      await host.prepareTarget?.(page.target);
+      try {
+        const { cdp, node } = await element({ selector: page.selector });
+        clip = await elementBox(cdp, node);
+      } finally {
+        host.releaseTarget?.();
+      }
+    }
+    return host.capture(page.target, clip);
+  };
+
+  const pageSpec = z.object({
+    target: z.string().optional().describe('Tab id, "app", or "active"'),
+    selector: z.string().optional().describe('CSS selector to compare instead of the viewport'),
+    rect: z
+      .object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() })
+      .optional()
+      .describe('Viewport rectangle in CSS pixels'),
+  });
+  tool(
+    'browser_compare',
+    'Compare two pages. Scales both to the same width and returns one image plus a 0–1 score and the grid cells that differ most. Use it to check an app tab against a granted design tab.',
+    {
+      a: pageSpec.describe('First page, usually the design'),
+      b: pageSpec.describe('Second page, usually the app'),
+      mode: z.enum(['side_by_side', 'overlay', 'diff']).optional().describe('How to draw the image'),
+    },
+    async ({ a, b, mode }) => {
+      const left = await capturePage(a);
+      const right = await capturePage(b);
+      const compared = compareImages(left, right, { mode });
+      const payload = {
+        score: Number(compared.score.toFixed(4)),
+        mode: mode ?? 'side_by_side',
+        width: compared.image.width,
+        height: compared.image.height,
+        cells: compared.cells,
+      };
+      return {
+        content: [
+          { type: 'image', data: compared.pngBase64, mimeType: 'image/png' },
+          { type: 'text', text: JSON.stringify(payload) },
+        ],
+      };
+    },
+    { readOnlyHint: true, managesTarget: true },
   );
 
   tool(

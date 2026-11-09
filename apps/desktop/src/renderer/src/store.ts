@@ -4,6 +4,7 @@ import {
   layoutForAppLaunch,
   layoutStateSchema,
   type AppInfo,
+  type BrowserTabsSnapshot,
   type AppSettings,
   type DesignSelection,
   type DesignSessionSummary,
@@ -57,6 +58,8 @@ export interface AppState {
   toasts: Toast[];
   /** Browser panel state from main; null until the project's browser view exists. */
   browser: NavigationState | null;
+  /** Open browser tabs for this project. Null until main reports them. An empty list is no page. */
+  browserTabs: BrowserTabsSnapshot | null;
   /** Console, exception and network entries for the Problems tab, oldest first. */
   problems: ProblemEntry[];
   /** Dev-server URL offered by `browser.suggestUrl` while another page is open. */
@@ -74,18 +77,19 @@ export interface InitialState {
 }
 
 export type SettingsSection =
-  | 'agents'
-  | 'grove'
   | 'general'
   | 'appearance'
-  | 'notifications'
+  | 'agents'
   | 'editor'
+  | 'terminal'
   | 'git'
-  | 'skills'
-  | 'mcp'
   | 'browser'
   | 'project'
+  | 'skills'
+  | 'mcp'
+  | 'notifications'
   | 'keyboard'
+  | 'usage'
   | 'updates';
 
 export type Overlay = 'onboarding' | 'switcher' | 'update' | 'keybindings';
@@ -102,7 +106,7 @@ export function closeOverlay(overlay?: Overlay): void {
  * Shows Settings on `section`. Unlike `Mod+,`, this never closes it: buttons that say "settings"
  * must not hide the page when it is already open beside them.
  */
-export function openSettings(section: SettingsSection = 'agents'): void {
+export function openSettings(section: SettingsSection = 'general'): void {
   useApp.setState({ settingsOpen: true, settingsSection: section, paletteOpen: false, overlay: null });
 }
 
@@ -165,12 +169,13 @@ export const useApp = create<AppState>()(() => ({
   paletteOpen: false,
   overlay: null,
   settingsOpen: false,
-  settingsSection: 'agents',
+  settingsSection: 'general',
   checkingAgents: [],
   recordingShortcut: false,
   terminalFocused: false,
   toasts: [],
   browser: null,
+  browserTabs: null,
   problems: [],
   suggestedUrl: null,
   urlFocusRequest: 0,
@@ -201,6 +206,7 @@ export function setProject(project: ProjectInfo | null): void {
           design: EMPTY_DESIGN,
           paletteOpen: false,
           browser: null,
+          browserTabs: null,
           problems: [],
           suggestedUrl: null,
         }

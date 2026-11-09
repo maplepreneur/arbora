@@ -229,7 +229,7 @@ export async function detectPlatform(): Promise<Platform | null> {
 - Version, date, "Release notes" (links to `notesUrl`), "Checksums".
 - The install steps above, the platform's section expanded by default.
 - System requirements: Windows 10 or 11 (64-bit), macOS 12 or later, Linux x86_64 with a desktop session (Wayland or X11); Node.js only for npx-based agents.
-- Links: "Set up your agents" (Claude Code, Codex, Kimi Code, Grok Build, OpenCode) and the FAQ, if the site hosts those pages. Their text is in the source repository's `docs/AGENT_SETUP.md` and `docs/FAQ.md`.
+- Links: "Set up your agents" (Claude Code, Codex, Kimi Code, Grok Build, OpenCode, Antigravity) and the FAQ, if the site hosts those pages. Their text is in the source repository's `docs/AGENT_SETUP.md` and `docs/FAQ.md`.
 - Before the first release is published the API returns 404: show "Coming soon" instead of broken links (approach B), or keep the page unlinked (approach A).
 
 ### Acceptance tests for the page

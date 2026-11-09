@@ -1,10 +1,11 @@
 import clsx from 'clsx';
-import { Archive, ArchiveRestore, MoreHorizontal, RotateCcw, Square } from 'lucide-react';
+import { Archive, ArchiveRestore, MoreHorizontal, Play, Power, Square } from 'lucide-react';
 import { CommandId, SESSION_STATUS_LABEL } from '@arbora/shared';
 import { renameThread, useAgents } from '../../agent-store';
 import {
   archiveSession,
   formatUsage,
+  powerSession,
   restartSession,
   restoreSession,
   selectSession,
@@ -14,6 +15,7 @@ import {
 } from '../../grove-store';
 import type { GroveModel, GroveSession } from '../../grove-model';
 import { ModeSwitch } from '../../components/ModeSwitch';
+import { UsageBadge } from '../../components/UsageBadge';
 import { ipcError } from '../../ipc-error';
 import { useChordLabel } from '../../keybindings';
 import { showToast } from '../../store';
@@ -30,7 +32,7 @@ function Memory({ kind, id }: { kind: 'agent' | 'terminal'; id: string }) {
   const sample = useGrove((s) => s.usage.find((entry) => entry.kind === kind && entry.id === id));
   if (!sample || sample.rssKb <= 0) return null;
   return (
-    <span data-testid="grove-memory" className="shrink-0 text-[11px] text-fg-subtle">
+    <span data-testid="grove-memory" className="hidden min-w-0 shrink truncate text-[11px] text-fg-subtle @lg:inline">
       {formatUsage(sample.rssKb, sample.cpuPercent)}
     </span>
   );
@@ -62,7 +64,7 @@ function Lineage({ session, model }: { session: GroveSession; model: GroveModel 
           data-thread-id={helper.id}
           title={`${helper.name}: ${SESSION_STATUS_LABEL[helper.status]}`}
           onClick={() => selectSession(helper.id)}
-          className="flex h-5 max-w-36 shrink-0 items-center gap-1 rounded-full border border-border px-1.5 text-[10.5px] text-fg-muted hover:bg-bg-muted hover:text-fg"
+          className="flex h-5 max-w-36 min-w-0 shrink-0 items-center gap-1 rounded-full border border-border px-1.5 text-[10.5px] text-fg-muted hover:bg-bg-muted hover:text-fg"
         >
           <StatusDot status={helper.status} />
           <span className="truncate">{helper.name}</span>
@@ -77,12 +79,13 @@ function PaneHeader({ session, model }: { session: GroveSession; model: GroveMod
   const logOpen = useAgents((s) => s.logOpen);
   const archiveKey = useChordLabel(CommandId.groveArchiveSession);
   const stopKey = useChordLabel(CommandId.groveStopSession);
+  const powerKey = useChordLabel(CommandId.grovePowerSession);
   const archived = session.archivedAt !== null;
   const running = hasProcess(session);
   return (
     <header
       data-testid="grove-pane-header"
-      className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3"
+      className="@container flex h-10 shrink-0 items-center gap-2 overflow-hidden border-b border-border px-3"
     >
       <StatusDot status={session.status} large />
       {renaming ? (
@@ -107,10 +110,11 @@ function PaneHeader({ session, model }: { session: GroveSession; model: GroveMod
           {session.name}
         </h2>
       )}
-      <span data-testid="grove-session-status" className="shrink-0 text-[11px] text-fg-subtle">
+      <span data-testid="grove-session-status" className="min-w-0 shrink truncate text-[11px] text-fg-subtle">
         {archived ? 'Archived' : SESSION_STATUS_LABEL[session.status]} · {session.agentName}
       </span>
       <Memory kind="agent" id={session.id} />
+      <UsageBadge threadId={session.id} includeHelpers={session.parentThreadId === null} />
       <Lineage session={session} model={model} />
       <div className="flex-1" />
       {!archived &&
@@ -118,10 +122,10 @@ function PaneHeader({ session, model }: { session: GroveSession; model: GroveMod
           <button
             type="button"
             data-testid="grove-stop"
-            title={`Stop the agent process${stopKey ? ` (${stopKey})` : ''}. The session stays, and the next message starts it again.`}
-            aria-label="Stop the agent process"
+            title={`Stop the agent's work${stopKey ? ` (${stopKey})` : ''}. The process stays up and the session goes Idle.`}
+            aria-label="Stop the agent's work"
             onClick={() => void stopSession(session.id)}
-            className={clsx(iconButton, 'text-danger hover:text-danger')}
+            className={iconButton}
           >
             <Square size={11} fill="currentColor" />
           </button>
@@ -129,14 +133,26 @@ function PaneHeader({ session, model }: { session: GroveSession; model: GroveMod
           <button
             type="button"
             data-testid="grove-restart"
-            title="Start the agent again"
-            aria-label="Restart the agent"
+            title="Start the agent"
+            aria-label="Start the agent"
             onClick={() => void restartSession(session.id)}
             className={iconButton}
           >
-            <RotateCcw size={13} />
+            <Play size={13} fill="currentColor" />
           </button>
         ))}
+      {!archived && (
+        <button
+          type="button"
+          data-testid="grove-power"
+          title={`${running ? 'Power off: end the agent process' : 'Power on: start the agent process'}${powerKey ? ` (${powerKey})` : ''}`}
+          aria-label={running ? 'Power off the agent process' : 'Power on the agent process'}
+          onClick={() => void powerSession(session.id)}
+          className={clsx(iconButton, running && 'hover:text-danger')}
+        >
+          <Power size={13} />
+        </button>
+      )}
       {!archived && (
         <button
           type="button"

@@ -87,6 +87,11 @@ function fakeHost(): { host: BrowserToolHost; state: FakeHostState; cdp: FakeCdp
     recordTrace: (step) => {
       state.traces.push(step);
     },
+    capture: () => {
+      const rgba = new Uint8Array(8 * 8 * 4);
+      rgba.fill(255);
+      return Promise.resolve({ width: 8, height: 8, rgba });
+    },
   };
   return { host, state, cdp };
 }
@@ -256,7 +261,11 @@ describe('BrowserMcpServer', () => {
     expect(tools.map((t) => t.name).sort()).toEqual(
       [
         'browser_back',
+        'browser_tab_close',
+        'browser_tab_open',
+        'browser_tabs',
         'browser_click',
+        'browser_compare',
         'browser_console_logs',
         'browser_evaluate',
         'browser_forward',
@@ -311,6 +320,16 @@ describe('BrowserMcpServer', () => {
       content: { type: string; data?: string; mimeType?: string }[];
     };
     expect(result.content[0]).toEqual({ type: 'image', data: 'iVBORw0KGgo=', mimeType: 'image/png' });
+  });
+
+  it('compares two captures and returns a score with an image', async () => {
+    const { client } = await connect();
+    const result = (await client.callTool({
+      name: 'browser_compare',
+      arguments: { a: { target: 'app' }, b: { target: 'app' }, mode: 'side_by_side' },
+    })) as { content: { type: string; data?: string; mimeType?: string }[] };
+    expect(result.content.some((block) => block.type === 'image' && block.mimeType === 'image/png')).toBe(true);
+    expect(textOf(result)).toContain('"score":1');
   });
 
   it('asks once per origin before leaving the dev server, and not for loopback URLs', async () => {

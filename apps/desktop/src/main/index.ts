@@ -21,6 +21,7 @@ import {
   resolveTaskAgent,
   toPlatform,
   updatePolicy,
+  usageRangeStart,
   type AgentVerification,
   type ProjectLibrary,
   type UpdatePolicy,
@@ -581,6 +582,36 @@ function main(): void {
     defineHandler('browser.suggestUrl', isTrusted, ({ url }, event) => ({
       navigated: windowFor(event.sender).browser?.suggestUrl(url) ?? false,
     }));
+    defineHandler('browser.tabs.list', isTrusted, (_req, event) => windowFor(event.sender).browserTabSnapshot());
+    defineHandler('browser.tabs.open', isTrusted, (request, event) => windowFor(event.sender).openBrowserTab(request));
+    defineHandler('browser.tabs.close', isTrusted, ({ id }, event) => windowFor(event.sender).closeBrowserTab(id));
+    defineHandler('browser.tabs.activate', isTrusted, ({ id }, event) =>
+      windowFor(event.sender).activateBrowserTab(id),
+    );
+    defineHandler('browser.tabs.move', isTrusted, ({ id, toIndex }, event) =>
+      windowFor(event.sender).moveBrowserTab(id, toIndex),
+    );
+    defineHandler('browser.tabs.setRole', isTrusted, ({ id, role }, event) =>
+      windowFor(event.sender).setBrowserTabRole(id, role),
+    );
+    defineHandler('browser.tabs.setProjectSession', isTrusted, ({ id, projectSession }, event) =>
+      windowFor(event.sender).setBrowserTabProjectSession(id, projectSession),
+    );
+    defineHandler('browser.tabs.duplicate', isTrusted, ({ id }, event) =>
+      windowFor(event.sender).duplicateBrowserTab(id),
+    );
+    defineHandler('browser.tabs.closeOthers', isTrusted, ({ id }, event) =>
+      windowFor(event.sender).closeOtherBrowserTabs(id),
+    );
+    defineHandler('browser.tabs.reopen', isTrusted, (_req, event) => windowFor(event.sender).reopenBrowserTab());
+    defineHandler('browser.tabs.cycle', isTrusted, ({ direction }, event) =>
+      windowFor(event.sender).cycleBrowserTab(direction),
+    );
+    defineHandler('browser.tabs.grant', isTrusted, ({ id, threadId }, event) => {
+      const projectWindow = windowFor(event.sender);
+      projectWindow.grantBrowserTab(threadId, id);
+      return projectWindow.browserTabSnapshot();
+    });
 
     defineHandler(
       'contextMenu.show',
@@ -892,6 +923,30 @@ function main(): void {
       if (!agents) throw new Error('Open a project first');
       return agents;
     };
+    defineHandler('usage.summary', isTrusted, (request, event) => {
+      const start = usageRangeStart(request.range, Date.now());
+      const turns = (runtimeOf(event.sender)?.usage.list() ?? []).filter(
+        (turn) =>
+          Date.parse(turn.at) >= start &&
+          (request.threadId === undefined || turn.threadId === request.threadId) &&
+          (request.prNumber === undefined || turn.pr?.number === request.prNumber),
+      );
+      return { turns };
+    });
+    defineHandler('usage.export', isTrusted, async ({ format }, event) => {
+      const projectWindow = windowFor(event.sender);
+      const ledger = runtimeOf(event.sender)?.usage;
+      if (!ledger) throw new Error('Open a project first');
+      const result = await dialog.showSaveDialog(projectWindow.window, {
+        title: 'Export agent usage',
+        defaultPath: join(app.getPath('downloads'), `arbora-usage-${new Date().toISOString().slice(0, 10)}.${format}`),
+        filters: [{ name: format.toUpperCase(), extensions: [format] }],
+      });
+      if (result.canceled || !result.filePath) return { path: null };
+      await writeFile(result.filePath, ledger.export(format), 'utf8');
+      return { path: result.filePath };
+    });
+
     defineHandler('agent.listAgents', isTrusted, async (_req, event) => {
       await shellEnvironment.ready;
       return requireAgents(event.sender).listAgents();
@@ -1285,12 +1340,16 @@ function main(): void {
     defineHandler('git.pullRequests', isTrusted, async (_req, event) => {
       const project = windowFor(event.sender).project;
       if (!project) throw new Error('Open a project first');
-      return listPullRequests(project.path, await gitEnv());
+      const prs = await listPullRequests(project.path, await gitEnv());
+      await runtimeOf(event.sender)?.usage.relinkPullRequests();
+      return prs;
     });
     defineHandler('git.createPullRequest', isTrusted, async ({ title, body }, event) => {
       const project = windowFor(event.sender).project;
       if (!project) throw new Error('Open a project first');
-      return { url: await createPullRequest(project.path, await gitEnv(), title, body) };
+      const url = await createPullRequest(project.path, await gitEnv(), title, body);
+      await runtimeOf(event.sender)?.usage.relinkPullRequests();
+      return { url };
     });
     defineHandler('git.stageAll', isTrusted, async (_req, event) => {
       await requireGit(event.sender).stageAll();
