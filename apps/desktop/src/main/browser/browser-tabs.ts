@@ -459,11 +459,26 @@ export class BrowserTabs {
   private rememberState(id: string, state: NavigationState): void {
     const tab = this.model.tabs.find((item) => item.id === id);
     if (!tab) return;
-    if (tab.title === state.title && tab.url === state.url) return;
+    if (
+      tab.title === state.title &&
+      tab.url === state.url &&
+      tab.preset === state.preset &&
+      tab.zoom === state.zoomFactor
+    ) {
+      return;
+    }
     this.model = {
       ...this.model,
       tabs: this.model.tabs.map((item) =>
-        item.id === id ? { ...item, title: state.title, url: state.url || item.url } : item,
+        item.id === id
+          ? {
+              ...item,
+              title: state.title,
+              url: state.url || item.url,
+              preset: state.preset,
+              zoom: state.zoomFactor,
+            }
+          : item,
       ),
     };
     this.scheduleSave();
@@ -516,15 +531,26 @@ export class BrowserTabs {
   private persistNow(): void {
     this.saveTimer = undefined;
     if (this.disposed) return;
-    const active = this.model.tabs.find((tab) => tab.id === this.model.activeTabId);
-    const live = this.active?.getState();
-    const url = live?.url || active?.url;
+    const tabs = this.model.tabs.map((tab) => {
+      const live = this.pages.get(tab.id)?.service.getState();
+      if (!live) return tab;
+      return {
+        ...tab,
+        url: live.url || tab.url,
+        title: live.title || tab.title,
+        preset: live.preset,
+        zoom: live.zoomFactor,
+      };
+    });
+    this.model = { ...this.model, tabs };
+    const active = tabs.find((tab) => tab.id === this.model.activeTabId);
+    const url = active?.url;
     this.saveState({
-      tabs: this.model.tabs,
+      tabs,
       activeTabId: this.model.activeTabId,
       ...(url ? { lastUrl: url } : {}),
-      preset: live?.preset ?? active?.preset ?? 'responsive',
-      zoomFactor: live?.zoomFactor ?? active?.zoom ?? 1,
+      preset: active?.preset ?? 'responsive',
+      zoomFactor: active?.zoom ?? 1,
     });
   }
 }
