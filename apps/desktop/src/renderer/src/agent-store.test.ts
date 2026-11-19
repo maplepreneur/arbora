@@ -1,54 +1,61 @@
 import { describe, expect, it } from 'vitest';
-import { idleThreadState, type AgentDefinition, type ThreadEvent, type ThreadSummary } from '@arbora/shared';
-import { applyChanges, defaultAgentModeTarget, isStoppable } from './agent-store';
+import { idleThreadState, type AgentDefinition, type ThreadSummary } from '@arbora/shared';
+import {
+  applyConfirmation,
+  defaultAgentModeTarget,
+  isStoppable,
+  resetAgents,
+  resolveConfirmation,
+  useAgents,
+} from './agent-store';
 
-const message = (id: string, text: string): ThreadEvent => ({
-  id,
-  at: 1,
-  kind: 'agent_message',
-  blocks: [{ type: 'text', text }],
+const confirmation = (requestId: string): Parameters<typeof applyConfirmation>[0] => ({
+  requestId,
+  threadId: 't1',
+  title: 'Allow browser_evaluate?',
+  detail: 'The agent wants to run JavaScript in the page.',
+  options: [
+    { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
+    { optionId: 'reject', name: 'Deny', kind: 'reject_once' },
+  ],
 });
 
-describe('applyChanges', () => {
-  it('appends, replaces in place and resets', () => {
-    const a = message('a', 'hello');
-    const b = message('b', 'world');
-    let events = applyChanges([], [{ type: 'append', event: a }]);
-    expect(events).toEqual([a]);
-    events = applyChanges(events, [
-      { type: 'append', event: b },
-      { type: 'replace', index: 0, event: message('a', 'hello!') },
-    ]);
-    expect(events.map((e) => (e.kind === 'agent_message' ? e.blocks[0] : null))).toEqual([
-      { type: 'text', text: 'hello!' },
-      { type: 'text', text: 'world' },
-    ]);
-    events = applyChanges(events, [{ type: 'reset', events: [b] }]);
-    expect(events).toEqual([b]);
+describe('confirmations', () => {
+  it('raises a card and resolves it once answered', () => {
+    applyConfirmation(confirmation('r1'));
+    expect(Object.keys(useAgents.getState().confirmations)).toEqual(['r1']);
+    resolveConfirmation('r1');
+    expect(Object.keys(useAgents.getState().confirmations)).toEqual([]);
   });
 
-  it('appends when a replace targets an index that does not exist yet', () => {
-    const events = applyChanges([], [{ type: 'replace', index: 3, event: message('x', 'late') }]);
-    expect(events).toHaveLength(1);
-  });
-
-  it('does not mutate the input', () => {
-    const input = [message('a', 'x')];
-    applyChanges(input, [{ type: 'append', event: message('b', 'y') }]);
-    expect(input).toHaveLength(1);
+  it('leaves other cards alone', () => {
+    applyConfirmation(confirmation('r1'));
+    applyConfirmation(confirmation('r2'));
+    resolveConfirmation('r1');
+    expect(Object.keys(useAgents.getState().confirmations)).toEqual(['r2']);
+    resolveConfirmation('r2');
+    resetAgents();
+    expect(Object.keys(useAgents.getState().confirmations)).toEqual([]);
   });
 });
 
 describe('defaultAgentModeTarget', () => {
-  const agent = (id: string): AgentDefinition => ({ id, name: id, command: id, args: [], env: {}, builtIn: true });
+  const agent = (id: string): AgentDefinition => ({
+    id,
+    name: id,
+    command: id,
+    args: [],
+    env: {},
+    builtIn: true,
+    probe: [],
+    task: [],
+  });
   const thread = (id: string): ThreadSummary => ({
     id,
     agentId: 'kimi',
     title: id,
     createdAt: 1,
     updatedAt: 1,
-    sessionId: null,
-    autoApproveEdits: false,
     groupId: null,
     pinned: false,
     archivedAt: null,
@@ -83,7 +90,7 @@ describe('defaultAgentModeTarget', () => {
 
 describe('isStoppable', () => {
   it('is true while the agent works or starts', () => {
-    expect(isStoppable('prompting')).toBe(true);
+    expect(isStoppable('working')).toBe(true);
     expect(isStoppable('starting')).toBe(true);
     expect(isStoppable('ready')).toBe(false);
     expect(isStoppable('idle')).toBe(false);

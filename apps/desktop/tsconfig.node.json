@@ -7,7 +7,6 @@
   "include": ["electron.vite.config.ts", "src/main"],
   "references": [
     { "path": "../../packages/shared" },
-    { "path": "../../packages/acp-client" },
     { "path": "../../packages/browser-bridge" },
     { "path": "../../packages/mcp-browser-server" }
   ]

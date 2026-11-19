@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_THREAD_TITLE, type AgentGroup, type ThreadEvent } from './agent.js';
+import { DEFAULT_THREAD_TITLE, idleThreadState, type AgentGroup, type ThreadState } from './agent.js';
 import { NO_ATTENTION, type ThreadAttention } from './attention.js';
 import {
-  activityFromEvents,
   activityLine,
-  attentionFromTranscript,
   deriveSessionStatus,
   displayNames,
   formatElapsed,
@@ -13,67 +11,26 @@ import {
   cycleListedProject,
   groveWebsiteAction,
   isSettledStatus,
-  NO_ACTIVITY,
   overlaps,
-  reduceActivity,
   shouldStartDefaultSession,
   taskTitle,
-  transcriptLines,
+  terminalLines,
   visibleRows,
-  workingDetail,
 } from './grove.js';
-
-const text = (t: string) => [{ type: 'text' as const, text: t }];
-let counter = 0;
-const id = (): string => `e${++counter}`;
-
-const user = (at: number, t: string): ThreadEvent => ({ id: id(), at, kind: 'user_message', blocks: text(t) });
-const agent = (at: number, t: string): ThreadEvent => ({ id: id(), at, kind: 'agent_message', blocks: text(t) });
-const turnEnd = (at: number, stopReason: 'end_turn' | 'cancelled' = 'end_turn'): ThreadEvent => ({
-  id: id(),
-  at,
-  kind: 'turn_end',
-  stopReason,
-});
-const tool = (
-  toolCallId: string,
-  title: string,
-  status: 'pending' | 'in_progress' | 'completed' | 'failed',
-  diffs: { path: string; oldText?: string | null; newText: string }[] = [],
-): ThreadEvent => ({
-  id: id(),
-  at: 0,
-  kind: 'tool_call',
-  toolCallId,
-  title,
-  toolKind: 'edit',
-  status,
-  content: diffs.map((d) => ({ type: 'diff' as const, ...d })),
-  locations: [],
-});
-const permission = (requestId: string, title: string, outcome: null | { optionId: string; auto: boolean } = null) =>
-  ({
-    id: id(),
-    at: 0,
-    kind: 'permission',
-    requestId,
-    toolCallId: `tc-${requestId}`,
-    title,
-    toolKind: 'edit',
-    options: [],
-    locations: [],
-    outcome,
-  }) satisfies ThreadEvent;
 
 const attention = (patch: Partial<ThreadAttention>): ThreadAttention => ({ ...NO_ATTENTION, ...patch });
 
+function state(patch: Partial<ThreadState>): ThreadState {
+  return { ...idleThreadState(), ...patch };
+}
+
 describe('deriveSessionStatus', () => {
   it('puts a wait on the user first, then failures, then what the process does', () => {
-    expect(deriveSessionStatus('prompting', attention({ pendingPermissions: ['r'] }))).toBe('needsYou');
-    expect(deriveSessionStatus('auth_required', undefined)).toBe('needsYou');
+    expect(deriveSessionStatus('working', attention({ waiting: 'Allow?' }))).toBe('needsYou');
+    expect(deriveSessionStatus('needs_input', undefined)).toBe('needsYou');
     expect(deriveSessionStatus('error', undefined)).toBe('failed');
     expect(deriveSessionStatus('ready', attention({ unread: 'failed' }))).toBe('failed');
-    expect(deriveSessionStatus('prompting', undefined)).toBe('working');
+    expect(deriveSessionStatus('working', undefined)).toBe('working');
     expect(deriveSessionStatus('starting', undefined)).toBe('starting');
     expect(deriveSessionStatus('ready', attention({ unread: 'finished' }))).toBe('done');
     expect(deriveSessionStatus('ready', NO_ATTENTION)).toBe('idle');
@@ -90,29 +47,6 @@ describe('deriveSessionStatus', () => {
     for (const status of ['needsYou', 'failed', 'done', 'idle', 'stopped'] as const) {
       expect(isSettledStatus(status)).toBe(true);
     }
-  });
-});
-
-describe('attentionFromTranscript', () => {
-  it('reads a pending permission, a finished turn and a failure without a renderer', () => {
-    const waiting = attentionFromTranscript([user(1, 'go'), permission('r1', 'Edit a.ts')], {
-      status: 'prompting',
-      error: null,
-    });
-    expect(deriveSessionStatus('prompting', waiting)).toBe('needsYou');
-    const finished = attentionFromTranscript([user(1, 'go'), agent(2, 'hello from the helper'), turnEnd(3)], {
-      status: 'ready',
-      error: null,
-    });
-    expect(deriveSessionStatus('ready', finished)).toBe('done');
-    expect(finished.lastMessage).toBe('hello from the helper');
-    const cancelled = attentionFromTranscript([user(1, 'go'), turnEnd(2, 'cancelled')], {
-      status: 'ready',
-      error: null,
-    });
-    expect(deriveSessionStatus('ready', cancelled)).toBe('idle');
-    const crashed = attentionFromTranscript([user(1, 'go')], { status: 'error', error: 'exit 1' });
-    expect(deriveSessionStatus('error', crashed)).toBe('failed');
   });
 });
 
@@ -255,144 +189,43 @@ describe('groveSummary', () => {
   });
 });
 
-describe('activity', () => {
-  it('follows the running tool, the plan, the last message and the turn timer', () => {
-    let activity = reduceActivity(NO_ACTIVITY, user(1000, 'fix the nav'));
-    expect(activity.turnStartedAt).toBe(1000);
-    activity = reduceActivity(activity, {
-      id: id(),
-      at: 1001,
-      kind: 'plan',
-      entries: [
-        { content: 'a', priority: 'medium', status: 'completed' },
-        { content: 'b', priority: 'medium', status: 'in_progress' },
-      ],
-    });
-    expect(workingDetail(activity)).toBe('Plan 1/2');
-    activity = reduceActivity(activity, tool('t1', 'Edit src/Nav.tsx', 'in_progress'));
-    expect(workingDetail(activity)).toBe('Edit src/Nav.tsx');
-    activity = reduceActivity(activity, tool('t1', 'Edit src/Nav.tsx', 'completed'));
-    expect(workingDetail(activity)).toBe('Plan 1/2');
-    activity = reduceActivity(activity, agent(1500, '\nDone: the nav wraps now.\nMore detail'));
-    activity = reduceActivity(activity, turnEnd(5000));
-    expect(activity).toMatchObject({ lastMessage: 'Done: the nav wraps now.', turnStartedAt: null, lastTurnMs: 4000 });
-  });
-
-  it('ends the turn on an error too', () => {
-    const activity = activityFromEvents([
-      user(10, 'go'),
-      tool('t', 'Run tests', 'pending'),
-      { id: id(), at: 70, kind: 'error', message: 'boom' },
-    ]);
-    expect(activity).toMatchObject({ turnStartedAt: null, lastTurnMs: 60, runningTools: [] });
-  });
-
-  it('keeps the first oldText and the last newText per file', () => {
-    const activity = activityFromEvents([
-      tool('t1', 'Edit a', 'completed', [{ path: '/p/a.ts', oldText: 'one\n', newText: 'two\n' }]),
-      tool('t2', 'Edit a', 'completed', [{ path: '/p/a.ts', oldText: 'two\n', newText: 'three\n' }]),
-      tool('t3', 'Create b', 'completed', [{ path: '/p/b.ts', newText: 'new\n' }]),
-      // A replaced event (status change) carries the same diff again.
-      tool('t3', 'Create b', 'completed', [{ path: '/p/b.ts', newText: 'new\n' }]),
-    ]);
-    expect(activity.files).toEqual({
-      '/p/a.ts': { oldText: 'one\n', newText: 'three\n' },
-      '/p/b.ts': { oldText: null, newText: 'new\n' },
-    });
-    expect(Object.keys(activity.files)).toEqual(['/p/a.ts', '/p/b.ts']);
-  });
-
-  it('writes line two for each status', () => {
-    const busy = activityFromEvents([user(1, 'go'), tool('t', 'Run pnpm test', 'in_progress')]);
-    expect(activityLine('working', busy, undefined, null)).toBe('Run pnpm test');
-    expect(activityLine('working', NO_ACTIVITY, undefined, null)).toBe('Thinking…');
-    expect(
-      activityLine(
-        'needsYou',
-        NO_ACTIVITY,
-        attention({ pendingPermissions: ['r'], permissionTitle: 'Allow edit?' }),
-        null,
-      ),
-    ).toBe('Allow edit?');
-    expect(activityLine('needsYou', NO_ACTIVITY, attention({ auth: true }), null)).toBe('Log in');
-    const done = activityFromEvents([agent(1, 'All set')]);
-    expect(activityLine('done', done, undefined, null)).toBe('All set');
-    expect(activityLine('idle', NO_ACTIVITY, undefined, null)).toBe('Idle');
-    expect(activityLine('failed', NO_ACTIVITY, attention({ failure: 'exit 1' }), 'other')).toBe('exit 1');
-    expect(activityLine('failed', NO_ACTIVITY, undefined, 'spawn failed')).toBe('spawn failed');
-    expect(activityLine('stopped', done, undefined, null)).toBe('Stopped');
-    expect(activityLine('starting', NO_ACTIVITY, undefined, null)).toBe('Starting…');
+describe('activityLine', () => {
+  it('writes line two from the terminal state and the attention', () => {
+    expect(activityLine('working', state({ lastLine: 'Running pnpm test…' }), undefined)).toBe('Running pnpm test…');
+    expect(activityLine('working', state({}), undefined)).toBe('Working…');
+    expect(activityLine('needsYou', state({ lastLine: 'Allow edit to src/App.tsx? (y/n)' }), undefined)).toBe(
+      'Allow edit to src/App.tsx? (y/n)',
+    );
+    expect(activityLine('needsYou', state({}), attention({ waiting: 'Proceed? (y/n)' }))).toBe('Proceed? (y/n)');
+    expect(activityLine('starting', state({}), undefined)).toBe('Starting…');
+    expect(activityLine('done', state({ lastLine: 'All set' }), undefined)).toBe('All set');
+    expect(activityLine('idle', state({}), undefined)).toBe('Idle');
+    expect(activityLine('failed', state({}), attention({ failure: 'exit 1' }))).toBe('exit 1');
+    expect(activityLine('failed', state({ error: 'spawn failed' }), undefined)).toBe('spawn failed');
+    expect(activityLine('stopped', state({}), undefined)).toBe('Stopped');
   });
 });
 
 describe('overlaps', () => {
   it('flags files two live sessions edited, naming the other session', () => {
-    const edit = { oldText: 'a', newText: 'b' };
-    const result = overlaps(
-      { a: { '/p/x.ts': edit, '/p/y.ts': edit }, b: { '/p/x.ts': edit }, c: { '/p/y.ts': edit } },
-      new Set(['a', 'b']),
-    );
+    const result = overlaps({ a: ['/p/x.ts', '/p/y.ts'], b: ['/p/x.ts'], c: ['/p/y.ts'] }, new Set(['a', 'b']));
     expect(result.get('a')).toEqual([{ path: '/p/x.ts', otherThreadId: 'b' }]);
     expect(result.get('b')).toEqual([{ path: '/p/x.ts', otherThreadId: 'a' }]);
     expect(result.has('c')).toBe(false);
   });
 });
 
-describe('transcriptLines', () => {
-  const options = [
-    { optionId: 'yes', name: 'Allow', kind: 'allow_once' as const },
-    { optionId: 'no', name: 'Reject', kind: 'reject_once' as const },
-  ];
-
-  it('writes messages, tool titles, permissions and turn ends, and skips thoughts', () => {
-    const lines = transcriptLines(
-      [
-        user(1, 'say hello from the helper'),
-        { id: id(), at: 2, kind: 'agent_thought', text: 'thinking hard' },
-        {
-          id: id(),
-          at: 2,
-          kind: 'tool_call',
-          toolCallId: 't1',
-          title: 'Run pnpm test',
-          toolKind: 'execute',
-          status: 'completed',
-          content: [],
-          locations: [],
-          rawInput: { command: 'pnpm test', env: { TOKEN: 'secret' } },
-        },
-        { ...permission('r1', 'Edit a.ts'), options, rawInput: { path: '/p/a.ts' } },
-        { ...permission('r2', 'Edit b.ts', { optionId: 'yes', auto: false }), options },
-        { ...permission('r3', 'Edit c.ts', { optionId: 'no', auto: false }), options },
-        { ...permission('r4', 'Edit d.ts'), outcome: 'cancelled' as const },
-        agent(3, 'hello from the helper'),
-        agent(4, '   '),
-        { id: id(), at: 5, kind: 'plan', entries: [{ content: 'a', priority: 'medium', status: 'completed' }] },
-        { id: id(), at: 6, kind: 'notice', severity: 'info', title: 'Agent restarted' },
-        turnEnd(7),
-      ],
-      50,
-    );
-    expect(lines).toEqual([
-      'User: say hello from the helper',
-      'Tool: Run pnpm test (completed)',
-      'Permission: Edit a.ts (waiting for the user)',
-      'Permission: Edit b.ts (allowed)',
-      'Permission: Edit c.ts (rejected)',
-      'Permission: Edit d.ts (withdrawn)',
-      'Agent: hello from the helper',
-      'Plan: 1 of 1 done',
-      'Notice: Agent restarted',
-      'Turn ended (end_turn)',
-    ]);
-    expect(lines.join('\n')).not.toMatch(/secret|pnpm test"|\/p\/a\.ts|thinking/);
+describe('terminalLines', () => {
+  it('tails the terminal and repeats the question when it waits for the user', () => {
+    const lines = ['banner', 'Working…', 'Done: hello from the helper'];
+    expect(terminalLines(state({ status: 'ready' }), lines, 2)).toEqual(['Working…', 'Done: hello from the helper']);
+    const waiting = terminalLines(state({ status: 'needs_input', lastLine: 'Proceed? (y/n)' }), ['banner'], 5);
+    expect(waiting).toEqual(['banner', 'Proceed? (y/n)']);
   });
 
-  it('keeps the latest lines and clips long messages', () => {
-    const events = [user(1, 'one'), agent(2, 'x'.repeat(5000)), user(3, 'two')];
-    expect(transcriptLines(events, 1)).toEqual(['User: two']);
-    expect(transcriptLines(events, 0)).toEqual(['User: two']);
-    expect(transcriptLines(events, 2)[0]).toHaveLength('Agent: '.length + 4000 + 1);
+  it('clips very long lines', () => {
+    const long = 'x'.repeat(5000);
+    expect(terminalLines(state({}), [long], 5)[0]).toHaveLength(4001);
   });
 });
 

@@ -5,7 +5,7 @@ import { expect, test, type ElectronApplication, type Page } from '@playwright/t
 import type { ThreadSummary } from '@arbora/shared';
 import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, startAgent, tempUserData } from './app';
 
-const FAKE_AGENT = resolve(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
+const FAKE_AGENT = resolve(DESKTOP_ROOT, 'e2e/fake-terminal-agent.mjs');
 const FAKE_ID = 'fake';
 
 function tempProject(): string {
@@ -25,7 +25,6 @@ function writeSettings(userData: string, extra: Record<string, unknown> = {}): v
       version: 3,
       agents: {
         custom: [{ id: FAKE_ID, name: 'Fake agent', command: process.execPath, args: [FAKE_AGENT], env: {} }],
-        permissions: {},
         defaultAgent: FAKE_ID,
         ...checkedAgents([FAKE_ID]),
       },
@@ -210,15 +209,27 @@ test.describe('Stage 9 agent groups and attention', () => {
       );
       await expect.poll(async () => (await threads(page)).find((t) => t.id === first.id)?.groupId).toBe('ui');
 
-      // A permission card counts as "needs you" until it is answered.
-      await page.getByTestId('composer-input').fill('add a comment to `App.tsx`');
+      // A question in the agent's terminal counts as "needs you" until it is answered.
+      await page.getByTestId('composer-input').fill('ask');
       await page.getByTestId('composer-input').press('Enter');
-      await expect(page.getByTestId('permission-card').first()).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'needs_input', {
+        timeout: 20_000,
+      });
       await expect(page.getByTestId('attention-badge')).toHaveText('1');
       await expect(page.getByTestId('app')).toHaveAttribute('data-last-cue', /^permission:/);
-      await page.getByTestId('permission-allow_once').first().click();
-      await expect(page.getByTestId('diff').first()).toBeVisible({ timeout: 20_000 });
-      await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready');
+      await page.evaluate(
+        (threadId) =>
+          window.arbora.invoke('agent.getThread', { threadId }).then((thread) => {
+            if (thread?.state.terminalId) {
+              return window.arbora.invoke('terminal.write', { id: thread.state.terminalId, data: 'y\r' });
+            }
+            return undefined;
+          }),
+        first.id,
+      );
+      await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', {
+        timeout: 20_000,
+      });
       // Once the window has focus with the thread on screen, its finish counts as seen.
       await focusWindow(app);
       await expect(page.getByTestId('attention-badge')).toHaveCount(0);
@@ -229,15 +240,7 @@ test.describe('Stage 9 agent groups and attention', () => {
       if (!second) throw new Error('no second thread');
       await page.locator(`[data-testid="grove-row"][data-thread-id="${first.id}"]`).click();
       await expect(page.getByTestId('grove-pane')).toHaveAttribute('data-thread-id', first.id);
-      await page.evaluate(
-        (threadId) =>
-          window.arbora.invoke('agent.prompt', {
-            threadId,
-            blocks: [{ type: 'text', text: 'hello' }],
-            attachments: [],
-          }),
-        second,
-      );
+      await page.evaluate((threadId) => window.arbora.invoke('agent.sendPrompt', { threadId, text: 'hello' }), second);
       await expect(page.getByTestId('attention-badge')).toHaveText('1', { timeout: 20_000 });
       await page.keyboard.press('ControlOrMeta+Alt+A');
       await expect(page.getByTestId('grove-pane')).toHaveAttribute('data-thread-id', second);

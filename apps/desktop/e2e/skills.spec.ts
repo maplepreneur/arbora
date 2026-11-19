@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { checkedAgents, DESKTOP_ROOT, launch, startAgent, tempUserData } from './app';
 
-const FAKE_AGENT = join(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
+const FAKE_AGENT = join(DESKTOP_ROOT, 'e2e/fake-terminal-agent.mjs');
 
 function writeSkill(dir: string, name: string, description: string): void {
   mkdirSync(dir, { recursive: true });
@@ -144,14 +144,29 @@ test.describe('Skills and MCP servers', () => {
       await expect(page.getByTestId('mcp-enabled-from-claude')).toHaveAttribute('aria-checked', 'false');
 
       await page.getByTestId('settings-close').click();
+      // The agent reaches Arbora's browser tools through the MCP env; the saved server list stays
+      // for the agent's own CLI config and no longer rides the removed ACP session.
       await startAgent(page, 'fake');
+      const threadId = await page
+        .locator('[data-testid="grove-row"][aria-current="true"]')
+        .getAttribute('data-thread-id');
+      if (!threadId) throw new Error('no selected agent thread');
       const input = page.getByTestId('composer-input');
-      await input.fill('list mcp servers');
+      await input.fill('mcp list');
       await input.press('Enter');
-      const reply = page.getByTestId('agent-message').last();
-      await expect(reply).toContainText('docs (not connected)', { timeout: 20_000 });
-      await expect(reply).toContainText('arbora-browser');
-      await expect(reply).not.toContainText('from-claude');
+      await expect
+        .poll(
+          async () =>
+            page.evaluate(async (id): Promise<string> => {
+              const thread = (await window.arbora.invoke('agent.listThreads')).find((t) => t.id === id);
+              const terminalId = thread?.state.terminalId;
+              if (!terminalId) return '';
+              const response = await window.arbora.invoke('terminal.scrollback', { id: terminalId });
+              return typeof response === 'string' ? response : response.data;
+            }, threadId),
+          { timeout: 20_000 },
+        )
+        .toContain('arbora-browser');
     } finally {
       await app.close();
       search.server.close();

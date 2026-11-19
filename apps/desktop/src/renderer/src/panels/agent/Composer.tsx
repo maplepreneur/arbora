@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { Image as ImageIcon, Paperclip, Send, Square, X } from 'lucide-react';
-import type { Attachment, AvailableCommand, ThreadSummary } from '@arbora/shared';
+import type { Attachment, ThreadSummary } from '@arbora/shared';
 import { showToast } from '../../store';
 import {
   addAttachments,
@@ -13,18 +13,6 @@ import {
   useAgents,
 } from '../../agent-store';
 import { pastedImageOnly } from './paste';
-
-/** The slash command being typed at the start of the composer, if any. */
-export function slashQuery(text: string, caret: number): string | null {
-  const head = text.slice(0, caret);
-  const match = /^\/([\w-]*)$/.exec(head);
-  return match ? (match[1] ?? '') : null;
-}
-
-export function matchCommands(commands: readonly AvailableCommand[], query: string): AvailableCommand[] {
-  const lower = query.toLowerCase();
-  return commands.filter((c) => c.name.toLowerCase().startsWith(lower)).slice(0, 8);
-}
 
 const NON_TEXT_INPUTS: ReadonlySet<string> = new Set([
   'checkbox',
@@ -61,23 +49,13 @@ export function Composer({
   const attachments = useAgents((s) => s.attachments[thread.id] ?? NO_ATTACHMENTS);
   const focusRequest = useAgents((s) => s.composerFocusRequest);
   const textarea = useRef<HTMLTextAreaElement>(null);
-  const [caret, setCaret] = useState(0);
-  // The highlighted suggestion is tied to the query it was chosen for, so a new query resets it.
-  const [selection, setSelection] = useState<{ query: string | null; index: number }>({ query: null, index: 0 });
   const [dragging, setDragging] = useState(false);
 
   const status = thread.state.status;
-  const busy = status === 'prompting';
+  const busy = status === 'working';
   const prompt = name ? `Ask ${name}…` : 'Message the agent…';
   const stoppable = isStoppable(status);
   const canSend = (draft.trim().length > 0 || attachments.length > 0) && !busy && status !== 'starting';
-  const query = slashQuery(draft, caret);
-  const suggestions = useMemo(
-    () => (query === null ? [] : matchCommands(thread.state.availableCommands, query)),
-    [query, thread.state.availableCommands],
-  );
-  const selected = selection.query === query ? Math.min(selection.index, Math.max(0, suggestions.length - 1)) : 0;
-  const setSelected = (update: (current: number) => number): void => setSelection({ query, index: update(selected) });
 
   const handledRequest = useRef(focusRequest);
   useEffect(() => {
@@ -108,23 +86,10 @@ export function Composer({
     element.style.overflowY = wanted > MAX_COMPOSER_HEIGHT ? 'auto' : 'hidden';
   }, [draft]);
 
-  const accept = (command: AvailableCommand): void => {
-    const rest = draft.slice(caret);
-    const next = `/${command.name} ${rest.replace(/^\s+/, '')}`;
-    setDraft(thread.id, next);
-    requestAnimationFrame(() => {
-      const el = textarea.current;
-      if (!el) return;
-      const position = command.name.length + 2;
-      el.setSelectionRange(position, position);
-      setCaret(position);
-    });
-  };
-
   const submit = async (): Promise<void> => {
     if (!canSend) return;
     const result = await sendPrompt(thread.id);
-    if (result.error && result.error !== 'auth_required') showToast(result.error);
+    if (result.error) showToast(result.error);
   };
 
   const pick = async (): Promise<void> => {
@@ -190,81 +155,18 @@ export function Composer({
         </ul>
       )}
       <div className="relative">
-        {suggestions.length > 0 && (
-          <ul
-            className="absolute right-0 bottom-full left-0 mb-1 overflow-hidden rounded border border-border bg-bg-elevated shadow-lg"
-            data-testid="slash-suggestions"
-            role="listbox"
-          >
-            {suggestions.map((command, index) => (
-              <li
-                key={command.name}
-                role="option"
-                aria-selected={index === selected}
-                className={clsx(
-                  'flex cursor-pointer items-baseline gap-2 px-2 py-1 text-[12px]',
-                  index === selected && 'bg-bg-muted',
-                )}
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  accept(command);
-                }}
-                onMouseEnter={() => setSelected(() => index)}
-              >
-                <span className="font-mono">/{command.name}</span>
-                {command.input?.hint && <span className="font-mono text-fg-subtle">{command.input.hint}</span>}
-                <span className="ml-auto truncate text-[11px] text-fg-subtle">{command.description}</span>
-              </li>
-            ))}
-          </ul>
-        )}
         <textarea
           ref={textarea}
           value={draft}
           rows={1}
           data-testid="composer-input"
-          placeholder={
-            status === 'auth_required'
-              ? 'Log in first (see above)'
-              : status === 'starting'
-                ? 'Starting the agent…'
-                : thread.state.availableCommands.length > 0
-                  ? `${prompt} ( / for commands)`
-                  : prompt
-          }
+          placeholder={status === 'starting' ? 'Starting the agent…' : `${prompt} (or type in its terminal)`}
           className="block max-h-[200px] w-full resize-none overflow-y-hidden rounded border border-border bg-bg px-2 py-1.5 pr-16 agent-text outline-none select-text focus:border-accent"
           onChange={(event) => {
             setDraft(thread.id, event.target.value);
-            setCaret(event.target.selectionStart);
           }}
-          onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
           onPaste={onPaste}
           onKeyDown={(event) => {
-            if (suggestions.length > 0) {
-              if (event.key === 'ArrowDown') {
-                event.preventDefault();
-                setSelected((s) => (s + 1) % suggestions.length);
-                return;
-              }
-              if (event.key === 'ArrowUp') {
-                event.preventDefault();
-                setSelected((s) => (s - 1 + suggestions.length) % suggestions.length);
-                return;
-              }
-              if (event.key === 'Tab' || (event.key === 'Enter' && !event.shiftKey)) {
-                const command = suggestions[selected];
-                if (command) {
-                  event.preventDefault();
-                  accept(command);
-                  return;
-                }
-              }
-              if (event.key === 'Escape') {
-                event.preventDefault();
-                setDraft(thread.id, draft.replace(/^\//, ''));
-                return;
-              }
-            }
             if (event.key === 'Escape' && stoppable) {
               event.preventDefault();
               void stopAgent(thread.id);

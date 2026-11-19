@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { access, lstat, mkdir, open, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { dirname, extname, join } from 'node:path';
-import { resolveInsideRoot } from '@arbora/acp-client';
+import { resolveInsideRoot } from '@arbora/shared';
 import {
   applyEol,
   detectEol,

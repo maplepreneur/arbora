@@ -3,7 +3,6 @@ import { join } from 'node:path';
 import {
   detectProjectCommands,
   detectProjectFramework,
-  mcpServersFor,
   packageManagerFor,
   type Events,
   type PayloadOf,
@@ -11,13 +10,13 @@ import {
   type ProjectCommand,
   type ProjectFramework,
   type ProjectSettings,
+  type AgentRegistry,
 } from '@arbora/shared';
-import type { AgentRegistry } from '@arbora/acp-client';
 import { AgentService } from './agent/agent-service.js';
 import { findCandidates } from './agent-mode/source-search.js';
 import type { BrowserService } from './browser/browser-service.js';
 import { ArboraToolHost, type PermissionAnswer } from './mcp/browser-tool-host.js';
-import { openBrowserTools, type ShimCommand } from './mcp/browser-tools.js';
+import { openBrowserTools } from './mcp/browser-tools.js';
 import { GroveHost } from './mcp/grove-tool-host.js';
 import { readProjectSettings, updateProjectSettingsFile } from './project-settings.js';
 import { writeSkillFile } from './mcp/skill-file.js';
@@ -53,13 +52,12 @@ export interface ProjectRuntimeOptions {
   readonly settings: SettingsStore;
   readonly agentRegistry: AgentRegistry;
   readonly shellEnvironment: ShellEnvironment;
-  readonly mcpShim: ShimCommand;
   readonly appVersion: string;
   readonly host: ProjectRuntimeHost;
 }
 
 /**
- * The terminals, dev server and ACP agents of one project folder. Windows share one of these
+ * The terminals, dev server and terminal agents of one project folder. Windows share one of these
  * instead of each starting its own, so Grove can keep several projects running in one window.
  */
 export class ProjectRuntime {
@@ -87,6 +85,9 @@ export class ProjectRuntime {
         data: (id, data) => host.send('terminal.data', { projectPath: path, id, data }),
         changed: (terminals) => host.send('terminal.changed', { projectPath: path, terminals }),
         url: (id, url) => {
+          // An agent CLI is not a dev server: URLs it prints (its MCP endpoint, docs) are not
+          // opened in the browser panel, and never become the saved dev URL.
+          if (this.terminals.get(id)?.kind === 'agent') return;
           this.devServer.noteUrl(id, url);
           const opened = host.suggestUrl(url);
           host.send('terminal.urlDetected', { projectPath: path, id, url, opened });
@@ -128,25 +129,13 @@ export class ProjectRuntime {
         const url = host.browser()?.getState().url;
         return url && /^https?:\/\//.test(url) ? url : null;
       },
-      defaultModel: (agentId) => settings.get().agents.defaultModels[agentId],
       usage: this.usage,
-      permissions: {
-        get: () => settings.get().agents.permissions,
-        remember: (key, decision) =>
-          settings.update((current) => ({
-            ...current,
-            agents: { ...current.agents, permissions: { ...current.agents.permissions, [key]: decision } },
-          })),
-      },
       mcp: (threadId) => this.openBrowserTools(options, threadId),
-      mcpTransport: process.env['ARBORA_MCP_TRANSPORT'] === 'stdio' ? 'stdio' : 'auto',
-      userMcpServers: (agentId, http) => mcpServersFor(settings.get().mcpServers, agentId, http),
       events: {
         threadsChanged: (threads) => host.send('agent.threadsChanged', { projectPath: path, threads }),
         groupsChanged: (groups) => host.send('agent.groupsChanged', { projectPath: path, groups }),
-        threadEvents: (threadId, changes) => host.send('agent.threadEvents', { projectPath: path, threadId, changes }),
         threadState: (threadId, state) => host.send('agent.threadState', { projectPath: path, threadId, state }),
-        log: (threadId, entry) => host.send('agent.log', { projectPath: path, threadId, entry }),
+        confirmation: (request) => host.send('agent.confirmation', { projectPath: path, request }),
         fileChanged: (threadId, file) => host.send('agent.fileChanged', { projectPath: path, threadId, path: file }),
       },
     });
@@ -162,7 +151,11 @@ export class ProjectRuntime {
     return this.agents
       .listThreads()
       .some(
-        (thread) => thread.archivedAt === null && thread.state.status !== 'idle' && thread.state.status !== 'error',
+        (thread) =>
+          thread.archivedAt === null &&
+          thread.state.status !== 'idle' &&
+          thread.state.status !== 'ready' &&
+          thread.state.status !== 'error',
       );
   }
 
@@ -215,10 +208,9 @@ export class ProjectRuntime {
         return findCandidates(projectPath, terms, { rg });
       },
       askPermission: async (request): Promise<PermissionAnswer | null> => {
-        const kind = await this.agents.requestToolPermission(threadId, {
+        const kind = await this.agents.requestConfirmation(threadId, {
           title: request.title,
           detail: request.detail,
-          toolKind: request.tool === 'navigate' ? 'fetch' : 'execute',
           persistent: request.tool !== 'navigate',
         });
         switch (kind) {
@@ -238,10 +230,8 @@ export class ProjectRuntime {
           }
         }
       },
-      preview: (preview) => this.agents.addBrowserPreview(threadId, preview),
-      trace: (step) => this.agents.addActionTrace(threadId, step),
     });
-    return openBrowserTools(toolHost, options.mcpShim, options.appVersion, { grove });
+    return openBrowserTools(toolHost, options.appVersion, { grove });
   }
 }
 

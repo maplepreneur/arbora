@@ -17,7 +17,7 @@ async function fixWithAgent(prompt: string): Promise<void> {
     return;
   }
   try {
-    await createThread(task.agentId, task.model ?? undefined);
+    await createThread(task.agentId);
     const threadId = useAgents.getState().activeThreadId;
     if (!threadId) return;
     await showAgentThread(threadId);

@@ -1,6 +1,6 @@
 # Arbora: App Plan
 
-Arbora is a cross-platform desktop app (Linux Arch/Debian, macOS, Windows) for building web apps by pointing at the running app instead of editing code. It is inspired by Cursor's design mode. The main panel is an embedded browser showing your dev server. A side panel hosts any ACP-compatible coding agent. Two modes act on the live page: agent mode (point at a component, describe a change) and design mode (visually edit, then hand the diff to the agent). A second workspace, Grove, replaces that layout with a manager for many ACP agents at once. The browser workspace stays the default.
+Arbora is a cross-platform desktop app (Linux Arch/Debian, macOS, Windows) for building web apps by pointing at the running app instead of editing code. It is inspired by Cursor's design mode. The main panel is an embedded browser showing your dev server. A side panel hosts any coding-agent CLI (`claude`, `codex`, `kimi`, `grok`, `opencode`, `agy` or a custom one) running interactively in its own terminal. Two modes act on the live page: agent mode (point at a component, describe a change) and design mode (visually edit, then hand the diff to the agent). A second workspace, Grove, replaces that layout with a manager for many agent terminals at once. The browser workspace stays the default.
 
 The companion document [BUILD_STAGES.md](./BUILD_STAGES.md) breaks the build into stages with instructions, gotchas and a progress tracker. This file is the "what and why"; that file is the "how and when".
 
@@ -8,11 +8,11 @@ The companion document [BUILD_STAGES.md](./BUILD_STAGES.md) breaks the build int
 
 Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents must update this section and that table at the end of every piece of work.
 
-**Now:** Stages 0–9 are `Done`. Stage 9 is `Done` for now (6 Nov 2026, `v0.0.6`, [PR #90](https://github.com/maplepreneur/arbora/pull/90)). Launch checks wait: **Cut a beta**, the packaged memory budget, a macOS `.dmg` open check, fresh installs per OS, and `arch-ok`. Stage 10 (Grove) is `In progress (PR #93, merged)` and is not `arch-ok`. Stage 11 (Stretch) is `In progress (PR #88, merged)` on `beta` ([PR #88](https://github.com/maplepreneur/arbora/pull/88), Linux CI [run 42239297446](https://github.com/maplepreneur/arbora/actions/runs/42239297446), green): the dev plugin ([PR #81](https://github.com/maplepreneur/arbora/pull/81)), worktrees ([PR #82](https://github.com/maplepreneur/arbora/pull/82)), Tailwind write-through ([PR #83](https://github.com/maplepreneur/arbora/pull/83)), design session history ([PR #84](https://github.com/maplepreneur/arbora/pull/84)), MCP action traces ([PR #85](https://github.com/maplepreneur/arbora/pull/85)), the opt-in TypeScript language server ([PR #86](https://github.com/maplepreneur/arbora/pull/86)) and source maps ([PR #87](https://github.com/maplepreneur/arbora/pull/87)). Local check of that combination on 6 Nov 2026: `pnpm typecheck`, `pnpm lint`, 812 unit tests, and e2e 56 passed / 1 skipped (the packaged memory budget). Not `arch-ok`. On 6 Nov 2026 Stage 12 dropped passwords and Stage 14 dropped its browser-extension catalog. Browser extensions are React, Vue and Svelte DevTools only. Stage 14 is coding tools, starting with Robocop. Antigravity (`agy acp`, CLI 1.5.2) and the settings reorganization are `In progress (PR #92, merged)` ([PR #92](https://github.com/maplepreneur/arbora/pull/92), merged on `beta`). `initialize`, `session/new` and a one-word prompt succeeded with a cached login. The Stage 3 file-edit matrix for it is not run. There is no Grove settings page: General, Agents and Keyboard hold the old Grove controls. Not `arch-ok`. Stage 12 is `In progress` with no pull request (`de95bdf` on `beta`): tabs can close down to none, reference tabs share `persist:arbora-web` (non-local cookies copied once from existing project partitions), and granting a tab lets the open thread read it. The app tab stays the default tool target even when a reference tab is the one on screen. `BrowserTabs` now syncs live tab `preset` and `zoom` when writing `settings.json`, fixing the viewport-preset relaunch race. An e2e covers close-to-empty, that default, the refusal, a screenshot of the app tab while a reference tab is visible, and `browser_compare` after the grant. A copy of this machine's profile opened the FoodCycler file signed in beside an app tab. Svelte DevTools, the design-match card, grant chips and cross-project send are not built. Not `arch-ok`. Stage 16 is `In progress (PR #94, merged)`: local per-thread ledgers, priced turn rows, daily and per-prompt analytics, rolling agent allowances, Settings → Usage, exports, and session/PR badges are built and merged on `beta`. `pnpm typecheck`, `pnpm lint`, 847 unit tests, and the priced/context-only/restart and viewport-preset e2e pass. The Grove list row, real-agent usage notes and `arch-ok` remain; account sync stays 16b after Stage 15.
+**Now:** Stage 18 (Terminal agents) is `In progress` on branch `terminal-agents`: ACP is fully replaced. Agents run as their own interactive CLIs (`claude`, `codex`, `kimi`, `grok`, `opencode`, `agy`) in terminal tabs inside Arbora; prompts from the composer, agent mode (`Mod+K`), design mode and Grove are typed into those terminals as bracketed pastes; status (`starting`/`ready`/`working`/`needs_input`/`error`), the bell, notifications and attention derive from the terminal's output; Arbora's own confirmation cards (guarded browser tools, Grove helper starts) sit above the composer; and the browser-tools MCP server reaches each CLI through the `ARBORA_MCP_URL`/`ARBORA_MCP_TOKEN` environment variables. `packages/acp-client` and the `@agentclientprotocol/sdk` dependency are deleted; thread files are v2 (terminal tail; v1 files migrate to Stopped). Local check on 19 Nov 2026: `pnpm typecheck`, `pnpm lint`, 762 unit tests, and the full e2e suite against the reference fake CLI (`e2e/fake-terminal-agent.mjs`). Not `arch-ok`, and a real-agent matrix run is left. Earlier: Stages 0–9 are `Done` (Stage 9 `Done` for now, 6 Nov 2026, `v0.0.6`, [PR #90](https://github.com/maplepreneur/arbora/pull/90)); Stage 10 (Grove) is `In progress (PR #93, merged)`; Stage 11 (Stretch) is `In progress (PR #88, merged)` on `beta`; Stage 12 (tabs) is `In progress` with no pull request (`de95bdf` on `beta`); Antigravity and the settings reorganization are `In progress (PR #92, merged)`; Stage 16 (usage) is `In progress (PR #94, merged)` with the ledger now recording per-turn working time (terminal agents report no tokens). Stages 13–15 and 17 stay specified and not started.
 
-**Next:** Finish the rest of Stage 12 (Svelte DevTools, favicon, discard, strip collapse, the design-match card, grant chips, cross-project send, password redaction), then `arch-ok`. `arch-ok` for Grove and for Stage 11 on Omarchy/Hyprland, and the Appendix B Grove row with a real agent, stay open. Stages 13–15 and 17 stay specified and not started. Stage 16 continues with its Grove list row and real-agent checks; 16b waits for Stage 15. Stages 16 and 17 were specified in [PR #80](https://github.com/maplepreneur/arbora/pull/80). On 6 Nov 2026 Stage 12 dropped passwords and Stage 14 dropped its browser-extension catalog. Browser extensions are React, Vue and Svelte DevTools only. Stage 14 is coding tools, starting with Robocop.
+**Next:** `arch-ok` for Stage 18 on Omarchy/Hyprland and one real-agent matrix run (a built-in CLI making an edit through its terminal), then the Stage 18 PR into `beta`. Stage 12's remaining items (Svelte DevTools, favicon, discard, strip collapse, the design-match card, grant chips, cross-project send, password redaction) follow; `arch-ok` remains open for Grove (Stage 10), Stage 11 and Stage 16's Grove list row and real-agent notes. Stages 13–15 and 17 stay specified and not started; Stage 16b waits for Stage 15.
 
-**Blockers / open:** Grove, Stage 11 and Stage 16 have no `arch-ok`; Stage 16 also needs real-agent usage notes and its Grove list row. Stage 9 launch checks stay parked. Dependabot [#64](https://github.com/maplepreneur/arbora/pull/64) (`@types/node` 22 → 26) stays open: CI and `engines` are Node 22, and Electron 45 runs Node 24. `v0.0.6` is the latest stable. Distribution is unsigned GitHub Releases. Until someone runs **Cut a beta**, the Beta channel only offers stable releases. Stage 6's Appendix B design-save row is still empty. Claude Code and Codex stay built-in and untested. The macOS e2e clipboard step is still flaky. Agent mode's target picker is not filtered by sign-in yet. The Stage 8 scratch repo cannot be deleted with the current `gh` token.
+**Blockers / open:** Stage 18, Grove, Stage 11 and Stage 16 have no `arch-ok`; Stage 18 also needs its real-agent matrix run. Stage 9 launch checks stay parked (**Cut a beta**, the packaged memory budget, a macOS `.dmg` open check, fresh installs per OS). Dependabot [#64](https://github.com/maplepreneur/arbora/pull/64) (`@types/node` 22 → 26) stays open: CI and `engines` are Node 22, and Electron 45 runs Node 24. `v0.0.6` is the latest stable; distribution is unsigned GitHub Releases; the Beta channel offers only stable releases until someone runs **Cut a beta**. Stage 6's Appendix B design-save row is still empty. Terminal agents report no token counts, so the usage dashboard shows working time only. The macOS e2e clipboard step is still flaky.
 
 ---
 
@@ -21,8 +21,8 @@ Live tracker: [BUILD_STAGES.md § Progress](./BUILD_STAGES.md#progress). Agents 
 | Area | Summary |
 | --- | --- |
 | Browser panel | Embedded Chromium showing the user's dev server. URL bar, navigation, viewport presets, screenshots, console/network capture, React/Vue/Svelte DevTools. |
-| Agent panel | Any ACP agent (Claude Code, Codex, Kimi Code, Grok Build, OpenCode, Antigravity, custom). Streaming messages, tool calls, diffs, permissions, plans, slash commands. Docked beside the browser. |
-| Grove | A second workspace that takes the whole window: every ACP session in the project with a live status, one transcript, a task-first launcher, and helper agents a lead agent can start and steer over MCP. Title-bar switch, hotkeys, a default agent, and the bell when an agent needs you. |
+| Agent panel | Any coding-agent CLI (Claude Code, Codex, Kimi Code, Grok Build, OpenCode, Antigravity, custom), running interactively in its own terminal tab. Arbora types prompts into it, derives status and attention from its output, and shows Arbora's own confirmation cards above the composer. Docked beside the browser. |
+| Grove | A second workspace that takes the whole window: every agent terminal in the project with a live status, one terminal pane, a task-first launcher, and helper agents a lead agent can start and steer over MCP. Title-bar switch, hotkeys, a default agent, and the bell when an agent needs you. |
 | Agent mode (`Mod+K`) | Inspector-style hover/click on components. Click opens a prompt popover. Submit sends prompt + component source + screenshot to the agent. |
 | Browser control for agents | An MCP server exposing browser and dev-server tools (navigate, click, type, scroll, screenshot, snapshot, logs, restart) so the agent can verify its own work. |
 | Design mode (`Mod+D`) | Webflow-like visual editing (text, spacing, layout, typography, colors, structure). Save sends before/after screenshots + change list + component sources to the agent. |
@@ -68,8 +68,8 @@ Tauri uses the OS webview (WebKitGTK on Linux, WKWebView on macOS, WebView2 on W
 | Package manager | pnpm workspaces | Monorepo with `apps/` and `packages/` |
 | Renderer | React 19, Tailwind CSS, Radix primitives, `react-resizable-panels`, Zustand, `cmdk` | Typed IPC validated with `zod` |
 | Browser panel | `WebContentsView` (not `<webview>`), `webContents.debugger` (CDP), `session.loadExtension` | Persistent partition `persist:arbora-browser` |
-| Agents | `@agentclientprotocol/sdk` v2.x, stable v1 default entrypoint, fluent `client({ name })` API | Agents spawned as stdio child processes |
-| Browser control | MCP server with `@modelcontextprotocol/sdk`, Streamable HTTP on `127.0.0.1`, per-session bearer token | Registered via ACP `session/new` `mcpServers` |
+| Agents | Their own CLIs (`claude`, `codex`, `kimi`, `grok`, `opencode`, `agy`), spawned as interactive terminals | Prompts ride bracketed paste; status and attention derive from output |
+| Browser control | MCP server with `@modelcontextprotocol/sdk`, Streamable HTTP on `127.0.0.1`, per-session bearer token | Reached through `ARBORA_MCP_URL` / `ARBORA_MCP_TOKEN` env vars |
 | Terminal | `node-pty` + `@xterm/xterm` (+ fit, webgl, search addons) | |
 | Git | `simple-git` over system `git`; Octokit + OAuth device flow (reuse `gh` auth when present) | |
 | Editor | CodeMirror 6 (`@codemirror/lang-*`, `@codemirror/lint`, `@codemirror/merge`) | LSP via `@codemirror/lsp-client` opt-in only |
@@ -78,17 +78,19 @@ Tauri uses the OS webview (WebKitGTK on Linux, WKWebView on macOS, WebView2 on W
 | Testing | Vitest (unit), Playwright for Electron (e2e) against `fixtures/` apps | Fixtures: Vite+React, Next.js, Nuxt, plain HTML |
 | Primary dev target | Arch Linux, Omarchy, Hyprland (Wayland) | Electron runs natively on Wayland via `ELECTRON_OZONE_PLATFORM_HINT=auto` (set by Omarchy) |
 
-### Agent launch commands (verified Oct 2026, all stdio JSON-RPC)
+### Agent launch commands (terminal CLIs, since Stage 18)
 
-| Agent | Command | Auth |
-| --- | --- | --- |
-| Claude Code | `npx -y @zed-industries/claude-code-acp` | Claude login or `ANTHROPIC_API_KEY` |
-| Codex | `npx -y @agentclientprotocol/codex-acp` | ChatGPT login, `CODEX_API_KEY` or `OPENAI_API_KEY` |
-| Kimi Code | `kimi acp` | Prior `kimi` login. Supports image prompts and http/sse/stdio MCP |
-| Grok Build | `grok agent stdio` (or `npx @xai-official/grok agent stdio`) | `grok login` or `XAI_API_KEY`; auth method ids `xai.api_key` / `cached_token` |
-| OpenCode | `opencode acp` (OpenCode v2+) | `opencode auth login` (auth method id `opencode-login`). Does its own fs, shell and permissions; one `model` config option covering every configured provider |
-| Antigravity | `agy acp` | `agy` or `agy acp --login` (Google). Auth method ids include `oauth-personal` and `gemini-api-key`. CLI 1.5.2 does not advertise HTTP MCP, so browser tools use the stdio shim. Model, thinking and mode come from `configOptions` |
-| Custom | User-supplied `command`, `args`, `env` | Same shape as Zed's `agent_servers` |
+| Agent | Terminal command | One-off tasks | Auth (inside the terminal) |
+| --- | --- | --- | --- |
+| Claude Code | `claude` | `-p` | Claude login or `ANTHROPIC_API_KEY` |
+| Codex | `codex` | `exec` | ChatGPT login, `CODEX_API_KEY` or `OPENAI_API_KEY` |
+| Kimi Code | `kimi` | — (unsupported until a print mode exists) | `kimi` then `/login` |
+| Grok Build | `grok` | — (unsupported until a print mode exists) | `grok login` or `XAI_API_KEY` |
+| OpenCode | `opencode` | `run` | `opencode auth login`. Does its own fs, shell and permissions |
+| Antigravity | `agy` | — (unsupported until a print mode exists) | `agy` (Google). Configure its MCP from the `ARBORA_MCP_URL` env var |
+| Custom | User-supplied `command`, `args`, `env` | Optional `task` args | Log in inside the terminal |
+
+Every agent also gets `ARBORA_MCP_URL` and `ARBORA_MCP_TOKEN` (Arbora's browser-tools MCP server, Streamable HTTP) and, for lead sessions, `ARBORA_MCP_GROVE=1`; the preface and `.arbora/SKILL.md` document the env contract.
 
 ---
 
@@ -99,7 +101,7 @@ flowchart LR
   subgraph main [Electron Main Process]
     AppShell[WindowManager and Layout IPC]
     BrowserSvc[BrowserService: WebContentsView + CDP]
-    AgentSvc[AgentService: ACP client per session]
+    AgentSvc[AgentService: agent CLI per terminal]
     McpSrv[ArboraMcpServer: browser and devserver tools]
     PtySvc[TerminalService: node-pty]
     GitSvc[GitService: simple-git + Octokit]
@@ -118,7 +120,7 @@ flowchart LR
   subgraph page [User web app in WebContentsView]
     Preload[arbora browser-preload: inspector and design overlays, framework detection]
   end
-  Agents[ACP agents: claude-code-acp, codex-acp, kimi acp, grok agent stdio, agy acp]
+  Agents[Agent CLIs in ptys: claude, codex, kimi, grok, opencode, agy]
   Layout <-->|typed IPC| AppShell
   BrowserUI <--> BrowserSvc
   BrowserSvc <-->|CDP + ipc| Preload
@@ -147,12 +149,12 @@ flowchart LR
 1. User presses `Mod+K`; main tells the browser preload to enable the inspector overlay.
 2. Hover highlights elements with box model and component label (e.g. `Button <- CardHeader <- Card`).
 3. Click freezes selection and opens a prompt popover (rendered by the renderer, anchored using element rect forwarded from preload).
-4. On submit, `BrowserService` resolves component context (see 4.3), captures a screenshot with the element outlined, and the renderer composes an ACP prompt with text, image and resource_link blocks.
-5. `AgentService.prompt(sessionId, blocks)` streams updates back to the agent panel.
+4. On submit, `BrowserService` resolves component context (see 4.3), captures a screenshot with the element outlined, and main composes a Markdown prompt (sections, file paths, the screenshot's `.arbora/screenshots/` path) with the request text.
+5. `AgentService.sendPrompt(threadId, text)` types it into the agent's terminal as one bracketed paste; progress arrives through `agent.threadState`.
 
 **Agent verification loop**
 
-1. Agent edits files (via its own tools or ACP `fs/write_text_file`).
+1. Agent edits files with its own tools; the project watcher attributes files changed during the turn to it (the "Agent changes" group).
 2. The dev server hot-reloads.
 3. Agent calls MCP tools `browser_screenshot`, `browser_snapshot`, `devserver_logs`, compares with the request, iterates.
 4. Agent finishes with a summary and a final screenshot.

@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { nativeImage } from 'electron';
 import { composeDesignPrompt, type PromptScreenshot } from '@arbora/browser-bridge';
 import {
@@ -13,7 +12,6 @@ import {
   renderSessionMarkdown,
   type DesignSessionDetail,
   type AgentModeTarget,
-  type ContentBlock,
   type DesignCommand,
   type DesignOp,
   type DesignSessionSummary,
@@ -389,7 +387,7 @@ export class DesignModeService {
     if (!agents) throw new Error('Open a project first');
     if (target.type === 'thread') {
       const status = agents.getThread(target.threadId)?.state.status;
-      if (status === 'prompting')
+      if (status === 'working')
         throw new Error('That thread is still working. Stop it first, or send to a new thread.');
     }
     return agents;
@@ -401,8 +399,7 @@ export class DesignModeService {
    */
   private send(target: AgentModeTarget, input: DesignDelivery): string {
     const agents = this.checkTarget(target);
-    const threadId =
-      target.type === 'thread' ? target.threadId : agents.createThread(target.agentId, { model: target.model }).id;
+    const threadId = target.type === 'thread' ? target.threadId : agents.createThread(target.agentId).id;
     void this.deliver(agents, threadId, input).catch((error: unknown) => {
       console.warn(`[design] prompt failed: ${(error as Error).message}`);
     });
@@ -410,8 +407,7 @@ export class DesignModeService {
   }
 
   private async deliver(agents: AgentService, threadId: string, input: DesignDelivery): Promise<void> {
-    const capabilities = await agents.promptCapabilities(threadId);
-    const blocks: ContentBlock[] = composeDesignPrompt({
+    const text = composeDesignPrompt({
       url: input.url,
       framework: input.framework,
       approach: input.approach,
@@ -419,10 +415,8 @@ export class DesignModeService {
       sources: input.sources,
       before: input.before,
       after: input.after,
-      imageSupported: capabilities?.image ?? false,
-      toUri: (path) => pathToFileURL(path).toString(),
     });
-    await agents.prompt(threadId, blocks, [], { title: input.title });
+    await agents.sendPrompt(threadId, text, { title: input.title });
   }
 
   private prepare(browser: BrowserService, shot: ScreenshotResult, label: string): PromptScreenshot {
@@ -430,32 +424,22 @@ export class DesignModeService {
     const size = fitWithin(shot.width, shot.height, MAX_IMAGE_EDGE);
     const sized = size.width === shot.width ? image : image.resize({ ...size, quality: 'best' });
     let data = sized.toPNG();
-    let mimeType = 'image/png';
     let extension: 'png' | 'jpg' = 'png';
     if (data.byteLength > MAX_PNG_BYTES) {
       data = sized.toJPEG(JPEG_QUALITY);
-      mimeType = 'image/jpeg';
       extension = 'jpg';
     }
     const path = browser.writeScreenshotFile(data, label, extension);
     return {
       path,
       relative: projectRelative(path, this.options.projectPath),
-      uri: pathToFileURL(path).toString(),
-      mimeType,
-      data: data.toString('base64'),
     };
   }
 
   private shotFromFile(path: string): PromptScreenshot {
-    const data = readFileSync(path);
-    const mimeType = path.endsWith('.jpg') ? 'image/jpeg' : 'image/png';
     return {
       path,
       relative: projectRelative(path, this.options.projectPath),
-      uri: pathToFileURL(path).toString(),
-      mimeType,
-      data: data.toString('base64'),
     };
   }
 

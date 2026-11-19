@@ -4,12 +4,7 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'electron-vite';
 
 /** Workspace packages export TypeScript source, so they must be bundled rather than externalised. */
-const WORKSPACE_PACKAGES = [
-  '@arbora/shared',
-  '@arbora/acp-client',
-  '@arbora/browser-bridge',
-  '@arbora/mcp-browser-server',
-];
+const WORKSPACE_PACKAGES = ['@arbora/shared', '@arbora/browser-bridge', '@arbora/mcp-browser-server'];
 
 export default defineConfig(({ mode }) => {
   const testBuild = mode === 'test';

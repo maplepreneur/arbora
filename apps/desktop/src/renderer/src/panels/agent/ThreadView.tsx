@@ -1,86 +1,74 @@
-import { useMemo } from 'react';
+import { useEffect, useRef } from 'react';
 import clsx from 'clsx';
-import {
-  ArrowLeft,
-  Bot,
-  Cpu,
-  Gauge,
-  KeyRound,
-  List,
-  Loader2,
-  RotateCcw,
-  ScrollText,
-  ShieldCheck,
-  SlidersHorizontal,
-  Square,
-  type LucideIcon,
-} from 'lucide-react';
-import { CommandId, type SessionConfigOption, type ThreadSummary } from '@arbora/shared';
-import { useChordLabel } from '../../keybindings';
-import {
-  modeControl,
-  sessionControlLabel,
-  sessionControlRole,
-  type SessionControlRole,
-  thinkingControl,
-} from '../../thread-controls';
-import { Picker, type PickerOption } from '../../components/Picker';
-import { showToast, useApp } from '../../store';
-import { isStoppable, showThreads, stopAgent, toggleLog, useAgents } from '../../agent-store';
-import { toggleDefaultModel, toggleFavoriteModel } from '../../agent-defaults';
-import { Composer } from './Composer';
-import { LogViewer } from './LogViewer';
+import { ArrowLeft, Loader2, RotateCcw, Square } from 'lucide-react';
+import type { ConfirmationRequest, ThreadSummary } from '@arbora/shared';
 import { statusDot } from './ThreadList';
-import { pendingPermissions, PinnedPermissions, Transcript } from './Transcript';
+import { Composer } from './Composer';
+import { answerConfirmation, isStoppable, restartThread, showThreads, stopAgent, useAgents } from '../../agent-store';
+import { noteConfirmationClosed } from '../../attention-store';
+import { ensureSession } from '../terminal/sessions';
+import { showToast } from '../../store';
 
-const NO_MODELS: readonly string[] = [];
+/** The agent's terminal: the CLI itself, interactive, attached wherever this pane mounts. */
+function AgentTerminal({ terminalId }: { terminalId: string }) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const session = ensureSession(terminalId);
+    session.attach(host);
+    return () => session.detach(host);
+  }, [terminalId]);
+  return <div ref={hostRef} className="min-h-0 flex-1 overflow-hidden" data-testid="agent-terminal" />;
+}
 
-function selectOptions(option: Extract<SessionConfigOption, { type: 'select' }>): PickerOption[] {
-  return option.options.flatMap((entry) =>
-    'group' in entry
-      ? entry.options.map((o) => ({ value: o.value, name: o.name, description: o.description, group: entry.group }))
-      : [{ value: entry.value, name: entry.name, description: entry.description }],
+/** A stopped thread shows the tail of its last terminal run, waiting for the next prompt. */
+function StoppedTail({ lines, agentName }: { lines: readonly string[]; agentName: string }) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="thread-stopped">
+      {lines.length > 0 && (
+        <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap px-2 py-2 font-mono text-[11.5px] text-fg-subtle">
+          {lines.join('\n')}
+        </pre>
+      )}
+      <div className="px-2 pb-2 pt-1 text-[11.5px] text-fg-subtle">
+        Stopped. Send a message to start {agentName} again.
+      </div>
+    </div>
   );
 }
 
-function AuthCard({ thread }: { thread: ThreadSummary }) {
-  const authenticate = async (methodId: string): Promise<void> => {
-    try {
-      await window.arbora.invoke('agent.authenticate', { threadId: thread.id, methodId });
-    } catch (error) {
-      showToast((error as Error).message);
-    }
-  };
+/** One of Arbora's own questions (a guarded browser tool, a helper start), pinned above the composer. */
+function ConfirmationCard({ threadId, request }: { threadId: string; request: ConfirmationRequest }) {
   return (
     <div
       className="mx-2 mt-2 rounded border border-amber-500/60 bg-amber-500/5 px-2 py-2 text-[12px]"
-      data-testid="auth-card"
+      data-testid="confirmation-card"
     >
-      <div className="flex items-center gap-2 font-medium">
-        <KeyRound size={13} className="text-amber-500" /> Authentication required
+      <div className="font-medium" data-testid="confirmation-title">
+        {request.title}
       </div>
-      {thread.state.error && <p className="mt-1 text-fg-muted">{thread.state.error}</p>}
+      {request.detail && <p className="mt-0.5 whitespace-pre-wrap text-fg-muted">{request.detail}</p>}
       <div className="mt-1.5 flex flex-wrap gap-1.5">
-        {thread.state.authMethods.map((method) => (
+        {request.options.map((option) => (
           <button
-            key={method.id}
+            key={option.optionId}
             type="button"
-            title={method.description ?? undefined}
-            data-testid={`auth-${method.id}`}
-            onClick={() => void authenticate(method.id)}
-            className="h-6 rounded bg-accent px-2 text-[11px] text-accent-fg hover:opacity-90"
+            data-testid={`confirmation-${option.optionId}`}
+            onClick={() => {
+              noteConfirmationClosed(threadId);
+              void answerConfirmation(threadId, request.requestId, option.optionId);
+            }}
+            className={clsx(
+              'h-6 rounded px-2 text-[11px]',
+              option.kind.startsWith('allow')
+                ? 'bg-accent text-accent-fg hover:opacity-90'
+                : 'border border-border hover:bg-bg-muted',
+            )}
           >
-            {method.name}
+            {option.name}
           </button>
         ))}
-        <button
-          type="button"
-          data-testid="auth-retry"
-          onClick={() => void window.arbora.invoke('agent.restart', { threadId: thread.id })}
-          className="h-6 rounded border border-border px-2 text-[11px] hover:bg-bg-muted"
-        >
-          Retry
-        </button>
       </div>
     </div>
   );
@@ -89,9 +77,9 @@ function AuthCard({ thread }: { thread: ThreadSummary }) {
 export interface ThreadViewProps {
   readonly thread: ThreadSummary;
   readonly projectPath: string;
-  /** The docked header (back, title, stop, log, restart). Grove shows its own above its tabs. */
+  /** The docked header (back, title, stop, restart). Grove shows its own above its tabs. */
   readonly showHeader?: boolean;
-  /** An archived session: its transcript, and nothing to act with. */
+  /** An archived session: its terminal tail, and nothing to act with. */
   readonly readOnly?: boolean;
   /** Who the composer placeholder addresses. */
   readonly composerName?: string | undefined;
@@ -104,39 +92,12 @@ export default function ThreadView({
   readOnly = false,
   composerName,
 }: ThreadViewProps) {
-  const events = useAgents((s) => s.events[thread.id]);
-  const logOpen = useAgents((s) => s.logOpen);
   const agentName = useAgents((s) => s.agents.find((a) => a.id === thread.agentId)?.name ?? thread.agentId);
+  const confirmations = useAgents((s) => s.confirmations);
   const { state } = thread;
-  const modelOption = state.configOptions.find(
-    (o): o is Extract<SessionConfigOption, { type: 'select' }> => o.type === 'select' && o.category === 'model',
-  );
-  const otherOptions = state.configOptions.filter((o) => o !== modelOption);
-  const favoriteModels = useApp((s) => s.settings.agents.favoriteModels[thread.agentId]) ?? NO_MODELS;
-  const defaultModel = useApp((s) => s.settings.agents.defaultModels[thread.agentId]);
-  const modelMenuRequest = useAgents((s) => s.modelMenuRequest);
-  const modeMenuRequest = useAgents((s) => s.modeMenuRequest);
-  const mode = modeControl(state);
-  const thinking = thinkingControl(state);
-  const cycleModeKey = useChordLabel(CommandId.agentCycleMode);
-  const pickModeKey = useChordLabel(CommandId.agentPickMode);
-  const modelKey = useChordLabel(CommandId.agentPickModel);
-  const thinkingKey = useChordLabel(CommandId.agentCycleThinking);
-  const modeShortcut = [cycleModeKey && `${cycleModeKey} next`, pickModeKey && `${pickModeKey} list`]
-    .filter(Boolean)
-    .join(', ');
-  // The mode menu opens on whichever control Shift+Tab rotates: a `mode` config option or the modes.
-  const modeMenuFor = (optionId: string | null): number =>
-    (mode?.kind === 'config' ? mode.option.id : null) === optionId ? modeMenuRequest : 0;
-  const optionShortcut = (optionId: string): string | undefined => {
-    if (mode?.kind === 'config' && mode.option.id === optionId) return modeShortcut || undefined;
-    if (thinking?.option.id === optionId && thinkingKey) return `${thinkingKey} next`;
-    return undefined;
-  };
-
-  // Requests only wait inside a turn; an unanswered card in a stopped thread stays in the scrollback.
-  const pinning = !readOnly && state.status === 'prompting';
-  const pending = useMemo(() => (events && pinning ? pendingPermissions(events) : []), [events, pinning]);
+  // Cards die with the process that raised them: a stopped agent cannot take the answer.
+  const pending =
+    state.terminalId !== null ? Object.values(confirmations).filter((request) => request.threadId === thread.id) : [];
 
   const invoke = async (action: () => Promise<unknown>): Promise<void> => {
     try {
@@ -145,8 +106,6 @@ export default function ThreadView({
       showToast((error as Error).message);
     }
   };
-  const respond = (requestId: string, optionId: string): void =>
-    void invoke(() => window.arbora.invoke('agent.respondPermission', { threadId: thread.id, requestId, optionId }));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="thread-view" data-thread-status={state.status}>
@@ -172,8 +131,8 @@ export default function ThreadView({
           {isStoppable(state.status) && (
             <button
               type="button"
-              title={state.status === 'prompting' ? 'Stop the agent (Esc)' : 'Stop starting the agent'}
-              aria-label="Stop the agent"
+              title="Interrupt the agent (Ctrl+C in its terminal)"
+              aria-label="Interrupt the agent"
               data-testid="thread-stop"
               onClick={() => void invoke(() => stopAgent(thread.id))}
               className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-danger hover:bg-danger/10"
@@ -183,161 +142,17 @@ export default function ThreadView({
           )}
           <button
             type="button"
-            title="Show the ACP log"
-            aria-pressed={logOpen}
-            data-testid="toggle-log"
-            onClick={toggleLog}
-            className={clsx(
-              'flex h-6 w-6 items-center justify-center rounded hover:bg-bg-muted',
-              logOpen ? 'text-accent' : 'text-fg-subtle hover:text-fg',
-            )}
-          >
-            <ScrollText size={13} />
-          </button>
-          <button
-            type="button"
-            title="Restart the agent"
+            title="Restart the agent CLI in a fresh terminal"
             aria-label="Restart agent"
             data-testid="restart-agent"
-            onClick={() => void invoke(() => window.arbora.invoke('agent.restart', { threadId: thread.id }))}
-            className="flex h-6 w-6 items-center justify-center rounded text-fg-subtle hover:bg-bg-muted hover:text-fg"
+            onClick={() => void invoke(() => restartThread(thread.id))}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-fg-subtle hover:bg-bg-muted hover:text-fg"
           >
             <RotateCcw size={13} />
           </button>
         </div>
       )}
 
-      {!readOnly && (
-        <div
-          className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border px-2 py-1"
-          data-testid="session-controls"
-        >
-          {state.modes && state.modes.availableModes.length > 0 && (
-            <Picker
-              label="Mode"
-              showLabel
-              icon={Bot}
-              testId="mode-select"
-              menuWidth={240}
-              className="max-w-[40%]"
-              openRequest={mode?.kind === 'modes' ? modeMenuRequest : 0}
-              shortcut={mode?.kind === 'modes' ? modeShortcut || undefined : undefined}
-              value={state.modes.currentModeId}
-              options={state.modes.availableModes.map((m) => ({
-                value: m.id,
-                name: m.name,
-                description: m.description,
-              }))}
-              onChange={(modeId) =>
-                void invoke(() => window.arbora.invoke('agent.setMode', { threadId: thread.id, modeId }))
-              }
-            />
-          )}
-          {modelOption && (
-            <Picker
-              label="Model"
-              showLabel
-              icon={Cpu}
-              testId="model-select"
-              favorites={favoriteModels}
-              onToggleFavorite={(value) => toggleFavoriteModel(thread.agentId, value)}
-              defaultValue={defaultModel}
-              onSetDefault={(value) => toggleDefaultModel(thread.agentId, value)}
-              defaultHint={`Use for new ${agentName} threads`}
-              menuWidth={320}
-              className="max-w-[60%]"
-              openRequest={modelMenuRequest}
-              shortcut={modelKey}
-              value={modelOption.currentValue}
-              options={selectOptions(modelOption)}
-              onChange={(value) =>
-                void invoke(() =>
-                  window.arbora.invoke('agent.setConfigOption', {
-                    threadId: thread.id,
-                    configId: modelOption.id,
-                    value,
-                  }),
-                )
-              }
-            />
-          )}
-          {otherOptions.map((option) => {
-            const role = sessionControlRole(option.id, mode, thinking);
-            const label = sessionControlLabel(option.name, role);
-            return option.type === 'select' ? (
-              <Picker
-                key={option.id}
-                label={label}
-                showLabel
-                icon={sessionControlIcon(role)}
-                className="max-w-[45%]"
-                testId={`config-${option.id}`}
-                openRequest={modeMenuFor(option.id)}
-                shortcut={optionShortcut(option.id)}
-                value={option.currentValue}
-                options={selectOptions(option)}
-                onChange={(value) =>
-                  void invoke(() =>
-                    window.arbora.invoke('agent.setConfigOption', { threadId: thread.id, configId: option.id, value }),
-                  )
-                }
-              />
-            ) : (
-              <label
-                key={option.id}
-                className="flex h-6 items-center gap-1 text-[11px]"
-                title={option.description ?? undefined}
-              >
-                <input
-                  type="checkbox"
-                  checked={option.currentValue}
-                  data-testid={`config-${option.id}`}
-                  onChange={(event) =>
-                    void invoke(() =>
-                      window.arbora.invoke('agent.setConfigOption', {
-                        threadId: thread.id,
-                        configId: option.id,
-                        value: event.target.checked,
-                      }),
-                    )
-                  }
-                />
-                {role === 'effort' && <Gauge size={12} className="shrink-0 text-fg-subtle" />}
-                {label}
-              </label>
-            );
-          })}
-          <button
-            type="button"
-            title={
-              thread.autoApproveEdits
-                ? 'File edits inside the project are approved without asking. Click to ask again.'
-                : 'Click to approve file edits inside the project without asking'
-            }
-            aria-pressed={thread.autoApproveEdits}
-            data-testid="auto-approve-edits"
-            onClick={() =>
-              void invoke(() =>
-                window.arbora.invoke('agent.setAutoApproveEdits', {
-                  threadId: thread.id,
-                  enabled: !thread.autoApproveEdits,
-                }),
-              )
-            }
-            className={clsx(
-              'ml-auto flex h-6 shrink-0 items-center gap-1 rounded-full border px-2 text-[11px]',
-              thread.autoApproveEdits
-                ? 'border-accent/50 bg-accent-soft text-accent'
-                : 'border-border text-fg-subtle hover:bg-bg-muted hover:text-fg',
-            )}
-          >
-            <ShieldCheck size={12} />
-            {thread.autoApproveEdits ? 'Auto-approve edits' : 'Ask before edits'}
-          </button>
-        </div>
-      )}
-
-      {!readOnly && state.status === 'auth_required' && <AuthCard thread={thread} />}
       {!readOnly && state.status === 'error' && state.error && (
         <div
           className="mx-2 mt-2 rounded border border-danger/50 px-2 py-1.5 text-[12px] text-danger"
@@ -349,65 +164,18 @@ export default function ThreadView({
       {!readOnly && state.status === 'starting' && (
         <div className="flex items-center gap-1.5 px-3 pt-2 text-[11px] text-fg-subtle" data-testid="thread-starting">
           <Loader2 size={12} className="animate-spin" /> Starting {agentName}…
-          <button type="button" onClick={toggleLog} className="ml-auto flex items-center gap-1 hover:text-fg">
-            <List size={11} /> stderr
-          </button>
         </div>
       )}
 
-      {events ? (
-        <Transcript
-          events={events}
-          projectPath={projectPath}
-          busy={state.status === 'prompting'}
-          hidePending={pinning}
-          onRespond={respond}
-        />
+      {state.terminalId ? (
+        <AgentTerminal terminalId={state.terminalId} />
       ) : (
-        <div className="flex flex-1 items-center justify-center text-xs text-fg-subtle">
-          <Loader2 size={14} className="animate-spin" />
-        </div>
+        <StoppedTail lines={state.lastLine ? [state.lastLine] : []} agentName={agentName} />
       )}
-      {logOpen && <LogViewer threadId={thread.id} />}
-      <PinnedPermissions events={pending} projectPath={projectPath} onRespond={respond} />
-      {!readOnly && (
-        <>
-          <Composer thread={thread} projectPath={projectPath} name={composerName} />
-          <KeyHints
-            hints={[
-              mode && cycleModeKey ? `${cycleModeKey} mode` : null,
-              modelOption && modelKey ? `${modelKey} model` : null,
-              thinking && thinkingKey ? `${thinkingKey} effort` : null,
-            ]}
-          />
-        </>
-      )}
-    </div>
-  );
-}
 
-function sessionControlIcon(role: SessionControlRole): LucideIcon {
-  switch (role) {
-    case 'mode':
-      return Bot;
-    case 'effort':
-      return Gauge;
-    case 'other':
-      return SlidersHorizontal;
-    default: {
-      const unreachable: never = role;
-      return unreachable;
-    }
-  }
-}
-
-/** One quiet line under the composer naming the CLI-style keys this agent supports. */
-function KeyHints({ hints }: { hints: readonly (string | null)[] }) {
-  const shown = hints.filter((hint): hint is string => hint !== null);
-  if (shown.length === 0) return null;
-  return (
-    <div className="shrink-0 truncate px-3 pb-1.5 text-[10.5px] text-fg-subtle" data-testid="thread-key-hints">
-      {shown.join(' · ')}
+      {!readOnly &&
+        pending.map((request) => <ConfirmationCard key={request.requestId} threadId={thread.id} request={request} />)}
+      {!readOnly && <Composer thread={thread} projectPath={projectPath} name={composerName ?? agentName} />}
     </div>
   );
 }

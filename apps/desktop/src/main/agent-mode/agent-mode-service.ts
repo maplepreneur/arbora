@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { statSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
 import { nativeImage } from 'electron';
 import { composePrompt, type PromptScreenshot } from '@arbora/browser-bridge';
 import {
@@ -145,8 +144,8 @@ export class AgentModeService {
   }
 
   /**
-   * Hands the prompt to a thread and resolves with its id straight away. Starting the agent (and
-   * learning whether it takes images) can take a while; the thread shows that progress.
+   * Hands the prompt to a thread and resolves with its id straight away. Starting the agent can
+   * take a while; the thread shows that progress.
    */
   submit(request: AgentModeSubmit): { threadId: string } {
     const stored = this.selection;
@@ -158,13 +157,11 @@ export class AgentModeService {
 
     if (request.target.type === 'thread') {
       const status = agents.getThread(request.target.threadId)?.state.status;
-      if (status === 'prompting')
+      if (status === 'working')
         throw new Error('That thread is still working. Stop it first, or send to a new thread.');
     }
     const threadId =
-      request.target.type === 'thread'
-        ? request.target.threadId
-        : agents.createThread(request.target.agentId, { model: request.target.model }).id;
+      request.target.type === 'thread' ? request.target.threadId : agents.createThread(request.target.agentId).id;
     const target = targetComponent({ components: stored.components, targetIndex: request.targetIndex });
     const screenshot = request.include.screenshot
       ? this.writeScreenshot(browser, stored, target?.rect ?? stored.raw.element.rect)
@@ -183,8 +180,7 @@ export class AgentModeService {
     request: AgentModeSubmit,
     screenshot: PromptScreenshot | null,
   ): Promise<void> {
-    const capabilities = await agents.promptCapabilities(threadId);
-    const { blocks } = composePrompt({
+    const { text } = composePrompt({
       request: request.text,
       url: stored.raw.url,
       framework: stored.raw.framework,
@@ -197,10 +193,8 @@ export class AgentModeService {
       notes: stored.raw.notes,
       include: request.include,
       screenshot,
-      imageSupported: capabilities?.image ?? false,
-      toUri: (path) => pathToFileURL(path).toString(),
     });
-    await agents.prompt(threadId, blocks, [], { title: request.text });
+    await agents.sendPrompt(threadId, text, { title: request.text });
   }
 
   /** Burns the outline into the stored capture, downscales it and saves it next to other screenshots. */
@@ -213,18 +207,15 @@ export class AgentModeService {
     const size = fitWithin(shot.width, shot.height, MAX_IMAGE_EDGE);
     if (size.width !== shot.width) outlined = outlined.resize({ ...size, quality: 'best' });
     let data = outlined.toPNG();
-    let mimeType = 'image/png';
+    let asPng = true;
     if (data.byteLength > MAX_PNG_BYTES) {
       data = outlined.toJPEG(JPEG_QUALITY);
-      mimeType = 'image/jpeg';
+      asPng = false;
     }
-    const path = browser.writeScreenshotFile(data, 'agent-mode', mimeType === 'image/png' ? 'png' : 'jpg');
+    const path = browser.writeScreenshotFile(data, 'agent-mode', asPng ? 'png' : 'jpg');
     return {
       path,
       relative: projectRelative(path, this.options.projectPath),
-      uri: pathToFileURL(path).toString(),
-      mimeType,
-      data: data.toString('base64'),
     };
   }
 }

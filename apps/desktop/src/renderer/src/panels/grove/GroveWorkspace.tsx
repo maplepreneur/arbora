@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useSta
 import { Group, Panel, Separator, usePanelRef, type Layout } from 'react-resizable-panels';
 import { PanelRightOpen } from 'lucide-react';
 import { CommandId } from '@arbora/shared';
-import { loadThread, useAgents } from '../../agent-store';
+import { useAgents } from '../../agent-store';
 import { executeCommand, setWorkspaceController } from '../../commands';
 import { useChordLabel } from '../../keybindings';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
@@ -352,10 +352,6 @@ export default function GroveWorkspace() {
   useEffect(() => {
     if (fallbackId) selectSession(fallbackId, { focus: false });
   }, [fallbackId]);
-
-  useEffect(() => {
-    if (selectedSessionId) void loadThread(selectedSessionId).catch(() => undefined);
-  }, [selectedSessionId]);
 
   return (
     <div

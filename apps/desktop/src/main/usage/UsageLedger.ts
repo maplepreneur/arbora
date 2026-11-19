@@ -45,7 +45,7 @@ export class UsageLedger {
     this.listPrs = options.listPrs ?? listPullRequests;
   }
 
-  record(input: UsageTurnInput, lastReport: { modelId: string; tokens: TokenCount } | null): UsageTurn {
+  record(input: UsageTurnInput, lastReport: { modelId: string; tokens: TokenCount } | null = null): UsageTurn {
     const price = priceFor(input.modelId, this.options.priceOverrides());
     const tokens = {
       input: input.inputTokens,

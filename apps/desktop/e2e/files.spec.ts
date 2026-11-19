@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -5,11 +6,11 @@ import { expect, test, type Page } from '@playwright/test';
 import type { TerminalInfo } from '@arbora/shared';
 import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, showRight, showSide, startAgent, tempUserData } from './app';
 
-const FAKE_AGENT = resolve(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
+const FAKE_AGENT = resolve(DESKTOP_ROOT, 'e2e/fake-terminal-agent.mjs');
 /** The repo's node_modules has Prettier, ESLint and TypeScript; the project links to it. */
 const REPO_MODULES = resolve(DESKTOP_ROOT, '../../node_modules');
 
-/** A copy of the vite-react fixture with Prettier and ESLint configs and a gitignored folder. */
+/** A copy of the vite-react fixture with Prettier and ESLint configs, a gitignored folder and a repo. */
 function project(): string {
   const dir = mkdtempSync(join(tmpdir(), 'arbora-files-'));
   cpSync(join(FIXTURES, 'vite-react/src'), join(dir, 'src'), { recursive: true });
@@ -24,6 +25,23 @@ function project(): string {
   writeFileSync(join(dir, '.gitignore'), 'generated/\n');
   mkdirSync(join(dir, 'generated'));
   writeFileSync(join(dir, 'generated/out.ts'), 'export const generated = true;\n');
+  // The Git panel's "Agent changes" group needs a repository.
+  const git = (args: string[]): void => {
+    execFileSync('git', args, {
+      cwd: dir,
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: 't',
+        GIT_AUTHOR_EMAIL: 't@t',
+        GIT_COMMITTER_NAME: 't',
+        GIT_COMMITTER_EMAIL: 't@t',
+      },
+      stdio: 'ignore',
+    });
+  };
+  git(['init', '-b', 'main']);
+  git(['add', 'src/App.tsx', 'src/components/Card.tsx', 'package.json']);
+  git(['commit', '-m', 'init']);
   return dir;
 }
 
@@ -267,27 +285,36 @@ test.describe('Stage 7 files and editor', () => {
     }
   });
 
-  test('agent tool locations and terminal links open the editor at the line; agent edits open in the diff viewer', async () => {
+  test('files an agent edits during its turn group under Agent changes; terminal links open the editor', async () => {
     const dir = project();
     const { app, page } = await launch(userData(), [dir]);
     try {
       await startAgent(page, 'fake');
+      const threadId = await page
+        .locator('[data-testid="grove-row"][aria-current="true"]')
+        .getAttribute('data-thread-id');
+      if (!threadId) throw new Error('no selected agent thread');
       const input = page.getByTestId('composer-input');
-      await input.fill('add a comment to `src/App.tsx`');
+      await input.fill('edit src/App.tsx');
       await input.press('Enter');
-      const card = page.getByTestId('permission-card');
-      await expect(card).toBeVisible({ timeout: 20_000 });
-      await card.getByTestId('permission-allow_once').click();
-      await expect(page.getByTestId('diff')).toBeVisible({ timeout: 20_000 });
-
-      await page.getByTestId('tool-location').first().click();
+      // The edit happened in the agent's terminal; the watcher files it under the turn.
+      await expect
+        .poll(async () => {
+          const thread = (await page.evaluate(() => window.arbora.invoke('agent.listThreads'))).find(
+            (t) => t.id === threadId,
+          );
+          return thread?.state.lastLine ?? '';
+        })
+        .toContain('edited src/App.tsx');
+      expect(readFileSync(join(dir, 'src/App.tsx'), 'utf8')).toContain('Arbora fake agent was here');
+      await showSide(page, 'git');
+      // The row shows the file's basename with its directory beside it.
+      await expect(page.getByTestId('git-section-agent')).toContainText('App.tsx');
+      await expect(page.getByTestId('editor')).toHaveCount(0);
+      await page.getByTestId('grove-tab-changes').click();
+      await page.getByTestId('grove-change').click();
       await expect(page.getByTestId('editor')).toHaveAttribute('data-path', 'src/App.tsx');
-      await expect(page.getByTestId('editor').locator('.cm-lineNumbers .cm-activeLineGutter')).toHaveText('1');
       await expect(editor(page)).toContainText('Arbora fake agent was here');
-
-      await page.getByTestId('diff-open').first().click();
-      await expect(page.getByTestId('diff-viewer')).toBeVisible();
-      await expect(page.getByTestId('diff-viewer').locator('.cm-changedLine, .cm-deletedChunk').first()).toBeVisible();
 
       // Terminal `path:line:col` links.
       await showRight(page, 'terminal');
@@ -296,19 +323,25 @@ test.describe('Stage 7 files and editor', () => {
           timeout: 20_000,
         })
         .toBeGreaterThan(0);
-      const [terminal] = await page.evaluate<TerminalInfo[]>(() => window.arbora.invoke('terminal.list'));
+      // The agent CLI owns its own terminal; the link test wants a shell of its own.
+      const shell = await page.evaluate<TerminalInfo>(async () => {
+        const list: TerminalInfo[] = await window.arbora.invoke('terminal.list');
+        const shell = list.find((t) => t.kind === 'shell');
+        return shell ? shell : window.arbora.invoke('terminal.create', { kind: 'shell', cols: 80, rows: 24 });
+      });
+      // Bring the shell's tab to the front so its xterm is on screen. A tab holds panes by id.
+      const shellTab = page.locator('[data-testid="terminal-tab"][data-kind="shell"]').filter({ hasText: shell.title });
+      await shellTab.first().click({ timeout: 10_000 });
       await page.evaluate(
         (id) => window.arbora.invoke('terminal.write', { id, data: 'clear; echo src/components/Card.tsx:4:3\r' }),
-        terminal?.id ?? '',
+        shell.id,
       );
       await expect
-        .poll(() =>
-          page.evaluate((id) => window.arbora.invoke('terminal.lines', { id, count: 20 }), terminal?.id ?? ''),
-        )
+        .poll(() => page.evaluate((id) => window.arbora.invoke('terminal.lines', { id, count: 20 }), shell.id))
         .toContainEqual('src/components/Card.tsx:4:3');
       // Which screen row the output lands on depends on the shell and prompt. The xterm screen can
       // be taller than its fitted rows, so walk the top of that terminal in line-sized steps.
-      const screen = page.locator(`[data-terminal-id="${terminal?.id ?? ''}"] .xterm-screen`);
+      const screen = page.locator(`[data-terminal-id="${shell.id}"] .xterm-screen`);
       const box = await screen.boundingBox();
       if (!box) throw new Error('No terminal screen');
       // The screen element can be taller than the fitted rows, so walk the top of the pane in

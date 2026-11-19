@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { customAgentSchema, rememberedPermissionsSchema } from './agent.js';
+import { customAgentSchema } from './agent.js';
 import { viewportPresetIdSchema } from './browser.js';
 import { browserTabRecordSchema } from './browser-tabs.js';
 import type { WorkspaceKind } from './keybindings.js';
@@ -10,9 +10,6 @@ export const themeModeSchema = z.enum(['system', 'light', 'dark']);
 export type ThemeMode = z.infer<typeof themeModeSchema>;
 
 export const keybindingOverridesSchema = z.record(z.string(), z.string().nullable());
-
-/** `latest`, or a semver such as `0.17.0` / `1.2.3-beta.1`. */
-export const ADAPTER_VERSION_PATTERN = /^(latest|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
 
 export const windowBoundsSchema = z.object({
   x: z.number().int(),
@@ -357,47 +354,32 @@ export function mergeEditorSettings(
   };
 }
 
-export const agentModelSchema = z.object({ value: z.string().max(300), name: z.string().max(300) });
-export type AgentModel = z.infer<typeof agentModelSchema>;
-
 /**
- * The last sign-in check: Arbora started the agent, ran `initialize` and `session/new`, and
- * stopped it. `ready` means it opened a session without asking for a login.
+ * The last sign-in check: Arbora ran the agent's version command and it answered. `ready` means
+ * the CLI starts; log-in state is the agent's own business, shown inside its terminal.
  */
 export const agentVerificationSchema = z.object({
   status: z.enum(['ready', 'auth_required', 'missing', 'error']),
   checkedAt: z.number().int(),
-  /** Choices of the session's `model` config option (or legacy `models`), in the agent's order. */
-  models: z.array(agentModelSchema).max(500).default([]),
-  /** The agent's own name and version from `initialize`. */
+  /** The first line the version command printed. */
   version: z.string().max(200).optional(),
   error: z.string().max(2000).optional(),
 });
 export type AgentVerification = z.infer<typeof agentVerificationSchema>;
 
 export const agentSettingsSchema = z.object({
-  /** User-defined ACP agents, in addition to the built-ins. */
+  /** User-defined terminal agents, in addition to the built-ins. */
   custom: z.array(customAgentSchema).default([]),
-  /** "Always allow/reject" answers to permission requests, keyed by `agentId:toolKind`. */
-  permissions: rememberedPermissionsSchema.default({}),
   /** Agent for new threads when the project's `defaultAgent` is not set. */
   defaultAgent: z.string().min(1).optional(),
-  /** Model applied to new threads, per agent id (a value of the agent's `model` config option). */
-  defaultModels: z.record(z.string(), z.string()).default({}),
-  /** Models pinned to the top of the model picker, per agent id. */
-  favoriteModels: z.record(z.string(), z.array(z.string()).max(50)).default({}),
-  /** Agents left out of agent pickers even when signed in. */
+  /** Agents left out of agent pickers even when they run. */
   hidden: z.array(z.string()).max(100).default([]),
-  /** Model values left out of model pickers, per agent id. */
-  hiddenModels: z.record(z.string(), z.array(z.string()).max(500)).default({}),
   /** Last sign-in check per agent id. */
   verified: z.record(z.string(), agentVerificationSchema).default({}),
   /** Check installed agents that were never checked when a picker or Settings opens. */
   autoVerify: z.boolean().default(true),
   /** Extra environment per agent id, merged over the agent's own `env` (values never logged). */
   env: z.record(z.string(), z.record(z.string(), z.string())).default({}),
-  /** npm adapter version per built-in agent id (`latest` or `x.y.z`), replacing the pinned one. */
-  adapterVersions: z.record(z.string(), z.string().regex(ADAPTER_VERSION_PATTERN)).default({}),
 });
 export type AgentSettings = z.infer<typeof agentSettingsSchema>;
 
@@ -405,16 +387,11 @@ export type AgentSettings = z.infer<typeof agentSettingsSchema>;
 export const agentSettingsPatchSchema = z
   .object({
     custom: z.array(customAgentSchema),
-    permissions: rememberedPermissionsSchema,
     defaultAgent: z.string().min(1).nullable(),
-    defaultModels: z.record(z.string(), z.string()),
-    favoriteModels: z.record(z.string(), z.array(z.string()).max(50)),
     hidden: z.array(z.string()).max(100),
-    hiddenModels: z.record(z.string(), z.array(z.string()).max(500)),
     verified: z.record(z.string(), agentVerificationSchema),
     autoVerify: z.boolean(),
     env: z.record(z.string(), z.record(z.string(), z.string())),
-    adapterVersions: z.record(z.string(), z.string().regex(ADAPTER_VERSION_PATTERN)),
   })
   .partial();
 export type AgentSettingsPatch = z.infer<typeof agentSettingsPatchSchema>;
@@ -424,45 +401,17 @@ export function mergeAgentSettings(current: AgentSettings, patch: AgentSettingsP
   const defaultAgent = patch.defaultAgent === null ? undefined : (patch.defaultAgent ?? current.defaultAgent);
   return {
     custom: patch.custom ?? current.custom,
-    permissions: patch.permissions ?? current.permissions,
-    defaultModels: patch.defaultModels ?? current.defaultModels,
-    favoriteModels: patch.favoriteModels ?? current.favoriteModels,
     hidden: patch.hidden ?? current.hidden,
-    hiddenModels: patch.hiddenModels ?? current.hiddenModels,
     verified: patch.verified ?? current.verified,
     autoVerify: patch.autoVerify ?? current.autoVerify,
     env: patch.env ?? current.env,
-    adapterVersions: patch.adapterVersions ?? current.adapterVersions,
     ...(defaultAgent !== undefined ? { defaultAgent } : {}),
   };
 }
 
-/** Signed in (last check `ready`) and not hidden: the agents a picker may offer. */
+/** Runs (last check `ready`) and not hidden: the agents a picker may offer. */
 export function isPickableAgent(settings: Pick<AgentSettings, 'hidden' | 'verified'>, agentId: string): boolean {
   return settings.verified[agentId]?.status === 'ready' && !settings.hidden.includes(agentId);
-}
-
-/**
- * The agent's checked models minus the hidden ones, in picker order: its default model, then its
- * favourites (in the order they were starred), then the rest in the agent's own order.
- */
-export function visibleModels(
-  settings: Pick<AgentSettings, 'hiddenModels' | 'verified' | 'defaultModels' | 'favoriteModels'>,
-  agentId: string,
-): AgentModel[] {
-  const hidden = new Set(settings.hiddenModels[agentId] ?? []);
-  const models = (settings.verified[agentId]?.models ?? []).filter((model) => !hidden.has(model.value));
-  const rank = new Map<string, number>();
-  const preferred = settings.defaultModels[agentId];
-  if (preferred !== undefined) rank.set(preferred, 0);
-  for (const [i, value] of (settings.favoriteModels[agentId] ?? []).entries()) {
-    if (!rank.has(value)) rank.set(value, 1 + i);
-  }
-  const last = rank.size + 1;
-  return models
-    .map((model, i) => ({ model, i }))
-    .sort((a, b) => (rank.get(a.model.value) ?? last) - (rank.get(b.model.value) ?? last) || a.i - b.i)
-    .map((entry) => entry.model);
 }
 
 /** Project `defaultAgent`, then the app-wide default, if either names a known agent. */
@@ -487,15 +436,13 @@ export const gitSettingsSchema = z.object({
 });
 export type GitSettings = z.infer<typeof gitSettingsSchema>;
 
-/** Trigger points that can use their own agent and model instead of the thread default. */
+/** Trigger points that can use their own agent instead of the thread default. */
 export const TASK_IDS = ['git', 'agentMode', 'design', 'fix'] as const;
 export type TaskId = (typeof TASK_IDS)[number];
 
 export const taskAgentSchema = z.object({
   /** Null uses the project's or the app's default agent. */
   agentId: z.string().min(1).nullable().default(null),
-  /** A value of the agent's `model` config option; null keeps the agent's default model. */
-  model: z.string().min(1).nullable().default(null),
 });
 export type TaskAgent = z.infer<typeof taskAgentSchema>;
 
@@ -521,8 +468,8 @@ export const usageSettingsSchema = z.object({
 export type UsageSettings = z.infer<typeof usageSettingsSchema>;
 
 /**
- * The agent and model for a task: the task's own choice, else the project's or the app's default
- * agent with its default model, else the first signed-in agent. Undefined when none is known.
+ * The agent for a task: the task's own choice, else the project's or the app's default agent,
+ * else the first agent that runs. Undefined when none is known.
  */
 export function resolveTaskAgent(
   tasks: TaskAgents,
@@ -530,15 +477,15 @@ export function resolveTaskAgent(
   knownAgentIds: readonly string[],
   agents: Pick<AgentSettings, 'defaultAgent' | 'verified' | 'hidden'>,
   projectDefault: string | undefined,
-): { agentId: string; model: string | null } | undefined {
+): { agentId: string } | undefined {
   const chosen = tasks[task];
   if (chosen.agentId !== null && knownAgentIds.includes(chosen.agentId)) {
-    return { agentId: chosen.agentId, model: chosen.model };
+    return { agentId: chosen.agentId };
   }
   const fallback =
     resolveDefaultAgent(knownAgentIds, projectDefault, agents.defaultAgent) ??
     knownAgentIds.find((id) => isPickableAgent(agents, id));
-  return fallback ? { agentId: fallback, model: null } : undefined;
+  return fallback ? { agentId: fallback } : undefined;
 }
 
 /**

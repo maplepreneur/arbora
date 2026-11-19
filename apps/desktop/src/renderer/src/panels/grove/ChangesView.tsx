@@ -1,46 +1,39 @@
-import { useState } from 'react';
-import clsx from 'clsx';
-import { ChevronDown, ChevronRight, FileText, TriangleAlert } from 'lucide-react';
+import { FileText, TriangleAlert } from 'lucide-react';
 import type { GroveSession } from '../../grove-model';
-import { openAgentDiff, relativePath } from '../agent/Transcript';
-import { UnifiedDiff } from '../agent/UnifiedDiff';
-import { editStats } from './changes';
-import { DiffStat } from './SessionList';
+import { openFileAtLocation } from '../../commands';
 
-/** The files this session edited, each with its counts; a row opens to the session's whole diff of it. */
+function relativePath(path: string, projectPath: string): string {
+  return path.startsWith(projectPath) ? path.slice(projectPath.length + 1) : path;
+}
+
+/** The files this session's turns changed on disk, each one opening in the editor. */
 export function ChangesView({
   session,
   projectPath,
+  files,
   nameOf,
 }: {
   session: GroveSession;
   projectPath: string;
+  /** Paths the watcher saw change while this session's turn ran. */
+  files: readonly string[];
   nameOf: (threadId: string) => string;
 }) {
-  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
-  const files = Object.entries(session.activity.files);
   if (files.length === 0) {
     return (
       <div
         data-testid="grove-changes-empty"
         className="flex flex-1 items-center justify-center p-6 text-center text-xs text-fg-subtle"
       >
-        No file edits from this agent yet. They show here as it makes them.
+        No file changes from this agent yet. They show here while it works.
       </div>
     );
   }
-  const toggle = (path: string): void =>
-    setOpen((current) => {
-      const next = new Set(current);
-      if (!next.delete(path)) next.add(path);
-      return next;
-    });
   return (
     <div data-testid="grove-changes" className="min-h-0 flex-1 overflow-y-auto p-2">
       <ul className="flex flex-col gap-1.5">
-        {files.map(([path, edit]) => {
+        {files.map((path) => {
           const shown = relativePath(path, projectPath);
-          const expanded = open.has(path);
           const others = session.overlaps
             .filter((overlap) => overlap.path === path)
             .map((o) => nameOf(o.otherThreadId));
@@ -48,25 +41,12 @@ export function ChangesView({
             <li key={path} data-testid="grove-change" data-path={shown} className="rounded border border-border bg-bg">
               <button
                 type="button"
-                aria-expanded={expanded}
-                onClick={() => toggle(path)}
-                className={clsx(
-                  'flex w-full items-center gap-2 px-2 py-1.5 text-left text-[12px] hover:bg-bg-muted',
-                  expanded && 'border-b border-border',
-                )}
+                onClick={() => openFileAtLocation({ path, line: 1 })}
+                title={path}
+                className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-[12px] hover:bg-bg-muted"
               >
-                {expanded ? (
-                  <ChevronDown size={12} className="shrink-0" />
-                ) : (
-                  <ChevronRight size={12} className="shrink-0" />
-                )}
                 <FileText size={13} className="shrink-0 text-fg-subtle" />
-                <span className="min-w-0 flex-1 truncate font-mono text-[11.5px]" title={path}>
-                  {shown}
-                </span>
-                {edit.oldText === null && (
-                  <span className="shrink-0 rounded bg-bg-muted px-1 text-[10px] text-fg-subtle uppercase">new</span>
-                )}
+                <span className="min-w-0 flex-1 truncate font-mono text-[11.5px]">{shown}</span>
                 {others.length > 0 && (
                   <span
                     data-testid="grove-change-overlap"
@@ -76,18 +56,7 @@ export function ChangesView({
                     <TriangleAlert size={12} />
                   </span>
                 )}
-                <DiffStat stats={editStats(edit)} />
               </button>
-              {expanded && (
-                <div className="p-1.5">
-                  <UnifiedDiff
-                    oldText={edit.oldText}
-                    newText={edit.newText}
-                    path={shown}
-                    onOpen={() => openAgentDiff(shown, edit.oldText, edit.newText)}
-                  />
-                </div>
-              )}
             </li>
           );
         })}

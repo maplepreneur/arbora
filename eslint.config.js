@@ -29,6 +29,8 @@ export default defineConfig(
       'fixtures/plain-html/app.js',
       // Spawned as the project's typescript-language-server in e2e. Not part of the TypeScript project.
       'apps/desktop/e2e/lsp-fake.mjs',
+      // Spawned as the e2e terminal agent. Not part of the TypeScript project.
+      'apps/desktop/e2e/fake-terminal-agent.mjs',
       // Framework fixtures type-check only against types `next dev` / `nuxt dev` generate.
       'fixtures/next/**',
       'fixtures/nuxt/**',

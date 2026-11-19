@@ -1,7 +1,7 @@
 import { Loader2, Trees } from 'lucide-react';
 import { useAgents } from '../../agent-store';
 import { useDefaultAgentId } from '../../agent-defaults';
-import { defaultModelFor, openLauncher, setStartDefaultOnOpen, startSession, useGrove } from '../../grove-store';
+import { openLauncher, setStartDefaultOnOpen, startSession, useGrove } from '../../grove-store';
 import { useApp } from '../../store';
 
 const primary =
@@ -40,7 +40,7 @@ export function GroveEmpty() {
               type="button"
               data-testid="grove-empty-start"
               disabled={starting}
-              onClick={() => void startSession({ agentId: agent.id, model: defaultModelFor(agent.id) })}
+              onClick={() => void startSession({ agentId: agent.id })}
               className={primary}
             >
               {startError ? 'Retry' : `Start ${agent.name}`}

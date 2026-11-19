@@ -157,9 +157,9 @@ function fakeGrove(): { grove: GroveToolHost; state: FakeGroveState } {
     sessionId: 'lead',
     agents: () => ({
       agents: [
-        { id: 'other-agent', name: 'Other agent', detected: true, signedIn: false },
-        { id: 'fake', name: 'Fake agent', detected: true, signedIn: true },
-        { id: 'missing', name: 'Missing agent', detected: false, signedIn: null },
+        { id: 'other-agent', name: 'Other agent', detected: true, runs: false },
+        { id: 'fake', name: 'Fake agent', detected: true, runs: true },
+        { id: 'missing', name: 'Missing agent', detected: false, runs: null },
       ],
       defaultAgentId: 'fake',
     }),
@@ -410,8 +410,8 @@ describe('Grove tools', () => {
     const { client } = await connect({ grove });
     const { text } = await call(client, 'grove_list_agents');
     const lines = text.split('\n');
-    expect(lines[1]).toBe('- fake: Fake agent (default, signed in)');
-    expect(text).toContain('- other-agent: Other agent (not signed in)');
+    expect(lines[1]).toBe('- fake: Fake agent (default, runs)');
+    expect(text).toContain('- other-agent: Other agent (did not start in its last check)');
     expect(text).toContain('- missing: Missing agent (not installed)');
     expect(text).toContain('- lead "fix the nav" (Fake agent): Working [you]');
     expect(text).toContain('- theirs "tests" (Fake agent): Working [helper of Codex]');
@@ -431,8 +431,9 @@ describe('Grove tools', () => {
     const started = await call(client, 'grove_start_agent', { task: 'write the tests\nfor Nav.tsx', title: 'tests' });
     expect(started.text).toMatch(/^Started helper helper-1 \(Fake agent\)/);
     expect(state.started).toEqual([{ agentId: 'fake', task: 'write the tests\nfor Nav.tsx', title: 'tests' }]);
-    await call(client, 'grove_start_agent', { task: 'review it', agent: 'other-agent', model: 'smart' });
-    expect(state.started[1]).toMatchObject({ agentId: 'other-agent', model: 'smart' });
+    await call(client, 'grove_start_agent', { task: 'review it', agent: 'other-agent' });
+    expect(state.started[1]).toMatchObject({ agentId: 'other-agent' });
+    expect(state.started[1]).not.toHaveProperty('model');
     expect(state.confirms).toBe(2);
     // Parallel first calls share one card.
     const fresh = fakeGrove();

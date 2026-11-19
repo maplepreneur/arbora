@@ -135,7 +135,7 @@ export function registerGroveTools(
         const notes = [
           agent.id === defaultAgentId ? 'default' : null,
           agent.detected ? null : 'not installed',
-          agent.signedIn === true ? 'signed in' : agent.signedIn === false ? 'not signed in' : null,
+          agent.runs === true ? 'runs' : agent.runs === false ? 'did not start in its last check' : null,
         ].filter((note): note is string => note !== null);
         return `- ${agent.id}: ${agent.name}${notes.length > 0 ? ` (${notes.join(', ')})` : ''}`;
       });
@@ -175,10 +175,9 @@ export function registerGroveTools(
         .string()
         .optional()
         .describe("Agent id from grove_list_agents; the project's default agent when omitted"),
-      model: z.string().max(300).optional().describe("A model id for that agent; the user's default when omitted"),
       title: z.string().max(200).optional().describe("The session's name in Grove; the task's first line when omitted"),
     },
-    async ({ task, agent, model, title }) => {
+    async ({ task, agent, title }) => {
       const { agents, defaultAgentId } = host.agents();
       const agentId = agent ?? defaultAgentId;
       if (!agentId) {
@@ -199,9 +198,9 @@ export function registerGroveTools(
       };
       checkLimit();
       await context.permitStart();
-      // Parallel calls can all pass the first check while the permission card is open.
+      // Parallel calls can all pass the first check while the confirmation card is open.
       checkLimit();
-      const id = await host.start({ agentId, task, model, title });
+      const id = await host.start({ agentId, task, title });
       return `Started helper ${id} (${definition.name}). It is working on the task. Call grove_wait with this session id, then grove_read to see what it did.`;
     },
   );

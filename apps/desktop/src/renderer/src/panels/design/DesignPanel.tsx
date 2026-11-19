@@ -11,7 +11,6 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
-  Cpu,
   Eye,
   EyeOff,
   LoaderCircle,
@@ -31,14 +30,12 @@ import {
   planWriteThrough,
   rgbToHex,
   type AgentModeTarget,
-  type AgentModel,
   type DesignCommand,
   type DesignOp,
   type DesignSelection,
   type StylingApproach,
 } from '@arbora/shared';
 import { isListed, useAgents } from '../../agent-store';
-import { toggleDefaultModel } from '../../agent-defaults';
 import { useAutoVerify, usePickableAgents } from '../../agent-pickers';
 import { Picker } from '../../components/Picker';
 import { applyDesignToSource, discardDesign, saveDesignTo } from '../../commands';
@@ -773,21 +770,18 @@ interface DesignTarget {
   readonly key: string;
   readonly target: AgentModeTarget;
   readonly agentName: string;
-  /** Models offered for a new thread; empty when continuing a thread or the agent has none. */
-  readonly models: readonly AgentModel[];
-  readonly model: string | undefined;
   readonly detail: string;
 }
 
 /**
- * Where the send bar sends: the user's pick if it is still signed in, else a new thread with the
- * design task's agent and model (Settings → Agents), else the default agent and its default model. Only signed-in, visible agents (and their threads) count.
+ * Where the send bar sends: the user's pick if it still runs, else a new thread with the design
+ * task's agent (Settings → Agents), else the default agent. Only running, visible agents (and
+ * their threads) count; the agent CLI manages its own model.
  */
 function useDesignTarget(): DesignTarget | null {
   const pickable = usePickableAgents();
   const threads = useAgents((s) => s.threads);
   const chosen = useApp((s) => s.design.target);
-  const chosenModel = useApp((s) => s.design.model);
   const task = useApp((s) => s.settings.tasks.design);
   return useMemo(() => {
     const byId = new Map(pickable.map((entry) => [entry.agent.id, entry]));
@@ -799,9 +793,7 @@ function useDesignTarget(): DesignTarget | null {
         key: `thread:${thread.id}`,
         target: { type: 'thread', threadId: thread.id },
         agentName: byId.get(thread.agentId)?.agent.name ?? thread.agentId,
-        models: [],
-        model: undefined,
-        detail: `Continues “${thread.title}” with its current model`,
+        detail: `Continues “${thread.title}”`,
       };
     }
     const entry =
@@ -809,20 +801,13 @@ function useDesignTarget(): DesignTarget | null {
       (task.agentId !== null ? byId.get(task.agentId) : undefined) ??
       pickable[0];
     if (!entry) return null;
-    const taskModel = task.agentId === entry.agent.id ? task.model : null;
-    const model =
-      entry.models.find((m) => m.value === chosenModel)?.value ??
-      entry.models.find((m) => m.value === taskModel)?.value ??
-      entry.models[0]?.value;
     return {
       key: `new:${entry.agent.id}`,
-      target: { type: 'new', agentId: entry.agent.id, ...(model ? { model } : {}) },
+      target: { type: 'new', agentId: entry.agent.id },
       agentName: entry.agent.name,
-      models: entry.models,
-      model,
       detail: 'Starts a new thread',
     };
-  }, [pickable, threads, chosen, chosenModel, task]);
+  }, [pickable, threads, chosen, task]);
 }
 
 function AgentPicker({ value }: { value: string }) {
@@ -856,28 +841,7 @@ function AgentPicker({ value }: { value: string }) {
       className="min-w-0 flex-1"
       value={value}
       options={options}
-      onChange={(next) => setDesignTarget(next, null)}
-    />
-  );
-}
-
-function ModelPicker({ target }: { target: DesignTarget }) {
-  const agentId = target.target.type === 'new' ? target.target.agentId : '';
-  const defaults = useApp((s) => s.settings.agents.defaultModels);
-  if (target.models.length === 0 || !target.model) return null;
-  return (
-    <Picker
-      label="Model"
-      icon={Cpu}
-      testId="design-model"
-      menuWidth={260}
-      className="min-w-0 flex-1"
-      value={target.model}
-      options={target.models.map((model) => ({ value: model.value, name: model.name }))}
-      onChange={(value) => setDesignTarget(target.key, value)}
-      defaultValue={defaults[agentId]}
-      onSetDefault={(value) => toggleDefaultModel(agentId, value)}
-      defaultHint={`Use for new ${target.agentName} threads`}
+      onChange={(next) => setDesignTarget(next)}
     />
   );
 }
@@ -889,10 +853,10 @@ function NoAgents() {
     <div data-testid="design-no-agents" className="rounded-md border border-border bg-bg px-2 py-1.5 text-[11px]">
       {checking ? (
         <p className="flex items-center gap-1 text-fg-muted">
-          <LoaderCircle size={11} className="animate-spin" /> Checking which agents are signed in…
+          <LoaderCircle size={11} className="animate-spin" /> Checking which agents are installed…
         </p>
       ) : (
-        <p className="text-fg-muted">No signed-in agent is shown. Sign in to one, or show it, in Settings.</p>
+        <p className="text-fg-muted">No running agent is shown. Install one, or show it, in Settings.</p>
       )}
       <button type="button" onClick={() => openSettings('agents')} className="mt-1 text-accent hover:underline">
         Open Settings
@@ -974,7 +938,6 @@ function SendBar({ confirm, target }: { confirm: DesignPending | null; target: D
       {target ? (
         <div className="flex items-center gap-2">
           <AgentPicker value={target.key} />
-          <ModelPicker target={target} />
         </div>
       ) : canWrite ? null : (
         <NoAgents />

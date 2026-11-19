@@ -7,7 +7,7 @@ import type { AppSettings, NavigationState, TerminalInfo, ThreadSummary } from '
 import { checkedAgents, DESKTOP_ROOT, focusChrome, launch, showRight, switchWorkspace, tempUserData } from './app';
 import { freePort } from './servers';
 
-const FAKE_AGENT = resolve(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
+const FAKE_AGENT = resolve(DESKTOP_ROOT, 'e2e/fake-terminal-agent.mjs');
 const FAKE_ID = 'fake';
 const isMac = process.platform === 'darwin';
 const MOD = isMac ? 'meta' : 'control';
@@ -20,7 +20,6 @@ function userDataWithFakeAgent(): string {
       version: 3,
       agents: {
         custom: [{ id: FAKE_ID, name: 'Fake agent', command: process.execPath, args: [FAKE_AGENT], env: {} }],
-        permissions: {},
         ...checkedAgents([FAKE_ID]),
       },
     }),
@@ -87,6 +86,17 @@ function lines(page: Page, id: string): Promise<string> {
   return page
     .evaluate((terminalId) => window.arbora.invoke('terminal.lines', { id: terminalId }), id)
     .then((l) => l.join('\n'));
+}
+
+/** The agent terminal's raw scrollback, which is what the pane shows. */
+function scrollback(page: Page, threadId: string): Promise<string> {
+  return page.evaluate(async (id): Promise<string> => {
+    const thread = (await window.arbora.invoke('agent.listThreads')).find((t) => t.id === id);
+    const terminalId = thread?.state.terminalId;
+    if (!terminalId) return '';
+    const response = await window.arbora.invoke('terminal.scrollback', { id: terminalId });
+    return typeof response === 'string' ? response : response.data;
+  }, threadId);
 }
 
 function browserState(page: Page): Promise<NavigationState | null> {
@@ -164,12 +174,12 @@ test.describe('Stage 10 Grove', () => {
       expect((await fetch(`${url}from-test`)).status).toBe(404);
       await expect.poll(() => lines(page, dev.id)).toContain('request /from-test');
 
-      // The agent's browser tools act on the page beside it, screenshots included.
+      // The agent drives the page beside it over MCP (the env the preface pointed it at).
+      const rowId = await page.getByTestId('grove-row').getAttribute('data-thread-id');
+      if (!rowId) throw new Error('no row id');
       await composer.fill('browser check');
       await composer.press('Enter');
-      const reply = pane.getByTestId('agent-message').last();
-      await expect(reply).toContainText('Screenshot images: 1', { timeout: 30_000 });
-      await expect(reply).toContainText(/After clicking e\d+: Clicked 1 times/);
+      await expect.poll(async () => scrollback(page, rowId), { timeout: 30_000 }).toContain('browser check done');
       await expect.poll(() => viewVisible(app)).toBe(true);
 
       // Mod+Shift+K searches. Mod+K enters agent mode on the same page.
@@ -229,22 +239,23 @@ test.describe('Stage 10 Grove', () => {
       const task = page.getByTestId('launcher-task');
       await expect(task).toBeFocused();
       await page.getByTestId('launcher-default').check();
-      await task.fill('add a comment to `App.tsx`');
+      await task.fill('ask');
       await task.press('Enter');
       await expect(launcher).toHaveCount(0);
 
       const rows = page.getByTestId('grove-row');
       const first = rows.nth(0);
       await expect(rows).toHaveCount(1);
-      await expect(first.getByTestId('grove-row-name')).toHaveText('add a comment to `App.tsx`');
+      await expect(first.getByTestId('grove-row-name')).toHaveText('ask');
       await expect.poll(() => projectFile(project)).toMatchObject({ defaultAgent: FAKE_ID });
 
-      // The task's edit asks first: the row says Needs you, the bell counts it, and the card is pinned once.
+      // The agent asks a question in its terminal: the row says Needs you and the bell counts it.
       await expect(first).toHaveAttribute('data-status', 'needsYou', { timeout: 20_000 });
       const pane = page.getByTestId('grove-pane');
-      const pinned = pane.getByTestId('pinned-permissions');
-      await expect(pinned.getByTestId('permission-card')).toBeVisible();
-      await expect(pane.getByTestId('permission-card')).toHaveCount(1);
+      const firstId = (await first.getAttribute('data-thread-id')) ?? '';
+      await expect
+        .poll(async () => scrollback(page, firstId), { timeout: 20_000 })
+        .toContain('Allow edit to src/App.tsx? (y/n)');
       await expect(page.getByTestId('attention-badge')).toHaveText('1');
 
       // With a default agent, Mod+Alt+N starts it at once.
@@ -254,9 +265,8 @@ test.describe('Stage 10 Grove', () => {
       await expect(second.getByTestId('grove-row-name')).toHaveText('Fake agent');
       await expect(second).toHaveAttribute('aria-current', 'true');
       await expect(second).toHaveAttribute('data-status', 'idle', { timeout: 20_000 });
-      const firstId = await first.getAttribute('data-thread-id');
       const secondId = await second.getAttribute('data-thread-id');
-      if (!firstId || !secondId) throw new Error('rows without thread ids');
+      if (!secondId) throw new Error('rows without thread ids');
 
       await page.keyboard.press('ControlOrMeta+Alt+A');
       await expect(pane).toHaveAttribute('data-thread-id', firstId);
@@ -281,20 +291,31 @@ test.describe('Stage 10 Grove', () => {
       await page.keyboard.press('ControlOrMeta+Alt+A');
       await expect(pane).toHaveAttribute('data-thread-id', firstId);
 
-      await pinned.getByTestId('permission-allow_once').click();
-      await expect(pane.getByTestId('pinned-permissions')).toHaveCount(0);
-      await expect(pane.getByTestId('permission-outcome')).toContainText('Allow', { timeout: 20_000 });
-      await expect(first.getByTestId('grove-row-stats')).toHaveText('+1 −0', { timeout: 20_000 });
+      // The answer is typed into the agent's own terminal.
+      await page.evaluate(
+        ({ id, data }) =>
+          window.arbora.invoke('agent.getThread', { threadId: id }).then((thread) => {
+            if (thread?.state.terminalId) {
+              return window.arbora.invoke('terminal.write', { id: thread.state.terminalId, data });
+            }
+            return undefined;
+          }),
+        { id: firstId, data: 'y\r' },
+      );
+      await expect(first).toHaveAttribute('data-status', 'idle', { timeout: 20_000 });
       await focusWindow(app);
       await expect(page.getByTestId('attention-badge')).toHaveCount(0);
-      await expect(first).toHaveAttribute('data-status', 'idle');
 
+      // A file the agent edits during its turn lands in the Changes tab.
+      const composer = pane.getByTestId('composer-input');
+      await composer.fill('edit App.tsx');
+      await composer.press('Enter');
+      await expect.poll(async () => scrollback(page, firstId), { timeout: 20_000 }).toContain('edited App.tsx');
       await page.getByTestId('grove-tab-changes').click();
       const change = pane.getByTestId('grove-change');
       await expect(change).toHaveCount(1);
       await expect(change).toHaveAttribute('data-path', 'App.tsx');
-      await change.getByRole('button', { expanded: false }).click();
-      await expect(change.getByTestId('diff')).toContainText('Arbora fake agent was here');
+      expect(readFileSync(join(project, 'App.tsx'), 'utf8')).toContain('Arbora fake agent was here');
       await page.getByTestId('grove-tab-transcript').click();
 
       // Archiving a live session (Alt+A in the chat) asks first, then moves it to Recent and selects the next row.
@@ -396,18 +417,18 @@ test.describe('Stage 10 Grove', () => {
       await expect(pane).toHaveAttribute('data-thread-id', leadId);
       await pane.getByTestId('composer-input').fill('grove delegate');
       await pane.getByTestId('composer-input').press('Enter');
-      const card = pane.getByTestId('pinned-permissions').getByTestId('permission-card');
+      // The lead asks to start helpers once: Arbora's own confirmation card, pinned in the pane.
+      const card = pane.getByTestId('confirmation-card');
       await expect(card).toContainText('wants to start helper agents', { timeout: 20_000 });
-      await card.getByTestId('permission-allow_once').click();
+      await card.getByTestId('confirmation-allow').click();
 
       const helper = page.locator('[data-testid="grove-row"][data-helper="true"]');
       await expect(helper).toHaveCount(1, { timeout: 20_000 });
       await expect(helper.getByTestId('grove-row-name')).toHaveText('say hello from the helper');
-      await expect(pane.getByTestId('agent-message').last()).toContainText(
-        'The helper said: "Working on: say hello from the helper',
-        { timeout: 30_000 },
-      );
-      await expect(pane.getByTestId('permission-card')).toHaveCount(1);
+      await expect
+        .poll(async () => scrollback(page, leadId), { timeout: 60_000 })
+        .toContain('helper says: say hello from the helper');
+      await expect(pane.getByTestId('confirmation-card')).toHaveCount(0);
       // The helper's finish was the lead's to read, so once the lead's own is seen the bell is clear.
       await focusWindow(app);
       await expect(page.getByTestId('attention-badge')).toHaveCount(0);

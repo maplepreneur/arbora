@@ -6,7 +6,7 @@ import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, showRight, startAgent, t
 import { freePort, startSelfSignedServer, startViteFixture, type RunningServer } from './servers';
 
 const VITE_REACT = join(FIXTURES, 'vite-react');
-const FAKE_AGENT = join(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
+const FAKE_AGENT = join(DESKTOP_ROOT, 'e2e/fake-terminal-agent.mjs');
 const SCREENSHOTS = join(VITE_REACT, '.arbora/screenshots');
 const MOD = process.platform === 'darwin' ? 'meta' : 'control';
 
@@ -22,6 +22,17 @@ test.afterAll(async () => {
 
 function browserState(page: Page): Promise<NavigationState | null> {
   return page.evaluate(() => window.arbora.invoke('browser.getState'));
+}
+
+/** The agent terminal's raw scrollback, which is what the pane shows. */
+function scrollback(page: Page, threadId: string): Promise<string> {
+  return page.evaluate(async (id): Promise<string> => {
+    const thread = (await window.arbora.invoke('agent.listThreads')).find((t) => t.id === id);
+    const terminalId = thread?.state.terminalId;
+    if (!terminalId) return '';
+    const response = await window.arbora.invoke('terminal.scrollback', { id: terminalId });
+    return typeof response === 'string' ? response : response.data;
+  }, threadId);
 }
 
 /** Runs `code` in the user's page (main world) inside the browser panel. */
@@ -237,7 +248,15 @@ test.describe('Stage 1 browser panel', () => {
       JSON.stringify({
         version: 3,
         agents: {
-          custom: [{ id: 'fake', name: 'Fake agent', command: process.execPath, args: [FAKE_AGENT], env: {} }],
+          custom: [
+            {
+              id: 'fake',
+              name: 'Fake agent',
+              command: process.execPath,
+              args: [FAKE_AGENT],
+              env: { FAKE_TERMINAL_ECHO: '1' },
+            },
+          ],
           ...checkedAgents(['fake']),
         },
         tasks: { fix: { agentId: 'fake', model: 'smart' } },
@@ -267,13 +286,18 @@ test.describe('Stage 1 browser panel', () => {
       await expect(rows.filter({ hasText: 'ERR_CONNECTION_REFUSED' })).toHaveCount(1);
       await expect(page.getByTestId('problems-badge')).toHaveText('3');
 
-      // "Fix all" starts a thread with the Fix problems task's agent and model.
+      // "Fix all" starts a thread with the Fix problems task's agent.
       await expect(page.getByTestId('problems-fix-all')).toHaveText('Fix all 3');
       await page.getByTestId('problems-fix-all').click();
-      const sent = page.getByTestId('user-message').first();
-      await expect(sent).toContainText('Fix these problems from the browser at', { timeout: 20_000 });
-      await expect(sent).toContainText('[error, network] GET 404 Not Found');
-      await expect(page.getByTestId('model-select')).toHaveAttribute('data-value', 'smart');
+      const fixId = await page.evaluate(async (text) => {
+        const threads = await window.arbora.invoke('agent.listThreads');
+        return threads.find((t) => t.title === text)?.id ?? threads[0]?.id ?? '';
+      }, 'Fix these problems');
+      await expect
+        .poll(async () => scrollback(page, fixId), { timeout: 30_000 })
+        .toContain('Fix these problems from the browser at');
+      const fixScroll = await scrollback(page, fixId);
+      expect(fixScroll).toContain('[error, network] GET 404 Not Found');
 
       // Info-level console output is buffered too, shown under "All".
       await inPage(app, `console.log('fixture: %s %d', 'hello', 42)`);
@@ -596,7 +620,15 @@ test.describe('Stage 12 browser tabs', () => {
       JSON.stringify({
         version: 3,
         agents: {
-          custom: [{ id: 'fake', name: 'Fake agent', command: process.execPath, args: [FAKE_AGENT], env: {} }],
+          custom: [
+            {
+              id: 'fake',
+              name: 'Fake agent',
+              command: process.execPath,
+              args: [FAKE_AGENT],
+              env: { FAKE_TERMINAL_ECHO: '1' },
+            },
+          ],
           permissions: {},
           ...checkedAgents(['fake']),
         },
@@ -652,14 +684,14 @@ test.describe('Stage 12 browser tabs', () => {
       if (!threadId) throw new Error('No selected agent thread');
 
       const composer = page.getByTestId('composer-input');
-      await composer.fill(`tab grant ${refId}`);
+      await composer.fill(`tabs ${refId}`);
       await composer.press('Enter');
-      const refused = page.getByTestId('agent-message').last();
-      await expect(refused).toContainText('Reference: ERROR tab not granted', { timeout: 30_000 });
-      await expect(refused).toContainText('App shot: 1 image');
-      await expect(refused).toContainText('Compare: ERROR tab not granted');
-      await expect(refused).toContainText(`Default: Page URL: ${vite.url}`);
-      await expect(refused).not.toContainText(`Default: Page URL: ${referenceUrl}`);
+      await expect
+        .poll(async () => scrollback(page, threadId), { timeout: 30_000 })
+        .toContain('tabs: reference refused: tab not granted');
+      await expect
+        .poll(async () => scrollback(page, threadId), { timeout: 30_000 })
+        .toContain(`tabs: default url: ${vite.url}`);
       await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready');
       await expect(page.locator('[data-testid="browser-tab"][data-role="reference"]')).toHaveAttribute(
         'data-active',
@@ -667,15 +699,9 @@ test.describe('Stage 12 browser tabs', () => {
       );
 
       await page.evaluate((input) => window.arbora.invoke('browser.tabs.grant', input), { id: refId, threadId });
-      const before = await page.getByTestId('agent-message').count();
-      await composer.fill(`tab grant ${refId}`);
+      await composer.fill(`tabs ${refId}`);
       await composer.press('Enter');
-      await expect.poll(() => page.getByTestId('agent-message').count()).toBeGreaterThan(before);
-      const granted = page.getByTestId('agent-message').last();
-      await expect(granted).toContainText(`Reference: Page URL: ${referenceUrl}`, { timeout: 30_000 });
-      await expect(granted).toContainText('granted=true');
-      await expect(granted).toContainText('Reference shot: 1 image');
-      await expect(granted).toContainText(/Compare: score 0\.\d+|Compare: score 1/);
+      await expect.poll(async () => scrollback(page, threadId), { timeout: 30_000 }).toContain('tabs: reference ok');
       await expect(page.locator('[data-testid="browser-tab"][data-role="reference"]')).toHaveAttribute(
         'data-active',
         'true',

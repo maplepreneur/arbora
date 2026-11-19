@@ -1,8 +1,6 @@
-import { readFile } from 'node:fs/promises';
 import { statSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import type { Attachment, ContentBlock } from '@arbora/shared';
+import type { Attachment } from '@arbora/shared';
 
 const MIME_TYPES: Readonly<Record<string, string>> = {
   '.png': 'image/png',
@@ -56,8 +54,8 @@ export function pastedImagePath(projectPath: string, now: Date, mimeType = 'imag
   return join(projectPath, '.arbora', 'pasted', `paste-${stamp}${PASTE_EXTENSIONS[mimeType] ?? '.png'}`);
 }
 
-/** Image types ACP agents accept as `image` blocks (SVG is text, so it goes as a file). */
-const IMAGE_BLOCK_TYPES: ReadonlySet<string> = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+/** Image types shown with an image chip in the composer (SVG is text, so it is a file). */
+const IMAGE_TYPES: ReadonlySet<string> = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
 export function mimeTypeFor(name: string): string {
   return MIME_TYPES[extname(name).toLowerCase()] ?? 'application/octet-stream';
@@ -74,36 +72,9 @@ export function describeAttachment(path: string): Attachment | null {
       name: basename(path),
       mimeType,
       size: stats.size,
-      kind: IMAGE_BLOCK_TYPES.has(mimeType) ? 'image' : 'file',
+      kind: IMAGE_TYPES.has(mimeType) ? 'image' : 'file',
     };
   } catch {
     return null;
   }
-}
-
-/**
- * Content blocks for the prompt: images are inlined as base64 when the agent advertised
- * `promptCapabilities.image`; everything else is a `resource_link` the agent reads itself.
- */
-export async function attachmentBlocks(
-  attachments: readonly Attachment[],
-  capabilities: { readonly image: boolean },
-): Promise<ContentBlock[]> {
-  const blocks: ContentBlock[] = [];
-  for (const attachment of attachments) {
-    const uri = pathToFileURL(attachment.path).toString();
-    if (attachment.kind === 'image' && capabilities.image) {
-      const data = await readFile(attachment.path);
-      blocks.push({ type: 'image', data: data.toString('base64'), mimeType: attachment.mimeType, uri });
-      continue;
-    }
-    blocks.push({
-      type: 'resource_link',
-      uri,
-      name: attachment.name,
-      mimeType: attachment.mimeType,
-      size: attachment.size,
-    });
-  }
-  return blocks;
 }

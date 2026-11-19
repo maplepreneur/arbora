@@ -66,9 +66,6 @@ importers:
         specifier: 4.6.7
         version: 4.6.7
     devDependencies:
-      '@arbora/acp-client':
-        specifier: workspace:*
-        version: link:../../packages/acp-client
       '@arbora/browser-bridge':
         specifier: workspace:*
         version: link:../../packages/browser-bridge
@@ -284,19 +281,6 @@ importers:
         specifier: 8.3.5
         version: 8.3.5(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)
 
-  packages/acp-client:
-    dependencies:
-      '@agentclientprotocol/sdk':
-        specifier: 2.2.0
-        version: 2.2.0(zod@4.6.7)
-      '@arbora/shared':
-        specifier: workspace:*
-        version: link:../shared
-    devDependencies:
-      '@modelcontextprotocol/sdk':
-        specifier: 1.32.2
-        version: 1.32.2(zod@4.6.7)
-
   packages/browser-bridge:
     dependencies:
       '@arbora/shared':
@@ -323,17 +307,12 @@ importers:
       zod:
         specifier: 4.6.7
         version: 4.6.7
+    devDependencies:
+      '@types/node':
+        specifier: 22.15.3
+        version: 22.15.3
 
 packages:
-
-  '@agentclientprotocol/sdk@2.2.0':
-    resolution: {integrity: sha512-o1+eDQVb05yzPY+5v54awHyONU1oeLsbLVavkwrMQaZDuJDh/38pQiXJS4ix4d6QA3Y4bU0lHFRjwg99KKKSaQ==}
-    peerDependencies:
-      '@modelcontextprotocol/server': ^2.4.0
-      zod: ^3.25.76 || ^4.0.0
-    peerDependenciesMeta:
-      '@modelcontextprotocol/server':
-        optional: true
 
   '@babel/code-frame@7.29.7':
     resolution: {integrity: sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw==}
@@ -2023,6 +2002,9 @@ packages:
 
   '@types/ms@2.1.0':
     resolution: {integrity: sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==}
+
+  '@types/node@22.15.3':
+    resolution: {integrity: sha512-lX7HFZeHf4QG/J7tBZqrCAXwz9J5RD56Y6MpP0eJkka8p+K0RY/yBTW7CYFJ4VGCclxqOLKmiGP5juQc6MKgcw==}
 
   '@types/node@22.20.5':
     resolution: {integrity: sha512-U2+DNr+wSjpsTS/wZGYHq7GcwfuSmKiKvoPvK22zwTlRhU91yOniN4qRR5KhIjvif7ysw/dz/hKmfDH0Ris4aA==}
@@ -6167,10 +6149,6 @@ packages:
 
 snapshots:
 
-  '@agentclientprotocol/sdk@2.2.0(zod@4.6.7)':
-    dependencies:
-      zod: 4.6.7
-
   '@babel/code-frame@7.29.7':
     dependencies:
       '@babel/helper-validator-identifier': 7.29.7
@@ -8036,6 +8014,10 @@ snapshots:
       '@types/unist': 3.0.3
 
   '@types/ms@2.1.0': {}
+
+  '@types/node@22.15.3':
+    dependencies:
+      undici-types: 6.21.0
 
   '@types/node@22.20.5':
     dependencies:

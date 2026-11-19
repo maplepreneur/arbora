@@ -41,7 +41,7 @@ import {
   updateGroup,
   useAgents,
 } from '../../agent-store';
-import { shortModelName, useAutoVerify, usePickableAgents } from '../../agent-pickers';
+import { useAutoVerify, usePickableAgents } from '../../agent-pickers';
 import { useAttention, useThreadAttention } from '../../attention-store';
 import { showToast } from '../../store';
 
@@ -51,11 +51,11 @@ export function statusDot(status: ThreadStatus): string {
       return 'bg-fg-subtle/50';
     case 'starting':
       return 'bg-amber-400 animate-pulse';
-    case 'auth_required':
+    case 'needs_input':
       return 'bg-attention';
     case 'ready':
       return 'bg-emerald-500';
-    case 'prompting':
+    case 'working':
       return 'bg-accent animate-pulse';
     case 'error':
       return 'bg-danger';
@@ -275,7 +275,7 @@ function ThreadRow({
 /** "2 working · 1 needs you" for a group header, like a Herdr herd. */
 function GroupSummary({ threads }: { threads: readonly ThreadSummary[] }) {
   const attention = useAttention((s) => s.threads);
-  const working = threads.filter((t) => t.state.status === 'prompting' || t.state.status === 'starting').length;
+  const working = threads.filter((t) => t.state.status === 'working' || t.state.status === 'starting').length;
   const waiting = threads.filter((t) => {
     const kind = attentionKind(attention[t.id]);
     return kind === 'permission' || kind === 'auth';
@@ -419,20 +419,15 @@ export function ThreadList() {
   const byId = new Map<string, AgentDefinition>(agents.map((a) => [a.id, a]));
   const newGroupFor = useAgents((s) => s.newGroupFor);
   const setNewGroupFor = (value: string | null): void => useAgents.setState({ newGroupFor: value });
-  // The global default: the starred agent when it is signed in and shown, else the first that is,
-  // on its default model (or its first favourite, or its first model).
+  // The global default: the starred agent when it runs and is shown, else the first that does.
   useAutoVerify();
-  const fallback = usePickableAgents()[0];
-  const defaultAgent = fallback?.agent;
-  const defaultModel = fallback?.models[0];
+  const defaultAgent = usePickableAgents()[0];
   const startDefault = (groupId?: string): void => {
     if (!defaultAgent) {
       showPicker();
       return;
     }
-    createThread(defaultAgent.id, defaultModel?.value, groupId).catch((error: unknown) =>
-      showToast((error as Error).message),
-    );
+    createThread(defaultAgent.agent.id, groupId).catch((error: unknown) => showToast((error as Error).message));
   };
   const sections = threadSections(threads, groups);
   const showHeadings = groups.length > 0 || threads.some((t) => t.pinned);
@@ -444,12 +439,9 @@ export function ThreadList() {
           <button
             type="button"
             data-testid="new-thread"
-            data-agent={defaultAgent?.id}
-            data-model={defaultModel?.value}
+            data-agent={defaultAgent?.agent.id}
             title={
-              defaultAgent
-                ? `New thread with the default: ${defaultAgent.name}${defaultModel ? ` on ${defaultModel.name}` : ''}`
-                : 'New thread: choose an agent'
+              defaultAgent ? `New thread with the default: ${defaultAgent.agent.name}` : 'New thread: choose an agent'
             }
             onClick={() => startDefault()}
             className="flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-l bg-accent px-2.5 py-1 text-left text-accent-fg hover:opacity-90"
@@ -459,8 +451,7 @@ export function ThreadList() {
               <span className="text-[12px] font-medium">New thread</span>
               {defaultAgent && (
                 <span className="truncate text-[11px] opacity-80" data-testid="new-thread-default">
-                  {defaultAgent.name}
-                  {defaultModel && ` · ${shortModelName(defaultModel.name)}`}
+                  {defaultAgent.agent.name}
                 </span>
               )}
             </span>
@@ -468,8 +459,8 @@ export function ThreadList() {
           <button
             type="button"
             data-testid="new-thread-choose"
-            title="Choose an agent and model for the new thread"
-            aria-label="Choose an agent and model for the new thread"
+            title="Choose an agent for the new thread"
+            aria-label="Choose an agent for the new thread"
             onClick={showPicker}
             className="flex w-8 shrink-0 items-center justify-center rounded-r border-l border-accent-fg/25 bg-accent text-accent-fg hover:opacity-90"
           >

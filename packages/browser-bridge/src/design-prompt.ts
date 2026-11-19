@@ -2,7 +2,6 @@ import {
   DESIGN_INSTRUCTION,
   formatSource,
   stylingNote,
-  type ContentBlock,
   type DesignOp,
   type FrameworkInfo,
   type ResolvedSource,
@@ -18,8 +17,6 @@ export interface DesignPromptInput {
   readonly sources: readonly ResolvedSource[];
   readonly before: PromptScreenshot;
   readonly after: PromptScreenshot;
-  readonly imageSupported: boolean;
-  readonly toUri: (path: string) => string;
 }
 
 const FRAMEWORK_TEXT: Readonly<Record<FrameworkInfo['id'], string>> = {
@@ -32,22 +29,12 @@ const FRAMEWORK_TEXT: Readonly<Record<FrameworkInfo['id'], string>> = {
   html: 'plain HTML (no framework detected)',
 };
 
-function imageBlock(shot: PromptScreenshot, imageSupported: boolean): ContentBlock {
-  if (imageSupported) return { type: 'image', data: shot.data, mimeType: shot.mimeType, uri: shot.uri };
-  return {
-    type: 'resource_link',
-    uri: shot.uri,
-    name: shot.relative.split('/').pop() ?? shot.relative,
-    mimeType: shot.mimeType,
-  };
-}
-
 /**
  * The design-mode save prompt: the change list, the styling approach, resolved sources, and the
- * before/after screenshots. The live DOM has already been reverted, so the agent compares the
- * running page with the after screenshot.
+ * before/after screenshots as paths. The live DOM has already been reverted, so the agent compares
+ * the running page with the after screenshot. Terminal agents receive it as one paste.
  */
-export function composeDesignPrompt(input: DesignPromptInput): ContentBlock[] {
+export function composeDesignPrompt(input: DesignPromptInput): string {
   const framework = FRAMEWORK_TEXT[input.framework.id];
   const lines = [
     '## Request',
@@ -60,9 +47,7 @@ export function composeDesignPrompt(input: DesignPromptInput): ContentBlock[] {
     `- Framework: ${input.framework.reactVersion ? `${framework} ${input.framework.reactVersion}` : framework}`,
     `- Styling: ${input.approach}`,
     `- ${stylingNote(input.approach)}`,
-    input.imageSupported
-      ? '- Screenshots: before and after are attached, in that order.'
-      : `- Before: ${input.before.relative}. After: ${input.after.relative}. Open them if you can read images.`,
+    `- Before: ${input.before.relative}. After: ${input.after.relative}. Open them if you can read images.`,
     '',
     '## Changes',
     '',
@@ -80,15 +65,7 @@ export function composeDesignPrompt(input: DesignPromptInput): ContentBlock[] {
     '3. The dev server hot-reloads; wait for it, then verify with `browser_screenshot` and compare it to the after screenshot.',
     '4. Reply with a short summary of what you changed and in which files.',
   );
-  const blocks: ContentBlock[] = [
-    { type: 'text', text: lines.join('\n') },
-    imageBlock(input.before, input.imageSupported),
-    imageBlock(input.after, input.imageSupported),
-  ];
-  for (const source of input.sources) {
-    blocks.push({ type: 'resource_link', uri: input.toUri(source.path), name: source.relative });
-  }
-  return blocks;
+  return lines.join('\n');
 }
 
 /** Ops that are currently applied (the change list does not include undone ones). */

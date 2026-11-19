@@ -27,7 +27,6 @@ import {
 import type { GroveSession } from '../../grove-model';
 import { useChordLabel } from '../../keybindings';
 import { formatWhen } from '../agent/ThreadList';
-import { sessionStats, type EditStats } from './changes';
 import { onAgentListKeyDown } from './agent-list-keys';
 import { hasProcess, openRowMenu } from './session-actions';
 import { AgentMark } from './AgentMark';
@@ -60,11 +59,16 @@ function Elapsed({ since }: { since: number }) {
   );
 }
 
-export function DiffStat({ stats }: { stats: EditStats }) {
+/** The working timer while a turn runs, else how long the last one worked. */
+export function WorkTimer({ session }: { session: GroveSession }) {
+  if (session.state.turnStartedAt !== null && session.status === 'working') {
+    return <Elapsed since={session.state.turnStartedAt} />;
+  }
+  const worked = session.state.lastTurnMs;
+  if (worked === null) return null;
   return (
-    <span data-testid="grove-row-stats" className="shrink-0 font-mono text-[10.5px] tabular-nums">
-      <span className="text-emerald-600 dark:text-emerald-400">+{stats.additions}</span>{' '}
-      <span className="text-red-600 dark:text-red-400">−{stats.deletions}</span>
+    <span data-testid="grove-row-worked" className="shrink-0 text-[10.5px] text-fg-subtle tabular-nums">
+      {formatElapsed(worked)}
     </span>
   );
 }
@@ -101,9 +105,7 @@ export function SessionRow({
   const archiveKey = useChordLabel(CommandId.groveArchiveSession);
   const live = hasProcess(session);
   const revealed = selected || kbd;
-  const stats = sessionStats(session.activity);
-  const since = session.status === 'working' ? session.activity.turnStartedAt : null;
-  const worked = since === null ? session.activity.lastTurnMs : null;
+  const worked = session.state.turnStartedAt === null ? session.state.lastTurnMs : null;
   const status = SESSION_STATUS_LABEL[session.status];
   const title = [
     session.name === session.agentName
@@ -165,7 +167,7 @@ export function SessionRow({
               <TriangleAlert size={12} />
             </span>
           )}
-          {since !== null ? <Elapsed since={since} /> : stats.files > 0 && <DiffStat stats={stats} />}
+          <WorkTimer session={session} />
         </span>
         <span
           data-testid="grove-row-line"

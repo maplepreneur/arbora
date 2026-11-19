@@ -19,12 +19,10 @@ import {
   type TraceStepInput,
   type ViewportRequest,
 } from '@arbora/mcp-browser-server/host';
-import { resolveInsideRoot } from '@arbora/acp-client';
+import { resolveInsideRoot } from '@arbora/shared';
 import {
-  ACTION_TRACE_IMAGE_LIMIT,
   stripAnsi,
   viewportPreset,
-  type ActionTraceImage,
   type BrowserToolPolicy,
   type ProblemEntry,
   type ProjectSettings,
@@ -43,20 +41,10 @@ const LOAD_TIMEOUT_MS = 15_000;
 const DEV_URL_TIMEOUT_MS = 60_000;
 const PNG_BYTE_LIMIT = 1_500_000;
 const JPEG_QUALITY = 85;
-/** Long edge of the thumbnail mirrored into the agent panel. */
-export const PREVIEW_EDGE = 360;
-/** Long edge of a trace-step thumbnail. Smaller than the preview so a turn of steps stays in the thread file. */
-const TRACE_EDGE = 240;
 const TERMINAL_OUTPUT_LIMIT = 200_000;
 
 /** How the user answered a permission card; `always`/`never` also change the project setting. */
 export type PermissionAnswer = 'once' | 'always' | 'reject' | 'never';
-
-export interface BrowserPreview {
-  readonly title: string;
-  readonly image: { data: string; mimeType: string; width: number; height: number };
-  readonly path: string | null;
-}
 
 export interface ArboraToolHostOptions {
   readonly projectPath: string;
@@ -78,11 +66,8 @@ export interface ArboraToolHostOptions {
   readonly projectSettings: () => ProjectSettings;
   readonly saveToolPolicy: (tool: 'evaluate' | 'terminalRun', policy: BrowserToolPolicy) => void;
   readonly findCandidates: (terms: readonly SearchTerm[]) => Promise<SourceCandidate[]>;
-  /** Shows a permission card in the thread; null when the thread or turn went away. */
+  /** Shows a confirmation card in the thread; null when the thread or turn went away. */
   readonly askPermission: (request: PermissionRequest) => Promise<PermissionAnswer | null>;
-  readonly preview: (preview: BrowserPreview) => void;
-  /** Adds one step to the thread's action trace. */
-  readonly trace?: (step: TraceStepInput & { image: ActionTraceImage | null }) => void;
 }
 
 function isFile(path: string): boolean {
@@ -253,26 +238,10 @@ export class ArboraToolHost implements BrowserToolHost {
   }
 
   /**
-   * A viewport thumbnail after a browser tool returns. Failure leaves the step without an image;
-   * the tool result itself is already decided.
+   * Browser-action tracing ended with the ACP transcript; terminal agents show their own work in
+   * their terminal. Kept as a no-op so the MCP server's optional hook stays satisfied.
    */
-  async recordTrace(step: TraceStepInput): Promise<void> {
-    this.options.trace?.({ ...step, image: await this.traceImage() });
-  }
-
-  private async traceImage(): Promise<ActionTraceImage | null> {
-    const browser = this.targeted.at(-1) ?? this.options.browser();
-    if (!browser?.getState().url) return null;
-    try {
-      const shot = await browser.screenshot({ mode: 'viewport' });
-      const full = nativeImage.createFromBuffer(Buffer.from(shot.pngBase64, 'base64'));
-      if (full.isEmpty()) return null;
-      const image = encodeImage(full, TRACE_EDGE, 'always');
-      return image.data.length <= ACTION_TRACE_IMAGE_LIMIT ? image : null;
-    } catch {
-      return null;
-    }
-  }
+  async recordTrace(_step: TraceStepInput): Promise<void> {}
 
   async screenshot(mode: ScreenshotMode, clip: Box | null): Promise<ScreenshotImage> {
     const browser = this.browser();
@@ -287,11 +256,6 @@ export class ArboraToolHost implements BrowserToolHost {
     const png = Buffer.from(shot.pngBase64, 'base64');
     const full = nativeImage.createFromBuffer(png);
     const path = browser.writeScreenshotFile(png, `agent-${mode}`, 'png');
-    this.options.preview({
-      title: `Agent screenshot (${mode}) of ${browser.getState().url}`,
-      image: encodeImage(full, PREVIEW_EDGE, 'always'),
-      path,
-    });
     return { ...encodeImage(full, MAX_IMAGE_EDGE, 'auto'), path };
   }
 

@@ -1,28 +1,30 @@
-import type { ContentBlock, ThreadChange, ThreadEvent, ThreadStatus } from './agent.js';
+import type { ThreadState, ThreadStatus } from './agent.js';
 import type { AttentionKind } from './settings.js';
 
 /**
- * Whether a thread needs the user, derived from its ACP events and status (not from terminal
- * output). `permission` and `auth` hold while the agent waits; `finished` and `failed` hold until
- * the user looks at the thread.
+ * Whether a thread needs the user, derived from its terminal status: an input request or one of
+ * Arbora's own confirmation cards holds while it waits; `finished` and `failed` hold until the
+ * user looks at the thread.
  */
 export interface ThreadAttention {
-  /** Request ids of permission cards that have no answer yet. */
-  readonly pendingPermissions: readonly string[];
-  readonly permissionTitle: string | null;
-  readonly auth: boolean;
+  /** The status this attention was last computed from. */
+  readonly status: ThreadStatus;
+  /** The question the agent's terminal is waiting on, from its last output line. */
+  readonly waiting: string | null;
+  /** A confirmation card Arbora raised itself (a guarded browser tool, a helper start). */
+  readonly confirmation: string | null;
   readonly unread: 'finished' | 'failed' | null;
   readonly failure: string | null;
-  /** First line of the agent's last message, for "finished" notifications. */
+  /** The last line the agent printed, for "finished" notifications. */
   readonly lastMessage: string | null;
   /** When the current attention kind started (oldest wait is shown first). */
   readonly since: number;
 }
 
 export const NO_ATTENTION: ThreadAttention = {
-  pendingPermissions: [],
-  permissionTitle: null,
-  auth: false,
+  status: 'idle',
+  waiting: null,
+  confirmation: null,
   unread: null,
   failure: null,
   lastMessage: null,
@@ -30,8 +32,9 @@ export const NO_ATTENTION: ThreadAttention = {
 };
 
 export type AttentionInput =
-  | { readonly type: 'changes'; readonly changes: readonly ThreadChange[]; readonly at: number }
-  | { readonly type: 'status'; readonly status: ThreadStatus; readonly error: string | null; readonly at: number }
+  | { readonly type: 'status'; readonly state: ThreadState; readonly at: number }
+  /** Arbora raised (or resolved) one of its own confirmation cards for this thread. */
+  | { readonly type: 'confirmation'; readonly title: string | null; readonly at: number }
   /** The user is looking at the thread in a focused window. */
   | { readonly type: 'seen' };
 
@@ -41,108 +44,68 @@ export interface AttentionStep {
   readonly signal: AttentionKind | null;
 }
 
-/** Permission > auth > failed > finished. */
+/** Input request > failed > finished. */
 export function attentionKind(attention: ThreadAttention | undefined): AttentionKind | null {
   if (!attention) return null;
-  if (attention.pendingPermissions.length > 0) return 'permission';
-  if (attention.auth) return 'auth';
+  if (attention.waiting !== null || attention.confirmation !== null) return 'permission';
   return attention.unread;
-}
-
-function firstLine(blocks: readonly ContentBlock[]): string | null {
-  const text = blocks
-    .flatMap((block) => (block.type === 'text' ? [block.text] : []))
-    .join('')
-    .trim();
-  if (!text) return null;
-  const line = text.split('\n').find((l) => l.trim().length > 0) ?? '';
-  return line.trim().slice(0, 200) || null;
-}
-
-function applyEvent(current: ThreadAttention, event: ThreadEvent, at: number): ThreadAttention {
-  switch (event.kind) {
-    case 'permission':
-      if (event.outcome === null) {
-        if (current.pendingPermissions.includes(event.requestId)) return current;
-        return {
-          ...current,
-          pendingPermissions: [...current.pendingPermissions, event.requestId],
-          permissionTitle: event.title,
-        };
-      }
-      return { ...current, pendingPermissions: current.pendingPermissions.filter((id) => id !== event.requestId) };
-    case 'turn_end':
-      if (event.stopReason === 'cancelled') return { ...current, pendingPermissions: [] };
-      return { ...current, pendingPermissions: [], unread: current.unread ?? 'finished', since: at };
-    case 'error':
-      return { ...current, unread: 'failed', failure: event.message.slice(0, 300), since: at };
-    case 'agent_message': {
-      const line = firstLine(event.blocks);
-      return line ? { ...current, lastMessage: line } : current;
-    }
-    case 'user_message':
-      return { ...current, unread: null, failure: null };
-    case 'agent_thought':
-    case 'tool_call':
-    case 'plan':
-    case 'notice':
-    case 'browser_preview':
-    case 'action_trace':
-      return current;
-    default: {
-      const unreachable: never = event;
-      return unreachable;
-    }
-  }
 }
 
 function step(previous: ThreadAttention, next: ThreadAttention, at: number): AttentionStep {
   const before = attentionKind(previous);
   const after = attentionKind(next);
   const signal = after !== null && after !== before ? after : null;
-  // A new permission while another kind was showing restarts the wait clock.
-  const since = signal !== null && signal !== before ? at : next.since;
+  // A new question while another kind was showing restarts the wait clock.
+  const since = signal !== null ? at : next.since;
   return { next: { ...next, since }, signal };
 }
 
 export function reduceAttention(current: ThreadAttention | undefined, input: AttentionInput): AttentionStep {
   const previous = current ?? NO_ATTENTION;
   switch (input.type) {
-    case 'changes': {
-      let next = previous;
-      for (const change of input.changes) {
-        switch (change.type) {
-          case 'append':
-          case 'replace':
-            next = applyEvent(next, change.event, input.at);
-            break;
-          case 'reset':
-            next = change.events.reduce((acc, event) => applyEvent(acc, event, input.at), {
-              ...NO_ATTENTION,
-              auth: next.auth,
-            });
-            // A transcript reset (session load) is history, not news.
-            next = { ...next, unread: null };
-            break;
-          default: {
-            const unreachable: never = change;
-            throw new Error(`Unhandled change ${String(unreachable)}`);
-          }
+    case 'status': {
+      const { status, error, lastLine } = input.state;
+      const at = input.at;
+      let next: ThreadAttention = { ...previous, status, lastMessage: lastLine ?? previous.lastMessage };
+      switch (status) {
+        case 'working':
+          // A new prompt clears anything the user was meant to see; a resolved card stays resolved.
+          next = { ...next, waiting: null, unread: null, failure: null };
+          break;
+        case 'needs_input':
+          next = { ...next, waiting: lastLine ?? 'The agent is waiting for an answer', unread: null, failure: null };
+          break;
+        case 'ready':
+          // The turn ended quietly. Only a finish that follows work is news.
+          next = {
+            ...next,
+            waiting: null,
+            unread: previous.status === 'working' ? 'finished' : previous.unread,
+            failure: null,
+          };
+          break;
+        case 'error':
+          next = { ...next, waiting: null, unread: 'failed', failure: error ?? 'The agent stopped' };
+          break;
+        case 'starting':
+        case 'idle':
+          // Starting is never news; a stopped process cannot be waiting for anything.
+          next = { ...next, waiting: null };
+          break;
+        default: {
+          const unreachable: never = status;
+          throw new Error(`Unhandled thread status ${String(unreachable)}`);
         }
       }
-      return step(previous, next, input.at);
+      return step(previous, next, at);
     }
-    case 'status': {
-      let next: ThreadAttention = { ...previous, auth: input.status === 'auth_required' };
-      if (input.status === 'error' && previous.unread !== 'failed') {
-        next = { ...next, unread: 'failed', failure: input.error?.slice(0, 300) ?? null };
-      }
-      if (input.status === 'prompting' && previous.unread !== null) next = { ...next, unread: null, failure: null };
-      // The process stopped: nothing can still be waiting for an answer.
-      if (input.status === 'idle') next = { ...next, pendingPermissions: [] };
+    case 'confirmation': {
+      // A raised card is news even mid-turn; resolving it is not.
+      const next: ThreadAttention = { ...previous, confirmation: input.title };
       return step(previous, next, input.at);
     }
     case 'seen':
+      // Looking at the thread settles a finish or a failure; a question still needs an answer.
       if (previous.unread === null) return { next: previous, signal: null };
       return { next: { ...previous, unread: null, failure: null }, signal: null };
     default: {
@@ -152,7 +115,7 @@ export function reduceAttention(current: ThreadAttention | undefined, input: Att
   }
 }
 
-/** Notification title and body, in the wording of PLAN § 4.12. Never includes raw tool input. */
+/** Notification title and body, in the wording of PLAN § 4.12. Never includes raw terminal output. */
 export function attentionMessage(
   kind: AttentionKind,
   name: string,
@@ -160,9 +123,12 @@ export function attentionMessage(
 ): { title: string; body: string } {
   switch (kind) {
     case 'permission':
-      return { title: `${name}: waiting for permission`, body: attention.permissionTitle ?? 'Permission requested' };
+      return {
+        title: `${name}: waiting for you`,
+        body: attention.confirmation ?? attention.waiting ?? 'Answer it in its terminal.',
+      };
     case 'auth':
-      return { title: `${name}: needs you to log in`, body: 'Open the thread to sign in.' };
+      return { title: `${name}: needs you to log in`, body: 'Log in inside its terminal.' };
     case 'finished':
       return { title: `${name} finished`, body: attention.lastMessage ?? 'The turn ended.' };
     case 'failed':
@@ -175,7 +141,7 @@ export function attentionMessage(
 }
 
 /**
- * The thread to jump to: the oldest waiting permission or login, else the oldest failure, else the
+ * The thread to jump to: the oldest waiting input request, else the oldest failure, else the
  * oldest unread finish.
  */
 export function nextAttentionThread(entries: Readonly<Record<string, ThreadAttention>>): string | null {

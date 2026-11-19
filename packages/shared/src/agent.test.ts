@@ -38,17 +38,14 @@ describe('threadSummarySchema', () => {
       title: 'x',
       createdAt: 1,
       updatedAt: 1,
-      sessionId: null,
-      autoApproveEdits: false,
       state: {
         status: 'idle',
         error: null,
-        authMethods: [],
-        modes: null,
-        configOptions: [],
-        availableCommands: [],
-        capabilities: null,
-        contextLost: false,
+        terminalId: null,
+        lastLine: null,
+        turnStartedAt: null,
+        lastOutputAt: null,
+        lastTurnMs: null,
       },
     });
     expect(parsed).toMatchObject({ groupId: null, pinned: false, archivedAt: null, parentThreadId: null });

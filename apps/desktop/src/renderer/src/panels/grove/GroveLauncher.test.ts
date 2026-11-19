@@ -25,10 +25,8 @@ vi.hoisted(() => {
   });
 });
 
-const MODEL_COUNT = 115;
-
 function agent(id: string, name: string): AgentDefinition {
-  return { id, name, command: id, args: [], env: {}, builtIn: true };
+  return { id, name, command: id, args: [], env: {}, builtIn: true, probe: [], task: [] };
 }
 
 function mount(): Root {
@@ -62,7 +60,6 @@ describe('GroveLauncher', () => {
     vi.mocked(closeLauncher).mockClear();
     vi.mocked(setProjectDefaultAgent).mockClear();
     vi.mocked(startSession).mockClear();
-    const models = Array.from({ length: MODEL_COUNT }, (_, i) => ({ value: `model-${i}`, name: `Model ${i}` }));
     const settings = defaultSettings();
     useApp.setState({
       checkingAgents: [],
@@ -75,9 +72,9 @@ describe('GroveLauncher', () => {
           hidden: ['kimi'],
           defaultAgent: 'opencode',
           verified: {
-            opencode: { status: 'ready', checkedAt: 1, models },
-            kimi: { status: 'ready', checkedAt: 1, models: [{ value: 'kimi-model', name: 'Kimi' }] },
-            'claude-code': { status: 'auth_required', checkedAt: 1, models: [] },
+            opencode: { status: 'ready', checkedAt: 1 },
+            kimi: { status: 'ready', checkedAt: 1 },
+            'claude-code': { status: 'auth_required', checkedAt: 1 },
           },
         },
       },
@@ -96,23 +93,23 @@ describe('GroveLauncher', () => {
     useApp.setState({ settings: defaultSettings(), project: null, checkingAgents: [] });
   });
 
-  it('scrolls a long model list inside a viewport-capped dialog and omits hidden agents', () => {
+  it('caps the dialog to the viewport and omits hidden and non-running agents', () => {
     root = mount();
     const dialog = document.querySelector('[data-testid="grove-launcher"]');
     const shell = dialog?.firstElementChild;
-    const models = document.querySelector('[data-testid="launcher-models"]');
     expect(shell?.className).toContain('max-h-[calc(100dvh-3rem)]');
     expect(shell?.className).toContain('overflow-hidden');
-    expect(models?.className).toContain('overflow-y-auto');
-    expect(models?.querySelector('textarea')).toBeNull();
-    expect(models?.querySelectorAll('[data-testid^="launcher-model-"]')).toHaveLength(MODEL_COUNT);
+    const list = agentList();
+    expect(list.className).toContain('overflow-y-auto');
+    expect(list.querySelector('textarea')).toBeNull();
     expect(document.querySelector('[data-testid="launcher-agent-opencode"]')).not.toBeNull();
     expect(document.querySelector('[data-testid="launcher-agent-kimi"]')).toBeNull();
     expect(document.querySelector('[data-testid="launcher-agent-claude-code"]')).toBeNull();
     expect(document.body.textContent).toContain('default');
+    expect(document.body.textContent).toContain('its own terminal');
   });
 
-  it('moves between the lists on stage 1, and Ctrl+Enter starts with an empty task', () => {
+  it('moves through the list on stage 1, and Ctrl+Enter starts with an empty task', () => {
     const settings = useApp.getState().settings;
     useApp.setState({
       settings: { ...settings, agents: { ...settings.agents, hidden: [] } },
@@ -125,31 +122,16 @@ describe('GroveLauncher', () => {
     expect(document.querySelector('[data-testid="launcher-hint"]')?.textContent).toBe(launcherHint('agents', 'linux'));
 
     const agents = agentList();
-    const models = document.querySelector('[data-testid="launcher-models"]');
     expect(document.activeElement).toBe(agents);
-    expect(models).not.toBeNull();
+    expect(document.querySelector('[data-testid="launcher-models"]')).toBeNull();
 
     press(agents, 'ArrowDown');
     expect(document.querySelector('[data-testid="launcher-agent-kimi"]')?.getAttribute('data-active')).toBe('true');
-
-    const right = press(agents, 'ArrowRight');
-    expect(right.defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(models);
-    expect(document.activeElement?.tagName).not.toBe('TEXTAREA');
-    expect(document.querySelector('[data-testid="launcher-model-kimi-model"]')?.getAttribute('data-active')).toBe(
-      'true',
-    );
-
-    const left = press(models as Element, 'ArrowLeft');
-    expect(left.defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(agents);
-    expect(document.querySelector('textarea')).toBeNull();
 
     press(agents, 'Enter', { ctrlKey: true });
     expect(startSession).toHaveBeenCalledTimes(1);
     expect(startSession).toHaveBeenCalledWith({
       agentId: 'kimi',
-      model: 'kimi-model',
       task: '',
       worktree: false,
     });
@@ -158,7 +140,7 @@ describe('GroveLauncher', () => {
     expect(document.querySelector('[data-testid="launcher-task"]')).toBeNull();
   });
 
-  it('Enter opens the task, and Escape returns to the lists before it closes', () => {
+  it('Enter opens the task, and Escape returns to the list before it closes', () => {
     root = mount();
     press(agentList(), 'Enter');
 

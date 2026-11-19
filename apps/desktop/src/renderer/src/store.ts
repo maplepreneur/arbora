@@ -122,8 +122,6 @@ export interface DesignUiState {
   readonly sessions: readonly DesignSessionSummary[];
   /** `thread:<id>` or `new:<agentId>` the user picked last; null follows the default agent. */
   readonly target: string | null;
-  /** Model picked for a new thread; null follows the agent's default model. */
-  readonly model: string | null;
 }
 
 const HTML_FRAMEWORK: FrameworkInfo = { id: 'html', react: false, vue: false, reactVersion: null };
@@ -139,7 +137,6 @@ export const EMPTY_DESIGN: DesignUiState = {
   showingOriginal: false,
   sessions: [],
   target: null,
-  model: null,
 };
 
 export const DEFAULT_LAYOUT: LayoutState = layoutStateSchema.parse({});
@@ -289,7 +286,7 @@ export function dispatchMode(event: ModeEvent): void {
   const designing = designEffect(previous, next);
   if (designing === 'stop') {
     useApp.setState((s) => ({
-      design: { ...EMPTY_DESIGN, sessions: s.design.sessions, target: s.design.target, model: s.design.model },
+      design: { ...EMPTY_DESIGN, sessions: s.design.sessions, target: s.design.target },
     }));
   }
   if (designing) void window.arbora.invoke('design.setActive', { active: designing === 'start' });
@@ -299,8 +296,8 @@ export function applyDesignState(state: DesignState): void {
   useApp.setState((current) => ({ design: { ...current.design, ...state } }));
 }
 
-export function setDesignTarget(target: string, model: string | null): void {
-  useApp.setState((current) => ({ design: { ...current.design, target, model } }));
+export function setDesignTarget(target: string): void {
+  useApp.setState((current) => ({ design: { ...current.design, target } }));
 }
 
 export function dismissToast(id: number): void {

@@ -13,8 +13,8 @@ function thread(partial: Partial<GroveInboxThread> & Pick<GroveInboxThread, 'id'
 
 const waiting: ThreadAttention = {
   ...NO_ATTENTION,
-  pendingPermissions: ['r1'],
-  permissionTitle: 'Edit src/App.tsx',
+  status: 'needs_input',
+  waiting: 'Edit src/App.tsx',
   since: 10,
 };
 

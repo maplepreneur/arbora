@@ -3,7 +3,6 @@ import {
   sourceTier,
   targetComponent,
   type AgentModeInclude,
-  type ContentBlock,
   type FrameworkInfo,
   type ResolvedComponent,
   type ResolvedSource,
@@ -15,10 +14,6 @@ export interface PromptScreenshot {
   /** Absolute path of the outlined PNG/JPEG in `.arbora/screenshots/`. */
   readonly path: string;
   readonly relative: string;
-  readonly uri: string;
-  readonly mimeType: string;
-  /** Base64 image data; sent as an `image` block only when the agent accepts images. */
-  readonly data: string;
 }
 
 export interface PromptInput {
@@ -39,13 +34,11 @@ export interface PromptInput {
   readonly notes: readonly string[];
   readonly include: AgentModeInclude;
   readonly screenshot: PromptScreenshot | null;
-  /** From the agent's `promptCapabilities.image`. */
-  readonly imageSupported: boolean;
-  readonly toUri: (path: string) => string;
 }
 
 export interface ComposedPrompt {
-  readonly blocks: ContentBlock[];
+  /** The whole prompt as Markdown text: terminal agents read it as one paste. */
+  readonly text: string;
   readonly tier: SourceTier;
 }
 
@@ -100,8 +93,8 @@ function fence(language: string, body: string): string {
 
 /**
  * Builds agent mode's prompt: a deterministic Markdown body (Request, Target, Context,
- * Instructions), the outlined screenshot as an `image` block (or a file link when the agent does
- * not take images), and `resource_link`s for the known source files or grep candidates.
+ * Instructions) with the outlined screenshot and source files as paths the agent opens itself.
+ * Terminal agents receive the whole thing as one paste.
  */
 export function composePrompt(input: PromptInput): ComposedPrompt {
   const target = targetComponent(input, input.targetIndex);
@@ -128,9 +121,7 @@ export function composePrompt(input: PromptInput): ComposedPrompt {
   for (const note of input.notes) lines.push(`- Note: ${note}`);
   if (input.include.screenshot && input.screenshot) {
     lines.push(
-      input.imageSupported
-        ? '- Screenshot: attached; the selected element is outlined in red.'
-        : `- Screenshot (selected element outlined in red): ${input.screenshot.relative}. Open it if you can read images.`,
+      `- Screenshot (selected element outlined in red): ${input.screenshot.relative}. Open it if you can read images.`,
     );
   }
   lines.push('');
@@ -170,25 +161,5 @@ export function composePrompt(input: PromptInput): ComposedPrompt {
   );
   lines.push('4. Reply with a short summary of what you changed and in which files.');
 
-  const blocks: ContentBlock[] = [{ type: 'text', text: lines.join('\n') }];
-  if (input.include.screenshot && input.screenshot) {
-    const shot = input.screenshot;
-    blocks.push(
-      input.imageSupported
-        ? { type: 'image', data: shot.data, mimeType: shot.mimeType, uri: shot.uri }
-        : {
-            type: 'resource_link',
-            uri: shot.uri,
-            name: shot.relative.split('/').pop() ?? shot.relative,
-            mimeType: shot.mimeType,
-          },
-    );
-  }
-  if (input.include.sources) {
-    const links = tier === 3 && input.candidates.length > 0 ? input.candidates : files;
-    for (const file of links) {
-      blocks.push({ type: 'resource_link', uri: input.toUri(file.path), name: file.relative });
-    }
-  }
-  return { blocks, tier };
+  return { text: lines.join('\n'), tier };
 }

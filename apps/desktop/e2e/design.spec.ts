@@ -2,10 +2,10 @@ import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'no
 import { join, resolve } from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import type { NavigationState } from '@arbora/shared';
-import { DESKTOP_ROOT, FIXTURES, launch, switchWorkspace, tempUserData } from './app';
+import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, switchWorkspace, tempUserData } from './app';
 import { startViteFixture, type RunningServer } from './servers';
 
-const FAKE_AGENT = resolve(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
+const FAKE_AGENT = resolve(DESKTOP_ROOT, 'e2e/fake-terminal-agent.mjs');
 const CARD = '[data-testid="card-counter"]';
 const OVERLAY = '!!document.querySelector("[data-arbora-design]")';
 
@@ -17,22 +17,31 @@ function userData(): string {
       version: 3,
       agents: {
         custom: [
-          { id: 'fake', name: 'Fake agent', command: process.execPath, args: [FAKE_AGENT], env: {} },
           {
-            id: 'fake-locked',
-            name: 'Locked agent',
+            id: 'fake',
+            name: 'Fake agent',
             command: process.execPath,
             args: [FAKE_AGENT],
-            env: { FAKE_AGENT_AUTH: '1' },
+            env: { FAKE_TERMINAL_ECHO: '1' },
           },
         ],
-        permissions: {},
-        // Checks run from Settings below; never start the built-in npx adapters in CI.
-        autoVerify: false,
+        // The design flow asserts on the agent's echo of the pasted prompt.
+        ...checkedAgents(['fake']),
       },
     }),
   );
   return dir;
+}
+
+/** The agent terminal's raw scrollback, which is what the pane shows. */
+function scrollback(page: Page, threadId: string): Promise<string> {
+  return page.evaluate(async (id): Promise<string> => {
+    const thread = (await window.arbora.invoke('agent.listThreads')).find((t) => t.id === id);
+    const terminalId = thread?.state.terminalId;
+    if (!terminalId) return '';
+    const response = await window.arbora.invoke('terminal.scrollback', { id: terminalId });
+    return typeof response === 'string' ? response : response.data;
+  }, threadId);
 }
 
 function browserState(page: Page): Promise<NavigationState | null> {
@@ -106,8 +115,8 @@ function cleanArtefacts(project: string): void {
 }
 
 /**
- * Mod+, opens Settings on General, over the browser pane. Opens Agents, checks both fake agents,
- * makes "smart" the default model, and closes it again.
+ * Mod+, opens Settings on General, over the browser pane. Opens Agents, checks the fake agent's
+ * version command, stars it as the default, and closes Settings again.
  */
 async function checkAgentsInSettings(page: Page): Promise<void> {
   await page.getByTestId('browser-toolbar').click({ position: { x: 2, y: 2 } });
@@ -117,20 +126,12 @@ async function checkAgentsInSettings(page: Page): Promise<void> {
   // Settings opens on General. Agent checks live on Agents.
   await page.getByTestId('settings-nav-agents').click();
   await page.getByTestId('settings-verify-fake').click();
-  await page.getByTestId('settings-verify-fake-locked').click();
   await expect(page.getByTestId('settings-agent-fake')).toHaveAttribute('data-status', 'ready', { timeout: 30_000 });
-  await expect(page.getByTestId('settings-agent-fake-locked')).toHaveAttribute('data-status', 'auth_required', {
-    timeout: 30_000,
-  });
-  await page.getByTestId('settings-agent-fake').getByRole('button', { name: 'Expand Fake agent' }).click();
-  await expect(page.getByTestId('settings-model')).toHaveCount(2);
-  await page.getByTestId('settings-model-default-smart').click();
-  await expect(page.getByTestId('settings-model-default-smart')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('settings-agent-fake')).toContainText('FakeAgent v1.0.0');
   await page.getByTestId('settings-default-fake').click();
   await expect(page.getByTestId('settings-default-fake')).toHaveAttribute('aria-pressed', 'true');
   // The summary at the top shows what new threads and design changes start with.
   await expect(page.getByTestId('settings-default-agent')).toHaveAttribute('data-value', 'fake');
-  await expect(page.getByTestId('settings-default-model')).toHaveAttribute('data-value', 'smart');
   await page.keyboard.press('ControlOrMeta+Comma');
   await expect(page.getByTestId('settings-page')).toHaveCount(0);
   await expect(page.getByTestId('browser-panel')).toBeVisible();
@@ -221,39 +222,37 @@ test.describe('Stage 6 design mode', () => {
       await expect(page.getByTestId('design-tab-style')).toHaveAttribute('aria-selected', 'true');
       await expect(page.getByTestId('design-selection')).toHaveAttribute('data-selector', CARD);
 
-      // Only the signed-in agent is offered, and its default model (set in Settings) comes first.
+      // Only the checked agent is offered.
       await expect(page.getByTestId('design-target')).toHaveAttribute('data-value', 'new:fake');
       await page.getByTestId('design-target').click();
       const offered = await page
         .locator('[data-testid="design-target-option"]')
         .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-value')));
-      // A thread the default agent started on its own may be listed too; new threads are only the signed-in agent.
+      // A thread the default agent started on its own may be listed too; new threads are only the checked agent.
       expect(offered.filter((value) => value?.startsWith('new:'))).toEqual(['new:fake']);
       await page.getByTestId('design-target').click();
-      await expect(page.getByTestId('design-model')).toHaveAttribute('data-value', 'smart');
       await expect(page.getByTestId('design-save')).toContainText('Send 2 changes to Fake agent');
       await page.getByTestId('design-save').click();
       // The right panel becomes the agent's thread as soon as the prompt goes out.
       await expect(page.getByTestId('design-panel')).toHaveCount(0);
       await expect(page.getByTestId('thread-view')).toBeVisible();
-      const message = page.getByTestId('user-message').first();
-      await expect(message).toContainText('do not add inline styles', { timeout: 30_000 });
-      await expect(message).toContainText('padding-top:');
-      await expect(message).toContainText('pt-10');
-      await expect(message).toContainText('40px');
-      await expect(message).toContainText('Total');
-      await expect(message.locator('img')).toHaveCount(2);
-      // The new thread (the one in the chat) started on the model picked in the send bar.
-      const designThread = await page.getByTestId('grove-pane').getAttribute('data-thread-id');
+      // The design save names its own new thread; the pane switch can lag, so find it by title.
+      const designThread = await page.evaluate(async (title) => {
+        const threads = await window.arbora.invoke('agent.listThreads');
+        return threads.find((t) => t.title === title)?.id ?? '';
+      }, 'Design changes');
+      if (!designThread) throw new Error('no design thread');
+      // The whole prompt (change list, styling, screenshots) arrives as one paste in the terminal.
       await expect
-        .poll(async () =>
-          page.evaluate(async (threadId) => {
-            const thread = threadId ? await window.arbora.invoke('agent.getThread', { threadId }) : null;
-            const model = thread?.state.configOptions.find((o) => o.category === 'model');
-            return model?.type === 'select' ? model.currentValue : null;
-          }, designThread),
-        )
-        .toBe('smart');
+        .poll(async () => scrollback(page, designThread), { timeout: 30_000 })
+        .toContain('do not add inline styles');
+      const designScroll = await scrollback(page, designThread);
+      expect(designScroll).toContain('padding-top');
+      expect(designScroll).toContain('pt-10');
+      expect(designScroll).toContain('40px');
+      expect(designScroll).toContain('Total');
+      expect(designScroll).toMatch(/Before: \.arbora\/screenshots\/\S*design-before\.png/);
+      expect(designScroll).toMatch(/After: \.arbora\/screenshots\/\S*design-after\.png/);
       await expect.poll(() => inPage<boolean>(app, OVERLAY)).toBe(false);
       await expect
         .poll(() => inPage<string>(app, `document.querySelector(${JSON.stringify(CARD)}).style.paddingTop`))
@@ -284,9 +283,16 @@ test.describe('Stage 6 design mode', () => {
       await page.getByTestId('design-resend').click();
       // The agent picked earlier is remembered, so the resend starts another Fake agent thread.
       await expect.poll(threadCount, { timeout: 30_000 }).toBe(beforeResend + 1);
-      await expect(page.getByTestId('user-message').first()).toContainText('do not add inline styles', {
-        timeout: 30_000,
-      });
+      const resent = await page.evaluate(
+        async ({ count, title }) => {
+          const all = await window.arbora.invoke('agent.listThreads');
+          return all.filter((t) => t.title === title)[count - 1]?.id ?? all[count]?.id ?? '';
+        },
+        { count: beforeResend, title: 'Design changes (resent)' },
+      );
+      await expect
+        .poll(async () => scrollback(page, resent), { timeout: 30_000 })
+        .toContain('do not add inline styles');
     } finally {
       await deleteThreads(page).catch(() => undefined);
       await app.close();

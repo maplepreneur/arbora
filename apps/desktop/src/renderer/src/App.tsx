@@ -11,9 +11,8 @@ import { ProjectsHome } from './components/ProjectsHome';
 import { ProjectSwitcher } from './components/ProjectSwitcher';
 import { UpdateDialog } from './components/UpdateDialog';
 import {
-  appendLog,
+  applyConfirmation,
   applyGroups,
-  applyThreadChanges,
   applyThreadList,
   applyThreadState,
   loadAgentSnapshot,
@@ -23,7 +22,7 @@ import {
 } from './agent-store';
 import {
   initAttentionTracking,
-  noteThreadChanges,
+  noteConfirmation,
   noteThreadState,
   pruneAttention,
   resetAttention,
@@ -41,7 +40,7 @@ import {
 } from './commands';
 import { setBrowserPageFocused } from './shell-focus';
 import { onFilesChanged, resetFiles, setDiagnostics } from './files-store';
-import { noteAgentWatcherChanges, refreshGit, scheduleGitRefresh, useGit } from './git-client';
+import { refreshGit, scheduleGitRefresh, useGit } from './git-client';
 import {
   initGroveTracking,
   noteProjectTerminals,
@@ -146,23 +145,21 @@ function useMainEvents(): void {
       arbora.on('agent.groupsChanged', ({ projectPath, groups }) => {
         if (projectPath === activeProjectPath()) applyGroups(groups);
       }),
-      arbora.on('agent.threadEvents', ({ projectPath, threadId, changes }) => {
-        if (projectPath === activeProjectPath()) applyThreadChanges(threadId, changes);
-        noteThreadChanges(threadId, changes);
-      }),
       arbora.on('agent.threadState', ({ projectPath, threadId, state }) => {
         if (projectPath === activeProjectPath()) applyThreadState(threadId, state);
         else patchProjectThread(projectPath, threadId, state);
         noteThreadState(threadId, state);
+      }),
+      arbora.on('agent.confirmation', ({ projectPath, request }) => {
+        if (projectPath !== activeProjectPath()) return;
+        applyConfirmation(request);
+        noteConfirmation(request.threadId, request.title);
       }),
       arbora.on('notification.clicked', ({ threadId }) => {
         if (threadId && useApp.getState().project) revealThread(threadId);
       }),
       arbora.on('updates.state', (state) => applyUpdateState(state)),
       arbora.on('projects.changed', (library) => applyLibrary(library)),
-      arbora.on('agent.log', ({ projectPath, threadId, entry }) => {
-        if (projectPath === activeProjectPath()) appendLog(threadId, entry);
-      }),
       arbora.on('agent.fileChanged', ({ projectPath, threadId, path }) => {
         if (projectPath === activeProjectPath()) noteFileChanged(threadId, path);
       }),
@@ -183,7 +180,6 @@ function useMainEvents(): void {
       }),
       arbora.on('files.changed', ({ changes }) => {
         onFilesChanged(changes);
-        noteAgentWatcherChanges(changes);
         scheduleGitRefresh();
       }),
       arbora.on('files.watchWarning', ({ message }) => showToast(message)),

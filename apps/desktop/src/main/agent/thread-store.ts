@@ -3,114 +3,19 @@ import { join } from 'node:path';
 import {
   agentGroupsFileSchema,
   idleThreadState,
-  type AgentGroup,
-  PERSISTED_TOOL_TEXT_LIMIT,
-  THREAD_FILE_BYTE_LIMIT,
   THREAD_FILE_VERSION,
   threadFileSchema,
+  threadSchema,
+  type AgentGroup,
   type Thread,
-  type ThreadEvent,
   type ThreadFile,
   type ThreadSummary,
-  type ToolCallContent,
 } from '@arbora/shared';
 import { ARBORA_DIR, ensureArboraGitignore } from '../project-settings.js';
 import { writeJsonAtomic } from '../settings-store.js';
 
-const TRUNCATION_MARK = '…[truncated]';
-
 export function threadsDir(projectPath: string): string {
   return join(projectPath, ARBORA_DIR, 'threads');
-}
-
-function clip(text: string): string {
-  return text.length > PERSISTED_TOOL_TEXT_LIMIT ? text.slice(0, PERSISTED_TOOL_TEXT_LIMIT) + TRUNCATION_MARK : text;
-}
-
-/** `JSON.stringify` is typed as `string` but returns undefined for functions and symbols. */
-function stringify(value: unknown): string | undefined {
-  return JSON.stringify(value);
-}
-
-/** Raw tool IO is kept only when small; otherwise a clipped JSON string stands in for it. */
-function clipRaw(value: unknown): unknown {
-  if (value === undefined) return undefined;
-  const json = stringify(value);
-  if (json === undefined || json.length <= PERSISTED_TOOL_TEXT_LIMIT) return value;
-  return json.slice(0, PERSISTED_TOOL_TEXT_LIMIT) + TRUNCATION_MARK;
-}
-
-function clipContent(item: ToolCallContent): ToolCallContent {
-  switch (item.type) {
-    case 'diff':
-      return {
-        ...item,
-        newText: clip(item.newText),
-        ...(item.oldText != null ? { oldText: clip(item.oldText) } : {}),
-      };
-    case 'content':
-      return item.content.type === 'text'
-        ? { ...item, content: { ...item.content, text: clip(item.content.text) } }
-        : item;
-    case 'terminal':
-      return item;
-    default: {
-      const unreachable: never = item;
-      return unreachable;
-    }
-  }
-}
-
-/** Tool content and raw IO beyond `PERSISTED_TOOL_TEXT_LIMIT` is clipped; the session keeps the full copy in memory. */
-export function truncateEventForPersistence(event: ThreadEvent): ThreadEvent {
-  switch (event.kind) {
-    case 'tool_call': {
-      const rawInput = clipRaw(event.rawInput);
-      const rawOutput = clipRaw(event.rawOutput);
-      return {
-        ...event,
-        content: event.content.map(clipContent),
-        ...(rawInput !== undefined ? { rawInput } : {}),
-        ...(rawOutput !== undefined ? { rawOutput } : {}),
-      };
-    }
-    case 'permission': {
-      const rawInput = clipRaw(event.rawInput);
-      return { ...event, ...(rawInput !== undefined ? { rawInput } : {}) };
-    }
-    case 'user_message':
-    case 'agent_message':
-    case 'agent_thought':
-    case 'plan':
-    case 'turn_end':
-    case 'notice':
-    case 'error':
-    case 'browser_preview':
-      return event;
-    case 'action_trace': {
-      const keepFrom = Math.max(0, event.steps.length - 4);
-      return {
-        ...event,
-        steps: event.steps.map((step, index) => (index < keepFrom ? { ...step, image: null } : step)),
-      };
-    }
-    default: {
-      const unreachable: never = event;
-      return unreachable;
-    }
-  }
-}
-
-/** The on-disk form of a thread: clipped tool content, oldest events dropped under the byte cap. */
-export function capThreadFile(thread: Thread): ThreadFile {
-  const { state: _state, ...rest } = thread;
-  let events = thread.events.map(truncateEventForPersistence);
-  let file: ThreadFile = { ...rest, version: THREAD_FILE_VERSION, events };
-  while (events.length > 0 && Buffer.byteLength(JSON.stringify(file), 'utf8') > THREAD_FILE_BYTE_LIMIT) {
-    events = events.slice(Math.max(1, Math.floor(events.length / 8)));
-    file = { ...file, events };
-  }
-  return file;
 }
 
 export function agentGroupsPath(projectPath: string): string {
@@ -146,6 +51,44 @@ export class AgentGroupStore {
   }
 }
 
+/** The persisted form of a thread: metadata plus the terminal tail (no protocol transcript). */
+export function threadFileOf(thread: Thread): ThreadFile {
+  return {
+    version: THREAD_FILE_VERSION,
+    id: thread.id,
+    agentId: thread.agentId,
+    title: thread.title,
+    createdAt: thread.createdAt,
+    updatedAt: thread.updatedAt,
+    groupId: thread.groupId,
+    pinned: thread.pinned,
+    archivedAt: thread.archivedAt,
+    parentThreadId: thread.parentThreadId,
+    lastLines: thread.lastLines.slice(-200),
+  };
+}
+
+/**
+ * A v1 file (the ACP era) keeps its metadata but drops its protocol transcript; the thread is
+ * restored Stopped, like any thread whose process is gone.
+ */
+function migrateV1(input: Record<string, unknown>): ThreadFile | null {
+  const carried = threadFileSchema.safeParse({
+    version: THREAD_FILE_VERSION,
+    id: input['id'],
+    agentId: input['agentId'],
+    title: input['title'],
+    createdAt: input['createdAt'],
+    updatedAt: input['updatedAt'],
+    groupId: input['groupId'] ?? null,
+    pinned: input['pinned'] ?? false,
+    archivedAt: input['archivedAt'] ?? null,
+    parentThreadId: input['parentThreadId'] ?? null,
+    lastLines: [],
+  });
+  return carried.success ? carried.data : null;
+}
+
 /** `.arbora/threads/<id>.json`, one file per thread. */
 export class ThreadStore {
   constructor(private readonly projectPath: string) {}
@@ -157,20 +100,17 @@ export class ThreadStore {
     for (const name of readdirSync(dir)) {
       if (!name.endsWith('.json')) continue;
       const loaded = this.read(join(dir, name));
-      if (loaded) {
-        const { events: _events, ...summary } = loaded;
-        threads.push(summary);
-      }
+      if (loaded) threads.push(loaded.summary);
     }
     return threads.sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
   load(id: string): Thread | null {
-    return this.read(this.pathFor(id));
+    return this.read(this.pathFor(id))?.thread ?? null;
   }
 
   save(thread: Thread): void {
-    writeJsonAtomic(this.pathFor(thread.id), capThreadFile(thread));
+    writeJsonAtomic(this.pathFor(thread.id), threadFileOf(thread));
     ensureArboraGitignore(this.projectPath);
   }
 
@@ -188,13 +128,20 @@ export class ThreadStore {
     return join(threadsDir(this.projectPath), `${id}.json`);
   }
 
-  private read(file: string): Thread | null {
+  private read(file: string): { thread: Thread; summary: ThreadSummary } | null {
     if (!existsSync(file)) return null;
     try {
-      const parsed = threadFileSchema.safeParse(JSON.parse(readFileSync(file, 'utf8')));
+      const raw: unknown = JSON.parse(readFileSync(file, 'utf8'));
+      let parsed = threadFileSchema.safeParse(raw);
+      if (!parsed.success && raw !== null && typeof raw === 'object') {
+        const migrated = migrateV1(raw as Record<string, unknown>);
+        parsed = migrated ? ({ success: true as const, data: migrated } as const) : parsed;
+      }
       if (!parsed.success) return null;
-      const { version: _version, ...thread } = parsed.data;
-      return { ...thread, state: idleThreadState() };
+      const { version: _version, ...rest } = parsed.data;
+      const thread: Thread = threadSchema.parse({ ...rest, state: idleThreadState() });
+      const { lastLines: _lastLines, ...summary } = thread;
+      return { thread, summary };
     } catch {
       return null;
     }

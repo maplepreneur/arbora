@@ -76,7 +76,6 @@ function Lineage({ session, model }: { session: GroveSession; model: GroveModel 
 
 function PaneHeader({ session, model }: { session: GroveSession; model: GroveModel }) {
   const renaming = useGrove((s) => s.renamingId === session.id);
-  const logOpen = useAgents((s) => s.logOpen);
   const archiveKey = useChordLabel(CommandId.groveArchiveSession);
   const stopKey = useChordLabel(CommandId.groveStopSession);
   const powerKey = useChordLabel(CommandId.grovePowerSession);
@@ -169,7 +168,7 @@ function PaneHeader({ session, model }: { session: GroveSession; model: GroveMod
         type="button"
         data-testid="grove-pane-menu"
         aria-label={`${session.name} actions`}
-        onClick={() => void openPaneMenu(session, logOpen)}
+        onClick={() => void openPaneMenu(session)}
         className={iconButton}
       >
         <MoreHorizontal size={14} />
@@ -236,7 +235,7 @@ function Tabs({ tab, changes }: { tab: GroveTab; changes: number }) {
   );
 }
 
-/** One session in the chat column: its header, the Transcript and Changes tabs, and the mode switch. */
+/** One session in the chat column: its header, the terminal and Changes tabs, and the mode switch. */
 export function SessionPane({
   session,
   model,
@@ -248,7 +247,9 @@ export function SessionPane({
 }) {
   const tab = useGrove((s) => s.tab);
   const archived = session.archivedAt !== null;
+  const changedFiles = useAgents((s) => s.changedFiles);
   const nameOf = (threadId: string): string => model.byId.get(threadId)?.name ?? 'another agent';
+  const files = changedFiles.filter((c) => c.threadId === session.id).map((c) => c.path);
   return (
     <section
       data-testid="grove-pane"
@@ -259,9 +260,9 @@ export function SessionPane({
     >
       <PaneHeader session={session} model={model} />
       {archived && <ArchivedBanner session={session} />}
-      <Tabs tab={tab} changes={Object.keys(session.activity.files).length} />
+      <Tabs tab={tab} changes={files.length} />
       {tab === 'changes' ? (
-        <ChangesView key={session.id} session={session} projectPath={projectPath} nameOf={nameOf} />
+        <ChangesView key={session.id} session={session} projectPath={projectPath} files={files} nameOf={nameOf} />
       ) : (
         <ThreadView
           key={session.id}

@@ -6,13 +6,12 @@ import type { NavigationState } from '@arbora/shared';
 import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, showRight, startAgent, tempUserData } from './app';
 import { freePort, startViteFixture, type RunningServer } from './servers';
 
-const FAKE_AGENT = resolve(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
+const FAKE_AGENT = resolve(DESKTOP_ROOT, 'e2e/fake-terminal-agent.mjs');
 const HTTP_ID = 'fake';
-const STDIO_ID = 'fake-stdio';
 const VITE_REACT = join(FIXTURES, 'vite-react');
 const COUNTER = '[data-testid="card-counter"]';
 
-/** Two fake agents: one with HTTP MCP, one that only takes stdio servers (so Arbora uses its shim). */
+/** One fake terminal agent; its MCP client reaches the server through the env the preface names. */
 function userDataWithFakeAgents(): string {
   const userData = tempUserData();
   writeFileSync(
@@ -20,18 +19,8 @@ function userDataWithFakeAgents(): string {
     JSON.stringify({
       version: 3,
       agents: {
-        custom: [
-          { id: HTTP_ID, name: 'Fake agent', command: process.execPath, args: [FAKE_AGENT], env: {} },
-          {
-            id: STDIO_ID,
-            name: 'Fake agent (stdio MCP)',
-            command: process.execPath,
-            args: [FAKE_AGENT],
-            env: { FAKE_AGENT_NO_HTTP_MCP: '1' },
-          },
-        ],
-        permissions: {},
-        ...checkedAgents([HTTP_ID, STDIO_ID]),
+        custom: [{ id: HTTP_ID, name: 'Fake agent', command: process.execPath, args: [FAKE_AGENT], env: {} }],
+        ...checkedAgents([HTTP_ID]),
       },
     }),
   );
@@ -79,8 +68,15 @@ async function openFixture(app: ElectronApplication, page: Page, url: string): P
     .toBe(true);
 }
 
-async function newThread(page: Page, agentId: string): Promise<void> {
-  await startAgent(page, agentId);
+/** The agent terminal's raw scrollback, which is what the pane shows. */
+function scrollback(page: Page, threadId: string): Promise<string> {
+  return page.evaluate(async (id): Promise<string> => {
+    const thread = (await window.arbora.invoke('agent.listThreads')).find((t) => t.id === id);
+    const terminalId = thread?.state.terminalId;
+    if (!terminalId) return '';
+    const response = await window.arbora.invoke('terminal.scrollback', { id: terminalId });
+    return typeof response === 'string' ? response : response.data;
+  }, threadId);
 }
 
 async function send(page: Page, text: string): Promise<void> {
@@ -97,7 +93,7 @@ async function deleteThreads(page: Page): Promise<void> {
   });
 }
 
-test.describe('Stage 5 browser tools (MCP)', () => {
+test.describe('browser tools (MCP from a terminal agent)', () => {
   let vite: RunningServer;
 
   test.beforeAll(async () => {
@@ -108,104 +104,102 @@ test.describe('Stage 5 browser tools (MCP)', () => {
     await vite.close();
   });
 
-  test('a fake agent snapshots, clicks the counter and screenshots over HTTP MCP', async () => {
+  test('a terminal agent snapshots, clicks the counter and screenshots through the env MCP', async () => {
     const { app, page } = await launch(userDataWithFakeAgents(), [VITE_REACT]);
     try {
       await openFixture(app, page, vite.url);
-      await newThread(page, HTTP_ID);
+      await startAgent(page, HTTP_ID);
+      const [thread] = await page.evaluate(() => window.arbora.invoke('agent.listThreads'));
+      const id = thread?.id ?? '';
       await send(page, 'browser check');
-      const reply = page.getByTestId('agent-message').last();
-      await expect(reply).toContainText('Screenshot images: 1', { timeout: 30_000 });
-      await expect(reply).toContainText('Before: Clicked 0 times');
-      await expect(reply).toContainText(/After clicking e\d+: Clicked 1 times/);
-      // The click was real input in the panel's page, and the screenshot is mirrored as a thumbnail.
+      await expect.poll(async () => scrollback(page, id), { timeout: 30_000 }).toContain('browser check done');
+      // The click was real input in the panel's page.
       expect(await inPage<string>(app, `document.querySelector(${JSON.stringify(COUNTER)}).textContent`)).toContain(
         'Clicked 1 times',
       );
-      await expect(page.getByTestId('browser-preview')).toBeVisible();
-      await expect(page.getByTestId('tool-call').filter({ hasText: 'browser_click' })).toBeVisible();
-      const trace = page.getByTestId('action-trace');
-      await expect(trace.getByTestId('action-trace-step').filter({ hasText: 'Click' })).toBeVisible();
-      await trace.getByTestId('action-trace-step').filter({ hasText: 'Click' }).click();
-      await expect(trace.getByTestId('action-trace-shot')).toBeVisible();
-      // No "tools not loaded" warning, and the guide the preface points at exists.
-      await expect(page.getByTestId('notice')).toHaveCount(0);
+      // The guide the preface points at exists and names the env vars.
       const skill = join(VITE_REACT, '.arbora/SKILL.md');
-      expect(existsSync(skill)).toBe(true);
-      expect(readFileSync(skill, 'utf8')).toContain('browser_snapshot');
-
-      // browser_evaluate asks first; the answer is shown on the card.
-      await send(page, 'evaluate');
-      const card = page.getByTestId('permission-card').last();
-      await expect(card).toContainText('Run JavaScript in the page', { timeout: 20_000 });
-      await expect(card.getByTestId('permission-allow_always')).toBeVisible();
-      await card.getByTestId('permission-allow_once').click();
-      await expect(page.getByTestId('agent-message').last()).toContainText('Page title: "', { timeout: 20_000 });
+      await expect.poll(() => existsSync(skill)).toBe(true);
+      expect(readFileSync(skill, 'utf8')).toContain('ARBORA_MCP_URL');
       await deleteThreads(page);
     } finally {
       await app.close();
     }
   });
 
-  test('every tool works against the real page, dev server and terminal', async () => {
+  test('every guarded tool asks first, and the standing answers persist in the project', async () => {
+    // A previous run's standing answer would skip the card; start from the default (ask).
+    const projectJson = join(VITE_REACT, '.arbora/project.json');
+    if (existsSync(projectJson)) {
+      const saved = JSON.parse(readFileSync(projectJson, 'utf8')) as Record<string, unknown>;
+      delete saved['browserTools'];
+      writeFileSync(projectJson, JSON.stringify(saved, null, 2));
+    }
     const { app, page } = await launch(userDataWithFakeAgents(), [VITE_REACT]);
     try {
       await openFixture(app, page, vite.url);
-      await newThread(page, HTTP_ID);
-      await send(page, 'tool sweep');
-      // terminal_run asks first.
-      const card = page.getByTestId('permission-card').last();
-      await expect(card).toContainText('Run terminal commands', { timeout: 60_000 });
-      await card.getByTestId('permission-allow_once').click();
-      await expect(page.getByTestId('agent-message').last()).toContainText('Sweep results', { timeout: 60_000 });
-      // The raw text: the transcript renders Markdown, which joins single newlines.
-      const text = await page.evaluate(async () => {
-        const [thread] = await window.arbora.invoke('agent.listThreads');
-        const events = (await window.arbora.invoke('agent.getThread', { threadId: thread?.id ?? '' }))?.events ?? [];
-        return events
-          .flatMap((e) => (e.kind === 'agent_message' ? e.blocks : []))
-          .map((b) => (b.type === 'text' ? b.text : ''))
-          .join('');
+      await startAgent(page, HTTP_ID);
+      const [thread] = await page.evaluate(() => window.arbora.invoke('agent.listThreads'));
+      const id = thread?.id ?? '';
+      const pane = page.getByTestId('grove-pane');
+
+      // browser_evaluate asks once.
+      await send(page, 'mcp browser_evaluate {"expression":"document.title"}');
+      const card = pane.getByTestId('confirmation-card');
+      await expect(card).toContainText('Run JavaScript in the page', { timeout: 20_000 });
+      await expect(page.getByTestId('attention-badge')).toHaveText('1');
+      await card.getByTestId('confirmation-allow').click();
+      await expect.poll(async () => scrollback(page, id), { timeout: 20_000 }).toContain('mcp browser_evaluate ok:');
+      await expect(page.getByTestId('attention-badge')).toHaveCount(0);
+      // The turn ends after its quiet window; the composer only takes a prompt once it has.
+      await expect(page.getByTestId('thread-view')).toHaveAttribute('data-thread-status', 'ready', {
+        timeout: 20_000,
       });
-      const lines = new Map(
-        text
-          .slice(text.indexOf('Sweep results'))
-          .split('\n')
-          .map((line) => /^([a-z ]+): (.*)$/.exec(line.trim()))
-          .filter((m): m is RegExpExecArray => m !== null)
-          .map((m) => [m[1] ?? '', m[2] ?? '']),
+
+      // terminal_run asks, and "Always allow" is written to .arbora/project.json.
+      await send(page, 'mcp terminal_run {"command":"echo sweep-ok"}');
+      await expect(card).toContainText('Run terminal commands', { timeout: 20_000 });
+      await card.getByTestId('confirmation-allow-always').click();
+      await expect.poll(async () => scrollback(page, id), { timeout: 20_000 }).toContain('mcp terminal_run ok:');
+      await expect
+        .poll(() => JSON.parse(readFileSync(join(VITE_REACT, '.arbora/project.json'), 'utf8')) as unknown)
+        .toMatchObject({ browserTools: { terminalRun: 'allow' } });
+      await deleteThreads(page);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('the read-only tools report on the real page, dev server and tabs in one sweep', async () => {
+    const { app, page } = await launch(userDataWithFakeAgents(), [VITE_REACT]);
+    try {
+      await openFixture(app, page, vite.url);
+      await startAgent(page, HTTP_ID);
+      const [thread] = await page.evaluate(() => window.arbora.invoke('agent.listThreads'));
+      const id = thread?.id ?? '';
+      // One paste, one turn: the fake agent runs every line in order.
+      await send(
+        page,
+        [
+          'mcp browser_get_url {}',
+          'mcp browser_snapshot {}',
+          'mcp browser_console_logs {"level":"error"}',
+          'mcp browser_network_errors {}',
+          'mcp browser_get_element_source {"selector":"[data-testid=card-counter]"}',
+          'mcp browser_set_viewport {"width":500,"height":700}',
+          'mcp browser_screenshot {"mode":"viewport"}',
+          'mcp devserver_status {}',
+          'run all',
+        ].join('\n'),
       );
-      const expected: Record<string, RegExp> = {
-        url: /^ok Page URL: http:\/\/127\.0\.0\.1/,
-        snapshot: /^ok button "Log error"/,
-        'click log error': /^ok/,
-        console: /^ok fixture: intentional error/,
-        'click missing api': /^ok/,
-        'network idle': /^ok/,
-        network: /^ok \[404\].*missing\.json/,
-        source: /^ok Card\.tsx/,
-        type: /^ok/,
-        select: /^ok/,
-        echo: /^ok/,
-        key: /^ok/,
-        hover: /^ok/,
-        'element shot': /^ok element screenshot images=1/,
-        'full shot': /^ok full screenshot images=1/,
-        scroll: /^ok y=\d+/,
-        'viewport size': /^ok 500×700/,
-        'viewport preset': /^ok Responsive/,
-        navigate: /^ok .*sweep=1/,
-        back: /^ok Page URL/,
-        forward: /^ok .*sweep=1/,
-        reload: /^ok .*sweep=1/,
-        'snapshot again': /^ok Hello, nobody/,
-        'stale ref': /^ERROR Unknown ref e9999/,
-        devserver: /^ok "running"/,
-        terminal: /^ok sweep-ok/,
-      };
-      for (const [label, pattern] of Object.entries(expected)) {
-        expect(lines.get(label), `${label} in:\n${[...lines].join('\n')}`).toMatch(pattern);
-      }
+      await expect.poll(async () => scrollback(page, id), { timeout: 60_000 }).toContain('mcp devserver_status ok:');
+      const scroll = await scrollback(page, id);
+      expect(scroll).toContain('mcp browser_get_url ok: Page URL:');
+      expect(scroll).toContain('mcp browser_snapshot ok:');
+      expect(scroll).toContain('mcp browser_console_logs ok:');
+      expect(scroll).toContain('mcp browser_network_errors ok:');
+      expect(scroll).toContain('mcp devserver_status ok:');
+      expect(scroll).not.toMatch(/mcp \S+ failed/);
       await deleteThreads(page);
     } finally {
       await app.close();
@@ -238,51 +232,19 @@ createServer((req, res) => res.end('<title>dev ' + port + '</title><h1>port ' + 
       await expect
         .poll(async () => (await browserState(page))?.url, { timeout: 30_000 })
         .toBe(`http://127.0.0.1:${first}/`);
-      await newThread(page, HTTP_ID);
-      await send(page, 'restart dev');
-      // terminal_run asks; "Always allow in this project" is written to .arbora/project.json.
-      const card = page.getByTestId('permission-card').last();
-      await expect(card).toContainText('Run terminal commands', { timeout: 60_000 });
-      await card.getByTestId('permission-allow_always').click();
-      const reply = page.getByTestId('agent-message').last();
-      await expect(reply).toContainText('restart-ok', { timeout: 60_000 });
-      await expect(reply).toContainText(`Page URL: http://127.0.0.1:${second}/`);
-      await expect(reply).toContainText('"running": true');
-      await expect(reply).toContainText(`Local:   http://127.0.0.1:${second}/`);
-      expect((await browserState(page))?.title).toBe(`dev ${second}`);
-      const settings = JSON.parse(readFileSync(join(project, '.arbora/project.json'), 'utf8')) as unknown;
-      expect(settings).toMatchObject({ devCommand: 'node server.mjs', browserTools: { terminalRun: 'allow' } });
-      // A new thread (a new agent session) runs commands without asking again.
-      await newThread(page, HTTP_ID);
-      await send(page, 'restart dev');
-      await expect(page.getByTestId('agent-message').last()).toContainText('restart-ok', { timeout: 60_000 });
-      await expect(page.getByTestId('permission-card')).toHaveCount(0);
+      await startAgent(page, HTTP_ID);
+      const [thread] = await page.evaluate(() => window.arbora.invoke('agent.listThreads'));
+      const id = thread?.id ?? '';
+      await send(page, 'mcp devserver_restart {}');
+      await expect.poll(async () => scrollback(page, id), { timeout: 60_000 }).toContain('mcp devserver_restart ok:');
+      await expect
+        .poll(async () => (await browserState(page))?.url, { timeout: 30_000 })
+        .toBe(`http://127.0.0.1:${second}/`);
+      await expect.poll(async () => (await browserState(page))?.title, { timeout: 30_000 }).toBe(`dev ${second}`);
       await deleteThreads(page);
     } finally {
       await app.close();
       rmSync(project, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
-    }
-  });
-
-  test('an agent without HTTP MCP reaches the same tools through the stdio shim', async () => {
-    const { app, page } = await launch(userDataWithFakeAgents(), [VITE_REACT]);
-    try {
-      await openFixture(app, page, vite.url);
-      await newThread(page, STDIO_ID);
-      await send(page, 'browser check');
-      const reply = page.getByTestId('agent-message').last();
-      await expect(reply).toContainText(/After clicking e\d+: Clicked 1 times/, { timeout: 30_000 });
-      const threads = await page.evaluate(() => window.arbora.invoke('agent.listThreads'));
-      const threadId = threads[0]?.id ?? '';
-      const log = await page.evaluate((id) => window.arbora.invoke('agent.getLog', { threadId: id }), threadId);
-      expect(log.some((e) => e.direction === 'info' && e.message === 'browser tools attached over stdio shim')).toBe(
-        true,
-      );
-      // The token travels in the shim's env, which the log viewer redacts.
-      expect(JSON.stringify(log)).toContain('"name":"ARBORA_MCP_TOKEN","value":"[redacted]"');
-      await deleteThreads(page);
-    } finally {
-      await app.close();
     }
   });
 });
