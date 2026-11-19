@@ -33,15 +33,16 @@ function userData(): string {
   return dir;
 }
 
-/** The agent terminal's raw scrollback, which is what the pane shows. */
-function scrollback(page: Page, threadId: string): Promise<string> {
-  return page.evaluate(async (id): Promise<string> => {
-    const thread = (await window.arbora.invoke('agent.listThreads')).find((t) => t.id === id);
+/** The agent terminal's raw scrollback for the thread with this title, empty until it exists. */
+function scrollbackByTitle(page: Page, title: string): Promise<string> {
+  return page.evaluate(async (want): Promise<string> => {
+    const threads = await window.arbora.invoke('agent.listThreads');
+    const thread = threads.find((t) => t.title === want);
     const terminalId = thread?.state.terminalId;
     if (!terminalId) return '';
     const response = await window.arbora.invoke('terminal.scrollback', { id: terminalId });
     return typeof response === 'string' ? response : response.data;
-  }, threadId);
+  }, title);
 }
 
 function browserState(page: Page): Promise<NavigationState | null> {
@@ -237,16 +238,11 @@ test.describe('Stage 6 design mode', () => {
       await expect(page.getByTestId('design-panel')).toHaveCount(0);
       await expect(page.getByTestId('thread-view')).toBeVisible();
       // The design save names its own new thread; the pane switch can lag, so find it by title.
-      const designThread = await page.evaluate(async (title) => {
-        const threads = await window.arbora.invoke('agent.listThreads');
-        return threads.find((t) => t.title === title)?.id ?? '';
-      }, 'Design changes');
-      if (!designThread) throw new Error('no design thread');
-      // The whole prompt (change list, styling, screenshots) arrives as one paste in the terminal.
-      await expect
-        .poll(async () => scrollback(page, designThread), { timeout: 30_000 })
-        .toContain('do not add inline styles');
-      const designScroll = await scrollback(page, designThread);
+      // The whole prompt (change list, styling, screenshots) arrives as one paste in the
+      // terminal; the title is set inside the same async write, so poll the lookup too.
+      const designScrollback = (): Promise<string> => scrollbackByTitle(page, 'Design changes');
+      await expect.poll(designScrollback, { timeout: 30_000 }).toContain('do not add inline styles');
+      const designScroll = await designScrollback();
       expect(designScroll).toContain('padding-top');
       expect(designScroll).toContain('pt-10');
       expect(designScroll).toContain('40px');
@@ -283,15 +279,8 @@ test.describe('Stage 6 design mode', () => {
       await page.getByTestId('design-resend').click();
       // The agent picked earlier is remembered, so the resend starts another Fake agent thread.
       await expect.poll(threadCount, { timeout: 30_000 }).toBe(beforeResend + 1);
-      const resent = await page.evaluate(
-        async ({ count, title }) => {
-          const all = await window.arbora.invoke('agent.listThreads');
-          return all.filter((t) => t.title === title)[count - 1]?.id ?? all[count]?.id ?? '';
-        },
-        { count: beforeResend, title: 'Design changes (resent)' },
-      );
       await expect
-        .poll(async () => scrollback(page, resent), { timeout: 30_000 })
+        .poll(async () => scrollbackByTitle(page, 'Design changes (resent)'), { timeout: 30_000 })
         .toContain('do not add inline styles');
     } finally {
       await deleteThreads(page).catch(() => undefined);

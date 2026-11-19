@@ -403,6 +403,18 @@ test.describe('Stage 4 agent mode on Next.js (React 19)', () => {
   test.beforeAll(async () => {
     test.setTimeout(180_000);
     next = await startNextFixture();
+    // `next dev` compiles the page on first request; do that here, where a loaded machine
+    // cannot eat the app-side 60 s wait, instead of inside the test's first page load.
+    const deadline = Date.now() + 120_000;
+    while (Date.now() < deadline) {
+      try {
+        const page = await fetch(next.url);
+        if (page.ok && (await page.text()).includes('card-counter')) break;
+      } catch {
+        // The dev server answers before the first compile finishes; keep waiting.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
   });
 
   test.afterAll(async () => {
