@@ -35,10 +35,9 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@arbora/acp-client": "workspace:*",
+    "@arbora/shared": "workspace:*",
     "@arbora/browser-bridge": "workspace:*",
     "@arbora/mcp-browser-server": "workspace:*",
-    "@arbora/shared": "workspace:*",
     "@codemirror/autocomplete": "6.20.4",
     "@codemirror/commands": "6.11.1",
     "@codemirror/lang-css": "6.3.1",

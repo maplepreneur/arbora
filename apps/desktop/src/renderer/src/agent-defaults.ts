@@ -12,20 +12,6 @@ export async function updateAgentSettings(patch: AgentSettingsPatch): Promise<vo
   }
 }
 
-export function toggleFavoriteModel(agentId: string, value: string): void {
-  const all = useApp.getState().settings.agents.favoriteModels;
-  const current = all[agentId] ?? [];
-  const next = current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
-  void updateAgentSettings({ favoriteModels: { ...all, [agentId]: next } });
-}
-
-/** Sets the model new threads of `agentId` start with; choosing the current default clears it. */
-export function toggleDefaultModel(agentId: string, value: string): void {
-  const all = useApp.getState().settings.agents.defaultModels;
-  const { [agentId]: current, ...others } = all;
-  void updateAgentSettings({ defaultModels: current === value ? others : { ...others, [agentId]: value } });
-}
-
 /** Sets the app-wide default agent for new threads; choosing the current default clears it. */
 export function toggleDefaultAgent(agentId: string): void {
   const current = useApp.getState().settings.agents.defaultAgent;
@@ -49,8 +35,8 @@ export function defaultAgentId(): string | undefined {
   );
 }
 
-/** The agent and model a task starts new threads with (Settings → Agents, "Defaults per task"). */
-export function taskAgent(task: TaskId): { agentId: string; model: string | null } | undefined {
+/** The agent a task starts new threads with (Settings → Agents, "Defaults per task"). */
+export function taskAgent(task: TaskId): { agentId: string } | undefined {
   const { project, settings } = useApp.getState();
   return resolveTaskAgent(
     settings.tasks,
@@ -66,10 +52,4 @@ export function useTaskAgentId(task: TaskId): string | undefined {
   const chosen = useApp((s) => s.settings.tasks[task].agentId);
   const known = useAgents((s) => chosen !== null && s.agents.some((a) => a.id === chosen));
   return known && chosen !== null ? chosen : undefined;
-}
-
-/** The model a task picked for `agentId`, when that agent is the task's own choice. */
-export function taskModelFor(task: TaskId, agentId: string): string | undefined {
-  const chosen = useApp.getState().settings.tasks[task];
-  return chosen.agentId === agentId && chosen.model !== null ? chosen.model : undefined;
 }

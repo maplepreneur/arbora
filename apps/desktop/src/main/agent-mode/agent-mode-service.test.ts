@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AgentModeSelection, ContentBlock, InspectorSelection } from '@arbora/shared';
+import type { AgentModeSelection, InspectorSelection } from '@arbora/shared';
 import type { AgentService } from '../agent/agent-service.js';
 import type { BrowserService } from '../browser/browser-service.js';
 import { AgentModeService } from './agent-mode-service.js';
@@ -63,7 +63,7 @@ function rawSelection(): InspectorSelection {
   };
 }
 
-function setup(options: { image?: boolean } = {}) {
+function setup() {
   const browser = {
     setInspecting: vi.fn(),
     setOverlayVisible: vi.fn(() => Promise.resolve()),
@@ -71,20 +71,18 @@ function setup(options: { image?: boolean } = {}) {
     consoleErrorsSinceNavigation: vi.fn(() => ['boom']),
     writeScreenshotFile: vi.fn(),
   };
-  const prompts: { threadId: string; blocks: ContentBlock[]; title: string | undefined }[] = [];
+  const prompts: { threadId: string; text: string; title: string | undefined }[] = [];
   let resolvePrompted: () => void = () => undefined;
   const prompted = new Promise<void>((resolve) => {
     resolvePrompted = resolve;
   });
   const agents = {
     createThread: vi.fn(() => ({ id: 'new-thread' })),
-    promptCapabilities: vi.fn(() =>
-      Promise.resolve({ image: options.image ?? false, loadSession: false, resume: false, embeddedContext: false }),
-    ),
-    prompt: vi.fn((threadId: string, blocks: ContentBlock[], _attachments: unknown, opts: { title?: string }) => {
-      prompts.push({ threadId, blocks, title: opts.title });
+    getThread: vi.fn(() => null),
+    sendPrompt: vi.fn((threadId: string, text: string, opts: { title?: string }) => {
+      prompts.push({ threadId, text, title: opts.title });
       resolvePrompted();
-      return Promise.resolve({ stopReason: 'end_turn' });
+      return Promise.resolve({ sent: true });
     }),
   };
   const events = { picked: vi.fn(), selected: vi.fn<(s: AgentModeSelection) => void>(), ended: vi.fn() };
@@ -178,8 +176,8 @@ describe('AgentModeService', () => {
     expect(events.ended).toHaveBeenCalledWith('The capture was empty');
   });
 
-  it('submits to a new thread with the request as title and file links for a text-only agent', async () => {
-    const { service, events, agents, prompts, prompted } = setup({ image: false });
+  it('submits to a new thread with the request as title and the sources as paths in the text', async () => {
+    const { service, events, agents, prompts, prompted } = setup();
     service.setInspecting(true);
     await service.select(rawSelection());
     const id = events.selected.mock.calls[0]?.[0].id ?? '';
@@ -191,14 +189,14 @@ describe('AgentModeService', () => {
       target: { type: 'new', agentId: 'fake' },
     });
     expect(result).toEqual({ threadId: 'new-thread' });
-    expect(agents.createThread).toHaveBeenCalledWith('fake', { model: undefined });
+    expect(agents.createThread).toHaveBeenCalledWith('fake');
     await prompted;
     const sent = prompts[0];
     expect(sent?.title).toBe('make this button red');
-    const text = sent?.blocks[0]?.type === 'text' ? sent.blocks[0].text : '';
-    expect(text).toContain('Rendered at: src/components/Card.tsx:19');
-    expect(text).toContain('- boom');
-    expect(sent?.blocks.slice(1).map((b) => b.type)).toEqual(['resource_link', 'resource_link']);
+    expect(sent?.text).toContain('## Request');
+    expect(sent?.text).toContain('make this button red');
+    expect(sent?.text).toContain('Rendered at: src/components/Card.tsx:19');
+    expect(sent?.text).toContain('- boom');
     // The selection is used up.
     expect(() =>
       service.submit({

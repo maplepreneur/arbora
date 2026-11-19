@@ -5,13 +5,12 @@ import type { NavigationState } from '@arbora/shared';
 import { checkedAgents, DESKTOP_ROOT, FIXTURES, launch, startAgent, tempUserData } from './app';
 import { startNextFixture, startNuxtFixture, startViteFixture, type RunningServer } from './servers';
 
-const FAKE_AGENT = resolve(DESKTOP_ROOT, '../../packages/acp-client/src/testing/fake-agent.ts');
+const FAKE_AGENT = resolve(DESKTOP_ROOT, 'e2e/fake-terminal-agent.mjs');
 const FAKE_ID = 'fake';
-const FAKE_NO_IMAGE_ID = 'fake-no-image';
 const MOD = process.platform === 'darwin' ? 'meta' : 'control';
 const OVERLAY = '!!document.querySelector("[data-arbora-overlay]")';
 
-/** Two fake agents: one that takes images and one that does not (`FAKE_AGENT_NO_IMAGE=1`). */
+/** One fake terminal agent, echoing the prompts it receives so the spec can assert on them. */
 function userDataWithFakeAgents(): string {
   const userData = tempUserData();
   writeFileSync(
@@ -20,21 +19,30 @@ function userDataWithFakeAgents(): string {
       version: 3,
       agents: {
         custom: [
-          { id: FAKE_ID, name: 'Fake agent', command: process.execPath, args: [FAKE_AGENT], env: {} },
           {
-            id: FAKE_NO_IMAGE_ID,
-            name: 'Fake agent (no images)',
+            id: FAKE_ID,
+            name: 'Fake agent',
             command: process.execPath,
             args: [FAKE_AGENT],
-            env: { FAKE_AGENT_NO_IMAGE: '1' },
+            env: { FAKE_TERMINAL_ECHO: '1' },
           },
         ],
-        permissions: {},
-        ...checkedAgents([FAKE_ID, FAKE_NO_IMAGE_ID]),
+        ...checkedAgents([FAKE_ID]),
       },
     }),
   );
   return userData;
+}
+
+/** The agent terminal's raw scrollback, which is what the pane shows. */
+function scrollback(page: Page, threadId: string): Promise<string> {
+  return page.evaluate(async (id): Promise<string> => {
+    const thread = (await window.arbora.invoke('agent.listThreads')).find((t) => t.id === id);
+    const terminalId = thread?.state.terminalId;
+    if (!terminalId) return '';
+    const response = await window.arbora.invoke('terminal.scrollback', { id: terminalId });
+    return typeof response === 'string' ? response : response.data;
+  }, threadId);
 }
 
 function browserState(page: Page): Promise<NavigationState | null> {
@@ -221,14 +229,17 @@ test.describe('Stage 4 agent mode on Vite + React 18', () => {
 
       await expect(page.getByTestId('mode-banner')).toHaveCount(0);
       await expect(page.getByTestId('thread-view')).toBeVisible();
-      const thread = page.getByTestId('thread-view');
-      await expect(page.getByTestId('user-message').first()).toContainText('make this button red', { timeout: 30_000 });
-      await expect(page.getByTestId('user-message').first()).toContainText('Button ← Card ← App');
-      await expect(page.getByTestId('user-message').first()).toContainText('Rendered at: src/components/Card.tsx:19');
-      await expect(thread).toContainText('Received an image (image/png', { timeout: 30_000 });
-      await expect(thread).toContainText(
-        'Attached files: src/components/Button.tsx, src/components/Card.tsx, src/App.tsx',
-      );
+      // The composed prompt arrives as one paste in the agent's terminal.
+      const threadId = await page.evaluate(async (text) => {
+        const threads = await window.arbora.invoke('agent.listThreads');
+        return threads.find((t) => t.title === text)?.id ?? threads[0]?.id ?? '';
+      }, 'make this button red');
+      await expect.poll(async () => scrollback(page, threadId), { timeout: 30_000 }).toContain('make this button red');
+      const pasted = await scrollback(page, threadId);
+      expect(pasted).toContain('Button ← Card ← App');
+      expect(pasted).toContain('Rendered at: src/components/Card.tsx:19');
+      expect(pasted).toContain('-agent-mode.png. Open it if you can read images.');
+      expect(pasted).toContain('src/components/Button.tsx');
       // The thread is named after the request, not the prompt template's first line.
       const titles = await page.evaluate(async () =>
         (await window.arbora.invoke('agent.listThreads')).map((t) => t.title),
@@ -289,7 +300,9 @@ test.describe('Stage 4 agent mode on Vite + React 18', () => {
       await expect(page.getByTestId('agent-mode-target')).toHaveAttribute('data-value', `thread:${open?.id ?? ''}`);
       await page.getByTestId('agent-mode-input').fill('make this button red');
       await page.getByTestId('agent-mode-input').press('Enter');
-      await expect(page.getByTestId('user-message').first()).toContainText('make this button red', { timeout: 30_000 });
+      await expect
+        .poll(async () => scrollback(page, open?.id ?? ''), { timeout: 30_000 })
+        .toContain('make this button red');
       expect(await page.evaluate(() => window.arbora.invoke('agent.listThreads'))).toHaveLength(1);
     } finally {
       await deleteThreads(page).catch(() => undefined);
@@ -298,7 +311,7 @@ test.describe('Stage 4 agent mode on Vite + React 18', () => {
     }
   });
 
-  test('page chords toggle and exit the mode; agents without image support get the screenshot path', async () => {
+  test('page chords toggle and exit the mode; the screenshot travels as a path in the prompt', async () => {
     const before = screenshotsIn(VITE_REACT);
     const { app, page } = await launch(userDataWithFakeAgents(), [VITE_REACT]);
     try {
@@ -325,16 +338,20 @@ test.describe('Stage 4 agent mode on Vite + React 18', () => {
       await clickInPage(app, BUTTON);
       await expect(page.getByTestId('agent-mode-popover')).toBeVisible({ timeout: 20_000 });
 
-      await choose(page, 'agent-mode-target', `new:${FAKE_NO_IMAGE_ID}`);
+      await choose(page, 'agent-mode-target', `new:${FAKE_ID}`);
       await page.getByTestId('agent-mode-input').fill('make this button red');
       await page.getByTestId('agent-mode-send').click();
 
-      const thread = page.getByTestId('thread-view');
-      await expect(page.getByTestId('user-message').first()).toContainText('Open it if you can read images', {
-        timeout: 30_000,
-      });
-      await expect(thread).toContainText('-agent-mode.png', { timeout: 30_000 });
-      await expect(thread).not.toContainText('Received an image');
+      await expect(page.getByTestId('thread-view')).toBeVisible();
+      const chordId = await page.evaluate(async (text) => {
+        const threads = await window.arbora.invoke('agent.listThreads');
+        return threads.find((t) => t.title === text)?.id ?? threads[0]?.id ?? '';
+      }, 'make this button red');
+      await expect
+        .poll(async () => scrollback(page, chordId), { timeout: 30_000 })
+        .toContain('Open it if you can read images');
+      const chordScroll = await scrollback(page, chordId);
+      expect(chordScroll).toContain('-agent-mode.png');
     } finally {
       await deleteThreads(page).catch(() => undefined);
       await app.close();
@@ -386,6 +403,18 @@ test.describe('Stage 4 agent mode on Next.js (React 19)', () => {
   test.beforeAll(async () => {
     test.setTimeout(180_000);
     next = await startNextFixture();
+    // `next dev` compiles the page on first request; do that here, where a loaded machine
+    // cannot eat the app-side 60 s wait, instead of inside the test's first page load.
+    const deadline = Date.now() + 120_000;
+    while (Date.now() < deadline) {
+      try {
+        const page = await fetch(next.url);
+        if (page.ok && (await page.text()).includes('card-counter')) break;
+      } catch {
+        // The dev server answers before the first compile finishes; keep waiting.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
   });
 
   test.afterAll(async () => {
@@ -416,11 +445,14 @@ test.describe('Stage 4 agent mode on Next.js (React 19)', () => {
       await choose(page, 'agent-mode-target', `new:${FAKE_ID}`);
       await page.getByTestId('agent-mode-input').fill('make this button red');
       await page.getByTestId('agent-mode-input').press('Enter');
-      const message = page.getByTestId('user-message').first();
-      await expect(message).toContainText('tier 3', { timeout: 30_000 });
-      await expect(message).toContainText('Candidate files');
-      await expect(message).toContainText('app/components/Button.tsx');
-      await expect(page.getByTestId('thread-view')).toContainText('app/components/Button.tsx', { timeout: 30_000 });
+      const tierId = await page.evaluate(async (text) => {
+        const threads = await window.arbora.invoke('agent.listThreads');
+        return threads.find((t) => t.title === text)?.id ?? threads[0]?.id ?? '';
+      }, 'make this button red');
+      await expect.poll(async () => scrollback(page, tierId), { timeout: 30_000 }).toContain('tier 3');
+      const tierScroll = await scrollback(page, tierId);
+      expect(tierScroll).toContain('Candidate files');
+      expect(tierScroll).toContain('app/components/Button.tsx');
     } finally {
       await deleteThreads(page).catch(() => undefined);
       await app.close();

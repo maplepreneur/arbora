@@ -21,7 +21,6 @@ import {
   resolveDefaultAgent,
   resolveTaskAgent,
   SANS_FONT_STACK,
-  visibleModels,
   SETTINGS_VERSION,
   SettingsMigrationError,
   type Migration,
@@ -149,20 +148,19 @@ describe('loadSettings', () => {
     expect(MONO_FONT_STACK.startsWith("'Dank Mono'")).toBe(true);
   });
 
-  it('resolves a task agent from its own choice, then the defaults, then a signed-in agent', () => {
+  it('resolves a task agent from its own choice, then the defaults, then an agent that runs', () => {
     const tasks = defaultSettings().tasks;
     const agents = {
       ...defaultSettings().agents,
-      verified: { b: { status: 'ready' as const, checkedAt: 1, models: [] } },
+      verified: { b: { status: 'ready' as const, checkedAt: 1 } },
     };
-    expect(resolveTaskAgent(tasks, 'git', ['a', 'b'], agents, undefined)).toEqual({ agentId: 'b', model: null });
+    expect(resolveTaskAgent(tasks, 'git', ['a', 'b'], agents, undefined)).toEqual({ agentId: 'b' });
     expect(resolveTaskAgent(tasks, 'git', ['a', 'b'], { ...agents, defaultAgent: 'a' }, undefined)).toEqual({
       agentId: 'a',
-      model: null,
     });
-    expect(resolveTaskAgent(tasks, 'git', ['a', 'b'], agents, 'a')).toEqual({ agentId: 'a', model: null });
-    const chosen = { ...tasks, git: { agentId: 'b', model: 'haiku' } };
-    expect(resolveTaskAgent(chosen, 'git', ['a', 'b'], agents, 'a')).toEqual({ agentId: 'b', model: 'haiku' });
+    expect(resolveTaskAgent(tasks, 'git', ['a', 'b'], agents, 'a')).toEqual({ agentId: 'a' });
+    const chosen = { ...tasks, git: { agentId: 'b' } };
+    expect(resolveTaskAgent(chosen, 'git', ['a', 'b'], agents, 'a')).toEqual({ agentId: 'b' });
     expect(resolveTaskAgent(chosen, 'design', ['a'], { ...agents, verified: {} }, undefined)).toBeUndefined();
   });
 
@@ -185,53 +183,35 @@ describe('loadSettings', () => {
     expect(settings.version).toBe(SETTINGS_VERSION);
     expect(settings.agents).toEqual({
       custom: [],
-      permissions: {},
-      defaultModels: {},
-      favoriteModels: {},
       hidden: [],
-      hiddenModels: {},
       verified: {},
       autoVerify: true,
       env: {},
-      adapterVersions: {},
     });
   });
 
-  it('keeps custom agents and remembered permissions', () => {
+  it('keeps custom agents and drops removed ACP-era fields', () => {
     const agents = {
-      custom: [{ id: 'my-agent', name: 'Mine', command: 'my-agent', args: ['acp'], env: { FOO: 'bar' } }],
+      custom: [{ id: 'my-agent', name: 'Mine', command: 'my-agent', args: [], env: { FOO: 'bar' } }],
       permissions: { 'claude-code:execute': 'allow' },
+      defaultModels: { 'my-agent': 'big' },
     };
     expect(loadSettings({ version: 3, agents }).settings.agents).toEqual({
-      ...agents,
-      defaultModels: {},
-      favoriteModels: {},
+      custom: [{ id: 'my-agent', name: 'Mine', command: 'my-agent', args: [], env: { FOO: 'bar' } }],
       hidden: [],
-      hiddenModels: {},
       verified: {},
       autoVerify: true,
       env: {},
-      adapterVersions: {},
     });
   });
 
-  it('offers only signed-in, visible agents and their visible models, default model first', () => {
+  it('offers only agents that run and are not hidden', () => {
     const agents = loadSettings({
       version: 3,
       agents: {
         hidden: ['grok'],
-        defaultModels: { opencode: 'b' },
-        hiddenModels: { opencode: ['c'] },
         verified: {
-          opencode: {
-            status: 'ready',
-            checkedAt: 1,
-            models: [
-              { value: 'a', name: 'A' },
-              { value: 'b', name: 'B' },
-              { value: 'c', name: 'C' },
-            ],
-          },
+          opencode: { status: 'ready', checkedAt: 1 },
           grok: { status: 'ready', checkedAt: 1 },
           codex: { status: 'auth_required', checkedAt: 1 },
         },
@@ -241,33 +221,18 @@ describe('loadSettings', () => {
     expect(isPickableAgent(agents, 'grok')).toBe(false);
     expect(isPickableAgent(agents, 'codex')).toBe(false);
     expect(isPickableAgent(agents, 'claude-code')).toBe(false);
-    expect(visibleModels(agents, 'opencode').map((m) => m.value)).toEqual(['b', 'a']);
-  });
-
-  it('orders models: default, then favourites as starred, then the rest', () => {
-    const models = ['a', 'b', 'c', 'd', 'e'].map((value) => ({ value, name: value.toUpperCase() }));
-    const agents = loadSettings({
-      version: 3,
-      agents: {
-        defaultModels: { x: 'd' },
-        favoriteModels: { x: ['e', 'b', 'd'] },
-        verified: { x: { status: 'ready', checkedAt: 1, models } },
-      },
-    }).settings.agents;
-    expect(visibleModels(agents, 'x').map((m) => m.value)).toEqual(['d', 'e', 'b', 'a', 'c']);
   });
 
   it('merges agent patches: omitted fields stay, null clears the default agent', () => {
     const current = loadSettings({
       version: 3,
-      agents: { defaultAgent: 'kimi', defaultModels: { opencode: 'opencode/beam-free' }, favoriteModels: {} },
+      agents: { defaultAgent: 'kimi', env: { opencode: { LOG: 'debug' } } },
     }).settings.agents;
-    const starred = mergeAgentSettings(current, { favoriteModels: { opencode: ['opencode/beam-free'] } });
-    expect(starred.defaultAgent).toBe('kimi');
-    expect(starred.defaultModels).toEqual({ opencode: 'opencode/beam-free' });
-    expect(starred.favoriteModels).toEqual({ opencode: ['opencode/beam-free'] });
-    expect(mergeAgentSettings(starred, { defaultAgent: 'grok' }).defaultAgent).toBe('grok');
-    expect('defaultAgent' in mergeAgentSettings(starred, { defaultAgent: null })).toBe(false);
+    const withEnv = mergeAgentSettings(current, { env: { opencode: { LOG: 'info' } } });
+    expect(withEnv.defaultAgent).toBe('kimi');
+    expect(withEnv.env).toEqual({ opencode: { LOG: 'info' } });
+    expect(mergeAgentSettings(withEnv, { defaultAgent: 'grok' }).defaultAgent).toBe('grok');
+    expect('defaultAgent' in mergeAgentSettings(withEnv, { defaultAgent: null })).toBe(false);
   });
 
   it('resolves the default agent: project first, then the app setting, ignoring unknown ids', () => {
@@ -359,7 +324,6 @@ describe('Stage 9 settings', () => {
     expect(settings.onboarding).toEqual({ completed: false, checkedChords: [] });
     expect(settings.projectGroups).toEqual([]);
     expect(settings.agents.env).toEqual({});
-    expect(settings.agents.adapterVersions).toEqual({});
   });
 
   it('accepts the Development update channel without a migration', () => {
@@ -378,7 +342,7 @@ describe('Stage 9 settings', () => {
       updates: { channel: 'beta' },
       browser: { trustLocalhostCertificates: false },
       terminal: { fontSize: 15 },
-      agents: { adapterVersions: { codex: 'latest' } },
+      agents: { env: { codex: { LOG: 'debug' } } },
       projectGroups: [{ id: 'work', name: 'Work', color: 'blue', collapsed: false }],
     });
     expect(next.sounds).toEqual({ ...current.sounds, volume: 20 });
@@ -390,7 +354,7 @@ describe('Stage 9 settings', () => {
       trustLocalhostCertificates: false,
     });
     expect(next.terminal.fontSize).toBe(15);
-    expect(next.agents.adapterVersions).toEqual({ codex: 'latest' });
+    expect(next.agents.env).toEqual({ codex: { LOG: 'debug' } });
     expect(next.projectGroups).toHaveLength(1);
     expect(next.theme).toBe(current.theme);
   });
@@ -418,10 +382,8 @@ describe('Stage 9 settings', () => {
     expect(appSettingsPatchSchema.safeParse({ sounds: { volume: 500 } }).success).toBe(false);
   });
 
-  it('rejects adapter versions that are not latest or semver', () => {
-    expect(appSettingsPatchSchema.safeParse({ agents: { adapterVersions: { codex: '1.0; rm -rf' } } }).success).toBe(
-      false,
-    );
+  it('rejects agent patches with an invalid custom agent shape', () => {
+    expect(appSettingsPatchSchema.safeParse({ agents: { custom: [{ id: 'x' }] } }).success).toBe(false);
   });
 
   it('turns null project patches into removals', () => {

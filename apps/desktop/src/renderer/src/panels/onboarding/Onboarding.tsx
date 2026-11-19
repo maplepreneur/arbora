@@ -77,8 +77,8 @@ function WelcomeStep() {
     },
     {
       icon: Bot,
-      title: 'Any ACP agent',
-      text: 'Claude Code, Codex, Kimi Code, Grok Build, OpenCode, Antigravity or your own, in groups.',
+      title: 'Any coding CLI',
+      text: 'Claude Code, Codex, Kimi Code, Grok Build, OpenCode, Antigravity or your own, each in its own terminal.',
     },
   ];
   return (
@@ -256,7 +256,7 @@ function AgentsStep() {
   return (
     <StepShell
       title="Connect an agent"
-      lead="Test connection starts the agent once (ACP initialize and a session) to check that you are signed in. Star the one new threads should use."
+      lead="The check runs the agent's own CLI once to confirm it is installed; log-in happens in its terminal. Star the one new threads should use."
     >
       <ul className="flex max-h-72 flex-col gap-1.5 overflow-auto" data-testid="onboarding-agents">
         {sorted.map((agent) => {

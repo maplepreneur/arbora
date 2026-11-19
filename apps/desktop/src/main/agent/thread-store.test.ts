@@ -1,103 +1,120 @@
-import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { PERSISTED_TOOL_TEXT_LIMIT, THREAD_FILE_BYTE_LIMIT, type Thread, type ThreadEvent } from '@arbora/shared';
-import { capThreadFile, ThreadStore, truncateEventForPersistence } from './thread-store.js';
+import { THREAD_FILE_VERSION, type Thread } from '@arbora/shared';
+import { ThreadStore, threadsDir } from './thread-store.js';
 
-function thread(events: ThreadEvent[] = []): Thread {
+function thread(patch: Partial<Thread> = {}): Thread {
   return {
     id: 't1',
-    agentId: 'fake',
-    title: 'Hello',
+    agentId: 'kimi',
+    title: 'fix the nav',
     createdAt: 1,
     updatedAt: 2,
-    sessionId: 'fake-1',
-    autoApproveEdits: false,
     groupId: null,
     pinned: false,
     archivedAt: null,
     parentThreadId: null,
     state: {
-      status: 'ready',
+      status: 'idle',
       error: null,
-      authMethods: [],
-      modes: null,
-      configOptions: [],
-      availableCommands: [],
-      capabilities: null,
-      contextLost: false,
+      terminalId: null,
+      lastLine: null,
+      turnStartedAt: null,
+      lastOutputAt: null,
+      lastTurnMs: null,
     },
-    events,
+    lastLines: [],
+    ...patch,
   };
 }
 
-function message(id: string, text: string): ThreadEvent {
-  return { id, at: 1, kind: 'agent_message', blocks: [{ type: 'text', text }] };
+function tempProject(): string {
+  return mkdtempSync(join(tmpdir(), 'arbora-threads-'));
 }
 
 describe('ThreadStore', () => {
-  it('round-trips threads through .arbora/threads and lists them newest first', () => {
-    const project = mkdtempSync(join(tmpdir(), 'arbora-threads-'));
-    const store = new ThreadStore(project);
-    store.save(thread([message('e1', 'hi')]));
-    store.save({ ...thread(), id: 't2', updatedAt: 5 });
-    expect(readdirSync(join(project, '.arbora', 'threads')).sort()).toEqual(['t1.json', 't2.json']);
-    expect(store.list().map((t) => t.id)).toEqual(['t2', 't1']);
-    const loaded = store.load('t1');
-    expect(loaded?.events).toEqual([message('e1', 'hi')]);
-    expect(loaded?.state.status).toBe('idle');
-    expect(store.load('missing')).toBeNull();
-    store.delete('t1');
-    expect(store.list().map((t) => t.id)).toEqual(['t2']);
+  it('saves a v2 file and reloads it stopped, keeping the terminal tail', () => {
+    const project = tempProject();
+    try {
+      const store = new ThreadStore(project);
+      store.save(thread({ lastLines: ['banner', 'Done: fixed the nav'] }));
+      expect(store.load('t1')).toMatchObject({
+        id: 't1',
+        title: 'fix the nav',
+        lastLines: ['banner', 'Done: fixed the nav'],
+        state: { status: 'idle' },
+      });
+      expect(store.list()[0]).toMatchObject({ id: 't1', title: 'fix the nav' });
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
   });
 
-  it('ignores files that are not valid thread files', () => {
-    const project = mkdtempSync(join(tmpdir(), 'arbora-threads-'));
-    const store = new ThreadStore(project);
-    store.save(thread());
-    const file = join(project, '.arbora', 'threads', 'broken.json');
-    writeFileSync(file, '{not json');
-    expect(store.list().map((t) => t.id)).toEqual(['t1']);
-    const raw: unknown = JSON.parse(readFileSync(join(project, '.arbora', 'threads', 't1.json'), 'utf8'));
-    expect(raw).toMatchObject({ version: 1 });
+  it('caps the persisted tail at 200 lines', () => {
+    const project = tempProject();
+    try {
+      const store = new ThreadStore(project);
+      store.save(thread({ lastLines: Array.from({ length: 260 }, (_, i) => `line ${i}`) }));
+      const file = JSON.parse(readFileSync(join(threadsDir(project), 't1.json'), 'utf8')) as {
+        version: number;
+        lastLines: string[];
+      };
+      expect(file.version).toBe(THREAD_FILE_VERSION);
+      expect(file.lastLines).toHaveLength(200);
+      expect(file.lastLines.at(-1)).toBe('line 259');
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
   });
 
-  it('truncates long tool content and raw IO before persisting', () => {
-    const long = 'x'.repeat(PERSISTED_TOOL_TEXT_LIMIT + 10);
-    const event: ThreadEvent = {
-      id: 'tool',
-      at: 1,
-      kind: 'tool_call',
-      toolCallId: 'c1',
-      title: 'Edit',
-      toolKind: 'edit',
-      status: 'completed',
-      content: [
-        { type: 'diff', path: '/p/a.ts', oldText: long, newText: long },
-        { type: 'content', content: { type: 'text', text: long } },
-      ],
-      locations: [],
-      rawInput: { text: long },
-      rawOutput: long,
-    };
-    const persisted = truncateEventForPersistence(event);
-    if (persisted.kind !== 'tool_call') throw new Error('kind changed');
-    const diff = persisted.content[0];
-    expect(diff?.type === 'diff' && diff.newText.length).toBeLessThanOrEqual(PERSISTED_TOOL_TEXT_LIMIT + 20);
-    expect(diff?.type === 'diff' && diff.newText.endsWith('…[truncated]')).toBe(true);
-    expect(JSON.stringify(persisted.rawInput).length).toBeLessThan(PERSISTED_TOOL_TEXT_LIMIT + 100);
-    expect(typeof persisted.rawOutput).toBe('string');
-    expect(message('m', 'short')).toEqual(truncateEventForPersistence(message('m', 'short')));
+  it('migrates a v1 (ACP-era) file: metadata stays, the protocol transcript is dropped', () => {
+    const project = tempProject();
+    try {
+      mkdirSync(join(project, '.arbora', 'threads'), { recursive: true });
+      writeFileSync(
+        join(threadsDir(project), 'old.json'),
+        JSON.stringify({
+          version: 1,
+          id: 'old',
+          agentId: 'claude-code',
+          title: 'old work',
+          createdAt: 10,
+          updatedAt: 20,
+          sessionId: 's',
+          autoApproveEdits: true,
+          groupId: 'ui',
+          pinned: true,
+          archivedAt: null,
+          parentThreadId: null,
+          events: [{ id: 'e1', at: 1, kind: 'user_message', blocks: [] }],
+        }),
+      );
+      const store = new ThreadStore(project);
+      expect(store.load('old')).toMatchObject({ id: 'old', agentId: 'claude-code', groupId: 'ui', pinned: true });
+      expect(store.load('old')?.lastLines).toEqual([]);
+      expect(store.load('old')?.state.status).toBe('idle');
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
   });
 
-  it('drops the oldest events to stay under the file byte limit', () => {
-    const big = 'y'.repeat(THREAD_FILE_BYTE_LIMIT / 4);
-    const events = ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => message(id, big));
-    const file = capThreadFile(thread(events));
-    expect(JSON.stringify(file).length).toBeLessThanOrEqual(THREAD_FILE_BYTE_LIMIT);
-    expect(file.events.length).toBeGreaterThan(0);
-    expect(file.events.length).toBeLessThan(events.length);
-    expect(file.events[file.events.length - 1]?.id).toBe('f');
+  it('ignores an unreadable file and one that is missing required fields', () => {
+    const project = tempProject();
+    try {
+      mkdirSync(join(project, '.arbora', 'threads'), { recursive: true });
+      writeFileSync(join(threadsDir(project), 'bad.json'), '{nope');
+      writeFileSync(
+        join(threadsDir(project), 'wrong.json'),
+        JSON.stringify({ version: 2, id: 'wrong', title: 'x', createdAt: 1, updatedAt: 1, lastLines: [] }),
+      );
+      const store = new ThreadStore(project);
+      expect(store.load('bad')).toBeNull();
+      expect(store.load('wrong')).toBeNull();
+      expect(store.list()).toHaveLength(0);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
   });
 });

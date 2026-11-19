@@ -13,17 +13,12 @@ export function tempUserData(): string {
 }
 
 /**
- * `agents` settings that mark the given custom agents as already checked and signed in, with the
- * fake agent's two models. Pickers only offer checked agents, and automatic checks stay off so the
- * built-in `npx` adapters never start in CI.
+ * `agents` settings that mark the given custom agents as already checked, so pickers offer them
+ * and automatic checks stay off so the built-in CLIs never start in CI.
  */
 export function checkedAgents(ids: readonly string[]): { verified: Record<string, unknown>; autoVerify: false } {
-  const models = [
-    { value: 'fast', name: 'Fast' },
-    { value: 'smart', name: 'Smart' },
-  ];
   return {
-    verified: Object.fromEntries(ids.map((id) => [id, { status: 'ready', checkedAt: 0, models }])),
+    verified: Object.fromEntries(ids.map((id) => [id, { status: 'ready', checkedAt: 0 }])),
     autoVerify: false,
   };
 }

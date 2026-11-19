@@ -6,7 +6,6 @@ import {
   type InboxReason,
   type SessionStatus,
   type ThreadAttention,
-  type ThreadEvent,
   type ThreadSummary,
 } from '@arbora/shared';
 import { buildGroveModel, type GroveModel, type GroveSession } from './grove-model';
@@ -15,7 +14,8 @@ export interface SidebarProjectInput {
   readonly path: string;
   readonly threads: readonly ThreadSummary[];
   readonly groups: readonly AgentGroup[];
-  readonly events: Readonly<Record<string, readonly ThreadEvent[]>>;
+  /** Paths each thread changed during its turn, for the overlap warning. */
+  readonly changedFiles: Readonly<Record<string, readonly string[]>>;
 }
 
 export interface SidebarAgent {
@@ -65,7 +65,7 @@ export function buildGroveSidebar(input: {
         threads: project.threads,
         groups: project.groups,
         agents: input.agents,
-        events: project.events,
+        changedFiles: project.changedFiles,
         attention: input.attention,
       }),
     );

@@ -390,12 +390,13 @@ export default function TerminalPanel() {
     return () => setTerminalPanelController(null);
   }, []);
 
-  // Opening the panel on a project with no terminals starts a shell, like most editors.
+  // Opening the panel on a project with no terminals starts a shell, like most editors. The agent
+  // session's CLI is hosted by the session pane, so a project with only that has no tabs here.
   useEffect(() => {
-    if (!loaded || devStarting || autoCreated.current || terminals.length > 0) return;
+    if (!loaded || devStarting || autoCreated.current || tabs.length > 0) return;
     autoCreated.current = true;
     void createTerminal().catch(() => undefined);
-  }, [loaded, devStarting, terminals.length]);
+  }, [loaded, devStarting, tabs.length]);
 
   // Focus follows the active pane when tabs switch.
   useEffect(() => {

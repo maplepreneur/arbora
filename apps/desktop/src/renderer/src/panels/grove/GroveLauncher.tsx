@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import clsx from 'clsx';
-import { Cpu, LoaderCircle, Settings } from 'lucide-react';
-import { shortModelName, useAutoVerify, usePickableAgents } from '../../agent-pickers';
+import { LoaderCircle, Settings } from 'lucide-react';
+import { useAutoVerify, usePickableAgents } from '../../agent-pickers';
 import { Dialog } from '../../components/Dialog';
 import { closeLauncher, setProjectDefaultAgent, startSession } from '../../grove-store';
 import { openSettings, useApp } from '../../store';
@@ -54,7 +54,7 @@ export function launcherHint(stage: LauncherStage, platform: string): string {
   const emptyStart = platform === 'darwin' ? '⌘↩ start empty' : 'Ctrl+Enter start empty';
   switch (stage) {
     case 'agents':
-      return `↑↓ list · ←→ agent and model · Enter task · ${emptyStart}`;
+      return `↑↓ list · Enter task · ${emptyStart}`;
     case 'task':
       return 'Enter start · Shift+Enter new line · Esc back';
     default: {
@@ -71,13 +71,12 @@ const option = (selected: boolean): string =>
   );
 
 /**
- * New agent, in two stages. The first is the agent and its model: arrows move between those
- * lists, Enter opens the task, and Ctrl+Enter (Cmd+Enter on macOS) starts with an empty task.
- * The second is the task. Enter starts it; Shift+Enter is a new line; Escape returns to the lists.
+ * New agent, in two stages. The first is the agent: arrows move the list, Enter opens the task,
+ * and Ctrl+Enter (Cmd+Enter on macOS) starts with an empty task. The second is the task. Enter
+ * starts it; Shift+Enter is a new line; Escape returns to the list.
  *
- * Agents are the same set the browser picker offers (`isPickableAgent`: signed in, and not in
- * `settings.agents.hidden`). The dialog stays inside the viewport; the model list is what scrolls.
- * The task field is not mounted on the first stage, or it would take the arrow keys.
+ * Agents are the same set the browser picker offers (`isPickableAgent`: runs, and not in
+ * `settings.agents.hidden`). Its CLI manages models and log-in inside its own terminal.
  */
 export function GroveLauncher() {
   const pickable = usePickableAgents();
@@ -87,35 +86,22 @@ export function GroveLauncher() {
   const platform = useApp((s) => s.info.platform);
   const [stage, setStage] = useState<LauncherStage>('agents');
   const [agentIndex, setAgentIndex] = useState(0);
-  const [chosenModels, setChosenModels] = useState<Readonly<Record<string, string>>>({});
   const [task, setTask] = useState('');
   const [makeDefault, setMakeDefault] = useState(false);
   const [worktree, setWorktree] = useState(false);
   const [also, setAlso] = useState<readonly string[]>([]);
   const agentList = useRef<HTMLUListElement>(null);
-  const modelList = useRef<HTMLUListElement>(null);
   const taskField = useRef<HTMLTextAreaElement>(null);
 
   const index = Math.min(agentIndex, Math.max(0, pickable.length - 1));
   const entry = pickable[index];
-  const models = entry?.models ?? [];
-  const model = entry ? (chosenModels[entry.agent.id] ?? models[0]?.value) : undefined;
-  const modelIndex = Math.max(
-    0,
-    models.findIndex((m) => m.value === model),
-  );
   const isProjectDefault = entry !== undefined && entry.agent.id === projectDefault;
   useScrollActive(agentList, index);
-  useScrollActive(modelList, modelIndex);
 
   useEffect(() => {
     if (stage === 'task') taskField.current?.focus();
     else agentList.current?.focus();
   }, [stage]);
-
-  const chooseModel = (value: string): void => {
-    if (entry) setChosenModels((current) => ({ ...current, [entry.agent.id]: value }));
-  };
 
   const goToTask = (): void => {
     if (entry) setStage('task');
@@ -132,49 +118,26 @@ export function GroveLauncher() {
       ? also
           .filter((id) => id !== agentId)
           .slice(0, 3)
-          .map((id) => {
-            const chosen = chosenModels[id];
-            return chosen ? { agentId: id, model: chosen } : { agentId: id };
-          })
+          .map((id) => ({ agentId: id }))
       : [];
     void startSession({
       agentId,
-      model,
       task: text,
       worktree,
       ...(extras.length > 0 ? { also: extras } : {}),
     });
   };
 
-  const onListKey = (event: KeyboardEvent<HTMLUListElement>, side: 'agent' | 'model'): void => {
+  const onListKey = (event: KeyboardEvent<HTMLUListElement>): void => {
     if (isImmediateStart(event)) {
       event.preventDefault();
       begin('');
       return;
     }
-    switch (side) {
-      case 'agent': {
-        const next = moveIndex(event.key, index, pickable.length);
-        if (next !== null) setAgentIndex(next);
-        else if (isPlainEnter(event)) goToTask();
-        else if (event.key === 'ArrowRight' && models.length > 0) modelList.current?.focus();
-        else return;
-        break;
-      }
-      case 'model': {
-        const next = moveIndex(event.key, modelIndex, models.length);
-        const nextModel = next === null ? undefined : models[next];
-        if (nextModel) chooseModel(nextModel.value);
-        else if (isPlainEnter(event)) goToTask();
-        else if (event.key === 'ArrowLeft') agentList.current?.focus();
-        else return;
-        break;
-      }
-      default: {
-        const unreachable: never = side;
-        return unreachable;
-      }
-    }
+    const next = moveIndex(event.key, index, pickable.length);
+    if (next !== null) setAgentIndex(next);
+    else if (isPlainEnter(event)) goToTask();
+    else return;
     event.preventDefault();
   };
 
@@ -214,14 +177,14 @@ export function GroveLauncher() {
             >
               {checking ? (
                 <p className="flex items-center gap-1.5">
-                  <LoaderCircle size={12} className="animate-spin" /> Checking which agents are signed in…
+                  <LoaderCircle size={12} className="animate-spin" /> Checking which agents are installed…
                 </p>
               ) : (
-                <p>No signed-in agent is shown. Sign in to one, or show it, in Settings → Agents.</p>
+                <p>No installed agent is shown. Install one, or show it, in Settings → Agents.</p>
               )}
             </div>
           ) : (
-            <div className="grid min-h-0 flex-1 grid-cols-2 grid-rows-[minmax(0,1fr)] overflow-hidden border-b border-border">
+            <div className="min-h-0 flex-1 overflow-hidden border-b border-border">
               <ul
                 ref={agentList}
                 role="listbox"
@@ -229,10 +192,10 @@ export function GroveLauncher() {
                 aria-activedescendant={`launcher-agent-option-${index}`}
                 tabIndex={0}
                 data-autofocus
-                onKeyDown={(event) => onListKey(event, 'agent')}
-                className="min-h-0 overflow-y-auto border-r border-border p-2 outline-none focus-visible:ring-1 focus-visible:ring-accent focus-visible:ring-inset"
+                onKeyDown={onListKey}
+                className="min-h-0 overflow-y-auto p-2 outline-none focus-visible:ring-1 focus-visible:ring-accent focus-visible:ring-inset"
               >
-                {pickable.map(({ agent, models: agentModels, isDefault }, i) => (
+                {pickable.map(({ agent, isDefault }, i) => (
                   <li
                     key={agent.id}
                     id={`launcher-agent-option-${i}`}
@@ -259,52 +222,12 @@ export function GroveLauncher() {
                           )}
                         </span>
                         <span className="truncate text-[11px] text-fg-subtle">
-                          {agentModels.length > 0
-                            ? `${agentModels.length} model${agentModels.length === 1 ? '' : 's'}`
-                            : 'Its own model'}
+                          Runs in its own terminal · models and log-in happen there
                         </span>
                       </span>
                     </button>
                   </li>
                 ))}
-              </ul>
-              <ul
-                ref={modelList}
-                role="listbox"
-                aria-label={entry ? `${entry.agent.name} models` : 'Models'}
-                aria-activedescendant={models.length > 0 ? `launcher-model-option-${modelIndex}` : undefined}
-                tabIndex={-1}
-                data-testid="launcher-models"
-                onKeyDown={(event) => onListKey(event, 'model')}
-                className="min-h-0 overflow-y-auto p-2 outline-none focus-visible:ring-1 focus-visible:ring-accent focus-visible:ring-inset"
-              >
-                {models.length === 0 ? (
-                  <li className="px-2 py-1.5 text-[12px] text-fg-subtle">The agent starts on its own default model.</li>
-                ) : (
-                  models.map((entryModel, i) => (
-                    <li
-                      key={entryModel.value}
-                      id={`launcher-model-option-${i}`}
-                      role="option"
-                      aria-selected={entryModel.value === model}
-                      data-index={i}
-                      className="mb-1"
-                    >
-                      <button
-                        type="button"
-                        tabIndex={-1}
-                        data-testid={`launcher-model-${entryModel.value}`}
-                        data-active={entryModel.value === model || undefined}
-                        onClick={() => chooseModel(entryModel.value)}
-                        onDoubleClick={goToTask}
-                        className={option(entryModel.value === model)}
-                      >
-                        <Cpu size={13} className="shrink-0 text-fg-subtle" />
-                        <span className="min-w-0 flex-1 truncate">{shortModelName(entryModel.name)}</span>
-                      </button>
-                    </li>
-                  ))
-                )}
               </ul>
             </div>
           )

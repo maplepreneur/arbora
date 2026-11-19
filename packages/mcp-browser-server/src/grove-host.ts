@@ -6,8 +6,8 @@ export interface GroveAgent {
   readonly name: string;
   /** Its command was found on the login-shell PATH. */
   readonly detected: boolean;
-  /** The last sign-in check: true, false, or null when it was never checked. */
-  readonly signedIn: boolean | null;
+  /** The last check ran its version command: true, false, or null when it was never checked. */
+  readonly runs: boolean | null;
 }
 
 export interface GroveSession {
@@ -19,16 +19,15 @@ export interface GroveSession {
   readonly parentId: string | null;
   /** In Grove's Recent. */
   readonly archived: boolean;
-  /** First line of its last agent message. */
+  /** Its terminal's last output line. */
   readonly lastMessage: string | null;
-  /** What it waits on while `needs_you`: a permission title, or a login. */
+  /** What it waits on while `needs_you`: the question it printed, or a hint. */
   readonly waitingFor: string | null;
 }
 
 export interface GroveStartRequest {
   readonly agentId: string;
   readonly task: string;
-  readonly model?: string | undefined;
   readonly title?: string | undefined;
 }
 

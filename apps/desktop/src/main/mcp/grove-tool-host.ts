@@ -7,12 +7,11 @@ import type {
   GroveWaitRequest,
 } from '@arbora/mcp-browser-server/host';
 import {
-  attentionFromTranscript,
   deriveSessionStatus,
   displayNames,
   resolveDefaultAgent,
   taskTitle,
-  transcriptLines,
+  terminalLines,
   type AgentSettings,
   type AgentVerification,
   type SessionStatus,
@@ -40,9 +39,9 @@ export interface GroveHostOptions {
   readonly maxHelpers: () => number;
 }
 
-function signedIn(verification: AgentVerification | undefined): boolean | null {
+function runs(verification: AgentVerification | undefined): boolean | null {
   if (verification?.status === 'ready') return true;
-  if (verification?.status === 'auth_required') return false;
+  if (verification?.status === 'auth_required' || verification?.status === 'missing') return false;
   return null;
 }
 
@@ -71,7 +70,7 @@ export class GroveHost implements GroveToolHost {
           id: agent.id,
           name: agent.name,
           detected: detected.has(agent.id),
-          signedIn: signedIn(settings.verified[agent.id]),
+          runs: runs(settings.verified[agent.id]),
         })),
       defaultAgentId,
     };
@@ -82,13 +81,7 @@ export class GroveHost implements GroveToolHost {
     const threads = service.listThreads().sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
     const names = displayNames(threads, (agentId) => service.agentName(agentId));
     return threads.map((thread) => {
-      const attention = attentionFromTranscript(service.getThread(thread.id)?.events ?? [], thread.state);
-      const status = GROVE_STATUS[deriveSessionStatus(thread.state.status, attention)];
-      let waitingFor: string | null = null;
-      if (status === 'needs_you') {
-        waitingFor =
-          attention.pendingPermissions.length > 0 ? (attention.permissionTitle ?? 'a permission request') : 'a login';
-      }
+      const status = GROVE_STATUS[deriveSessionStatus(thread.state.status, undefined)];
       return {
         id: thread.id,
         name: names.get(thread.id) ?? thread.title,
@@ -96,8 +89,8 @@ export class GroveHost implements GroveToolHost {
         status,
         parentId: thread.parentThreadId,
         archived: thread.archivedAt !== null,
-        lastMessage: attention.lastMessage,
-        waitingFor,
+        lastMessage: thread.state.lastLine,
+        waitingFor: status === 'needs_you' ? (thread.state.lastLine ?? 'an answer in its terminal') : null,
       };
     });
   }
@@ -109,10 +102,9 @@ export class GroveHost implements GroveToolHost {
   async confirmStart(): Promise<boolean> {
     const service = this.service();
     const lead = this.sessions().find((session) => session.id === this.sessionId);
-    const kind = await service.requestToolPermission(this.sessionId, {
+    const kind = await service.requestConfirmation(this.sessionId, {
       title: `${lead?.name ?? 'This agent'} wants to start helper agents`,
       detail: `Each helper is a new Grove session that works next to this one; you can open, answer and stop it there. At most ${this.maxHelpers()} run at once.`,
-      toolKind: 'execute',
       persistent: false,
     });
     return kind === 'allow_once';
@@ -123,26 +115,22 @@ export class GroveHost implements GroveToolHost {
     const service = this.service();
     const lead = service.listThreads().find((thread) => thread.id === this.sessionId);
     const helper = service.createThread(request.agentId, {
-      model: request.model,
       groupId: lead?.groupId ?? null,
       parentThreadId: this.sessionId,
       title: request.title?.trim() || taskTitle(request.task) || undefined,
-      autoApproveEdits: lead?.autoApproveEdits ?? false,
     });
-    void service.prompt(helper.id, [{ type: 'text', text: request.task }]).catch(() => undefined);
+    void service.sendPrompt(helper.id, request.task).catch(() => undefined);
     return Promise.resolve(helper.id);
   }
 
-  send(sessionId: string, message: string): Promise<void> {
+  async send(sessionId: string, message: string): Promise<void> {
     const service = this.service();
-    // A turn that waits on a permission card is still a turn; `prompt` would refuse it later.
-    if (service.getThread(sessionId)?.state.status === 'prompting') {
-      return Promise.reject(
-        new Error('That helper is waiting for the user to answer it in Arbora. Its turn has to end first.'),
-      );
+    const status = service.getThread(sessionId)?.state.status;
+    // A turn still in flight belongs to the agent; writing into it would interleave prompts.
+    if (status === 'working' || status === 'starting') {
+      return Promise.reject(new Error('That helper is still working. Call grove_wait first.'));
     }
-    void service.prompt(sessionId, [{ type: 'text', text: message }]).catch(() => undefined);
-    return Promise.resolve();
+    await service.sendPrompt(sessionId, message);
   }
 
   wait(sessionIds: readonly string[], request: GroveWaitRequest): Promise<boolean> {
@@ -150,7 +138,10 @@ export class GroveHost implements GroveToolHost {
   }
 
   transcript(sessionId: string, limit: number): string[] {
-    return transcriptLines(this.service().getThread(sessionId)?.events ?? [], limit);
+    const service = this.service();
+    const thread = service.getThread(sessionId);
+    if (!thread) return [];
+    return terminalLines(thread.state, thread.lastLines, limit);
   }
 
   stop(sessionId: string): Promise<void> {

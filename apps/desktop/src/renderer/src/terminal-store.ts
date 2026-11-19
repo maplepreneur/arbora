@@ -55,15 +55,25 @@ export function resetTerminals(): void {
 export const AGENT_TAB_ID = 'agent-commands';
 
 /**
+ * A terminal this column can show as its own tab: the user's shells, dev servers and commands.
+ * An agent session's CLI (`kind: 'agent'`, writable) is not one — the session pane hosts it —
+ * while commands agents ran (`readOnly`) share the agent tab.
+ */
+function hasOwnTab(terminal: TerminalInfo): boolean {
+  return !terminal.readOnly && terminal.kind !== 'agent';
+}
+
+/**
  * Reconciles tabs with main's terminal list: panes whose terminal is gone are dropped (and empty
- * tabs with them), terminals not shown anywhere yet (the dev server) get a tab, and agent
- * terminals are collected in the agent tab, oldest first.
+ * tabs with them), terminals not shown anywhere yet (the dev server) get a tab, agent commands
+ * are collected in the agent tab, oldest first, and an agent session's own terminal is left
+ * alone: the session pane is the only place it renders.
  */
 export function reconcileTabs(
   state: Pick<TerminalState, 'tabs' | 'activeTabId' | 'activePaneId'>,
   terminals: readonly TerminalInfo[],
 ): Pick<TerminalState, 'tabs' | 'activeTabId' | 'activePaneId'> {
-  const ids = new Set(terminals.filter((t) => !t.readOnly).map((t) => t.id));
+  const ids = new Set(terminals.filter(hasOwnTab).map((t) => t.id));
   const agentIds = terminals.filter((t) => t.readOnly).map((t) => t.id);
   const tabs: TerminalTab[] = [];
   for (const tab of state.tabs) {
@@ -75,7 +85,7 @@ export function reconcileTabs(
   const shown = new Set(tabs.flatMap((t) => t.panes));
   let activeTabId = tabs.some((t) => t.id === state.activeTabId) ? state.activeTabId : null;
   for (const terminal of terminals) {
-    if (shown.has(terminal.id)) continue;
+    if (shown.has(terminal.id) || !hasOwnTab(terminal)) continue;
     tabs.splice(tabs.length - (agentIds.length > 0 ? 1 : 0), 0, {
       id: terminal.id,
       panes: [terminal.id],
@@ -106,6 +116,10 @@ export function applyTerminalList(terminals: TerminalInfo[], projectPath: string
 
 /** Shows terminal `id` as the right column's tab and focuses it. */
 export function revealTerminal(id: string, info?: TerminalInfo): void {
+  // An agent session's CLI (`kind: 'agent'`, writable) is hosted by the session pane; it never
+  // becomes a tab here. Commands agents ran stay reachable through the shared agent tab.
+  const known = info ?? useTerminals.getState().terminals.find((t) => t.id === id);
+  if (known?.kind === 'agent' && !known.readOnly) return;
   useTerminals.setState((s) => {
     if (s.tabs.some((t) => t.panes.includes(id))) return {};
     if (!info) return {};

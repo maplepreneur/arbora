@@ -4,7 +4,7 @@ import { FileJson, FolderOpen } from 'lucide-react';
 import { CommandId, type BrowserToolPolicy } from '@arbora/shared';
 import { executeCommand } from '../../commands';
 import { updateProjectSettings } from '../../settings-client';
-import { showToast, useApp } from '../../store';
+import { useApp } from '../../store';
 import { inputClass, SectionTitle, Segmented, SettingRow, Toggle } from './controls';
 
 const POLICIES: readonly { value: BrowserToolPolicy; label: string }[] = [
@@ -135,23 +135,6 @@ export function ProjectSection() {
           onChange={(policy) => setTool('terminalRun', policy)}
         />
       </SettingRow>
-      <SettingRow
-        title="Remembered permission answers"
-        detail="“Always allow” and “Always reject” answers to agents' own tool cards, for every project."
-      >
-        <button
-          type="button"
-          onClick={() =>
-            void window.arbora
-              .invoke('agent.forgetPermissions', {})
-              .then(() => showToast('Forgot every remembered answer'))
-          }
-          className="rounded border border-border px-2 py-1 text-xs hover:bg-bg-muted"
-        >
-          Forget all
-        </button>
-      </SettingRow>
-
       <SectionTitle>Files</SectionTitle>
       <SettingRow title="Screenshots" detail="Agent and manual screenshots are saved in .arbora/screenshots/.">
         <button

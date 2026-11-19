@@ -10,7 +10,6 @@ import {
   isPickableAgent,
   parentPath,
   toProjectPath,
-  visibleModels,
   type AgentModeTarget,
   type BottomTab,
   type BrowserAction,
@@ -23,16 +22,7 @@ import {
   type ViewportPresetId,
   type WorkspacePanel,
 } from '@arbora/shared';
-import {
-  isListed,
-  isStoppable,
-  focusComposer,
-  loadThread,
-  requestNewGroup,
-  stopAgent,
-  toggleLog,
-  useAgents,
-} from './agent-store';
+import { isListed, isStoppable, focusComposer, requestNewGroup, stopAgent, useAgents } from './agent-store';
 import { defaultAgentId } from './agent-defaults';
 import {
   activeTab,
@@ -85,7 +75,6 @@ import {
 } from './store';
 import { showRightTab } from './right-tabs';
 import { checkForUpdates } from './update-store';
-import { modeControl, nextValue, rotationOrder, selectValues, thinkingControl } from './thread-controls';
 import {
   activePane,
   createTerminal,
@@ -279,17 +268,6 @@ function withGrove(action: () => void): void {
   action();
 }
 
-/** The ACP log below the Grove selection's transcript; fetched the first time it opens. */
-function toggleGroveLog(): void {
-  const session = currentSession();
-  if (!session) {
-    showToast('Select an agent first');
-    return;
-  }
-  toggleLog();
-  if (useAgents.getState().logOpen) void loadThread(session.id, { log: true }).catch(() => undefined);
-}
-
 /** Runs `action` on the Grove selection; `listedOnly` refuses an archived one. */
 function withGroveSession(action: (session: GroveSession) => void, listedOnly = false): void {
   withGrove(() => {
@@ -351,7 +329,7 @@ function continueAfterDesign(pending: DesignPending): void {
   }
 }
 
-/** A new thread with the default agent and its default model, if that agent is signed in and shown. */
+/** A new thread with the default agent, if that agent runs and is shown. */
 export function defaultDesignTarget(): AgentModeTarget | null {
   const { agents: settings, tasks } = useApp.getState().settings;
   const pickable = useAgents.getState().agents.filter((agent) => isPickableAgent(settings, agent.id));
@@ -359,11 +337,7 @@ export function defaultDesignTarget(): AgentModeTarget | null {
     pickable.find((entry) => entry.id === tasks.design.agentId) ??
     pickable.find((entry) => entry.id === defaultAgentId()) ??
     pickable[0];
-  if (!agent) return null;
-  const models = visibleModels(settings, agent.id);
-  const taskModel = tasks.design.agentId === agent.id ? tasks.design.model : null;
-  const model = models.find((m) => m.value === taskModel)?.value ?? models[0]?.value;
-  return { type: 'new', agentId: agent.id, ...(model ? { model } : {}) };
+  return agent ? { type: 'new', agentId: agent.id } : null;
 }
 
 /** Saves the live design edits and opens the thread that received them. */
@@ -475,106 +449,6 @@ async function runDesignCommand(command: DesignCommand): Promise<void> {
 function groveThread(): ThreadSummary | undefined {
   const id = useApp.getState().layout.groveThreadId;
   return useAgents.getState().threads.find((t) => t.id === id && isListed(t));
-}
-
-/** The thread on screen, or null with a toast saying why nothing happened. */
-function shownThread(): ThreadSummary | null {
-  const thread = groveThread();
-  if (!thread) {
-    showToast('Open a thread first');
-    return null;
-  }
-  return thread;
-}
-
-/** Whether the open thread has the control a menu shortcut asks for. */
-function openThreadControl(kind: 'model' | 'mode'): boolean {
-  const thread = shownThread();
-  if (!thread) return false;
-  const has =
-    kind === 'model'
-      ? thread.state.configOptions.some((o) => o.type === 'select' && o.category === 'model')
-      : modeControl(thread.state) !== null;
-  if (!has) showToast(kind === 'model' ? 'This agent has no model choice' : 'This agent has no modes');
-  return has;
-}
-
-/** Shift+Tab: the next mode, as in the agent CLIs (Ask → Code → …, Build → Plan → …). */
-async function cycleThreadMode(): Promise<void> {
-  const thread = shownThread();
-  if (!thread) return;
-  const control = modeControl(thread.state);
-  if (!control) {
-    showToast('This agent has no modes');
-    return;
-  }
-  const values =
-    control.kind === 'config'
-      ? selectValues(control.option).map((v) => ({ id: v.value, name: v.name }))
-      : control.values.map((m) => ({ id: m.id, name: m.name }));
-  const current = control.kind === 'config' ? control.option.currentValue : control.current;
-  const refused = refusedModes.get(thread.id) ?? new Set<string>();
-  const failures: string[] = [];
-  // Agents can list a mode they then refuse (Claude Code's Bypass Permissions when it is not
-  // allowed): skip it and keep rotating, so Shift+Tab never sticks on the mode before it.
-  for (const id of rotationOrder(
-    values.map((v) => v.id),
-    current,
-    refused,
-  )) {
-    try {
-      if (control.kind === 'config') {
-        await window.arbora.invoke('agent.setConfigOption', {
-          threadId: thread.id,
-          configId: control.option.id,
-          value: id,
-        });
-      } else {
-        await window.arbora.invoke('agent.setMode', { threadId: thread.id, modeId: id });
-      }
-      break;
-    } catch (error) {
-      refused.add(id);
-      refusedModes.set(thread.id, refused);
-      failures.push(`${values.find((v) => v.id === id)?.name ?? id}: ${ipcError(error)}`);
-    }
-  }
-  if (failures.length > 0) showToast(`The agent refused ${failures.join('; ')}. Skipped it.`);
-}
-
-/** Modes an agent refused per thread, skipped by Shift+Tab until the app restarts. */
-const refusedModes = new Map<string, Set<string>>();
-
-/** Alt+T: the next thinking level, or thinking on/off for agents with a switch. */
-async function cycleThreadThinking(): Promise<void> {
-  const thread = shownThread();
-  if (!thread) return;
-  const control = thinkingControl(thread.state);
-  try {
-    if (!control) {
-      showToast('This agent has no thinking setting');
-    } else if (control.kind === 'boolean') {
-      await window.arbora.invoke('agent.setConfigOption', {
-        threadId: thread.id,
-        configId: control.option.id,
-        value: !control.option.currentValue,
-      });
-    } else {
-      const value = nextValue(
-        selectValues(control.option).map((v) => v.value),
-        control.option.currentValue,
-      );
-      if (value) {
-        await window.arbora.invoke('agent.setConfigOption', {
-          threadId: thread.id,
-          configId: control.option.id,
-          value,
-        });
-      }
-    }
-  } catch (error) {
-    showToast(ipcError(error));
-  }
 }
 
 /** Shows `threadId` where threads show now (agent mode and design mode hand their prompt over to it). */
@@ -1071,23 +945,8 @@ async function runCommand(id: CommandId): Promise<void> {
       else if (hasProject()) showToast('The agent is not working on anything');
       return;
     }
-    case CommandId.agentToggleLog:
-      toggleGroveLog();
-      return;
     case CommandId.agentShowThreads:
       focusSessionList();
-      return;
-    case CommandId.agentCycleMode:
-      await cycleThreadMode();
-      return;
-    case CommandId.agentPickMode:
-      if (openThreadControl('mode')) useAgents.setState((s) => ({ modeMenuRequest: s.modeMenuRequest + 1 }));
-      return;
-    case CommandId.agentPickModel:
-      if (openThreadControl('model')) useAgents.setState((s) => ({ modelMenuRequest: s.modelMenuRequest + 1 }));
-      return;
-    case CommandId.agentCycleThinking:
-      await cycleThreadThinking();
       return;
     case CommandId.designUndo:
       await runDesignCommand({ type: 'undo' });

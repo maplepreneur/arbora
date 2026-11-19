@@ -1,12 +1,10 @@
 import { z } from 'zod';
 import {
-  acpLogEntrySchema,
   agentAvailabilitySchema,
   agentDefinitionSchema,
   agentGroupSchema,
   attachmentSchema,
-  contentBlockSchema,
-  threadChangeSchema,
+  confirmationRequestSchema,
   threadSchema,
   threadStateSchema,
   threadSummarySchema,
@@ -498,9 +496,8 @@ export const channels = {
           waiting: z.array(
             z.object({
               threadId: z.string(),
-              permissionIds: z.array(z.string()),
-              permissionTitle: z.string().nullable(),
-              auth: z.boolean(),
+              /** The question the agent's terminal is waiting on, from its last output line. */
+              line: z.string().nullable(),
             }),
           ),
         }),
@@ -517,10 +514,9 @@ export const channels = {
       parentPath: z.string(),
       title: z.string().trim().min(1).max(200),
       agentId: z.string(),
-      model: z.string().max(300).optional(),
       /** Other agents that run the same task, each in its own worktree (best-of-N, three at most). */
       also: z
-        .array(z.object({ agentId: z.string(), model: z.string().max(300).optional() }))
+        .array(z.object({ agentId: z.string() }))
         .max(3)
         .optional(),
     }),
@@ -591,20 +587,19 @@ export const channels = {
     z.object({ agents: z.array(agentDefinitionSchema), availability: z.array(agentAvailabilitySchema) }),
   ),
   /**
-   * Starts the agent once (`initialize`, `session/new`), records whether it is signed in and which
-   * models it offers under `settings.agents.verified`, and stops it.
+   * Runs the agent's version command once, records whether it starts under
+   * `settings.agents.verified`, and stops it.
    */
   'agent.verify': defineChannel('agent.verify', z.object({ agentId: z.string() }), agentVerificationSchema),
   'agent.listThreads': defineChannel('agent.listThreads', none, z.array(threadSummarySchema)),
   /**
-   * `model` is a value of the agent's `model` config option; it wins over the agent's default model.
    * `title` names the thread before its first prompt (Grove's launcher titles it with the task).
+   * The agent CLI starts in its own terminal right away.
    */
   'agent.createThread': defineChannel(
     'agent.createThread',
     z.object({
       agentId: z.string(),
-      model: z.string().max(300).optional(),
       groupId: z.string().nullable().optional(),
       title: z.string().trim().min(1).max(200).optional(),
     }),
@@ -618,55 +613,39 @@ export const channels = {
     none,
   ),
   /**
-   * Sends a prompt. Starts the agent (spawn, `initialize`, `session/new` or load) on the first
-   * call. Resolves when the turn ends; progress arrives through `agent.threadEvents`.
+   * Types a prompt into the agent's terminal (starting the agent first when the thread is
+   * stopped). Resolves once the text is written; the turn's progress arrives through
+   * `agent.threadState`.
    */
-  'agent.prompt': defineChannel(
-    'agent.prompt',
+  'agent.sendPrompt': defineChannel(
+    'agent.sendPrompt',
     threadId.extend({
-      blocks: z.array(contentBlockSchema),
-      /** Converted in main: images to `image` blocks when supported, other files to `resource_link`s. */
-      attachments: z.array(attachmentSchema).default([]),
+      text: z.string().min(1).max(100_000),
+      /** `title` names a new thread when the text's first line is not a good title. */
+      title: z.string().min(1).max(200).optional(),
     }),
-    z.object({ stopReason: z.string().nullable(), error: z.string().optional() }),
+    z.object({ sent: z.boolean(), error: z.string().optional() }),
   ),
-  'agent.cancel': defineChannel('agent.cancel', threadId, none),
   /**
-   * Stops whatever the agent is doing: cancels the turn, and stops the agent process if it does
-   * not end the turn within a few seconds or is still starting.
+   * Interrupts the agent's current work (Ctrl+C in its terminal). The thread shows as Idle.
    */
   'agent.stop': defineChannel('agent.stop', threadId, none),
-  /** Answers a pending permission card with one of the agent's own option ids. */
-  'agent.respondPermission': defineChannel(
-    'agent.respondPermission',
-    threadId.extend({ requestId: z.string(), optionId: z.string() }),
-    none,
-  ),
-  'agent.setMode': defineChannel('agent.setMode', threadId.extend({ modeId: z.string() }), none),
-  'agent.setConfigOption': defineChannel(
-    'agent.setConfigOption',
-    threadId.extend({ configId: z.string(), value: z.union([z.string(), z.boolean()]) }),
-    none,
-  ),
-  'agent.setAutoApproveEdits': defineChannel(
-    'agent.setAutoApproveEdits',
-    threadId.extend({ enabled: z.boolean() }),
-    none,
-  ),
-  'agent.authenticate': defineChannel('agent.authenticate', threadId.extend({ methodId: z.string() }), none),
-  /** Stops the agent process (if any) and starts it again on the next prompt. */
+  /** Stops the agent process and starts it again in a fresh terminal. */
   'agent.restart': defineChannel('agent.restart', threadId, none),
   /**
-   * Ends the agent process in any state (Grove's Stop). The thread shows as Stopped; the next
-   * prompt starts the agent again and restores the session when it can.
+   * Ends the agent process in any state (Grove's power toggle). The thread shows as Stopped; the
+   * next prompt starts the agent again.
    */
   'agent.stopProcess': defineChannel('agent.stopProcess', threadId, none),
   /** Moves a thread to Grove's Recent (stopping its process first) or back to the list. */
   'agent.archiveThread': defineChannel('agent.archiveThread', threadId.extend({ archived: z.boolean() }), none),
-  'agent.getLog': defineChannel('agent.getLog', threadId, z.array(acpLogEntrySchema)),
-  /** Writes the redacted log as JSON; `path` is null when the save dialog was cancelled. */
-  'agent.exportLog': defineChannel('agent.exportLog', threadId, z.object({ path: z.string().nullable() })),
-  /** Native file picker for composer attachments. */
+  /** Answers one of Arbora's own confirmation cards with one of its option ids. */
+  'agent.answerConfirmation': defineChannel(
+    'agent.answerConfirmation',
+    threadId.extend({ requestId: z.string(), optionId: z.string() }),
+    none,
+  ),
+  /** Native file picker for composer attachments; their paths are mentioned in the prompt text. */
   'agent.pickAttachments': defineChannel('agent.pickAttachments', none, z.array(attachmentSchema)),
   /** Attachment metadata for dropped files (size, MIME type, image or file). */
   'agent.describeAttachments': defineChannel(
@@ -689,12 +668,6 @@ export const channels = {
     none,
   ),
   'agent.setThreadPinned': defineChannel('agent.setThreadPinned', threadId.extend({ pinned: z.boolean() }), none),
-  /** Removes `agentId:toolKind` entries from remembered permissions (all when omitted). */
-  'agent.forgetPermissions': defineChannel(
-    'agent.forgetPermissions',
-    z.object({ agentId: z.string().optional() }),
-    none,
-  ),
 
   /** Whether the open project can take `@arbora/dev-plugin`, and whether it is already wired. */
   'devPlugin.status': defineChannel(
@@ -978,19 +951,16 @@ export const events = {
   /** Recent/pinned/grouped projects, open windows or their attention counts changed. */
   'projects.changed': defineEvent('projects.changed', projectLibrarySchema),
   /** Transcript updates for one thread, in order. */
-  'agent.threadEvents': defineEvent(
-    'agent.threadEvents',
-    z.object({ projectPath: z.string(), threadId: z.string(), changes: z.array(threadChangeSchema).min(1) }),
-  ),
   'agent.threadState': defineEvent(
     'agent.threadState',
     z.object({ projectPath: z.string(), threadId: z.string(), state: threadStateSchema }),
   ),
-  'agent.log': defineEvent(
-    'agent.log',
-    z.object({ projectPath: z.string(), threadId: z.string(), entry: acpLogEntrySchema }),
+  /** Arbora raises one of its own confirmation cards (browser tools, Grove helper starts). */
+  'agent.confirmation': defineEvent(
+    'agent.confirmation',
+    z.object({ projectPath: z.string(), request: confirmationRequestSchema }),
   ),
-  /** An agent wrote a file through `fs/write_text_file` (Stage 8's "Agent changes" group). */
+  /** A file changed on disk while this thread's turn was running (the "Agent changes" group). */
   'agent.fileChanged': defineEvent(
     'agent.fileChanged',
     z.object({ projectPath: z.string(), threadId: z.string(), path: z.string() }),

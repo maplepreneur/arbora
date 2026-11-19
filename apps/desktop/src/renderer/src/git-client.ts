@@ -1,6 +1,5 @@
 import { create } from 'zustand';
-import type { FileChange, GitBranch, GitCommit, GitStash, GitStatus, GitSyncResult } from '@arbora/shared';
-import { noteFileChanged, useAgents } from './agent-store';
+import type { GitBranch, GitCommit, GitStash, GitStatus, GitSyncResult } from '@arbora/shared';
 import { setGitDecorations, useFiles } from './files-store';
 import { applyGitLines } from './panels/editor/sessions';
 
@@ -62,11 +61,4 @@ export async function refreshGit(): Promise<GitStatus | null> {
   } catch {
     return null;
   }
-}
-
-/** Files the watcher sees while an agent turn is running count as that turn's changes. */
-export function noteAgentWatcherChanges(changes: readonly FileChange[]): void {
-  const thread = useAgents.getState().threads.find((item) => item.state.status === 'prompting');
-  if (!thread) return;
-  for (const change of changes) noteFileChanged(thread.id, change.path);
 }

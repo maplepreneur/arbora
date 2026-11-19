@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { browserSkill, SKILL_FILE } from '@arbora/acp-client';
+import { browserSkill, SKILL_FILE } from '@arbora/shared';
 import { ensureArboraGitignore } from '../project-settings.js';
 
 /**

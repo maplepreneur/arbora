@@ -1,15 +1,8 @@
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import {
-  attachmentBlocks,
-  describeAttachment,
-  mimeTypeFor,
-  pastedImagePath,
-  pickPastedImageType,
-} from './attachments.js';
+import { describeAttachment, mimeTypeFor, pastedImagePath, pickPastedImageType } from './attachments.js';
 
 describe('attachments', () => {
   it('saves pastes under .arbora/pasted with a file-safe time stamp', () => {
@@ -50,31 +43,5 @@ describe('attachments', () => {
       size: 4,
     });
     expect(describeAttachment(join(dir, 'missing.txt'))).toBeNull();
-  });
-
-  it('turns attachments into image blocks when supported, resource links otherwise', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'arbora-attach-'));
-    const image = join(dir, 'pic.png');
-    writeFileSync(image, Buffer.from([1, 2, 3]));
-    const attachments = [
-      { path: image, name: 'pic.png', mimeType: 'image/png', size: 3, kind: 'image' as const },
-      { path: join(dir, 'src.ts'), name: 'src.ts', mimeType: 'text/typescript', size: 10, kind: 'file' as const },
-    ];
-    const withImages = await attachmentBlocks(attachments, { image: true });
-    expect(withImages[0]).toEqual({
-      type: 'image',
-      data: Buffer.from([1, 2, 3]).toString('base64'),
-      mimeType: 'image/png',
-      uri: pathToFileURL(image).toString(),
-    });
-    expect(withImages[1]).toMatchObject({
-      type: 'resource_link',
-      name: 'src.ts',
-      uri: pathToFileURL(join(dir, 'src.ts')).toString(),
-      mimeType: 'text/typescript',
-      size: 10,
-    });
-    const withoutImages = await attachmentBlocks(attachments, { image: false });
-    expect(withoutImages[0]).toMatchObject({ type: 'resource_link', name: 'pic.png' });
   });
 });

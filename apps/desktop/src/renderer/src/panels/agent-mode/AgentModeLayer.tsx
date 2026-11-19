@@ -18,7 +18,7 @@ import {
   type ViewportPresetId,
 } from '@arbora/shared';
 import { defaultAgentModeTarget, isListed, useAgents } from '../../agent-store';
-import { taskModelFor, useDefaultAgentId, useTaskAgentId } from '../../agent-defaults';
+import { useDefaultAgentId, useTaskAgentId } from '../../agent-defaults';
 import { Picker } from '../../components/Picker';
 import { showAgentThread } from '../../commands';
 import { dispatchMode, useApp } from '../../store';
@@ -47,15 +47,12 @@ function useSize(ref: RefObject<HTMLElement | null>): { width: number; height: n
   return size;
 }
 
-/** A new thread gets the agent mode task's model when it uses that task's agent. */
+/** A new thread gets agent mode's agent when one is set for that task. */
 function parseTarget(key: string): AgentModeTarget | null {
   const [type, id] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
   if (!id) return null;
   if (type === 'thread') return { type: 'thread', threadId: id };
-  if (type === 'new') {
-    const model = taskModelFor('agentMode', id);
-    return { type: 'new', agentId: id, ...(model ? { model } : {}) };
-  }
+  if (type === 'new') return { type: 'new', agentId: id };
   return null;
 }
 

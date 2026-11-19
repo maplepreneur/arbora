@@ -9,7 +9,6 @@ import {
   type AttentionInput,
   type AttentionKind,
   type ThreadAttention,
-  type ThreadChange,
   type ThreadState,
 } from '@arbora/shared';
 import { useAgents } from './agent-store';
@@ -124,31 +123,31 @@ function apply(threadId: string, input: AttentionInput): void {
   syncCount();
 }
 
-export function noteThreadChanges(threadId: string, changes: readonly ThreadChange[]): void {
-  apply(threadId, { type: 'changes', changes, at: Date.now() });
+export function noteThreadState(threadId: string, state: ThreadState): void {
+  apply(threadId, { type: 'status', state, at: Date.now() });
 }
 
-export function noteThreadState(threadId: string, state: ThreadState): void {
-  apply(threadId, { type: 'status', status: state.status, error: state.error, at: Date.now() });
+/** Arbora raised one of its own confirmation cards for this thread (browser tools, helper starts). */
+export function noteConfirmation(threadId: string, title: string): void {
+  apply(threadId, { type: 'confirmation', title, at: Date.now() });
+}
+
+/** The card was answered or withdrawn. */
+export function noteConfirmationClosed(threadId: string): void {
+  apply(threadId, { type: 'confirmation', title: null, at: Date.now() });
 }
 
 /**
- * A permission or sign-in already waiting when Grove first sees another project's transcript.
- * Does not notify: the attention cue already happened, or the app just opened. Live events after
- * this still go through `noteThreadChanges` and raise the existing notification.
+ * An agent already waiting when Grove first sees another project's threads: it printed a question
+ * and went quiet. Does not notify: the attention cue already happened, or the app just opened.
  */
-export function seedWaitingAttention(
-  threadId: string,
-  waiting: { permissionIds: readonly string[]; permissionTitle: string | null; auth: boolean },
-): void {
-  if (waiting.permissionIds.length === 0 && !waiting.auth) return;
+export function seedWaitingAttention(threadId: string, line: string | null): void {
   const current = useAttention.getState().threads[threadId];
-  if (current && (current.pendingPermissions.length > 0 || current.auth || current.unread !== null)) return;
+  if (current && (current.waiting !== null || current.unread !== null)) return;
   const next: ThreadAttention = {
     ...NO_ATTENTION,
-    pendingPermissions: waiting.permissionIds,
-    permissionTitle: waiting.permissionTitle,
-    auth: waiting.auth,
+    status: 'needs_input',
+    waiting: line ?? 'The agent is waiting for an answer',
     since: Date.now(),
   };
   useAttention.setState((s) => ({ threads: { ...s.threads, [threadId]: next } }));

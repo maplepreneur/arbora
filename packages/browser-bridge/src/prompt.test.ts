@@ -41,27 +41,16 @@ function input(overrides: Partial<PromptInput> = {}): PromptInput {
     screenshot: {
       path: '/p/.arbora/screenshots/a-agent-mode.png',
       relative: '.arbora/screenshots/a-agent-mode.png',
-      uri: 'file:///p/.arbora/screenshots/a-agent-mode.png',
-      mimeType: 'image/png',
-      data: 'AAAA',
     },
-    imageSupported: true,
-    toUri: (path) => `file://${path}`,
     ...overrides,
   };
 }
 
-function body(result: ReturnType<typeof composePrompt>): string {
-  const first = result.blocks[0];
-  if (first?.type !== 'text') throw new Error('first block is not text');
-  return first.text;
-}
-
 describe('composePrompt', () => {
-  it('builds a tier 1 prompt with sections, the chain, file:line, an image and source links', () => {
+  it('builds a tier 1 prompt with sections, the chain, file:line, the screenshot path and sources', () => {
     const result = composePrompt(input());
     expect(result.tier).toBe(1);
-    const text = body(result);
+    const text = result.text;
     const order = ['## Request', '## Target', '## Context', '## Source files', '## Instructions'].map((h) =>
       text.indexOf(h),
     );
@@ -77,29 +66,12 @@ describe('composePrompt', () => {
     expect(text).toContain('color: rgb(255, 255, 255);');
     expect(text).toContain('- boom (http://localhost:5173/src/App.tsx:3)');
     expect(text).toContain('outlined in red');
+    expect(text).toContain('.arbora/screenshots/a-agent-mode.png. Open it if you can read images.');
     expect(text).not.toContain('## Candidate files');
-    expect(result.blocks.slice(1)).toEqual([
-      { type: 'image', data: 'AAAA', mimeType: 'image/png', uri: 'file:///p/.arbora/screenshots/a-agent-mode.png' },
-      { type: 'resource_link', uri: 'file:///p/src/components/Button.tsx', name: 'src/components/Button.tsx' },
-      { type: 'resource_link', uri: 'file:///p/src/components/Card.tsx', name: 'src/components/Card.tsx' },
-      { type: 'resource_link', uri: 'file:///p/src/App.tsx', name: 'src/App.tsx' },
-    ]);
   });
 
   it('is deterministic', () => {
     expect(composePrompt(input())).toEqual(composePrompt(input()));
-  });
-
-  it('sends the screenshot as a file link with its path when the agent takes no images', () => {
-    const result = composePrompt(input({ imageSupported: false }));
-    expect(body(result)).toContain('.arbora/screenshots/a-agent-mode.png. Open it if you can read images.');
-    expect(result.blocks.some((b) => b.type === 'image')).toBe(false);
-    expect(result.blocks[1]).toEqual({
-      type: 'resource_link',
-      uri: 'file:///p/.arbora/screenshots/a-agent-mode.png',
-      name: 'a-agent-mode.png',
-      mimeType: 'image/png',
-    });
   });
 
   it('declares tier 3 and lists grep candidates when no source is known', () => {
@@ -107,13 +79,12 @@ describe('composePrompt', () => {
       input({ components: [app], framework: { id: 'next', react: true, vue: false, reactVersion: null } }),
     );
     expect(result.tier).toBe(3);
-    const text = body(result);
+    const text = result.text;
     expect(text).toContain('Framework: Next.js (React)');
     expect(text).toContain('tier 3');
     expect(text).toContain('## Candidate files');
     expect(text).toContain('- src/x.tsx (matched: Button)');
     expect(text).toContain('Find the source of the selected element');
-    expect(result.blocks.at(-1)).toEqual({ type: 'resource_link', uri: 'file:///p/src/x.tsx', name: 'src/x.tsx' });
   });
 
   it('uses the breadcrumb target and tier 2 for files without lines', () => {
@@ -129,14 +100,13 @@ describe('composePrompt', () => {
     };
     const result = composePrompt(input({ components: [button, vueCard], targetIndex: 1 }));
     expect(result.tier).toBe(2);
-    expect(body(result)).toContain('Selected component: Card');
-    expect(body(result)).toContain('Defined in: app/components/CounterCard.vue\n');
+    expect(result.text).toContain('Selected component: Card');
+    expect(result.text).toContain('Defined in: app/components/CounterCard.vue\n');
   });
 
   it('leaves out what the user unticked', () => {
     const result = composePrompt(input({ include: { screenshot: false, sources: false, context: false } }));
-    const text = body(result);
-    expect(result.blocks).toHaveLength(1);
+    const text = result.text;
     expect(text).not.toContain('## Context');
     expect(text).not.toContain('## Source files');
     expect(text).not.toContain('Screenshot');
@@ -144,16 +114,14 @@ describe('composePrompt', () => {
   });
 
   it('labels minified and server components', () => {
-    const text = body(
-      composePrompt(
-        input({
-          components: [
-            { ...button, minified: true, name: 't' },
-            { ...app, server: true, name: 'Page' },
-          ],
-        }),
-      ),
-    );
+    const text = composePrompt(
+      input({
+        components: [
+          { ...button, minified: true, name: 't' },
+          { ...app, server: true, name: 'Page' },
+        ],
+      }),
+    ).text;
     expect(text).toContain('anonymous component ← Page (server component)');
   });
 });

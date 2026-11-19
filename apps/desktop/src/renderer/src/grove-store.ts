@@ -8,7 +8,6 @@ import {
   inboxTarget,
   shouldStartDefaultSession,
   taskTitle,
-  visibleModels,
   type GroveInboxItem,
   type TerminalInfo,
   type ThreadState,
@@ -20,7 +19,6 @@ import {
   deleteThread,
   focusComposer,
   isListed,
-  loadThread,
   newThread,
   stopAgent,
   stopProcess,
@@ -40,7 +38,7 @@ import { replaceGroveThreadIndex } from './grove-thread-index';
 import { ipcError } from './ipc-error';
 import { updateProjectSettings } from './settings-client';
 import { dispatchMode, showRightView, showToast, updateLayout, useApp } from './store';
-import { createTerminal, revealTerminal } from './terminal-store';
+import { createTerminal, revealTerminal, useTerminals } from './terminal-store';
 
 export type GroveTab = 'transcript' | 'changes';
 
@@ -263,11 +261,39 @@ export async function focusGroveProject(path: string | null): Promise<boolean> {
 
 /** Shows terminal `id` of this window's project as the right column's tab. */
 export function selectGroveTerminal(id: string | null, options: { focus?: boolean; info?: TerminalInfo } = {}): void {
+  // An agent session's CLI lives in the session pane: selecting it shows that session there,
+  // never a tab in the right column.
+  if (id) {
+    const threadId = sessionForTerminal(id, options.info);
+    if (threadId) {
+      selectSession(threadId, { focus: options.focus !== false });
+      return;
+    }
+  }
   useGrove.setState((state) => ({
     terminalId: id,
     terminalFocusRequest: options.focus ? state.terminalFocusRequest + 1 : state.terminalFocusRequest,
   }));
   if (id) revealTerminal(id, options.info);
+}
+
+/** The session whose CLI runs in terminal `id`, if that terminal is an agent session's own. */
+function sessionForTerminal(id: string, info?: TerminalInfo): string | null {
+  const terminal =
+    info ??
+    useTerminals.getState().terminals.find((t) => t.id === id) ??
+    Object.values(useGrove.getState().terminalsByProject)
+      .flatMap((terminals) => [...terminals])
+      .find((t) => t.id === id);
+  // Commands an agent ran (`readOnly`) stay in the agent tab; only the session CLI diverts.
+  if (!terminal || terminal.kind !== 'agent' || terminal.readOnly) return null;
+  const live = useAgents.getState().threads.find((thread) => thread.state.terminalId === id);
+  if (live) return live.id;
+  for (const threads of Object.values(useGrove.getState().threadsByProject)) {
+    const thread = threads.find((item) => item.state.terminalId === id);
+    if (thread) return thread.id;
+  }
+  return null;
 }
 
 /** Starts a shell in `path` (or the window's project) and shows it in the right column. */
@@ -338,12 +364,12 @@ export function patchProjectThread(projectPath: string, threadId: string, state:
   });
 }
 
-/** Thread lists for every Grove runtime, plus permissions that were already waiting. */
+/** Thread lists for every Grove runtime, plus agents that were already waiting. */
 export function refreshGroveAgents(): void {
   void window.arbora.invoke('grove.agents').then((result) => {
     for (const project of result.projects) {
       noteProjectThreads(project.path, project.threads);
-      for (const waiting of project.waiting) seedWaitingAttention(waiting.threadId, waiting);
+      for (const waiting of project.waiting) seedWaitingAttention(waiting.threadId, waiting.line);
     }
   });
 }
@@ -468,20 +494,46 @@ export function formatUsage(rssKb: number, cpuPercent: number): string {
   return `CPU ${cpuPercent.toFixed(1)}% · MEM ${memory}`;
 }
 
+/** Per-thread file paths changed during turns, folded from the store's change list. */
+export function changedFilesByThread(
+  changes: readonly { threadId: string; path: string }[],
+): Record<string, readonly string[]> {
+  const byThread: Record<string, string[]> = {};
+  for (const change of changes) {
+    const current = byThread[change.threadId] ?? [];
+    if (!current.includes(change.path)) current.push(change.path);
+    byThread[change.threadId] = current;
+  }
+  return byThread;
+}
+
 export function groveModelNow(): GroveModel {
-  const { threads, groups, agents, events } = useAgents.getState();
-  return buildGroveModel({ threads, groups, agents, events, attention: useAttention.getState().threads });
+  const { threads, groups, agents, changedFiles } = useAgents.getState();
+  return buildGroveModel({
+    threads,
+    groups,
+    agents,
+    changedFiles: changedFilesByThread(changedFiles),
+    attention: useAttention.getState().threads,
+  });
 }
 
 export function useGroveModel(): GroveModel {
   const threads = useAgents((s) => s.threads);
   const groups = useAgents((s) => s.groups);
   const agents = useAgents((s) => s.agents);
-  const events = useAgents((s) => s.events);
+  const changedFiles = useAgents((s) => s.changedFiles);
   const attention = useAttention((s) => s.threads);
   return useMemo(
-    () => buildGroveModel({ threads, groups, agents, events, attention }),
-    [threads, groups, agents, events, attention],
+    () =>
+      buildGroveModel({
+        threads,
+        groups,
+        agents,
+        changedFiles: changedFilesByThread(changedFiles),
+        attention,
+      }),
+    [threads, groups, agents, changedFiles, attention],
   );
 }
 
@@ -497,7 +549,7 @@ function sidebarModel(input: {
   liveThreads: readonly ThreadSummary[];
   liveGroups: ReturnType<typeof useAgents.getState>['groups'];
   liveAgents: ReturnType<typeof useAgents.getState>['agents'];
-  liveEvents: ReturnType<typeof useAgents.getState>['events'];
+  liveChangedFiles: ReturnType<typeof useAgents.getState>['changedFiles'];
   loaded: boolean;
   attention: ReturnType<typeof useAttention.getState>['threads'];
 }): GroveSidebarModel {
@@ -520,7 +572,7 @@ function sidebarModel(input: {
       path,
       threads: path === active && input.loaded ? input.liveThreads : (input.threadsByProject[path] ?? []),
       groups: path === active && input.loaded ? input.liveGroups : [],
-      events: path === active && input.loaded ? input.liveEvents : {},
+      changedFiles: path === active && input.loaded ? changedFilesByThread(input.liveChangedFiles) : {},
     })),
     expandedPaths: expanded,
     agents: input.liveAgents,
@@ -532,7 +584,7 @@ function sidebarModel(input: {
 export function sidebarModelNow(): GroveSidebarModel {
   const { project, settings } = useApp.getState();
   const { focusPath, threadsByProject, dismissedOpenPath } = useGrove.getState();
-  const { threads, groups, agents, events, loaded } = useAgents.getState();
+  const { threads, groups, agents, changedFiles, loaded } = useAgents.getState();
   return sidebarModel({
     listed: settings.grove.projects,
     projectGroups: settings.projectGroups,
@@ -545,7 +597,7 @@ export function sidebarModelNow(): GroveSidebarModel {
     liveThreads: threads,
     liveGroups: groups,
     liveAgents: agents,
-    liveEvents: events,
+    liveChangedFiles: changedFiles,
     loaded,
     attention: useAttention.getState().threads,
   });
@@ -563,7 +615,7 @@ export function useGroveSidebar(): GroveSidebarModel {
   const threads = useAgents((s) => s.threads);
   const groups = useAgents((s) => s.groups);
   const agents = useAgents((s) => s.agents);
-  const events = useAgents((s) => s.events);
+  const changedFiles = useAgents((s) => s.changedFiles);
   const loaded = useAgents((s) => s.loaded);
   const attention = useAttention((s) => s.threads);
   return useMemo(
@@ -580,7 +632,7 @@ export function useGroveSidebar(): GroveSidebarModel {
         liveThreads: threads,
         liveGroups: groups,
         liveAgents: agents,
-        liveEvents: events,
+        liveChangedFiles: changedFiles,
         loaded,
         attention,
       }),
@@ -595,7 +647,7 @@ export function useGroveSidebar(): GroveSidebarModel {
       threads,
       groups,
       agents,
-      events,
+      changedFiles,
       loaded,
       attention,
     ],
@@ -642,7 +694,6 @@ export function selectSession(threadId: string, options: { focus?: boolean } = {
   const apply = (): void => {
     if (useApp.getState().layout.groveThreadId !== threadId) updateLayout({ groveThreadId: threadId });
     useGrove.setState({ tab: 'transcript', renamingId: null, terminalId: null });
-    void loadThread(threadId).catch(() => undefined);
     // An auto-started agent must not take the keys from a dialog the user just opened.
     const { overlay, paletteOpen } = useApp.getState();
     if (options.focus !== false && overlay === null && !paletteOpen) focusComposer();
@@ -695,33 +746,28 @@ export function toggleSessionList(): void {
   layoutController?.toggleList();
 }
 
-/** The model a new session of `agentId` starts on: its default, else its first visible model. */
-export function defaultModelFor(agentId: string): string | undefined {
-  return visibleModels(useApp.getState().settings.agents, agentId)[0]?.value;
-}
-
+/** The agent's product name, for toasts. */
 function agentName(agentId: string): string {
   return useAgents.getState().agents.find((agent) => agent.id === agentId)?.name ?? agentId;
 }
 
 function sendTask(threadId: string, task: string): void {
   void window.arbora
-    .invoke('agent.prompt', { threadId, blocks: [{ type: 'text', text: task }], attachments: [] })
+    .invoke('agent.sendPrompt', { threadId, text: task })
     .then((result) => {
-      if (result.error && result.error !== 'auth_required') showToast(result.error);
+      if (result.error) showToast(result.error);
     })
     .catch((error: unknown) => showToast(ipcError(error)));
 }
 
 export interface StartSessionOptions {
   readonly agentId: string;
-  readonly model?: string | undefined;
   /** The first prompt; its first line titles the session. */
   readonly task?: string | undefined;
   /** Start the agent in a new git worktree, registered as its own Grove project. */
   readonly worktree?: boolean;
   /** Other agents that run the same task, each in its own worktree. */
-  readonly also?: { agentId: string; model?: string }[];
+  readonly also?: { agentId: string }[];
 }
 
 /** Creates a session, selects it, and sends the task as its first prompt. Resolves to its id. */
@@ -737,7 +783,6 @@ export async function startSession(options: StartSessionOptions): Promise<string
         parentPath: parent,
         title: title || 'grove-session',
         agentId: options.agentId,
-        ...(options.model ? { model: options.model } : {}),
         ...(options.also && options.also.length > 0 ? { also: options.also } : {}),
       });
       const candidates = result.candidates ?? [];
@@ -761,7 +806,7 @@ export async function startSession(options: StartSessionOptions): Promise<string
       }
       return result.threadId;
     }
-    const summary = await newThread(options.agentId, { model: options.model, ...(title ? { title } : {}) });
+    const summary = await newThread(options.agentId, title ? { title } : {});
     selectSession(summary.id);
     if (task) sendTask(summary.id, task);
     return summary.id;
@@ -775,7 +820,7 @@ export async function startSession(options: StartSessionOptions): Promise<string
   }
 }
 
-/** The split button and `Mod+Alt+N`: the default agent on its default model, else the launcher. */
+/** The split button and `Mod+Alt+N`: the default agent, else the launcher. */
 export function startDefaultSession(): void {
   if (!showWorkspace('grove')) return;
   const agentId = defaultAgentId();
@@ -783,7 +828,7 @@ export function startDefaultSession(): void {
     openLauncher();
     return;
   }
-  void startSession({ agentId, model: defaultModelFor(agentId) });
+  void startSession({ agentId });
 }
 
 export function openLauncher(): void {
@@ -905,7 +950,7 @@ export function maybeAutoStart(): void {
     startDefaultOnOpen: project.settings.startDefaultOnOpen !== false,
     alreadyTriedThisVisit: alreadyTried,
   });
-  if (start && agentId) void startSession({ agentId, model: defaultModelFor(agentId) });
+  if (start && agentId) void startSession({ agentId });
 }
 
 async function archiveNow(session: GroveSession): Promise<void> {

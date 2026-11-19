@@ -37,9 +37,9 @@ import {
   type WindowState,
   type GroveLaunch,
   type WorkspaceKind,
+  type AgentRegistry,
   type PayloadOf,
 } from '@arbora/shared';
-import type { AgentRegistry } from '@arbora/acp-client';
 import type { AgentService } from './agent/agent-service.js';
 import { AgentModeService } from './agent-mode/agent-mode-service.js';
 import { DesignModeService } from './design/design-mode-service.js';
@@ -52,7 +52,6 @@ import type { BrowserService, BrowserServiceEvents } from './browser/browser-ser
 import { browserPartition, seedReferencePartition, type BrowserSessions } from './browser/browser-sessions.js';
 import { sendEvent } from './ipc.js';
 import { attachKeybindingInterceptor, type InterceptorSource } from './keybinding-interceptor.js';
-import type { ShimCommand } from './mcp/browser-tools.js';
 import { ensureArboraGitignore, readProjectSettings } from './project-settings.js';
 import type { SettingsStore } from './settings-store.js';
 import { shouldRestoreBounds } from './startup.js';
@@ -85,8 +84,6 @@ export interface WindowManagerOptions {
   readonly browserSessions: BrowserSessions;
   readonly shellEnvironment: ShellEnvironment;
   readonly userDataPath: string;
-  /** Starts the browser-tools stdio shim for agents without HTTP MCP. */
-  readonly mcpShim: ShimCommand;
   /** Built `tooling-worker.js` (Prettier and ESLint in a utility process). */
   readonly toolingWorkerPath: string;
   readonly appVersion: string;
@@ -872,7 +869,13 @@ export class ProjectWindow {
       tooling,
       formatOnSave: () => settings.get().editor.formatOnSave,
       events: {
-        changed: (changes) => sendEvent(app, 'files.changed', { changes }),
+        changed: (changes) => {
+          sendEvent(app, 'files.changed', { changes });
+          // Files that change while a thread's turn runs are that agent's doing (Git's "Agent changes").
+          this.runtime?.agents.noteFileChanges(
+            changes.filter((change) => change.type !== 'unlink' && change.type !== 'unlinkDir').map((c) => c.path),
+          );
+        },
         watchWarning: (message) => sendEvent(app, 'files.watchWarning', { message }),
         searchResults: (searchId, matches) => sendEvent(app, 'search.results', { searchId, matches }),
         searchDone: (searchId, result) => sendEvent(app, 'search.done', { searchId, ...result }),
@@ -1115,7 +1118,6 @@ export class WindowManager {
       settings: options.settings,
       agentRegistry: options.agentRegistry,
       shellEnvironment: options.shellEnvironment,
-      mcpShim: options.mcpShim,
       appVersion: options.appVersion,
       host: {
         browser: () => this.findByProject(path)?.browser ?? null,

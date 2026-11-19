@@ -1,83 +1,47 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
-import type {
-  McpServer,
-  ReadTextFileRequest,
-  ReadTextFileResponse,
-  RequestPermissionRequest,
-  RequestPermissionResponse,
-  SessionNotification,
-  WriteTextFileRequest,
-} from '@agentclientprotocol/sdk';
 import {
-  AcpSession,
-  AgentProcess,
-  firstPromptPreface,
-  isPrefaceTitle,
-  LEGACY_MODEL_OPTION_ID,
-  PathScopeError,
-  redact,
-  resolveInsideRoot,
-  restartDelay,
-  sessionConfigOptions,
-  UpdateNormalizer,
-  withLegacyModel,
-  type AcpLogMessage,
-  type AgentRegistry,
-  type CommandLookup,
-  type StateUpdate,
-} from '@arbora/acp-client';
-import {
-  ACP_LOG_LIMIT,
+  confirmationOptions,
   DEFAULT_THREAD_TITLE,
-  EDIT_TOOL_KINDS,
-  addTokens,
-  emptyTokens,
+  firstPromptPreface,
   idleThreadState,
-  parseUsageReport,
-  permissionMemoryKey,
-  sliceTokens,
-  stopReasonSchema,
-  type ActionTraceStep,
-  type AcpLogEntry,
   type AgentAvailability,
   type AgentDefinition,
   type AgentGroup,
   type Attachment,
-  type AuthMethod,
-  type ContentBlock,
-  type PermissionOptionKind,
+  type ConfirmationOptionKind,
+  type ConfirmationRequest,
   type Platform,
-  type RememberedPermissions,
   type Thread,
-  type ThreadChange,
-  type ThreadEvent,
   type ThreadState,
   type ThreadSummary,
-  type TokenCount,
-  type ToolKind,
-  type UsageReport,
+  BracketedPasteTracker,
+  encodeTerminalPrompt,
+  looksLikeInputRequest,
+  START_TIMEOUT_MS,
+  stripAnsi,
+  THREAD_TAIL_LINES,
+  toPosixPath,
+  TURN_QUIET_MS,
+  type AgentRegistry,
+  type CommandLookup,
 } from '@arbora/shared';
-import type { TerminalService } from '../terminal/terminal-service.js';
 import type { UsageTurnInput } from '../usage/UsageLedger.js';
-import { AgentTerminals } from './agent-terminals.js';
-import { runAgentTask } from './agent-task.js';
-import { attachmentBlocks } from './attachments.js';
+import type { TerminalService } from '../terminal/terminal-service.js';
 import { AgentGroupStore, ThreadStore } from './thread-store.js';
+import { runAgentTask } from './agent-task.js';
 
 export interface AgentServiceEvents {
   threadsChanged(threads: ThreadSummary[]): void;
   groupsChanged(groups: AgentGroup[]): void;
-  threadEvents(threadId: string, changes: ThreadChange[]): void;
   threadState(threadId: string, state: ThreadState): void;
-  log(threadId: string, entry: AcpLogEntry): void;
+  /** Arbora raises one of its own confirmation cards (browser tools, Grove helper starts). */
+  confirmation(request: ConfirmationRequest): void;
+  /** A file changed on disk while this thread's turn was running. */
   fileChanged(threadId: string, path: string): void;
 }
 
 export interface AgentUsageRecorder {
-  lastReport(threadId: string): { modelId: string; tokens: TokenCount } | null;
-  record(input: UsageTurnInput, lastReport: { modelId: string; tokens: TokenCount } | null): unknown;
+  record(input: UsageTurnInput): unknown;
 }
 
 export interface AgentServiceOptions {
@@ -89,108 +53,74 @@ export interface AgentServiceOptions {
   readonly lookup: () => CommandLookup;
   readonly terminals: TerminalService;
   readonly devUrl: () => string | null;
-  /** Model (a `model` config option value) to apply to a brand-new session of `agentId`. */
-  readonly defaultModel?: (agentId: string) => string | undefined;
-  readonly permissions: {
-    get(): RememberedPermissions;
-    remember(key: string, decision: 'allow' | 'reject'): void;
-  };
   readonly events: AgentServiceEvents;
   readonly usage?: AgentUsageRecorder;
   readonly now?: () => number;
-  /** Arbora's MCP servers (the Stage 5 browser tools) for a new agent session of `threadId`. */
+  /** Arbora's browser-tools MCP server for a new agent process of `threadId`, as env vars. */
   readonly mcp?: (threadId: string) => Promise<McpAttachment>;
-  /** `stdio` sends every agent through the shim, even with `mcpCapabilities.http` (`ARBORA_MCP_TRANSPORT`). */
-  readonly mcpTransport?: 'auto' | 'stdio';
-  /** The user's own MCP servers (Settings > MCP servers) for a session of `agentId`. */
-  readonly userMcpServers?: (agentId: string, http: boolean) => McpServer[];
+  /** How long output must stay quiet before a turn counts as ended (tests shorten this). */
+  readonly turnQuietMs?: number;
 }
 
-/** MCP servers Arbora runs for one agent session; closed when the agent process stops. */
+/**
+ * The browser-tools MCP server for one agent process, handed to a terminal agent as environment
+ * (`ARBORA_MCP_URL`, `ARBORA_MCP_TOKEN`); closed when the agent process stops.
+ */
 export interface McpAttachment {
-  /** `mcpServers` for `session/new`/`load`/`resume`; `http` is the agent's `mcpCapabilities.http`. */
-  servers(http: boolean): McpServer[];
-  /** Whether the agent has asked for the tool list (agents that cannot reach the server never do). */
-  readonly toolsListed: boolean;
+  /** `http://127.0.0.1:<port>/mcp`; the agent connects with the bearer token. */
+  readonly url: string;
+  readonly token: string;
   /** The server also carries the Grove orchestration tools (a lead session). */
-  readonly groveTools?: boolean;
+  readonly groveTools: boolean;
   close(): Promise<void>;
 }
 
-/** A permission card Arbora raises itself (browser tools), not the agent. */
-export interface ToolPermissionRequest {
+/** A question Arbora raises itself, answered through the renderer's confirmation card. */
+export interface ToolConfirmationRequest {
   readonly title: string;
   readonly detail: string;
-  readonly toolKind: ToolKind;
   /** Offer "always"/"never" answers, which the caller persists. */
   readonly persistent: boolean;
 }
 
-export type BrowserPreviewEvent = Omit<Extract<ThreadEvent, { kind: 'browser_preview' }>, 'id' | 'at' | 'kind'>;
-
-/** One agent process plus its ACP connection; `sessionId` is set once `session/new` or load succeeded. */
-class Runtime {
-  readonly session: AcpSession;
-  sessionId: string | null = null;
-  mcp: McpAttachment | null = null;
-
-  constructor(
-    readonly process: AgentProcess,
-    readonly terminals: AgentTerminals,
-    makeSession: (runtime: Runtime) => AcpSession,
-  ) {
-    this.session = makeSession(this);
-  }
-}
-
-interface PendingPermission {
+interface PendingConfirmation {
   resolve(optionId: string | null): void;
 }
 
-interface ActiveTurn {
-  readonly id: string;
-  readonly startedAt: number;
-  tokens: TokenCount;
-  tokensReported: boolean;
-  modelId: string;
-  reportedCost: { amount: number; currency: string } | null;
-  pausedAt: number | null;
-  pausedMs: number;
+interface Runtime {
+  readonly terminalId: string;
+  unsubscribe: () => void;
+  readonly paste: BracketedPasteTracker;
+  /** The process ended or the user asked for it to end; its exit is not an error. */
+  stopping: boolean;
+  generation: number;
 }
 
 interface ThreadRecord {
   thread: Thread;
-  normalizer: UpdateNormalizer;
-  log: AcpLogEntry[];
-  logCounter: number;
   runtime: Runtime | null;
   starting: Promise<Runtime> | null;
-  /** `session/load` replays history Arbora already has; transcript updates are dropped meanwhile. */
-  replaying: boolean;
-  pendingPermissions: Map<string, PendingPermission>;
-  pendingPrompt: { blocks: ContentBlock[]; attachments: Attachment[]; title: string | undefined } | null;
-  crashes: number;
+  quietTimer: NodeJS.Timeout | undefined;
+  startTimer: NodeJS.Timeout | undefined;
+  pendingConfirmations: Map<string, PendingConfirmation>;
   saveTimer: NodeJS.Timeout | undefined;
-  /** The user pressed Stop: a start in flight ends quietly and a killed turn ends as cancelled. */
-  stopRequested: boolean;
-  /** Model picked for this thread when it was created; wins over the agent's default model. */
-  initialModel: string | undefined;
-  /** Prompts accepted but not finished, including ones still waiting for the agent to start. */
+  /** Prompts accepted but not written yet, including ones waiting for the terminal to spawn. */
   promptsInFlight: number;
-  activeTurn: ActiveTurn | null;
-  lastUsageReport: { modelId: string; tokens: TokenCount } | null;
+  /** Prompts written this session; the first carries the Arbora preface. */
+  promptsSent: number;
+  /** The running turn, from its prompt to the first quiet period. */
+  turn: { startedAt: number } | null;
+  /** The last stripped output lines, mirrored into `thread.lastLines`. */
+  tail: string[];
 }
 
 export interface CreateThreadOptions {
-  /** A value of the agent's `model` config option; wins over the user's default model. */
-  readonly model?: string | undefined;
   /** Agent group; an unknown id files the thread as ungrouped. */
   readonly groupId?: string | null | undefined;
   /** The lead session that starts this one as a helper (Grove orchestration). */
   readonly parentThreadId?: string | null | undefined;
   /** Names the thread before its first prompt (Grove's launcher, `grove_start_agent`). */
   readonly title?: string | undefined;
-  readonly autoApproveEdits?: boolean | undefined;
 }
 
 export interface WaitOptions {
@@ -200,29 +130,20 @@ export interface WaitOptions {
   readonly signal?: AbortSignal;
   /**
    * The thread whose turn is waiting (a lead in `grove_wait`). The wait ends with `false` once that
-   * turn is over: not every agent drops its MCP request when its turn is cancelled.
+   * turn is over: not every agent drops its MCP request when its turn is interrupted.
    */
   readonly turnOf?: string;
 }
 
 const SAVE_DELAY_MS = 300;
-const MAX_AUTO_RESTARTS = 3;
-/** How long Stop waits for the agent to honour `session/cancel` before it stops the process. */
-export const STOP_GRACE_MS = 3000;
 const TITLE_LENGTH = 60;
 
 export class AgentServiceError extends Error {}
 
-/** A start or turn ended because the user pressed Stop. */
-class AgentStoppedError extends AgentServiceError {
-  constructor() {
-    super('Stopped');
-  }
-}
-
 /**
- * Agent threads for one project: one ACP session (and process) per thread, started on the first
- * prompt (or eagerly for a brand-new thread), persisted to `.arbora/threads/<id>.json`.
+ * Agent threads for one project: the agent CLI runs interactively in its own terminal (node-pty),
+ * prompts are typed into that terminal, and status, attention and notifications are derived from
+ * its output. Threads persist to `.arbora/threads/<id>.json`.
  */
 export class AgentService {
   private readonly records = new Map<string, ThreadRecord>();
@@ -259,13 +180,15 @@ export class AgentService {
 
   /** The OS pid of the agent process for this thread, when one is running. */
   processPid(threadId: string): number | null {
-    const pid = this.records.get(threadId)?.runtime?.process.pid;
-    return typeof pid === 'number' ? pid : null;
+    const record = this.records.get(threadId);
+    const terminalId = record?.runtime?.terminalId;
+    if (terminalId === undefined) return null;
+    return this.options.terminals.get(terminalId)?.pid ?? null;
   }
 
   getThread(threadId: string): Thread | null {
     const record = this.records.get(threadId);
-    return record ? { ...record.thread, state: record.thread.state, events: [...record.normalizer.events] } : null;
+    return record ? { ...record.thread, lastLines: [...record.tail] } : null;
   }
 
   createThread(agentId: string, options: CreateThreadOptions = {}): ThreadSummary {
@@ -281,21 +204,18 @@ export class AgentService {
       title: title || DEFAULT_THREAD_TITLE,
       createdAt: now,
       updatedAt: now,
-      sessionId: null,
-      autoApproveEdits: options.autoApproveEdits ?? false,
       groupId: known ? groupId : null,
       pinned: false,
       archivedAt: null,
       parentThreadId: parentThreadId != null && this.records.has(parentThreadId) ? parentThreadId : null,
       state: idleThreadState(),
-      events: [],
+      lastLines: [],
     };
     const record = this.record(thread);
-    record.initialModel = options.model;
     this.records.set(thread.id, record);
-    this.store.save(this.getThread(thread.id) ?? thread);
+    this.saveNow(record);
     this.emitThreads();
-    // Start now so modes, models and slash commands are there before the first prompt.
+    // The CLI starts right away so its login, models and slash commands are there before use.
     void this.ensureRuntime(record).catch(() => undefined);
     return this.summary(record);
   }
@@ -303,7 +223,6 @@ export class AgentService {
   async deleteThread(threadId: string): Promise<void> {
     const record = this.records.get(threadId);
     if (!record) return;
-    this.finishTurn(record);
     this.records.delete(threadId);
     this.wakeWaiters();
     clearTimeout(record.saveTimer);
@@ -313,8 +232,8 @@ export class AgentService {
   }
 
   /**
-   * Moves a thread to Grove's Recent, stopping its process first, or brings it back. The
-   * transcript stays; the next prompt after a restore starts the agent again.
+   * Moves a thread to Grove's Recent, stopping its process first, or brings it back. The terminal
+   * tail stays; the next prompt after a restore starts the agent again.
    */
   async setArchived(threadId: string, archived: boolean): Promise<void> {
     const record = this.require(threadId);
@@ -373,31 +292,26 @@ export class AgentService {
     this.emitThreads();
   }
 
-  setAutoApproveEdits(threadId: string, enabled: boolean): void {
-    const record = this.require(threadId);
-    record.thread = { ...record.thread, autoApproveEdits: enabled };
-    this.scheduleSave(record);
-    this.emitThreads();
-  }
-
   // --- Turns ---------------------------------------------------------------------------------
 
   /**
-   * `title` names a new thread when the first text block is not a good title (agent mode's prompt
-   * starts with a Markdown template).
+   * Types a prompt into the agent's terminal (spawning the CLI first when the thread is stopped).
+   * `title` names a new thread when the text's first line is not a good title.
    */
-  async prompt(
+  async sendPrompt(
     threadId: string,
-    blocks: ContentBlock[],
-    attachments: Attachment[] = [],
-    options: { readonly title?: string } = {},
-  ): Promise<{ stopReason: string | null; error?: string }> {
+    text: string,
+    options: { readonly title?: string; readonly attachments?: readonly Attachment[] } = {},
+  ): Promise<{ sent: boolean; error?: string }> {
     const record = this.require(threadId);
-    if (blocks.length === 0 && attachments.length === 0) throw new AgentServiceError('Nothing to send');
+    const prompt = text.trim();
+    if (prompt.length === 0 && (options.attachments ?? []).length === 0) {
+      throw new AgentServiceError('Nothing to send');
+    }
     if (record.thread.archivedAt !== null) {
       throw new AgentServiceError('This session is archived. Restore it before sending it a message.');
     }
-    if (record.thread.state.status === 'prompting') throw new AgentServiceError('The agent is still working');
+    if (record.thread.state.status === 'working') throw new AgentServiceError('The agent is still working');
 
     record.promptsInFlight++;
     try {
@@ -405,89 +319,74 @@ export class AgentService {
       try {
         runtime = await this.ensureRuntime(record);
       } catch (error) {
-        if (error instanceof AgentStoppedError) return { stopReason: 'cancelled' };
-        if (record.thread.state.status === 'auth_required') {
-          record.pendingPrompt = { blocks, attachments, title: options.title };
-          return { stopReason: null, error: 'auth_required' };
-        }
-        return { stopReason: null, error: messageOf(error) };
+        return { sent: false, error: messageOf(error) };
       }
-      if (!runtime.sessionId) return { stopReason: null, error: 'No session' };
-      return await this.runTurn(record, runtime, blocks, attachments, options.title);
+      this.titleFromPrompt(record, options.title, prompt);
+      const composed = this.composePrompt(record, prompt, options.attachments ?? []);
+      record.promptsSent++;
+      const encoded = encodeTerminalPrompt(composed, runtime.paste.value);
+      if (encoded.length === 0) return { sent: false };
+      this.options.terminals.write(runtime.terminalId, encoded);
+      record.turn = { startedAt: this.now() };
+      this.setState(record, { status: 'working', error: null, turnStartedAt: record.turn.startedAt });
+      this.scheduleQuiet(record);
+      return { sent: true };
     } finally {
       record.promptsInFlight--;
       this.wakeWaiters();
     }
   }
 
-  /**
-   * Starts the thread's agent (if needed) and returns its prompt capabilities, so a caller can
-   * decide between `image` blocks and file links before composing. Null when the agent could not
-   * start or waits for a login; `prompt` then keeps the prompt as usual.
-   */
-  async promptCapabilities(threadId: string): Promise<ThreadState['capabilities']> {
+  /** Interrupts the agent's current work: Ctrl+C in its terminal. */
+  stop(threadId: string): Promise<void> {
     const record = this.require(threadId);
-    try {
-      await this.ensureRuntime(record);
-    } catch {
-      return null;
+    if (record.thread.state.status !== 'working' && record.thread.state.status !== 'needs_input') {
+      return Promise.resolve();
     }
-    return record.thread.state.capabilities;
-  }
-
-  async cancel(threadId: string): Promise<void> {
-    const record = this.require(threadId);
     const runtime = record.runtime;
-    if (!runtime?.sessionId || record.thread.state.status !== 'prompting') return;
-    await runtime.session.cancel(runtime.sessionId);
+    if (!runtime) return Promise.resolve();
+    this.clearQuiet(record);
+    record.turn = null;
+    this.options.terminals.write(runtime.terminalId, '\u0003');
+    this.setState(record, { status: 'ready', error: null, turnStartedAt: null });
+    return Promise.resolve();
   }
 
-  /**
-   * Always stops the agent's current work. A turn gets `session/cancel` first; if the agent does
-   * not end it within `STOP_GRACE_MS`, or the agent is still starting or waiting for a login, the
-   * process is stopped (the next prompt starts it again and restores the session when it can).
-   */
-  async stop(threadId: string): Promise<void> {
-    const record = this.require(threadId);
-    record.pendingPrompt = null;
-    const status = record.thread.state.status;
-    const runtime = record.runtime;
-    if (status === 'prompting' && runtime?.sessionId) {
-      await runtime.session.cancel(runtime.sessionId).catch(() => undefined);
-      if (await this.settles(record, STOP_GRACE_MS)) return;
-      this.info(record, `no reply to session/cancel after ${STOP_GRACE_MS} ms; stopping the agent`);
-    } else if (status !== 'starting' && status !== 'auth_required' && status !== 'prompting') {
-      return;
-    }
-    record.stopRequested = true;
-    await this.stopRuntime(record);
-    this.setState(record, { status: 'idle', error: null });
-  }
-
-  /**
-   * Ends the agent process whatever it is doing (Grove's Stop, archive, a lead's `grove_stop`). A
-   * turn gets `session/cancel` and a short grace first so the agent can save its session; the
-   * thread then shows as Stopped until the next prompt starts the agent again.
+  /** Ends the agent process whatever it is doing (Grove's power toggle, archive, a lead's
+   * `grove_stop`). The thread shows as Stopped until the next prompt starts the CLI again.
    */
   async stopProcess(threadId: string): Promise<void> {
     const record = this.require(threadId);
-    record.pendingPrompt = null;
-    const runtime = record.runtime;
-    if (record.thread.state.status === 'prompting' && runtime?.sessionId) {
-      await runtime.session.cancel(runtime.sessionId).catch(() => undefined);
-      await this.settles(record, STOP_GRACE_MS);
-    }
     if (!record.runtime && !record.starting && record.thread.state.status === 'idle') return;
-    record.stopRequested = true;
     await this.stopRuntime(record);
-    record.crashes = 0;
-    this.setState(record, { status: 'idle', error: null });
+    await this.closeLeftoverTerminal(record);
+    this.setState(record, { status: 'idle', error: null, terminalId: null, turnStartedAt: null });
+  }
+
+  /** Stops the agent process and starts the CLI again in a fresh terminal. */
+  async restart(threadId: string): Promise<void> {
+    const record = this.require(threadId);
+    await this.stopRuntime(record);
+    await this.closeLeftoverTerminal(record);
+    this.setState(record, { ...idleThreadState() });
+    void this.ensureRuntime(record).catch(() => undefined);
+  }
+
+  /** A crashed or exited CLI leaves its terminal row behind; restarting or powering off clears it. */
+  private async closeLeftoverTerminal(record: ThreadRecord): Promise<void> {
+    const terminalId = record.thread.state.terminalId;
+    if (terminalId === null || record.runtime?.terminalId === terminalId) return;
+    try {
+      await this.options.terminals.close(terminalId);
+    } catch {
+      // The terminal was already gone.
+    }
   }
 
   /**
-   * Resolves once the threads are settled (nothing more happens until someone acts: done, idle,
-   * waiting on the user, failed or stopped), or with `false` on the timeout or the abort signal. A
-   * deleted or archived thread counts as settled, so this never waits on something that is gone.
+   * Resolves once the threads are settled (nothing more happens until someone acts: ready, idle,
+   * waiting for the user, failed or stopped), or with `false` on the timeout or the abort signal.
+   * A deleted or archived thread counts as settled, so this never waits on something that is gone.
    */
   waitForSettled(threadIds: readonly string[], options: WaitOptions): Promise<boolean> {
     if (options.signal?.aborted || this.disposed) return Promise.resolve(false);
@@ -499,7 +398,7 @@ export class AgentService {
         resolveWait(settled);
       };
       const check = (): void => {
-        if (this.disposed || (options.turnOf !== undefined && !this.isPrompting(options.turnOf))) {
+        if (this.disposed || (options.turnOf !== undefined && !this.isWorking(options.turnOf))) {
           finish(false);
           return;
         }
@@ -519,133 +418,63 @@ export class AgentService {
     const record = this.records.get(threadId);
     if (!record || record.thread.archivedAt !== null) return true;
     const status = record.thread.state.status;
-    if (record.pendingPermissions.size > 0 || status === 'auth_required' || status === 'error') return true;
-    if (status === 'starting' || status === 'prompting') return false;
+    if (status === 'starting' || status === 'working') return false;
     return record.promptsInFlight === 0;
   }
 
-  respondPermission(threadId: string, requestId: string, optionId: string): void {
+  // --- Arbora's own confirmation cards ---------------------------------------------------------
+
+  answerConfirmation(threadId: string, requestId: string, optionId: string): void {
     const record = this.require(threadId);
-    const pending = record.pendingPermissions.get(requestId);
-    if (!pending) throw new AgentServiceError('That permission request is no longer pending');
+    const pending = record.pendingConfirmations.get(requestId);
+    if (!pending) throw new AgentServiceError('That confirmation is no longer pending');
     pending.resolve(optionId);
   }
 
   /**
-   * Shows a permission card for one of Arbora's own tools (the browser tools' navigation,
-   * `browser_evaluate`, `terminal_run`) and waits for the user. Resolves with the kind of option
-   * chosen, or null when the thread, turn or agent went away first.
+   * Shows a confirmation card in the thread's pane (a browser tool leaving the dev-server origin,
+   * `browser_evaluate`, `terminal_run`, or a lead starting helper agents) and waits for the user.
+   * Resolves with the kind of option chosen, or null when the thread, turn or agent went away.
    */
-  async requestToolPermission(threadId: string, request: ToolPermissionRequest): Promise<PermissionOptionKind | null> {
+  async requestConfirmation(
+    threadId: string,
+    request: ToolConfirmationRequest,
+  ): Promise<ConfirmationOptionKind | null> {
     const record = this.records.get(threadId);
     if (!record) return null;
-    const options: RequestPermissionRequest['options'] = [
-      { optionId: 'allow', name: request.persistent ? 'Allow this session' : 'Allow', kind: 'allow_once' },
-      ...(request.persistent
-        ? [{ optionId: 'allow-always', name: 'Always allow in this project', kind: 'allow_always' as const }]
-        : []),
-      { optionId: 'reject', name: 'Deny', kind: 'reject_once' },
-      ...(request.persistent
-        ? [{ optionId: 'reject-always', name: 'Never in this project', kind: 'reject_always' as const }]
-        : []),
-    ];
+    const options = confirmationOptions(request.persistent);
     const requestId = randomUUID();
-    this.emitChanges(
-      record,
-      record.normalizer.permissionRequested(requestId, {
-        sessionId: record.runtime?.sessionId ?? '',
-        toolCall: {
-          toolCallId: `arbora-${requestId}`,
-          title: request.title,
-          kind: request.toolKind,
-          rawInput: { detail: request.detail },
-        },
-        options,
-      }),
-    );
-    const chosen = await this.waitForPermission(record, requestId);
-    if (chosen === null) {
-      this.emitChanges(record, record.normalizer.permissionResolved(requestId, 'cancelled'));
-      return null;
-    }
-    this.emitChanges(record, record.normalizer.permissionResolved(requestId, { optionId: chosen, auto: false }));
+    const full: ConfirmationRequest = {
+      requestId,
+      threadId,
+      title: request.title,
+      detail: request.detail,
+      options,
+    };
+    if (!this.disposed) this.options.events.confirmation(full);
+    const chosen = await this.waitForConfirmation(record, requestId);
     return options.find((o) => o.optionId === chosen)?.kind ?? null;
   }
 
-  /** Adds one MCP browser action to the thread's trace for the current turn. */
-  addActionTrace(threadId: string, step: Omit<ActionTraceStep, 'id' | 'at'>): void {
-    const record = this.records.get(threadId);
-    if (record) this.emitChanges(record, record.normalizer.actionTrace(step));
-  }
-
-  /** Mirrors a browser-tools screenshot into the thread as a thumbnail. */
-  addBrowserPreview(threadId: string, preview: BrowserPreviewEvent): void {
-    const record = this.records.get(threadId);
-    if (record) this.emitChanges(record, record.normalizer.browserPreview(preview));
-  }
-
-  async setMode(threadId: string, modeId: string): Promise<void> {
-    const record = this.require(threadId);
-    const runtime = this.requireRuntime(record);
-    await runtime.session.setMode(runtime.sessionId ?? '', modeId);
-    const modes = record.thread.state.modes;
-    if (modes) this.setState(record, { modes: { ...modes, currentModeId: modeId } });
-  }
-
-  async setConfigOption(threadId: string, configId: string, value: string | boolean): Promise<void> {
-    const record = this.require(threadId);
-    const runtime = this.requireRuntime(record);
-    if (configId === LEGACY_MODEL_OPTION_ID) {
-      if (typeof value !== 'string') throw new AgentServiceError('A model id is required');
-      await runtime.session.setModel(runtime.sessionId ?? '', value);
-      this.applyState(record, [
-        { type: 'configOptions', options: withLegacyModel(record.thread.state.configOptions, value) },
-      ]);
-      return;
-    }
-    const response = await runtime.session.setConfigOption(runtime.sessionId ?? '', configId, value);
-    this.applyState(record, [{ type: 'configOptions', options: sessionConfigOptions(response) }]);
-  }
-
-  async authenticate(threadId: string, methodId: string): Promise<void> {
-    const record = this.require(threadId);
-    const runtime = record.runtime;
-    if (!runtime) throw new AgentServiceError('The agent is not running');
-    this.setState(record, { status: 'starting', error: null });
-    try {
-      await runtime.session.authenticate(methodId);
-      this.info(record, `authenticated with ${methodId}`);
-      await this.openSession(record, runtime);
-    } catch (error) {
-      if (AcpSession.isAuthRequired(error)) {
-        this.setState(record, { status: 'auth_required', error: messageOf(error) });
-        return;
+  /** Files that changed on disk, attributed to the thread whose turn was running. */
+  noteFileChanges(paths: readonly string[]): void {
+    if (paths.length === 0) return;
+    // `.arbora/` is the app's own bookkeeping (thread files, screenshots), not the agent's work.
+    const agentPaths = paths.filter((path) => !path.split(/[\\/]/).includes('.arbora'));
+    if (agentPaths.length === 0) return;
+    for (const record of this.records.values()) {
+      if (record.turn === null) continue;
+      for (const path of agentPaths) {
+        if (!this.disposed) this.options.events.fileChanged(record.thread.id, path);
       }
-      this.setState(record, { status: 'error', error: messageOf(error) });
-      throw error;
     }
-    const pending = record.pendingPrompt;
-    record.pendingPrompt = null;
-    if (pending && runtime.sessionId) {
-      void this.runTurn(record, runtime, pending.blocks, pending.attachments, pending.title);
-    }
-  }
-
-  /** Stops the agent process; the next prompt starts it again from scratch. */
-  async restart(threadId: string): Promise<void> {
-    const record = this.require(threadId);
-    await this.stopRuntime(record);
-    record.crashes = 0;
-    record.pendingPrompt = null;
-    this.setState(record, { ...idleThreadState() });
-    void this.ensureRuntime(record).catch(() => undefined);
   }
 
   /**
-   * One prompt to `agentId` in a session of its own that is not a thread (commit messages, pull
-   * request text). `model` null uses the user's default model for that agent.
+   * One prompt to `agentId` run non-interactively in a session of its own that is not a thread
+   * (commit messages, pull request text).
    */
-  async runTask(agentId: string, model: string | null, prompt: string): Promise<string> {
+  async runTask(agentId: string, prompt: string): Promise<string> {
     const agent = this.options.registry.get(agentId);
     if (!agent) throw new AgentServiceError(`Unknown agent ${agentId}`);
     const env = await this.options.environment();
@@ -656,25 +485,8 @@ export class AgentService {
       agent,
       env,
       lookup: this.options.lookup(),
-      model: model ?? this.options.defaultModel?.(agentId) ?? null,
       prompt,
     });
-  }
-
-  // --- Log -----------------------------------------------------------------------------------
-
-  getLog(threadId: string): AcpLogEntry[] {
-    return [...this.require(threadId).log];
-  }
-
-  async exportLog(threadId: string, path: string): Promise<void> {
-    const record = this.require(threadId);
-    const payload = {
-      exportedAt: new Date(this.now()).toISOString(),
-      thread: { id: record.thread.id, agentId: record.thread.agentId, title: record.thread.title },
-      entries: record.log,
-    };
-    await writeFile(path, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
   }
 
   // --- Lifecycle -----------------------------------------------------------------------------
@@ -684,7 +496,6 @@ export class AgentService {
     this.wakeWaiters();
     for (const record of this.records.values()) {
       clearTimeout(record.saveTimer);
-      this.finishTurn(record);
       this.saveNow(record);
     }
     await Promise.all([...this.records.values()].map((record) => this.stopRuntime(record)));
@@ -692,25 +503,22 @@ export class AgentService {
 
   // --- Internals -----------------------------------------------------------------------------
 
+  private readonly mcpAttachments = new Map<string, McpAttachment>();
+
   private record(thread: Thread): ThreadRecord {
-    const events = [...thread.events];
     return {
-      thread: { ...thread, events: [] },
-      normalizer: new UpdateNormalizer({ nextId: () => randomUUID(), now: this.now, events }),
-      log: [],
-      logCounter: 0,
+      thread: { ...thread, lastLines: [...thread.lastLines] },
       runtime: null,
       starting: null,
-      replaying: false,
-      pendingPermissions: new Map(),
-      pendingPrompt: null,
-      crashes: 0,
-      stopRequested: false,
+      quietTimer: undefined,
+      startTimer: undefined,
+      pendingConfirmations: new Map(),
       saveTimer: undefined,
-      initialModel: undefined,
       promptsInFlight: 0,
-      activeTurn: null,
-      lastUsageReport: this.options.usage?.lastReport(thread.id) ?? null,
+      /** Prompts written this session; the first carries the Arbora preface. */
+      promptsSent: 0,
+      turn: null,
+      tail: [...thread.lastLines],
     };
   }
 
@@ -718,18 +526,8 @@ export class AgentService {
     for (const check of [...this.settleWaiters]) check();
   }
 
-  private isPrompting(threadId: string): boolean {
-    return this.records.get(threadId)?.thread.state.status === 'prompting';
-  }
-
-  /** Resolves true once the thread is no longer prompting, false after `timeoutMs`. */
-  private async settles(record: ThreadRecord, timeoutMs: number): Promise<boolean> {
-    const deadline = this.now() + timeoutMs;
-    while (record.thread.state.status === 'prompting') {
-      if (this.now() >= deadline) return false;
-      await new Promise((resolveTick) => setTimeout(resolveTick, 50));
-    }
-    return true;
+  private isWorking(threadId: string): boolean {
+    return this.records.get(threadId)?.thread.state.status === 'working';
   }
 
   private require(threadId: string): ThreadRecord {
@@ -738,13 +536,8 @@ export class AgentService {
     return record;
   }
 
-  private requireRuntime(record: ThreadRecord): Runtime {
-    if (!record.runtime?.sessionId) throw new AgentServiceError('The agent has not started a session yet');
-    return record.runtime;
-  }
-
   private summary(record: ThreadRecord): ThreadSummary {
-    const { events: _events, ...summary } = record.thread;
+    const { lastLines: _lastLines, ...summary } = record.thread;
     return summary;
   }
 
@@ -752,110 +545,14 @@ export class AgentService {
     if (!this.disposed) this.options.events.threadsChanged(this.listThreads());
   }
 
-  private emitChanges(record: ThreadRecord, changes: ThreadChange[]): void {
-    if (changes.length === 0) return;
-    record.thread = { ...record.thread, updatedAt: this.now() };
-    if (!this.disposed) this.options.events.threadEvents(record.thread.id, changes);
-    this.scheduleSave(record);
-    this.wakeWaiters();
-  }
-
   private setState(record: ThreadRecord, patch: Partial<ThreadState>): void {
-    record.thread = { ...record.thread, state: { ...record.thread.state, ...patch } };
+    record.thread = { ...record.thread, state: { ...record.thread.state, ...patch }, updatedAt: this.now() };
     if (!this.disposed) {
       this.options.events.threadState(record.thread.id, record.thread.state);
       if (patch.status !== undefined) this.emitThreads();
     }
+    this.scheduleSave(record);
     this.wakeWaiters();
-  }
-
-  private applyState(record: ThreadRecord, updates: StateUpdate[]): void {
-    for (const update of updates) {
-      switch (update.type) {
-        case 'availableCommands':
-          this.setState(record, { availableCommands: update.commands });
-          break;
-        case 'currentMode': {
-          const modes = record.thread.state.modes;
-          if (modes) this.setState(record, { modes: { ...modes, currentModeId: update.modeId } });
-          break;
-        }
-        case 'configOptions':
-          this.setState(record, { configOptions: update.options });
-          break;
-        case 'usage':
-          this.onUsage(record, update.report);
-          break;
-        case 'title':
-          // Kimi titles the thread after the first prompt, which is our preface; keep ours then.
-          if (isPrefaceTitle(update.title)) break;
-          record.thread = { ...record.thread, title: update.title.slice(0, 200) };
-          this.scheduleSave(record);
-          this.emitThreads();
-          break;
-        default: {
-          const unreachable: never = update;
-          throw new Error(`Unhandled state update ${String(unreachable)}`);
-        }
-      }
-    }
-  }
-
-  private onUsage(record: ThreadRecord, report: UsageReport): void {
-    if (report.context) this.setState(record, { contextUsage: report.context });
-    const turn = record.activeTurn;
-    if (!turn) return;
-    if (report.reportedCost) turn.reportedCost = report.reportedCost;
-    if (!report.tokens) return;
-    const modelId = report.modelId ?? this.currentModel(record) ?? turn.modelId;
-    const next = { modelId, tokens: report.tokens };
-    const slice = sliceTokens(record.lastUsageReport, next);
-    record.lastUsageReport = next;
-    turn.tokens = addTokens(turn.tokens, slice);
-    turn.tokensReported = true;
-    turn.modelId = modelId;
-  }
-
-  private currentModel(record: ThreadRecord): string | undefined {
-    return record.thread.state.configOptions.find(
-      (option): option is Extract<typeof option, { type: 'select' }> =>
-        option.type === 'select' && (option.category === 'model' || option.id === LEGACY_MODEL_OPTION_ID),
-    )?.currentValue;
-  }
-
-  private finishTurn(record: ThreadRecord): void {
-    const turn = record.activeTurn;
-    if (!turn) return;
-    record.activeTurn = null;
-    const pausedMs = turn.pausedMs + (turn.pausedAt === null ? 0 : Math.max(0, this.now() - turn.pausedAt));
-    this.options.usage?.record(
-      {
-        id: turn.id,
-        threadId: record.thread.id,
-        agentId: record.thread.agentId,
-        modelId: turn.modelId,
-        inputTokens: turn.tokens.input,
-        outputTokens: turn.tokens.output,
-        cacheReadTokens: turn.tokens.cacheRead,
-        cacheWriteTokens: turn.tokens.cacheWrite,
-        tokensReported: turn.tokensReported,
-        durationMs: Math.max(0, this.now() - turn.startedAt - pausedMs),
-        reportedCost: turn.reportedCost,
-        parentThreadId: record.thread.parentThreadId,
-      },
-      record.lastUsageReport,
-    );
-  }
-
-  private pauseTurn(record: ThreadRecord): void {
-    if (record.activeTurn && record.activeTurn.pausedAt === null) record.activeTurn.pausedAt = this.now();
-  }
-
-  private resumeTurn(record: ThreadRecord): void {
-    const turn = record.activeTurn;
-    if (!turn || turn.pausedAt === null) return;
-    turn.pausedMs += Math.max(0, this.now() - turn.pausedAt);
-    turn.pausedAt = null;
   }
 
   private scheduleSave(record: ThreadRecord): void {
@@ -867,32 +564,67 @@ export class AgentService {
     record.saveTimer = undefined;
     if (!this.records.has(record.thread.id)) return;
     try {
-      this.store.save({ ...record.thread, events: record.normalizer.events });
+      this.store.save({ ...record.thread, lastLines: [...record.tail] });
     } catch (error) {
       console.warn(`[agent] could not save thread ${record.thread.id}: ${messageOf(error)}`);
     }
   }
 
-  private pushLog(record: ThreadRecord, entry: Omit<AcpLogEntry, 'id' | 'at'>): void {
-    const full: AcpLogEntry = { id: ++record.logCounter, at: this.now(), ...entry };
-    record.log.push(full);
-    if (record.log.length > ACP_LOG_LIMIT) record.log.splice(0, record.log.length - ACP_LOG_LIMIT);
-    if (!this.disposed) this.options.events.log(record.thread.id, full);
+  private titleFromPrompt(record: ThreadRecord, title: string | undefined, prompt: string): void {
+    if (record.thread.title !== DEFAULT_THREAD_TITLE) return;
+    const text = title?.trim() || prompt.split('\n')[0]?.trim();
+    if (!text) return;
+    record.thread = { ...record.thread, title: text.slice(0, TITLE_LENGTH) };
+    this.emitThreads();
   }
 
-  private info(record: ThreadRecord, message: string): void {
-    this.pushLog(record, { direction: 'info', message });
-  }
-
-  /** Spawns the agent, negotiates capabilities and opens (or restores) the ACP session. */
-  private ensureRuntime(record: ThreadRecord): Promise<Runtime> {
-    if (record.runtime?.sessionId) return Promise.resolve(record.runtime);
-    if (record.starting) return record.starting;
-    if (record.runtime && record.thread.state.status === 'auth_required') {
-      // The process is up and waiting for `authenticate`; spawning another would leak this one.
-      return Promise.reject(new AgentServiceError(record.thread.state.error ?? 'The agent needs you to log in'));
+  /** The first prompt carries the Arbora preface; attachments become path mentions. */
+  private composePrompt(record: ThreadRecord, prompt: string, attachments: readonly Attachment[]): string {
+    const parts: string[] = [];
+    if (record.promptsSent === 0) {
+      const mcp = record.runtime ? this.mcpOf(record) : null;
+      parts.push(
+        firstPromptPreface({
+          projectPath: this.options.projectPath,
+          devUrl: this.options.devUrl(),
+          browserTools: mcp !== null,
+          groveTools: mcp?.groveTools === true,
+        }),
+      );
     }
-    record.stopRequested = false;
+    parts.push(prompt);
+    for (const attachment of attachments) {
+      parts.push(`Attached file: ${toPosixPath(attachment.path)}`);
+    }
+    return parts.join('\n\n');
+  }
+
+  private mcpOf(record: ThreadRecord): McpAttachment | null {
+    return this.mcpAttachments.get(record.thread.id) ?? null;
+  }
+
+  private waitForConfirmation(record: ThreadRecord, requestId: string): Promise<string | null> {
+    return new Promise<string | null>((resolveConfirmation) => {
+      const pending: PendingConfirmation = {
+        resolve: (optionId) => {
+          record.pendingConfirmations.delete(requestId);
+          resolveConfirmation(optionId);
+        },
+      };
+      record.pendingConfirmations.set(requestId, pending);
+      this.wakeWaiters();
+    });
+  }
+
+  private cancelPendingConfirmations(record: ThreadRecord): void {
+    for (const pending of record.pendingConfirmations.values()) pending.resolve(null);
+    record.pendingConfirmations.clear();
+  }
+
+  /** Spawns the agent CLI in its own terminal; `prompting` output arrives through `onData`. */
+  private ensureRuntime(record: ThreadRecord): Promise<Runtime> {
+    if (record.runtime) return Promise.resolve(record.runtime);
+    if (record.starting) return record.starting;
     const starting = this.start(record).finally(() => {
       record.starting = null;
     });
@@ -903,516 +635,211 @@ export class AgentService {
   private async start(record: ThreadRecord): Promise<Runtime> {
     const agent = this.options.registry.get(record.thread.agentId);
     if (!agent) {
-      this.setState(record, { status: 'error', error: `Agent ${record.thread.agentId} is not configured` });
-      throw new AgentServiceError(`Agent ${record.thread.agentId} is not configured`);
-    }
-    if (record.crashes >= MAX_AUTO_RESTARTS) {
-      const error = `${agent.name} exited ${record.crashes} times in a row. Use Restart to try again.`;
+      const error = `Agent ${record.thread.agentId} is not configured`;
       this.setState(record, { status: 'error', error });
       throw new AgentServiceError(error);
     }
-    const delay = restartDelay(record.crashes);
-    if (delay > 0) {
-      this.info(record, `restarting ${agent.name} in ${delay} ms`);
-      await new Promise((resolveDelay) => setTimeout(resolveDelay, delay));
-    }
-    this.setState(record, { status: 'starting', error: null, authMethods: [] });
     // Never replace a live runtime without stopping it, or its process outlives the thread.
     if (record.runtime) await this.stopRuntime(record);
+    await this.closeLeftoverTerminal(record);
+    this.setState(record, { status: 'starting', error: null, terminalId: null });
 
-    const env = await this.options.environment();
-    if (record.stopRequested) throw this.stopped(record);
-    Object.assign(env, agent.env);
     const lookup = this.options.lookup();
-    const resolved = lookup(agent.command);
-    if (!resolved) {
+    if (!lookup(agent.command)) {
       const error = `${agent.command} was not found on PATH. ${agent.installHint ?? ''}`.trim();
       this.setState(record, { status: 'error', error });
       throw new AgentServiceError(error);
     }
-    this.info(record, `spawning ${resolved} ${agent.args.join(' ')}`);
-    const process = new AgentProcess({
-      platform: this.options.platform,
-      command: resolved,
+
+    const env: Record<string, string> = { ...agent.env };
+    const mcp = await this.attachMcp(record);
+    if (mcp) {
+      env['ARBORA_MCP_URL'] = mcp.url;
+      env['ARBORA_MCP_TOKEN'] = mcp.token;
+      if (mcp.groveTools) env['ARBORA_MCP_GROVE'] = '1';
+    }
+
+    const title = record.thread.title === DEFAULT_THREAD_TITLE ? agent.name : record.thread.title;
+    const info = await this.options.terminals.create({
+      kind: 'agent',
+      title: `${agent.name} — ${title}`.slice(0, 200),
+      thread: title,
+      command: agent.command,
       args: agent.args,
       env,
-      cwd: this.options.projectPath,
-      lookup,
-      onStderr: (line) => this.pushLog(record, { direction: 'stderr', message: line }),
+      readOnly: false,
     });
-    const terminals = new AgentTerminals(this.options.terminals, this.options.projectPath, () => record.thread.title);
-    const runtime = new Runtime(
-      process,
-      terminals,
-      (self) =>
-        new AcpSession(process.stream, {
-          requestPermission: (request, signal) => this.onPermission(record, request, signal),
-          readTextFile: (request) => this.readTextFile(request),
-          writeTextFile: (request) => this.writeTextFile(record, request),
-          terminal: terminals.terminal,
-          onUpdate: (notification) => this.onUpdate(record, self, notification),
-          onLog: (entry) => this.onLog(record, entry),
-          onClosed: (error) => this.onClosed(record, self, error),
-        }),
-    );
+    const runtime: Runtime = {
+      terminalId: info.id,
+      unsubscribe: () => undefined,
+      paste: new BracketedPasteTracker(),
+      stopping: false,
+      generation: 0,
+    };
     record.runtime = runtime;
+    this.setState(record, { terminalId: info.id });
 
-    try {
-      const initialized = await runtime.session.initialize();
-      const capabilities = runtime.session.capabilities;
-      this.setState(record, {
-        capabilities,
-        authMethods: (initialized.authMethods ?? []).map((m): AuthMethod => ({
-          id: m.id,
-          name: m.name,
-          ...(m.description != null ? { description: m.description } : {}),
-        })),
-      });
-      this.info(
-        record,
-        `initialized ${initialized.agentInfo?.name ?? agent.name} ${initialized.agentInfo?.version ?? ''} (protocol ${initialized.protocolVersion})`.trim(),
-      );
-      await this.attachMcp(record, runtime);
-      await this.openSession(record, runtime);
-      return runtime;
-    } catch (error) {
-      if (this.wasStopped(record)) throw this.stopped(record);
-      if (AcpSession.isAuthRequired(error)) {
-        const authMethods = record.thread.state.authMethods;
-        const hint = agent.installHint ? ` ${agent.installHint}` : '';
-        this.setState(record, {
-          status: 'auth_required',
-          error:
-            authMethods.length > 0
-              ? `${agent.name} needs you to log in.${hint}`
-              : `${agent.name} rejected the session: not authenticated.${hint}`,
-        });
-        throw error;
-      }
-      const message = process.startError ? process.startError.message : messageOf(error);
-      this.setState(record, { status: 'error', error: message });
-      await this.stopRuntime(record);
-      throw error;
-    }
-  }
-
-  /** Read through a call: `stop()` sets the flag while an `await` is pending, which narrowing cannot see. */
-  private wasStopped(record: ThreadRecord): boolean {
-    return record.stopRequested;
-  }
-
-  private stopped(record: ThreadRecord): AgentStoppedError {
-    this.setState(record, { status: 'idle', error: null });
-    return new AgentStoppedError();
+    runtime.unsubscribe = this.options.terminals.subscribe(info.id, (data) => this.onData(record, runtime, data));
+    const generation = runtime.generation;
+    void this.options.terminals.waitForExit(info.id).then((exit) => {
+      if (record.runtime === runtime && generation === runtime.generation) this.onExit(record, runtime, exit);
+    });
+    this.armStartTimer(record);
+    return runtime;
   }
 
   /** Starts the browser-tools MCP server for this process; the session works without it. */
-  private async attachMcp(record: ThreadRecord, runtime: Runtime): Promise<void> {
-    if (!this.options.mcp) return;
+  private async attachMcp(record: ThreadRecord): Promise<McpAttachment | null> {
+    if (!this.options.mcp) return null;
     try {
-      runtime.mcp = await this.options.mcp(record.thread.id);
-      this.info(record, `browser tools attached over ${this.httpMcp(runtime) ? 'http' : 'stdio shim'}`);
-    } catch (error) {
-      this.info(record, `browser tools unavailable: ${messageOf(error)}`);
+      const attachment = await this.options.mcp(record.thread.id);
+      this.mcpAttachments.set(record.thread.id, attachment);
+      return attachment;
+    } catch {
+      return null;
     }
   }
 
-  private httpMcp(runtime: Runtime): boolean {
-    return runtime.session.supportsHttpMcp && this.options.mcpTransport !== 'stdio';
+  private armStartTimer(record: ThreadRecord): void {
+    clearTimeout(record.startTimer);
+    record.startTimer = setTimeout(() => {
+      if (record.thread.state.status !== 'starting') return;
+      const agent = this.options.registry.get(record.thread.agentId);
+      const name = agent?.name ?? record.thread.agentId;
+      this.setState(record, { status: 'error', error: `${name} printed nothing within 30 s` });
+    }, START_TIMEOUT_MS);
   }
 
-  private mcpServers(record: ThreadRecord, runtime: Runtime): McpServer[] {
-    const http = runtime.session.supportsHttpMcp;
-    const own = runtime.mcp?.servers(this.httpMcp(runtime)) ?? [];
-    const user = this.options.userMcpServers?.(record.thread.agentId, http) ?? [];
-    if (user.length > 0) this.info(record, `your MCP servers: ${user.map((server) => server.name).join(', ')}`);
-    return [...own, ...user];
-  }
-
-  /** `session/load` or `session/resume` when advertised and we have a session id; else `session/new`. */
-  private async openSession(record: ThreadRecord, runtime: Runtime): Promise<void> {
-    const previous = record.thread.sessionId;
-    const capabilities = runtime.session.capabilities;
-    let restored = false;
-    if (previous && capabilities) {
-      if (capabilities.loadSession) {
-        restored = await this.tryRestore(record, runtime, 'load', previous);
-      } else if (capabilities.resume) {
-        restored = await this.tryRestore(record, runtime, 'resume', previous);
-      }
+  private onData(record: ThreadRecord, runtime: Runtime, data: string): void {
+    if (record.runtime !== runtime) return;
+    runtime.paste.push(data);
+    clearTimeout(record.startTimer);
+    for (const line of data.split('\n')) {
+      const stripped = stripAnsi(line).trimEnd();
+      if (stripped.trim().length === 0) continue;
+      record.tail.push(stripped);
+      if (record.tail.length > THREAD_TAIL_LINES) record.tail.splice(0, record.tail.length - THREAD_TAIL_LINES);
     }
-    if (!restored) {
-      const response = await runtime.session.newSession(this.options.projectPath, this.mcpServers(record, runtime));
-      runtime.sessionId = response.sessionId;
-      // Some agents number sessions per process, so a fresh session may reuse the old id.
-      const contextLost = previous !== null;
-      record.thread = { ...record.thread, sessionId: response.sessionId };
-      this.setState(record, {
-        status: 'ready',
-        error: null,
-        modes: response.modes ?? null,
-        configOptions: sessionConfigOptions(response),
-        contextLost,
-      });
-      if (contextLost) {
-        this.emitChanges(
-          record,
-          record.normalizer.apply({
-            sessionUpdate: 'notice',
-            severity: 'warning',
-            title: 'Previous session could not be restored',
-            description: 'The agent starts a new session and does not remember this transcript.',
-          }).changes,
-        );
-      }
-      this.info(record, `session/new -> ${response.sessionId}`);
-      if (previous === null) await this.applyDefaultModel(record);
-    }
-    record.crashes = 0;
-    this.scheduleSave(record);
-  }
-
-  /** Switches a brand-new session to the user's default model for this agent, when it offers it. */
-  private async applyDefaultModel(record: ThreadRecord): Promise<void> {
-    const wanted = record.initialModel ?? this.options.defaultModel?.(record.thread.agentId);
-    if (!wanted) return;
-    const option = record.thread.state.configOptions.find(
-      (o): o is Extract<typeof o, { type: 'select' }> => o.type === 'select' && o.category === 'model',
-    );
-    if (!option || option.currentValue === wanted) return;
-    const values = option.options.flatMap((entry) => ('group' in entry ? entry.options : [entry])).map((o) => o.value);
-    if (!values.includes(wanted)) {
-      this.info(record, `default model ${wanted} is not offered by this agent; keeping ${option.currentValue}`);
-      return;
-    }
-    try {
-      await this.setConfigOption(record.thread.id, option.id, wanted);
-      this.info(record, `default model ${wanted} applied`);
-    } catch (error) {
-      this.info(record, `could not apply default model ${wanted}: ${messageOf(error)}`);
-    }
-  }
-
-  private async tryRestore(
-    record: ThreadRecord,
-    runtime: Runtime,
-    how: 'load' | 'resume',
-    sessionId: string,
-  ): Promise<boolean> {
-    record.replaying = true;
-    try {
-      const servers = this.mcpServers(record, runtime);
-      const response =
-        how === 'load'
-          ? await runtime.session.loadSession(sessionId, this.options.projectPath, servers)
-          : await runtime.session.resumeSession(sessionId, this.options.projectPath, servers);
-      runtime.sessionId = sessionId;
-      this.setState(record, {
-        status: 'ready',
-        error: null,
-        modes: response.modes ?? record.thread.state.modes,
-        configOptions: sessionConfigOptions(response),
-        contextLost: false,
-      });
-      this.info(record, `session/${how} ${sessionId} ok`);
-      return true;
-    } catch (error) {
-      if (AcpSession.isAuthRequired(error)) throw error;
-      this.info(record, `session/${how} ${sessionId} failed: ${messageOf(error)}`);
-      return false;
-    } finally {
-      record.replaying = false;
-    }
-  }
-
-  private async runTurn(
-    record: ThreadRecord,
-    runtime: Runtime,
-    blocks: ContentBlock[],
-    attachments: Attachment[],
-    title?: string,
-  ): Promise<{ stopReason: string | null; error?: string }> {
-    const sessionId = runtime.sessionId;
-    if (!sessionId) return { stopReason: null, error: 'No session' };
-    const capabilities = record.thread.state.capabilities ?? { image: false };
-    const attached = await attachmentBlocks(attachments, capabilities);
-    const shown = [...blocks, ...attached];
-    const firstPrompt = !record.normalizer.events.some((e) => e.kind === 'user_message');
-    const sent: ContentBlock[] = firstPrompt
-      ? [
-          {
-            type: 'text',
-            text: firstPromptPreface({
-              projectPath: this.options.projectPath,
-              devUrl: this.options.devUrl(),
-              browserTools: runtime.mcp !== null,
-              groveTools: runtime.mcp?.groveTools === true,
-            }),
-          },
-          ...shown,
-        ]
-      : shown;
-
-    if (record.thread.title === DEFAULT_THREAD_TITLE) {
-      const text =
-        title?.trim() || blocks.find((b): b is ContentBlock & { type: 'text' } => b.type === 'text')?.text.trim();
-      if (text) {
-        record.thread = {
-          ...record.thread,
-          title: text.split('\n')[0]?.slice(0, TITLE_LENGTH) ?? DEFAULT_THREAD_TITLE,
-        };
-        this.emitThreads();
-      }
-    }
-    this.finishTurn(record);
-    record.activeTurn = {
-      id: randomUUID(),
-      startedAt: this.now(),
-      tokens: emptyTokens(),
-      tokensReported: false,
-      modelId: this.currentModel(record) ?? 'unknown',
-      reportedCost: null,
-      pausedAt: null,
-      pausedMs: 0,
-    };
-    this.emitChanges(record, record.normalizer.userMessage(shown));
-    record.stopRequested = false;
-    this.setState(record, { status: 'prompting', error: null });
-    try {
-      const response = await runtime.session.prompt(sessionId, sent);
-      const stopReason = stopReasonSchema.safeParse(response.stopReason);
-      this.emitChanges(record, record.normalizer.turnEnded(stopReason.success ? stopReason.data : 'end_turn'));
-      if (firstPrompt) this.warnIfToolsUnused(record, runtime);
-      if (record.runtime === runtime) this.setState(record, { status: 'ready' });
-      return { stopReason: response.stopReason };
-    } catch (error) {
-      if (this.wasStopped(record)) {
-        this.emitChanges(record, record.normalizer.turnEnded('cancelled'));
-        return { stopReason: 'cancelled' };
-      }
-      const message = messageOf(error);
-      if (AcpSession.isAuthRequired(error) && record.runtime === runtime) {
-        // Claude Code's adapter accepts `session/new` and only refuses the first prompt; keep the
-        // prompt so it goes out once the user has logged in.
-        record.pendingPrompt = { blocks, attachments, title };
-        record.activeTurn = null;
-        this.setState(record, { status: 'auth_required', error: this.authHint(record, message) });
-        return { stopReason: null, error: 'auth_required' };
-      }
-      this.emitChanges(record, record.normalizer.error(message));
-      if (record.runtime === runtime) this.setState(record, { status: 'ready', error: message });
-      return { stopReason: null, error: message };
-    } finally {
-      this.cancelPendingPermissions(record);
-      this.finishTurn(record);
+    const lastLine = record.tail.at(-1) ?? null;
+    const status = record.thread.state.status;
+    if (status === 'starting') {
+      this.setState(record, { status: 'ready', lastLine, lastOutputAt: this.now() });
+    } else if (status === 'needs_input') {
+      // The user answered in the terminal; the agent is back at work.
+      this.setState(record, { status: 'working', error: null, lastLine, lastOutputAt: this.now() });
+      this.scheduleQuiet(record);
+    } else {
+      this.setState(record, { lastLine, lastOutputAt: this.now() });
+      if (status === 'working') this.scheduleQuiet(record);
     }
   }
 
   /**
-   * An agent that never listed the tools after a whole turn could not reach the server (a strict
-   * network sandbox) or ignores client MCP servers; say so once instead of failing silently.
+   * No output for a moment after a prompt: the turn ended (a quiet agent finished), or it is
+   * waiting for the user (its last lines look like a question).
    */
-  private warnIfToolsUnused(record: ThreadRecord, runtime: Runtime): void {
-    if (!runtime.mcp || runtime.mcp.toolsListed) return;
-    this.info(record, 'the agent did not list the arbora-browser MCP tools during its first turn');
-    this.emitChanges(
-      record,
-      record.normalizer.apply({
-        sessionUpdate: 'notice',
-        severity: 'warning',
-        title: 'The agent has not loaded Arbora’s browser tools',
-        description:
-          'It cannot see or drive the browser panel, so it cannot check its own changes. Its sandbox may block localhost, or it may not support MCP servers from the client.',
-      }).changes,
-    );
+  private scheduleQuiet(record: ThreadRecord): void {
+    clearTimeout(record.quietTimer);
+    record.quietTimer = setTimeout(() => this.onQuiet(record), this.options.turnQuietMs ?? TURN_QUIET_MS);
   }
 
-  private authHint(record: ThreadRecord, message: string): string {
-    const agent = this.options.registry.get(record.thread.agentId);
-    const hint = agent?.installHint ? ` ${agent.installHint}` : '';
-    return `${agent?.name ?? record.thread.agentId}: ${message}.${hint}`;
+  private onQuiet(record: ThreadRecord): void {
+    const status = record.thread.state.status;
+    if (status !== 'working') return;
+    const turn = record.turn;
+    record.turn = null;
+    const now = this.now();
+    const lastTurnMs = turn ? Math.max(0, now - turn.startedAt) : null;
+    this.setState(record, {
+      status: looksLikeInputRequest(record.tail) ? 'needs_input' : 'ready',
+      turnStartedAt: null,
+      lastTurnMs,
+    });
+    if (lastTurnMs !== null) {
+      this.options.usage?.record({
+        id: randomUUID(),
+        threadId: record.thread.id,
+        agentId: record.thread.agentId,
+        // Terminal agents do not report tokens through a protocol; the row keeps the working time.
+        modelId: 'unknown',
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        tokensReported: false,
+        durationMs: lastTurnMs,
+        reportedCost: null,
+        parentThreadId: record.thread.parentThreadId,
+      });
+    }
   }
 
-  private onUpdate(record: ThreadRecord, runtime: Runtime, notification: SessionNotification): void {
+  private onExit(
+    record: ThreadRecord,
+    runtime: Runtime,
+    exit: { exitCode: number | null; signal: number | null },
+  ): void {
     if (record.runtime !== runtime) return;
-    if (record.replaying) {
-      // History we already have; keep only session-level facts.
-      const scratch = new UpdateNormalizer({ nextId: () => randomUUID(), now: this.now });
-      this.applyState(record, scratch.apply(notification.update).state);
+    record.runtime = null;
+    runtime.unsubscribe();
+    this.clearQuiet(record);
+    this.cancelPendingConfirmations(record);
+    void this.mcpAttachments
+      .get(record.thread.id)
+      ?.close()
+      .catch(() => undefined);
+    this.mcpAttachments.delete(record.thread.id);
+    if (this.disposed || !this.records.has(record.thread.id)) return;
+    const detail = exit.signal ? `signal ${exit.signal}` : `code ${exit.exitCode ?? 'unknown'}`;
+    if (runtime.stopping) {
+      // A user action ended it (power off, restart); the status change says which.
+      if (record.thread.state.status !== 'idle') {
+        this.setState(record, { status: 'idle', error: null, terminalId: null, turnStartedAt: null });
+      }
       return;
     }
-    const result = record.normalizer.apply(notification.update);
-    this.emitChanges(record, result.changes);
-    this.applyState(record, result.state);
+    const wasWorking = record.thread.state.status === 'working' || record.thread.state.status === 'starting';
+    record.turn = null;
+    if (wasWorking || (exit.exitCode !== null && exit.exitCode !== 0)) {
+      const message = `The agent exited with ${detail}`;
+      // The dead terminal stays visible (its output explains the crash) until restart or power off.
+      this.setState(record, { status: 'error', error: message, turnStartedAt: null });
+      return;
+    }
+    // The user typed an exit inside the CLI (or it finished on its own): stopped, not failed.
+    this.setState(record, { status: 'idle', error: null, turnStartedAt: null });
   }
 
-  private onLog(record: ThreadRecord, entry: AcpLogMessage): void {
-    // The stable SDK drops unknown usage_update fields; the raw tee still has the billable split.
-    const usage = rawUsageUpdate(entry.message);
-    if (usage) this.onUsage(record, parseUsageReport(usage));
-    this.pushLog(record, { direction: entry.direction, message: redact(entry.message) });
-  }
-
-  private onClosed(record: ThreadRecord, runtime: Runtime, error: unknown): void {
-    if (record.runtime !== runtime) return;
-    void runtime.process.exited.then((exit) => {
-      if (record.runtime !== runtime) return;
-      record.runtime = null;
-      this.cancelPendingPermissions(record);
-      void runtime.terminals.dispose();
-      void runtime.mcp?.close().catch(() => undefined);
-      const wasPrompting = record.thread.state.status === 'prompting';
-      const detail = exit.signal ? `signal ${exit.signal}` : `code ${exit.code ?? 'unknown'}`;
-      const message = error ? `${messageOf(error)} (${detail})` : `Agent exited with ${detail}`;
-      this.info(record, message);
-      if (this.disposed || !this.records.has(record.thread.id)) return;
-      if (record.thread.state.status === 'idle') return;
-      record.crashes++;
-      if (wasPrompting) this.emitChanges(record, record.normalizer.error(message));
-      this.setState(record, { status: 'error', error: message });
-    });
+  private clearQuiet(record: ThreadRecord): void {
+    clearTimeout(record.quietTimer);
+    record.quietTimer = undefined;
+    clearTimeout(record.startTimer);
+    record.startTimer = undefined;
   }
 
   private async stopRuntime(record: ThreadRecord): Promise<void> {
     const runtime = record.runtime;
-    record.runtime = null;
-    this.cancelPendingPermissions(record);
+    record.starting = null;
     if (!runtime) return;
-    await runtime.terminals.dispose();
-    await runtime.session.close();
-    await runtime.mcp?.close().catch(() => undefined);
-    runtime.process.kill();
-    await Promise.race([runtime.process.exited, new Promise((resolveTimeout) => setTimeout(resolveTimeout, 2000))]);
-    runtime.process.kill('SIGKILL');
-  }
-
-  private cancelPendingPermissions(record: ThreadRecord): void {
-    for (const pending of record.pendingPermissions.values()) pending.resolve(null);
-    record.pendingPermissions.clear();
-  }
-
-  // --- Client-side handlers -------------------------------------------------------------------
-
-  private async onPermission(
-    record: ThreadRecord,
-    request: RequestPermissionRequest,
-    signal: AbortSignal,
-  ): Promise<RequestPermissionResponse> {
-    const toolCall = request.toolCall;
-    const toolKind: ToolKind = toolCall.kind ?? record.normalizer.toolKindOf(toolCall.toolCallId) ?? 'other';
-    const options = request.options;
-    const requestId = randomUUID();
-    this.emitChanges(record, record.normalizer.permissionRequested(requestId, request));
-
-    const locations = toolCall.locations ?? record.normalizer.toolLocationsOf(toolCall.toolCallId);
-    const auto = this.automaticAnswer(record, toolKind, locations, options);
-    if (auto) {
-      this.emitChanges(record, record.normalizer.permissionResolved(requestId, { optionId: auto, auto: true }));
-      return { outcome: { outcome: 'selected', optionId: auto } };
-    }
-
-    const chosen = await this.waitForPermission(record, requestId, signal);
-    if (chosen === null) {
-      this.emitChanges(record, record.normalizer.permissionResolved(requestId, 'cancelled'));
-      return { outcome: { outcome: 'cancelled' } };
-    }
-    const option = options.find((o) => o.optionId === chosen);
-    if (option?.kind === 'allow_always')
-      this.options.permissions.remember(permissionMemoryKey(record.thread.agentId, toolKind), 'allow');
-    if (option?.kind === 'reject_always')
-      this.options.permissions.remember(permissionMemoryKey(record.thread.agentId, toolKind), 'reject');
-    this.emitChanges(record, record.normalizer.permissionResolved(requestId, { optionId: chosen, auto: false }));
-    return { outcome: { outcome: 'selected', optionId: chosen } };
-  }
-
-  /** Waits for the renderer's answer to a permission card; null when cancelled or aborted. */
-  private waitForPermission(record: ThreadRecord, requestId: string, signal?: AbortSignal): Promise<string | null> {
-    this.pauseTurn(record);
-    return new Promise<string | null>((resolvePermission) => {
-      const pending: PendingPermission = {
-        resolve: (optionId) => {
-          record.pendingPermissions.delete(requestId);
-          if (record.pendingPermissions.size === 0) this.resumeTurn(record);
-          signal?.removeEventListener('abort', onAbort);
-          resolvePermission(optionId);
-        },
-      };
-      const onAbort = (): void => pending.resolve(null);
-      signal?.addEventListener('abort', onAbort, { once: true });
-      record.pendingPermissions.set(requestId, pending);
-      this.wakeWaiters();
-    });
-  }
-
-  /** The option id to answer without asking, from remembered "always" choices or auto-approve edits. */
-  private automaticAnswer(
-    record: ThreadRecord,
-    toolKind: ToolKind,
-    locations: readonly { path: string }[],
-    options: RequestPermissionRequest['options'],
-  ): string | null {
-    const allow = options.find((o) => o.kind === 'allow_once') ?? options.find((o) => o.kind === 'allow_always');
-    const reject = options.find((o) => o.kind === 'reject_once') ?? options.find((o) => o.kind === 'reject_always');
-    const remembered = this.options.permissions.get()[permissionMemoryKey(record.thread.agentId, toolKind)];
-    if (remembered === 'allow' && allow) return allow.optionId;
-    if (remembered === 'reject' && reject) return reject.optionId;
-    // Without any location we cannot tell what the edit touches, so the card is shown.
-    if (record.thread.autoApproveEdits && EDIT_TOOL_KINDS.has(toolKind) && allow && locations.length > 0) {
-      const insideProject = locations.every((location) => {
-        try {
-          resolveInsideRoot(this.options.projectPath, location.path);
-          return true;
-        } catch {
-          return false;
-        }
-      });
-      if (insideProject) return allow.optionId;
-    }
-    return null;
-  }
-
-  private async readTextFile(request: ReadTextFileRequest): Promise<ReadTextFileResponse> {
-    const path = this.scoped(request.path);
-    const text = await readFile(path, 'utf8');
-    if (request.line == null && request.limit == null) return { content: text };
-    const lines = text.split('\n');
-    const start = Math.max(0, (request.line ?? 1) - 1);
-    const end = request.limit != null ? start + request.limit : lines.length;
-    return { content: lines.slice(start, end).join('\n') };
-  }
-
-  private async writeTextFile(record: ThreadRecord, request: WriteTextFileRequest): Promise<void> {
-    const path = this.scoped(request.path);
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, request.content, 'utf8');
-    if (!this.disposed) this.options.events.fileChanged(record.thread.id, path);
-  }
-
-  private scoped(path: string): string {
+    record.runtime = null;
+    runtime.stopping = true;
+    runtime.generation++;
+    runtime.unsubscribe();
+    this.clearQuiet(record);
+    this.cancelPendingConfirmations(record);
+    void this.mcpAttachments
+      .get(record.thread.id)
+      ?.close()
+      .catch(() => undefined);
+    this.mcpAttachments.delete(record.thread.id);
     try {
-      return resolveInsideRoot(this.options.projectPath, path);
-    } catch (error) {
-      if (error instanceof PathScopeError) {
-        throw new Error(`Access denied: ${path} is outside the project folder`, { cause: error });
-      }
-      throw error;
+      await this.options.terminals.close(runtime.terminalId);
+    } catch {
+      // The terminal was already gone.
     }
   }
 }
 
-function rawUsageUpdate(message: unknown): object | null {
-  if (message === null || typeof message !== 'object' || !('method' in message) || !('params' in message)) return null;
-  if (message.method !== 'session/update' || message.params === null || typeof message.params !== 'object') return null;
-  const update = 'update' in message.params ? message.params.update : null;
-  return update !== null &&
-    typeof update === 'object' &&
-    'sessionUpdate' in update &&
-    update.sessionUpdate === 'usage_update'
-    ? update
-    : null;
-}
-
-/** Config options in Arbora's schema; variants from newer protocol versions are skipped. */
 function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === 'object' && error !== null && 'message' in error) {

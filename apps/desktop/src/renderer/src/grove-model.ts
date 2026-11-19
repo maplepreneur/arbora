@@ -1,22 +1,17 @@
 import {
-  activityFromEvents,
   activityLine,
   deriveSessionStatus,
   displayNames,
   groveRows,
   groveSummary,
-  NO_ACTIVITY,
   overlaps,
-  reduceActivity,
   visibleRows,
   type AgentDefinition,
   type AgentGroup,
   type FileOverlap,
   type GroveSection,
-  type SessionActivity,
   type SessionStatus,
   type ThreadAttention,
-  type ThreadEvent,
   type ThreadSummary,
 } from '@arbora/shared';
 
@@ -26,7 +21,6 @@ export interface GroveSession extends ThreadSummary {
   readonly name: string;
   readonly agentName: string;
   readonly status: SessionStatus;
-  readonly activity: SessionActivity;
   readonly attention: ThreadAttention | undefined;
   /** Line two of the row. */
   readonly line: string;
@@ -39,7 +33,8 @@ export interface GroveModelInput {
   readonly groups: readonly AgentGroup[];
   readonly agents: readonly AgentDefinition[];
   readonly attention: Readonly<Record<string, ThreadAttention>>;
-  readonly events: Readonly<Record<string, readonly ThreadEvent[]>>;
+  /** Paths each thread changed while its turn ran, for the overlap warning. */
+  readonly changedFiles: Readonly<Record<string, readonly string[]>>;
 }
 
 export interface GroveModel {
@@ -55,40 +50,6 @@ export interface GroveModel {
   readonly summary: string;
 }
 
-interface Fold {
-  readonly events: readonly ThreadEvent[];
-  readonly activity: SessionActivity;
-}
-
-const folds = new Map<string, Fold>();
-
-/**
- * The activity digest of a thread's transcript. The store copies the array on every change and
- * keeps the untouched events, so only appended and replaced events are folded in; a transcript
- * that was fetched again (a new first event) or got shorter is folded from scratch.
- */
-export function activityOf(threadId: string, events: readonly ThreadEvent[] | undefined): SessionActivity {
-  if (!events) return NO_ACTIVITY;
-  const previous = folds.get(threadId);
-  if (previous?.events === events) return previous.activity;
-  let activity: SessionActivity;
-  if (
-    previous &&
-    previous.events.length > 0 &&
-    events.length >= previous.events.length &&
-    events[0] === previous.events[0]
-  ) {
-    activity = previous.activity;
-    events.forEach((event, index) => {
-      if (event !== previous.events[index]) activity = reduceActivity(activity, event);
-    });
-  } else {
-    activity = activityFromEvents(events);
-  }
-  folds.set(threadId, { events, activity });
-  return activity;
-}
-
 /** A process is up: these count for the overlap warning. */
 function isLive(thread: ThreadSummary): boolean {
   const { status } = thread.state;
@@ -99,27 +60,17 @@ export function buildGroveModel(input: GroveModelInput): GroveModel {
   const agentNames = new Map(input.agents.map((agent) => [agent.id, agent.name]));
   const agentName = (agentId: string): string => agentNames.get(agentId) ?? agentId;
   const names = displayNames(input.threads, agentName);
-  const known = new Set(input.threads.map((thread) => thread.id));
-  for (const id of folds.keys()) if (!known.has(id)) folds.delete(id);
-  const activities = new Map(
-    input.threads.map((thread) => [thread.id, activityOf(thread.id, input.events[thread.id])]),
-  );
-  const overlapping = overlaps(
-    Object.fromEntries([...activities].map(([id, activity]) => [id, activity.files])),
-    new Set(input.threads.filter(isLive).map((thread) => thread.id)),
-  );
+  const overlapping = overlaps(input.changedFiles, new Set(input.threads.filter(isLive).map((t) => t.id)));
   const sessions = input.threads.map((thread): GroveSession => {
     const attention = input.attention[thread.id];
     const status = deriveSessionStatus(thread.state.status, attention);
-    const activity = activities.get(thread.id) ?? NO_ACTIVITY;
     return {
       ...thread,
       name: names.get(thread.id) ?? agentName(thread.agentId),
       agentName: agentName(thread.agentId),
       status,
-      activity,
       attention,
-      line: activityLine(status, activity, attention, thread.state.error),
+      line: activityLine(status, thread.state, attention),
       overlaps: overlapping.get(thread.id) ?? [],
     };
   });

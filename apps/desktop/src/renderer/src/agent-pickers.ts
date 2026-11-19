@@ -1,30 +1,17 @@
 import { useEffect, useMemo } from 'react';
-import {
-  isPickableAgent,
-  visibleModels,
-  type AgentDefinition,
-  type AgentModel,
-  type AgentVerification,
-} from '@arbora/shared';
+import { isPickableAgent, type AgentDefinition, type AgentVerification } from '@arbora/shared';
 import { useAgents } from './agent-store';
 import { useDefaultAgentId } from './agent-defaults';
 import { showToast, useApp } from './store';
 
 export interface PickableAgent {
   readonly agent: AgentDefinition;
-  readonly models: readonly AgentModel[];
   readonly isDefault: boolean;
-}
-
-/** `opencode/Beam Free` reads as `Beam Free` where the agent is already named beside it. */
-export function shortModelName(name: string): string {
-  const slash = name.lastIndexOf('/');
-  return slash >= 0 && slash < name.length - 1 ? name.slice(slash + 1) : name;
 }
 
 const checking = new Set<string>();
 
-/** Runs the sign-in check for one agent; the result lands in settings (and `settings.changed`). */
+/** Runs the version check for one agent; the result lands in settings (and `settings.changed`). */
 export async function verifyAgent(agentId: string): Promise<AgentVerification | null> {
   checking.add(agentId);
   useApp.setState((s) => ({ checkingAgents: [...new Set([...s.checkingAgents, agentId])] }));
@@ -62,7 +49,7 @@ export function useAutoVerify(): void {
   }, [auto, verified, availability]);
 }
 
-/** Signed-in, visible agents with their visible models. The default agent comes first. */
+/** Agents that run and are not hidden. The default agent comes first. */
 export function usePickableAgents(): PickableAgent[] {
   const agents = useAgents((s) => s.agents);
   const settings = useApp((s) => s.settings.agents);
@@ -70,7 +57,7 @@ export function usePickableAgents(): PickableAgent[] {
   return useMemo(() => {
     const list = agents
       .filter((agent) => isPickableAgent(settings, agent.id))
-      .map((agent) => ({ agent, models: visibleModels(settings, agent.id), isDefault: agent.id === defaultAgent }));
+      .map((agent) => ({ agent, isDefault: agent.id === defaultAgent }));
     return list.sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
   }, [agents, settings, defaultAgent]);
 }

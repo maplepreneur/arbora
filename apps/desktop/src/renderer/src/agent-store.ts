@@ -1,16 +1,13 @@
 import { create } from 'zustand';
-import { newGroupId } from '@arbora/shared';
-import type {
-  AcpLogEntry,
-  AgentAvailability,
-  AgentDefinition,
-  AgentGroup,
-  Attachment,
-  ContentBlock,
-  ThreadChange,
-  ThreadEvent,
-  ThreadState,
-  ThreadSummary,
+import {
+  newGroupId,
+  type AgentAvailability,
+  type AgentDefinition,
+  type AgentGroup,
+  type Attachment,
+  type ConfirmationRequest,
+  type ThreadState,
+  type ThreadSummary,
 } from '@arbora/shared';
 
 export type AgentView = 'threads' | 'picker' | 'thread';
@@ -23,10 +20,8 @@ export interface AgentPanelState {
   groups: AgentGroup[];
   activeThreadId: string | null;
   view: AgentView;
-  /** Transcripts by thread id; present once `agent.getThread` returned. */
-  events: Record<string, ThreadEvent[]>;
-  logs: Record<string, AcpLogEntry[]>;
-  logOpen: boolean;
+  /** Pending Arbora confirmation cards by request id (browser tools, Grove helper starts). */
+  confirmations: Record<string, ConfirmationRequest>;
   /** Composer text per thread, kept while switching threads. */
   drafts: Record<string, string>;
   attachments: Record<string, Attachment[]>;
@@ -36,10 +31,7 @@ export interface AgentPanelState {
   pickerFocusRequest: number;
   /** The new-group name field: `''` for an empty group, or the thread to move into it. */
   newGroupFor: string | null;
-  /** Bumped by Alt+P / Alt+M to open the open thread's model or mode menu. */
-  modelMenuRequest: number;
-  modeMenuRequest: number;
-  /** Files written by agents this session (Stage 8 turns these into the "Agent changes" group). */
+  /** Files that changed while an agent's turn was running, for the "Agent changes" group. */
   changedFiles: { threadId: string; path: string; at: number }[];
   loaded: boolean;
 }
@@ -51,60 +43,20 @@ const INITIAL: AgentPanelState = {
   groups: [],
   activeThreadId: null,
   view: 'threads',
-  events: {},
-  logs: {},
-  logOpen: false,
+  confirmations: {},
   drafts: {},
   attachments: {},
   composerFocusRequest: 0,
   pickerFocusRequest: 0,
   newGroupFor: null,
-  modelMenuRequest: 0,
-  modeMenuRequest: 0,
   changedFiles: [],
   loaded: false,
 };
-
-export const MAX_LOG_ENTRIES = 2000;
 
 export const useAgents = create<AgentPanelState>()(() => ({ ...INITIAL }));
 
 export function resetAgents(): void {
   useAgents.setState({ ...INITIAL });
-}
-
-/** Applies ordered transcript changes to a transcript. Unknown `replace` indexes append instead. */
-export function applyChanges(events: readonly ThreadEvent[], changes: readonly ThreadChange[]): ThreadEvent[] {
-  let next = [...events];
-  for (const change of changes) {
-    switch (change.type) {
-      case 'append':
-        next.push(change.event);
-        break;
-      case 'replace':
-        if (change.index < next.length) next[change.index] = change.event;
-        else next.push(change.event);
-        break;
-      case 'reset':
-        next = [...change.events];
-        break;
-      default: {
-        const unreachable: never = change;
-        throw new Error(`Unhandled thread change ${String(unreachable)}`);
-      }
-    }
-  }
-  return next;
-}
-
-export function applyThreadChanges(threadId: string, changes: readonly ThreadChange[]): void {
-  useAgents.setState((s) => {
-    const current = s.events[threadId];
-    // Before the transcript is fetched, changes would be applied to a partial list; skip them. The
-    // fetch returns the complete transcript including these changes.
-    if (!current) return {};
-    return { events: { ...s.events, [threadId]: applyChanges(current, changes) } };
-  });
 }
 
 export function applyThreadState(threadId: string, state: ThreadState): void {
@@ -119,23 +71,25 @@ export function isListed(thread: Pick<ThreadSummary, 'archivedAt'>): boolean {
 export function applyThreadList(threads: ThreadSummary[]): void {
   useAgents.setState((s) => {
     const activeThreadId = threads.some((t) => t.id === s.activeThreadId && isListed(t)) ? s.activeThreadId : null;
-    const known = new Set(threads.map((t) => t.id));
-    const events = Object.fromEntries(Object.entries(s.events).filter(([id]) => known.has(id)));
     return {
       threads,
       activeThreadId,
-      events,
       view: activeThreadId === null && s.view === 'thread' ? 'threads' : s.view,
       loaded: true,
     };
   });
 }
 
-export function appendLog(threadId: string, entry: AcpLogEntry): void {
+/** A confirmation card main raised for this thread (a guarded browser tool, a helper start). */
+export function applyConfirmation(request: ConfirmationRequest): void {
+  useAgents.setState((s) => ({ confirmations: { ...s.confirmations, [request.requestId]: request } }));
+}
+
+/** The card was answered (or withdrawn); the agent terminal's state says what happens next. */
+export function resolveConfirmation(requestId: string): void {
   useAgents.setState((s) => {
-    const current = s.logs[threadId] ?? [];
-    const next = [...current, entry];
-    return { logs: { ...s.logs, [threadId]: next.length > MAX_LOG_ENTRIES ? next.slice(-MAX_LOG_ENTRIES) : next } };
+    const { [requestId]: _answered, ...confirmations } = s.confirmations;
+    return { confirmations };
   });
 }
 
@@ -156,73 +110,38 @@ export async function loadAgentSnapshot(): Promise<void> {
 
 export async function openThread(threadId: string): Promise<void> {
   useAgents.setState({ activeThreadId: threadId, view: 'thread' });
-  const [thread, log] = await Promise.all([
-    window.arbora.invoke('agent.getThread', { threadId }),
-    window.arbora.invoke('agent.getLog', { threadId }),
-  ]);
+  const thread = await window.arbora.invoke('agent.getThread', { threadId });
   if (!thread) return;
   useAgents.setState((s) => ({
-    events: { ...s.events, [threadId]: thread.events },
-    logs: { ...s.logs, [threadId]: log },
     threads: s.threads.some((t) => t.id === threadId)
       ? s.threads.map((t) => (t.id === threadId ? { ...t, state: thread.state } : t))
       : [{ ...thread }, ...s.threads],
   }));
 }
 
-const loading = new Map<string, Promise<void>>();
-
-/** Fetches a thread's transcript (and its ACP log) without opening it, unless it is already loaded. */
-export function loadThread(threadId: string, options: { log?: boolean } = {}): Promise<void> {
-  const { events, logs } = useAgents.getState();
-  const wantLog = options.log === true && !logs[threadId];
-  if (events[threadId] && !wantLog) return Promise.resolve();
-  const key = `${threadId}:${wantLog}`;
-  const inFlight = loading.get(key);
-  if (inFlight) return inFlight;
-  const request = Promise.all([
-    events[threadId] ? Promise.resolve(null) : window.arbora.invoke('agent.getThread', { threadId }),
-    wantLog ? window.arbora.invoke('agent.getLog', { threadId }) : Promise.resolve(null),
-  ])
-    .then(([thread, log]) => {
-      useAgents.setState((s) => ({
-        ...(thread && !s.events[threadId] ? { events: { ...s.events, [threadId]: thread.events } } : {}),
-        ...(log && !s.logs[threadId] ? { logs: { ...s.logs, [threadId]: log } } : {}),
-      }));
-    })
-    .finally(() => loading.delete(key));
-  loading.set(key, request);
-  return request;
-}
-
 export interface NewThreadOptions {
-  /** Overrides the agent's default model for this thread. */
-  readonly model?: string | undefined;
   /** Files it in an agent group. */
   readonly groupId?: string | null | undefined;
   /** Grove's launcher names the session after its task. */
   readonly title?: string | undefined;
 }
 
-/** Creates a thread (the agent starts at once) without opening it anywhere. */
+/** Creates a thread (the agent CLI starts in its terminal at once) without opening it anywhere. */
 export async function newThread(agentId: string, options: NewThreadOptions = {}): Promise<ThreadSummary> {
   const summary = await window.arbora.invoke('agent.createThread', {
     agentId,
-    ...(options.model ? { model: options.model } : {}),
     ...(options.groupId ? { groupId: options.groupId } : {}),
     ...(options.title ? { title: options.title } : {}),
   });
   useAgents.setState((s) => ({
     threads: s.threads.some((t) => t.id === summary.id) ? s.threads : [summary, ...s.threads],
-    events: { ...s.events, [summary.id]: s.events[summary.id] ?? [] },
-    logs: { ...s.logs, [summary.id]: s.logs[summary.id] ?? [] },
   }));
   return summary;
 }
 
-/** `model` overrides the agent's default model for this thread; `groupId` files it in a group. */
-export async function createThread(agentId: string, model?: string, groupId?: string | null): Promise<void> {
-  const summary = await newThread(agentId, { model, groupId });
+/** `groupId` files the new thread in a group and opens it with the composer focused. */
+export async function createThread(agentId: string, groupId?: string | null): Promise<void> {
+  const summary = await newThread(agentId, { groupId });
   await openThread(summary.id);
   focusComposer();
 }
@@ -241,10 +160,6 @@ export function showPicker(): void {
 
 export function focusComposer(): void {
   useAgents.setState((s) => ({ composerFocusRequest: s.composerFocusRequest + 1 }));
-}
-
-export function toggleLog(): void {
-  useAgents.setState((s) => ({ logOpen: !s.logOpen }));
 }
 
 export function setDraft(threadId: string, text: string): void {
@@ -272,42 +187,55 @@ export function activeThread(): ThreadSummary | undefined {
   return threads.find((t) => t.id === activeThreadId);
 }
 
-/** Sends the composer's text and attachments; the turn's progress arrives through events. */
+/**
+ * Sends the composer's text; attachments become path mentions main adds to the prompt. The turn's
+ * progress arrives through `agent.threadState`.
+ */
 export async function sendPrompt(threadId: string): Promise<{ error?: string }> {
   const state = useAgents.getState();
   const text = (state.drafts[threadId] ?? '').trim();
   const attachments = state.attachments[threadId] ?? [];
   if (!text && attachments.length === 0) return {};
-  const blocks: ContentBlock[] = text ? [{ type: 'text', text }] : [];
   useAgents.setState((s) => ({
     drafts: { ...s.drafts, [threadId]: '' },
     attachments: { ...s.attachments, [threadId]: [] },
   }));
   try {
-    const result = await window.arbora.invoke('agent.prompt', { threadId, blocks, attachments });
+    const result = await window.arbora.invoke('agent.sendPrompt', {
+      threadId,
+      text,
+      ...(attachments.length > 0 ? { attachments } : {}),
+    });
     return result.error ? { error: result.error } : {};
   } catch (error) {
     return { error: (error as Error).message };
   }
 }
 
-export async function cancelTurn(threadId: string): Promise<void> {
-  await window.arbora.invoke('agent.cancel', { threadId });
+/** Answers one of Arbora's own confirmation cards. */
+export async function answerConfirmation(threadId: string, requestId: string, optionId: string): Promise<void> {
+  resolveConfirmation(requestId);
+  await window.arbora.invoke('agent.answerConfirmation', { threadId, requestId, optionId });
 }
 
-/** Stops the agent's work whatever it is doing (turn, start-up, login wait). */
+/** Interrupts the agent's current work (Ctrl+C in its terminal). */
 export async function stopAgent(threadId: string): Promise<void> {
   await window.arbora.invoke('agent.stop', { threadId });
 }
 
-/** Whether Stop has something to stop. */
+/** Whether Stop has something to interrupt. */
 export function isStoppable(status: ThreadSummary['state']['status']): boolean {
-  return status === 'prompting' || status === 'starting';
+  return status === 'working' || status === 'starting';
 }
 
-/** Ends the agent process in any state (Grove's Stop); the next prompt starts it again. */
+/** Ends the agent process in any state (Grove's power toggle); the next prompt starts it again. */
 export async function stopProcess(threadId: string): Promise<void> {
   await window.arbora.invoke('agent.stopProcess', { threadId });
+}
+
+/** Restarts the agent CLI in a fresh terminal. */
+export async function restartThread(threadId: string): Promise<void> {
+  await window.arbora.invoke('agent.restart', { threadId });
 }
 
 /** Moves a thread to Grove's Recent (main stops its process first) or back to the list. */
@@ -405,7 +333,7 @@ export async function renameThread(threadId: string, title: string): Promise<voi
   await window.arbora.invoke('agent.renameThread', { threadId, title });
 }
 
-/** Stops every working thread in a group (Herdr's "stop the herd"). */
+/** Interrupts every working thread in a group (Herdr's "stop the herd"). */
 export async function stopGroup(groupId: string): Promise<number> {
   const working = useAgents.getState().threads.filter((t) => t.groupId === groupId && isStoppable(t.state.status));
   await Promise.all(working.map((t) => stopAgent(t.id)));

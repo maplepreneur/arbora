@@ -5,10 +5,8 @@ import { homedir } from 'node:os';
 import { dirname, join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, clipboard, crashReporter, dialog, Menu, shell, type WebContents } from 'electron';
-import { AgentRegistry } from '@arbora/acp-client';
+import { AgentRegistry } from '@arbora/shared';
 import {
-  attentionFromTranscript,
-  attentionKind,
   applyProjectMeta,
   applySettingsPatch,
   addRecentProject,
@@ -171,8 +169,6 @@ function main(): void {
       browserSessions,
       shellEnvironment,
       userDataPath: app.getPath('userData'),
-      // Arbora's own executable runs the shim as Node; inside a packaged build the script is in app.asar.
-      mcpShim: { command: process.execPath, script: join(import.meta.dirname, 'mcp-shim.js') },
       toolingWorkerPath: join(import.meta.dirname, 'tooling-worker.js'),
       appVersion: app.getVersion(),
       renderer:
@@ -844,20 +840,8 @@ function main(): void {
         const agents = manager.runtime(path)?.agents;
         const threads = agents?.listThreads() ?? [];
         const waiting = threads.flatMap((summary) => {
-          if (summary.archivedAt !== null) return [];
-          const thread = agents?.getThread(summary.id);
-          if (!thread) return [];
-          const attention = attentionFromTranscript(thread.events, thread.state);
-          const kind = attentionKind(attention);
-          if (kind !== 'permission' && kind !== 'auth') return [];
-          return [
-            {
-              threadId: summary.id,
-              permissionIds: [...attention.pendingPermissions],
-              permissionTitle: attention.permissionTitle,
-              auth: attention.auth || kind === 'auth',
-            },
-          ];
+          if (summary.archivedAt !== null || summary.state.status !== 'needs_input') return [];
+          return [{ threadId: summary.id, line: summary.state.lastLine }];
         });
         return { path, threads, waiting };
       }),
@@ -866,13 +850,12 @@ function main(): void {
       await shellEnvironment.ready;
       return shellEnvironment.env();
     };
-    defineHandler('grove.createWorktree', isTrusted, async ({ parentPath, title, agentId, model, also }, event) => {
+    defineHandler('grove.createWorktree', isTrusted, async ({ parentPath, title, agentId, also }, event) => {
       const projectWindow = windowFor(event.sender);
       return createGroveWorktree({
         parentPath,
         title,
         agentId,
-        ...(model !== undefined ? { model } : {}),
         ...(also !== undefined ? { also } : {}),
         windowProject: projectWindow.project?.path,
         settings,
@@ -979,8 +962,8 @@ function main(): void {
       return probe;
     });
     defineHandler('agent.listThreads', isTrusted, (_req, event) => runtimeOf(event.sender)?.agents.listThreads() ?? []);
-    defineHandler('agent.createThread', isTrusted, ({ agentId, model, groupId, title }, event) =>
-      requireAgents(event.sender).createThread(agentId, { model, groupId, title }),
+    defineHandler('agent.createThread', isTrusted, ({ agentId, groupId, title }, event) =>
+      requireAgents(event.sender).createThread(agentId, { groupId, title }),
     );
     defineHandler('agent.listGroups', isTrusted, (_req, event) => runtimeOf(event.sender)?.agents.listGroups() ?? []);
     defineHandler('agent.saveGroups', isTrusted, ({ groups }, event) => requireAgents(event.sender).saveGroups(groups));
@@ -1003,13 +986,9 @@ function main(): void {
       requireAgents(event.sender).renameThread(threadId, title);
       return undefined;
     });
-    defineHandler('agent.prompt', isTrusted, ({ threadId, blocks, attachments }, event) =>
-      requireAgents(event.sender).prompt(threadId, blocks, attachments),
+    defineHandler('agent.sendPrompt', isTrusted, ({ threadId, text, title }, event) =>
+      requireAgents(event.sender).sendPrompt(threadId, text, title !== undefined ? { title } : {}),
     );
-    defineHandler('agent.cancel', isTrusted, async ({ threadId }, event) => {
-      await requireAgents(event.sender).cancel(threadId);
-      return undefined;
-    });
     defineHandler('agent.stop', isTrusted, async ({ threadId }, event) => {
       await requireAgents(event.sender).stop(threadId);
       return undefined;
@@ -1022,42 +1001,13 @@ function main(): void {
       await requireAgents(event.sender).setArchived(threadId, archived);
       return undefined;
     });
-    defineHandler('agent.respondPermission', isTrusted, ({ threadId, requestId, optionId }, event) => {
-      requireAgents(event.sender).respondPermission(threadId, requestId, optionId);
-      return undefined;
-    });
-    defineHandler('agent.setMode', isTrusted, async ({ threadId, modeId }, event) => {
-      await requireAgents(event.sender).setMode(threadId, modeId);
-      return undefined;
-    });
-    defineHandler('agent.setConfigOption', isTrusted, async ({ threadId, configId, value }, event) => {
-      await requireAgents(event.sender).setConfigOption(threadId, configId, value);
-      return undefined;
-    });
-    defineHandler('agent.setAutoApproveEdits', isTrusted, ({ threadId, enabled }, event) => {
-      requireAgents(event.sender).setAutoApproveEdits(threadId, enabled);
-      return undefined;
-    });
-    defineHandler('agent.authenticate', isTrusted, async ({ threadId, methodId }, event) => {
-      await requireAgents(event.sender).authenticate(threadId, methodId);
+    defineHandler('agent.answerConfirmation', isTrusted, ({ threadId, requestId, optionId }, event) => {
+      requireAgents(event.sender).answerConfirmation(threadId, requestId, optionId);
       return undefined;
     });
     defineHandler('agent.restart', isTrusted, async ({ threadId }, event) => {
       await requireAgents(event.sender).restart(threadId);
       return undefined;
-    });
-    defineHandler('agent.getLog', isTrusted, ({ threadId }, event) => requireAgents(event.sender).getLog(threadId));
-    defineHandler('agent.exportLog', isTrusted, async ({ threadId }, event) => {
-      const projectWindow = windowFor(event.sender);
-      const agents = requireAgents(event.sender);
-      const result = await dialog.showSaveDialog(projectWindow.window, {
-        title: 'Export ACP log',
-        defaultPath: join(projectWindow.project?.path ?? app.getPath('home'), `acp-log-${threadId.slice(0, 8)}.json`),
-        filters: [{ name: 'JSON', extensions: ['json'] }],
-      });
-      if (result.canceled || !result.filePath) return { path: null };
-      await agents.exportLog(threadId, result.filePath);
-      return { path: result.filePath };
     });
     defineHandler('agent.pickAttachments', isTrusted, async (_req, event) => {
       const projectWindow = windowFor(event.sender);
@@ -1093,21 +1043,6 @@ function main(): void {
         return describeAttachment(file);
       }
       return null;
-    });
-    defineHandler('agent.forgetPermissions', isTrusted, ({ agentId }) => {
-      settings.update((s) => ({
-        ...s,
-        agents: {
-          ...s.agents,
-          permissions:
-            agentId === undefined
-              ? {}
-              : Object.fromEntries(
-                  Object.entries(s.agents.permissions).filter(([key]) => !key.startsWith(`${agentId}:`)),
-                ),
-        },
-      }));
-      return undefined;
     });
 
     defineHandler('devPlugin.status', isTrusted, (_req, event) => {
@@ -1380,7 +1315,7 @@ function main(): void {
         const summary = await git.branchSummary(base);
         prompt = pullRequestPrompt(status.branch ?? 'HEAD', base, summary.log, summary.stat, summary.diff);
       }
-      const text = parseGeneratedText(await w.agents.runTask(task.agentId, task.model, prompt));
+      const text = parseGeneratedText(await w.agents.runTask(task.agentId, prompt));
       if (text.title === '') throw new Error('The agent did not return any text.');
       return text;
     });

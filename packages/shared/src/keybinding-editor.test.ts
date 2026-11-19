@@ -36,7 +36,6 @@ describe('conflicts', () => {
     // Design undo only applies in design mode; a design-scoped command does not clash with an agent-panel one.
     expect(scopesOverlap('design', 'agentPanel')).toBe(false);
     expect(scopesOverlap('modeActive', 'design')).toBe(true);
-    expect(conflictsFor(CommandId.agentCycleMode, 'mod+z', DEFAULT_COMMANDS, {}, undefined, 'linux')).toEqual([]);
   });
 
   it('reports conflicts per row, respecting user and project layers', () => {
