@@ -6,6 +6,11 @@ function terminal(id: string, kind: TerminalInfo['kind'] = 'shell'): TerminalInf
   return { id, title: id, kind, cwd: '/p', command: 'bash', pid: 1, exitCode: null, readOnly: kind === 'agent' };
 }
 
+/** An agent session's own CLI: kind 'agent' but writable, hosted by the session pane. */
+function sessionTerminal(id: string): TerminalInfo {
+  return { ...terminal(id, 'agent'), readOnly: false };
+}
+
 const tab = (id: string, panes: string[], direction: TerminalTab['direction'] = 'horizontal'): TerminalTab => ({
   id,
   panes,
@@ -34,6 +39,16 @@ describe('reconcileTabs', () => {
     const next = reconcileTabs(state, [terminal('x', 'agent'), terminal('y', 'agent')]);
     expect(next).toMatchObject({ activeTabId: AGENT_TAB_ID, activePaneId: 'y' });
     expect(reconcileTabs({ ...next, activePaneId: 'x' }, [terminal('x', 'agent')]).activePaneId).toBe('x');
+  });
+
+  it('never tabs an agent session terminal; the session pane hosts it', () => {
+    const fresh = reconcileTabs({ tabs: [], activeTabId: null, activePaneId: null }, [sessionTerminal('cli')]);
+    expect(fresh).toEqual({ tabs: [], activeTabId: null, activePaneId: null });
+    // A tab it already had (an older layout) is dropped, and it never steals the active one.
+    const state = { tabs: [tab('cli', ['cli']), tab('a', ['a'])], activeTabId: 'cli', activePaneId: 'cli' };
+    const next = reconcileTabs(state, [sessionTerminal('cli'), terminal('a')]);
+    expect(next.tabs).toEqual([tab('a', ['a'])]);
+    expect(next).toMatchObject({ activeTabId: 'a', activePaneId: 'a' });
   });
 
   it('drops closed panes and empty tabs, and moves focus to a surviving pane', () => {

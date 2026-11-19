@@ -152,20 +152,18 @@ test.describe('terminal agents', () => {
     }
   });
 
-  test('the agent terminal is a normal interactive tab in the terminal drawer', async () => {
+  test('the agent terminal lives only in the session pane, never in the terminal tabs', async () => {
     const project = tempProject();
     const { app, page } = await launch(userDataWithFakeAgent(), [project]);
     try {
       await startAgent(page, FAKE_ID);
       const agentTerminal = (await terminals(page)).find((terminal) => terminal.kind === 'agent');
       expect(agentTerminal?.readOnly).toBe(false);
-      // The drawer shows it as its own tab; typing there is the user's, not Arbora's.
+      // The right column never tabs the agent's own CLI; the session pane is its only host.
       const tab = page.locator('[data-testid="terminal-tab"]').filter({ hasText: 'Fake agent' });
-      await expect(tab).toHaveCount(1);
-      await tab.first().click();
-      await expect(page.getByTestId('terminal-panel')).toBeVisible();
-      const xterm = page.locator(`[data-testid="terminal-xterm"][data-terminal-id="${agentTerminal?.id}"]`);
-      await expect(xterm).toBeVisible();
+      await expect(tab).toHaveCount(0);
+      await expect(page.getByTestId('agent-terminal')).toBeVisible();
+      // Typing there is the user's, not Arbora's.
       await typeIntoTerminal(page, agentTerminal?.id ?? '', 'uptime\r');
       await expect.poll(async () => (await scrollback(page, agentTerminal?.id ?? '')).includes('up ')).toBe(true);
     } finally {

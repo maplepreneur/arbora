@@ -38,7 +38,7 @@ import { replaceGroveThreadIndex } from './grove-thread-index';
 import { ipcError } from './ipc-error';
 import { updateProjectSettings } from './settings-client';
 import { dispatchMode, showRightView, showToast, updateLayout, useApp } from './store';
-import { createTerminal, revealTerminal } from './terminal-store';
+import { createTerminal, revealTerminal, useTerminals } from './terminal-store';
 
 export type GroveTab = 'transcript' | 'changes';
 
@@ -261,11 +261,39 @@ export async function focusGroveProject(path: string | null): Promise<boolean> {
 
 /** Shows terminal `id` of this window's project as the right column's tab. */
 export function selectGroveTerminal(id: string | null, options: { focus?: boolean; info?: TerminalInfo } = {}): void {
+  // An agent session's CLI lives in the session pane: selecting it shows that session there,
+  // never a tab in the right column.
+  if (id) {
+    const threadId = sessionForTerminal(id, options.info);
+    if (threadId) {
+      selectSession(threadId, { focus: options.focus !== false });
+      return;
+    }
+  }
   useGrove.setState((state) => ({
     terminalId: id,
     terminalFocusRequest: options.focus ? state.terminalFocusRequest + 1 : state.terminalFocusRequest,
   }));
   if (id) revealTerminal(id, options.info);
+}
+
+/** The session whose CLI runs in terminal `id`, if that terminal is an agent session's own. */
+function sessionForTerminal(id: string, info?: TerminalInfo): string | null {
+  const terminal =
+    info ??
+    useTerminals.getState().terminals.find((t) => t.id === id) ??
+    Object.values(useGrove.getState().terminalsByProject)
+      .flatMap((terminals) => [...terminals])
+      .find((t) => t.id === id);
+  // Commands an agent ran (`readOnly`) stay in the agent tab; only the session CLI diverts.
+  if (!terminal || terminal.kind !== 'agent' || terminal.readOnly) return null;
+  const live = useAgents.getState().threads.find((thread) => thread.state.terminalId === id);
+  if (live) return live.id;
+  for (const threads of Object.values(useGrove.getState().threadsByProject)) {
+    const thread = threads.find((item) => item.state.terminalId === id);
+    if (thread) return thread.id;
+  }
+  return null;
 }
 
 /** Starts a shell in `path` (or the window's project) and shows it in the right column. */
